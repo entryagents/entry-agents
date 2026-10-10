@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  deleteInstallationsByUserId,
-  getInstallationsByUserId,
-} from "@/lib/db/installations";
+import { getInstallationsByUserId } from "@/lib/db/installations";
 import { getUserGitHubToken } from "@/lib/github/token";
-import { deleteGitHubAccountLink } from "@/lib/github/users";
 import {
   GitHubSyncTransientError,
   syncUserInstallationsWithRetry,

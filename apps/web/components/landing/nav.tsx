@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { UserAvatarDropdown } from "@/components/user-avatar-dropdown";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/hooks/use-session";
-import { cn } from "@/lib/utils";
 import { Logo } from "./logo";
 
 export function LandingNav({

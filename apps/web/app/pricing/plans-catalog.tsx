@@ -184,6 +184,8 @@ export function PlansCatalog() {
                 dollars.
               </div>
               <div className="mt-3 text-sm text-(--l-fg-2)">
+                {/* oxlint-disable-next-line nextjs/no-html-link-for-pages */}
+                {/* oxlint-disable-next-line nextjs/no-html-link-for-pages */}
                 <a
                   href="/model"
                   className="underline decoration-(--l-fg-3) underline-offset-4 transition-colors hover:text-(--l-fg)"

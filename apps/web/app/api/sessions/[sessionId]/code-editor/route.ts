@@ -4,7 +4,6 @@ import {
   requireOwnedSession,
 } from "@/app/api/sessions/_lib/session-context";
 import { CODE_SERVER_PORT, DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
-import { getServerSession } from "@/lib/session/get-server-session";
 import { provisionSessionSandbox } from "@/lib/sandbox/provisioning";
 import {
   isSandboxActive,

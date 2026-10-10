@@ -80,7 +80,9 @@ if (enabled) {
       }
       res.end();
     });
-    await new Promise<void>((r) => backend.listen(0, "127.0.0.1", r));
+    await new Promise<void>((resolve) =>
+      backend.listen(0, "127.0.0.1", resolve),
+    );
     backendPort = (backend.address() as net.AddressInfo).port;
 
     // From here on, the "Electron process" must NOT have the real key.

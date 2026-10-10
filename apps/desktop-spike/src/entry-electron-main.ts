@@ -31,6 +31,8 @@ const entryHandler = new EntryAgentHandler(
   () => MODEL_ID,
 );
 
+/* oxlint-disable-next-line unicorn/prefer-module -- dual CJS/ESM bundle: __dirname is feature-detected for the CJS build */
+/* oxlint-disable-next-line unicorn/prefer-module -- dual CJS/ESM bundle: __dirname is feature-detected for the CJS build */
 const DIST_DIR = typeof __dirname !== "undefined" ? __dirname : ".";
 
 function createWindow(): void {

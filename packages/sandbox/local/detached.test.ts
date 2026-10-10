@@ -32,7 +32,7 @@ async function waitGone(pid: number, timeoutMs = 5_000): Promise<boolean> {
   while (Date.now() < deadline) {
     try {
       process.kill(pid, 0); // signal 0 = liveness probe only
-      await new Promise((r) => setTimeout(r, 25));
+      await new Promise((resolve) => setTimeout(resolve, 25));
     } catch {
       return true; // ESRCH -- gone
     }
@@ -57,7 +57,7 @@ async function waitListening(port: number, timeoutMs = 10_000): Promise<void> {
       socket.once("error", () => resolve(false));
     });
     if (open) return;
-    await new Promise((r) => setTimeout(r, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
   throw new Error(`nothing listening on port ${port} within ${timeoutMs}ms`);
 }
@@ -88,7 +88,7 @@ describe("LocalSandbox detached process lifecycle", () => {
       root,
     );
     try {
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((resolve) => setTimeout(resolve, 300));
       const pid = Number(
         (await fs.readFile(path.join(root, "pid.txt"), "utf-8")).trim(),
       );
@@ -134,7 +134,7 @@ describe("LocalSandbox detached process lifecycle", () => {
     const sandbox = new LocalSandbox(root);
 
     const { commandId } = await sandbox.execDetached("true", root); // exits at once
-    await new Promise((r) => setTimeout(r, 150)); // let it exit + deregister
+    await new Promise((resolve) => setTimeout(resolve, 150)); // let it exit + deregister
     // Either the registry slot is gone (no-op) or the exit was observed --
     // both must resolve without throwing.
     await expect(sandbox.killCommand(commandId)).resolves.toBeUndefined();
@@ -144,7 +144,7 @@ describe("LocalSandbox detached process lifecycle", () => {
       "sleep 0.05",
       root,
     );
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((resolve) => setTimeout(resolve, 200));
     await expect(sandbox.killCommand(racingId)).resolves.toBeUndefined();
   });
 
@@ -235,7 +235,7 @@ describe("LocalSandbox detached process lifecycle", () => {
           socket.once("error", () => resolve(false));
         });
         if (!stillOpen) break;
-        await new Promise((r) => setTimeout(r, 50));
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
       expect(stillOpen).toBe(false);
       serverCleanupPid = undefined; // killCommand handled it
@@ -264,7 +264,7 @@ describe("LocalSandbox detached process lifecycle", () => {
       );
       ids.push(commandId);
     }
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((resolve) => setTimeout(resolve, 300));
     const pids = await Promise.all(
       pidFiles.map((f) =>
         fs.readFile(path.join(root, f), "utf-8").then((s) => Number(s.trim())),

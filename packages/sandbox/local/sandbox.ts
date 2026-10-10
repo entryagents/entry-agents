@@ -3,7 +3,10 @@ import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { ExecResult, Sandbox, SandboxHooks } from "../interface.ts";
+import { LocalSandboxPathError } from "./path-error";
 import type { LocalState } from "./state.ts";
+
+export { LocalSandboxPathError };
 
 export interface LocalSandboxConnectOptions {
   env?: Record<string, string>;
@@ -36,23 +39,6 @@ const DETACHED_SHUTDOWN_GRACE_MS = 2_000;
  * not a graceful application shutdown.
  */
 const KILL_ESCALATION_MS = 1_000;
-
-/**
- * Thrown when a path handed to LocalSandbox escapes every allowed root.
- *
- * Echoes only the caller-provided string, never the resolved host path,
- * realpath, or symlink target: the caller (often a model) needs to know the
- * path is outside the workspace, and filesystem layout is not its business.
- */
-export class LocalSandboxPathError extends Error {
-  readonly code = "LOCAL_SANDBOX_PATH_OUTSIDE_ROOT";
-  constructor(received: string) {
-    super(
-      `Path "${received}" is outside the allowed workspace roots for this sandbox.`,
-    );
-    this.name = "LocalSandboxPathError";
-  }
-}
 
 /** True when `candidate` is `root` itself or a descendant of it. */
 function isWithin(root: string, candidate: string): boolean {
@@ -485,7 +471,9 @@ export class LocalSandbox implements Sandbox {
             }),
         ),
       ),
-      new Promise<void>((r) => setTimeout(r, DETACHED_SHUTDOWN_GRACE_MS)),
+      new Promise<void>((resolve) =>
+        setTimeout(resolve, DETACHED_SHUTDOWN_GRACE_MS),
+      ),
     ]);
     for (const { child } of live) {
       if (child.exitCode === null && child.signalCode === null) {

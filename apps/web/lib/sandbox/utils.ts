@@ -4,7 +4,7 @@ import { SANDBOX_EXPIRES_BUFFER_MS } from "./config";
 
 /**
  * Modal's state shape. Declared structurally (not imported from
- * @open-agents/sandbox, whose Modal types are server-only) because this
+ * `@open-agents/sandbox`, whose Modal types are server-only) because this
  * module is pulled into client bundles too.
  */
 export type ModalSandboxState = {

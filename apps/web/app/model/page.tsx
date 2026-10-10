@@ -53,6 +53,8 @@ export default async function ModelPage() {
                 Pay-as-you-go, per token. No markup, no subscription required to
                 start. Free models cost nothing to run. Every model the platform
                 can route is listed -- see{" "}
+                {/* oxlint-disable-next-line nextjs/no-html-link-for-pages */}
+                {/* oxlint-disable-next-line nextjs/no-html-link-for-pages */}
                 <a
                   href="/pricing"
                   className="underline decoration-(--l-fg-3) underline-offset-4 transition-colors hover:text-(--l-fg)"
