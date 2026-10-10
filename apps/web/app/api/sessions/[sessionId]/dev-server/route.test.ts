@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realDbSessions from "@/lib/db/sessions";
 
 const DEV_SERVER_PID_FILE =
   "/vercel/sandbox/apps/web/.open-agents-dev-server-3000.pid";
@@ -218,6 +220,7 @@ function buildMockConnectedSandbox() {
 const connectSandboxMock = mock(async () => buildMockConnectedSandbox());
 
 mock.module("@/app/api/sessions/_lib/session-context", () => ({
+  ...realLibSessionContext,
   requireAuthenticatedUser: requireAuthenticatedUserMock,
   requireOwnedSession: requireOwnedSessionMock,
 }));
@@ -232,6 +235,7 @@ mock.module("@/lib/sandbox/provisioning-kick", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   updateSession: async () => ({ id: "session-1" }),
   // Reads a mutable holder so a test can change what the route sees on
   // its post-provisioning re-read without patching the (frozen) module

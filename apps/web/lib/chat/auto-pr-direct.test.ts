@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { AutoCreatePrResult } from "./auto-pr-direct";
+import * as realGitHelpers from "@/lib/git/helpers";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realGithubRepos from "@/lib/github/repos";
+import * as realGithubApp from "@/lib/github/app";
 
 mock.module("server-only", () => ({}));
 
@@ -107,16 +111,19 @@ mock.module("@open-agents/sandbox", () => ({
 }));
 
 mock.module("@/lib/git/helpers", () => ({
+  ...realGitHelpers,
   looksLikeCommitHash: (value: string) => /^[0-9a-f]{7,40}$/i.test(value),
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatsBySessionId: async () => [],
   getSessionById: async () => null,
   updateSession: updateSessionSpy,
 }));
 
 mock.module("@/lib/github/repos", () => ({
+  ...realGithubRepos,
   fetchGitHubBranches: fetchGitHubBranchesSpy,
 }));
 
@@ -131,6 +138,7 @@ mock.module("@/lib/github/access", () => ({
 }));
 
 mock.module("@/lib/github/app", () => ({
+  ...realGithubApp,
   mintInstallationToken: mintInstallationTokenSpy,
   revokeInstallationToken: revokeInstallationTokenSpy,
 }));

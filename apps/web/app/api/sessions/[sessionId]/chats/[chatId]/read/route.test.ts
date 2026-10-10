@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realDbSessions from "@/lib/db/sessions";
 
 type AuthResult =
   | {
@@ -31,11 +33,13 @@ let ownedSessionChatResult: OwnedSessionChatResult = {
 const markChatReadCalls: Array<{ userId: string; chatId: string }> = [];
 
 mock.module("@/app/api/sessions/_lib/session-context", () => ({
+  ...realLibSessionContext,
   requireAuthenticatedUser: async () => authResult,
   requireOwnedSessionChat: async () => ownedSessionChatResult,
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   markChatRead: async (input: { userId: string; chatId: string }) => {
     markChatReadCalls.push(input);
   },

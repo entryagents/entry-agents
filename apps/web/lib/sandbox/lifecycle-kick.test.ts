@@ -1,4 +1,7 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realLifecycle from "./lifecycle";
+import * as realUtils from "./utils";
 
 mock.module("server-only", () => ({}));
 
@@ -80,17 +83,20 @@ mock.module("@/app/workflows/sandbox-lifecycle", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   claimSessionLifecycleRunId: spies.claimSessionLifecycleRunId,
   getSessionById: spies.getSessionById,
   updateSession: spies.updateSession,
 }));
 
 mock.module("./lifecycle", () => ({
+  ...realLifecycle,
   evaluateSandboxLifecycle: spies.evaluateSandboxLifecycle,
   getLifecycleDueAtMs: spies.getLifecycleDueAtMs,
 }));
 
 mock.module("./utils", () => ({
+  ...realUtils,
   canOperateOnSandbox: spies.canOperateOnSandbox,
 }));
 

@@ -10,6 +10,13 @@ import type { UIMessageChunk } from "ai";
 import * as realAiModule from "ai";
 import * as realWorkflowModule from "workflow";
 import * as realWorkflowApiModule from "workflow/api";
+import * as realChatPostFinish from "./chat-post-finish";
+import * as realDbWorkflowRuns from "@/lib/db/workflow-runs";
+import * as realAppConfig from "@/app/config";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realDbUserPreferences from "@/lib/db/user-preferences";
+import * as realDbUsers from "@/lib/db/users";
+import * as realChatSandboxRuntime from "./chat-sandbox-runtime";
 
 // ── Spy state ──────────────────────────────────────────────────────
 
@@ -235,10 +242,13 @@ mock.module("workflow/api", () => ({
 mock.module("./chat-post-finish", () => spies);
 
 mock.module("@/lib/db/workflow-runs", () => ({
+  ...realDbWorkflowRuns,
+  ...realChatPostFinish,
   countRecentFailuresWithCategory: spies.countRecentFailuresWithCategory,
 }));
 
 mock.module("@/app/config", () => ({
+  ...realAppConfig,
   webAgent: {
     tools: {},
     stream: async ({ messages }: { messages: unknown }) => {
@@ -361,11 +371,13 @@ mock.module("ai", () => ({
 mock.module("@open-agents/agent", () => ({}));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatById: async () => testChatRecord,
   getSessionById: async () => testSessionRecord,
 }));
 
 mock.module("@/lib/db/user-preferences", () => ({
+  ...realDbUserPreferences,
   getUserPreferences: async () => testPreferences,
 }));
 
@@ -381,6 +393,7 @@ mock.module("@/lib/db/user-preferences", () => ({
 // override these via mock.module again, scoped locally with
 // beforeEach/afterEach around that test (see below).
 mock.module("@/lib/db/users", () => ({
+  ...realDbUsers,
   isUserAdmin: mock(() => Promise.resolve(false)),
 }));
 
@@ -434,6 +447,7 @@ mock.module("@/lib/model-availability", () => ({
 }));
 
 mock.module("./chat-sandbox-runtime", () => ({
+  ...realChatSandboxRuntime,
   resolveChatSandboxRuntime: spies.resolveChatSandboxRuntime,
   persistImageAttachmentsToSandbox: mock(() => Promise.resolve([])),
 }));
@@ -1664,6 +1678,7 @@ describe("runAgentWorkflow", () => {
   test("still clears stream and sends finish even on step error", async () => {
     // Mock the agent to throw
     mock.module("@/app/config", () => ({
+      ...realAppConfig,
       webAgent: {
         tools: {},
         stream: async () => {

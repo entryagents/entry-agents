@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realDbSessions from "@/lib/db/sessions";
 
 mock.module("server-only", () => ({}));
 
@@ -33,6 +35,7 @@ let connectSandboxResumeError: Error | null = null;
 let sessionRecord: TestSessionRecord;
 
 mock.module("@/app/api/sessions/_lib/session-context", () => ({
+  ...realLibSessionContext,
   requireAuthenticatedUser: async () => ({
     ok: true as const,
     userId: "user-1",
@@ -55,6 +58,7 @@ mock.module("@/app/api/sessions/_lib/session-context", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatsBySessionId: async () => [],
   getSessionById: async () => sessionRecord,
   updateSession: async (_sessionId: string, patch: Record<string, unknown>) => {

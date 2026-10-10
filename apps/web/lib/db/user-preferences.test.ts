@@ -1,6 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
+import * as realClient from "./client";
 
 mock.module("./client", () => ({
+  ...realClient,
   db: {},
 }));
 

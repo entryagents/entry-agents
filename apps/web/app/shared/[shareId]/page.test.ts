@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realDbSessionsCache from "@/lib/db/sessions-cache";
+import * as realDbClient from "@/lib/db/client";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realDbUserPreferences from "@/lib/db/user-preferences";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+import * as realSharedChatContent from "./shared-chat-content";
 
 const NOT_FOUND_ERROR = new Error("not-found");
 
@@ -56,11 +62,13 @@ mock.module("next/navigation", () => ({
 }));
 
 mock.module("@/lib/db/sessions-cache", () => ({
+  ...realDbSessionsCache,
   getShareByIdCached: async () => shareRecord,
   getSessionByIdCached: async () => sessionRecord,
 }));
 
 mock.module("@/lib/db/client", () => ({
+  ...realDbClient,
   db: {
     query: {
       users: {
@@ -75,11 +83,13 @@ mock.module("@/lib/db/client", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatById: async () => chatRecord,
   getChatMessages: async () => messageRows,
 }));
 
 mock.module("@/lib/db/user-preferences", () => ({
+  ...realDbUserPreferences,
   getUserPreferences: async () => ({
     defaultModelId: "anthropic/claude-opus-4.6",
     defaultSubagentModelId: null,
@@ -90,10 +100,12 @@ mock.module("@/lib/db/user-preferences", () => ({
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => viewerSession,
 }));
 
 mock.module("./shared-chat-content", () => ({
+  ...realSharedChatContent,
   SharedChatContent: (_props: unknown) => null,
 }));
 

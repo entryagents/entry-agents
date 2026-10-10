@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realSandboxUtils from "@/lib/sandbox/utils";
 
 mock.module("server-only", () => ({}));
 
@@ -65,6 +68,7 @@ let readFileImplementation: (
 ) => Promise<string>;
 
 mock.module("@/app/api/sessions/_lib/session-context", () => ({
+  ...realLibSessionContext,
   requireAuthenticatedUser: async () => authResult,
   requireOwnedSessionWithSandboxGuard: async () => ownedSessionResult,
 }));
@@ -91,6 +95,7 @@ mock.module("@open-agents/sandbox", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   updateSession: async (sessionId: string, patch: Record<string, unknown>) => {
     updateCalls.push({ sessionId, patch });
   },
@@ -101,6 +106,7 @@ mock.module("@/lib/sandbox/lifecycle", () => ({
 }));
 
 mock.module("@/lib/sandbox/utils", () => ({
+  ...realSandboxUtils,
   clearSandboxState: () => null,
   clearUnavailableSandboxState: () => null,
   hasRuntimeSandboxState: (state: TestSandboxState | null) =>

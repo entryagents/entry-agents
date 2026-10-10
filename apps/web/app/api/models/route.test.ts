@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+import * as realDbUsers from "@/lib/db/users";
 
 interface MockGatewayModel extends Record<string, unknown> {
   id: string;
@@ -33,6 +35,7 @@ function getRequestUrl(input: RequestInfo | URL): string {
 mock.module("server-only", () => ({}));
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => currentSession,
 }));
 
@@ -45,6 +48,7 @@ mock.module("@/lib/session/get-server-session", () => ({
 // "hides Claude Opus" test actually has a logged-in user, so only that
 // one exercises the real isUserAdmin/getUserBillingState calls.
 mock.module("@/lib/db/users", () => ({
+  ...realDbUsers,
   isUserAdmin: mock(() => Promise.resolve(false)),
 }));
 mock.module("@/lib/db/platform-settings", () => ({

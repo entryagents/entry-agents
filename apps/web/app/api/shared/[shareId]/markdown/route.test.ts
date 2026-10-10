@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realDbSessionsCache from "@/lib/db/sessions-cache";
+import * as realDbSessions from "@/lib/db/sessions";
 
 let shareRecord: { id: string; chatId: string } | null = {
   id: "share-1",
@@ -90,11 +92,13 @@ let messageRows: Array<{ parts: unknown; role: string; createdAt: Date }> = [
 ];
 
 mock.module("@/lib/db/sessions-cache", () => ({
+  ...realDbSessionsCache,
   getShareByIdCached: async () => shareRecord,
   getSessionByIdCached: async () => sessionRecord,
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatById: async () => chatRecord,
   getChatMessages: async () => messageRows,
 }));

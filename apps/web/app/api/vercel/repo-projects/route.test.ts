@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+import * as realDbVercelProjectLinks from "@/lib/db/vercel-project-links";
 
 let currentSession: { user: { id: string } } | null = {
   user: { id: "user-1" },
@@ -10,6 +12,7 @@ let projects: VercelProjectSelection[] = [];
 let projectsError: Error | null = null;
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => currentSession,
 }));
 
@@ -18,6 +21,7 @@ mock.module("@/lib/vercel/token", () => ({
 }));
 
 mock.module("@/lib/db/vercel-project-links", () => ({
+  ...realDbVercelProjectLinks,
   getVercelProjectLinkByRepo: async () => savedLink,
 }));
 

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { NextRequest } from "next/server";
+import * as realSessionServer from "@/lib/session/server";
+import * as realDbUsers from "@/lib/db/users";
+import * as realDbInstallations from "@/lib/db/installations";
 
 type TestSession = {
   authProvider: "vercel" | "github";
@@ -22,10 +25,12 @@ const originalNodeEnv = process.env.NODE_ENV;
 mock.module("server-only", () => ({}));
 
 mock.module("@/lib/session/server", () => ({
+  ...realSessionServer,
   getSessionFromReq: async () => session,
 }));
 
 mock.module("@/lib/db/users", () => ({
+  ...realDbUsers,
   userExists: async () => exists,
   isUserAdmin: async () => isAdmin,
 }));
@@ -38,6 +43,7 @@ mock.module("@/lib/github/users", () => ({
 }));
 
 mock.module("@/lib/db/installations", () => ({
+  ...realDbInstallations,
   getInstallationsByUserId: async () => installations,
 }));
 

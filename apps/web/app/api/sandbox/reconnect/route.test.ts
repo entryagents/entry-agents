@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realDbSessions from "@/lib/db/sessions";
 
 mock.module("server-only", () => ({}));
 
@@ -30,11 +32,13 @@ let sessionRecord: {
 };
 
 mock.module("@/app/api/sessions/_lib/session-context", () => ({
+  ...realLibSessionContext,
   requireAuthenticatedUser: async () => ({ ok: true, userId: "user-1" }),
   requireOwnedSession: async () => ({ ok: true, sessionRecord }),
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   updateSession: async (sessionId: string, patch: Record<string, unknown>) => {
     updateCalls.push({ sessionId, patch });
     sessionRecord = {

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 // consumer in this test file, not just this file's own import.
 import * as realAiModule from "ai";
 import * as realAgentModule from "@open-agents/agent";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
 
 const generateTextCalls: Array<{
   prompt: string;
@@ -54,6 +55,7 @@ mock.module("@open-agents/agent", () => ({
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => currentSession,
 }));
 

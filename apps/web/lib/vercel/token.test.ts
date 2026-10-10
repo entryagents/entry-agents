@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realAuthConfig from "@/lib/auth/config";
+import * as realDbClient from "@/lib/db/client";
+import * as realDbSchema from "@/lib/db/schema";
 
 // Regression test for the 2026-09 bug: getUserVercelToken /
 // getUserVercelAuthInfo used to pass `headers: await headers()` into
@@ -37,6 +40,7 @@ mock.module("next/headers", () => ({
 }));
 
 mock.module("@/lib/auth/config", () => ({
+  ...realAuthConfig,
   auth: {
     api: {
       getAccessToken: getAccessTokenSpy,
@@ -45,6 +49,7 @@ mock.module("@/lib/auth/config", () => ({
 }));
 
 mock.module("@/lib/db/client", () => ({
+  ...realDbClient,
   db: {
     select: () => ({
       from: () => ({
@@ -57,6 +62,7 @@ mock.module("@/lib/db/client", () => ({
 }));
 
 mock.module("@/lib/db/schema", () => ({
+  ...realDbSchema,
   accounts: {
     userId: "userId",
     providerId: "providerId",

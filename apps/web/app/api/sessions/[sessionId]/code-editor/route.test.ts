@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
 
 const CODE_EDITOR_PID_FILE = "/tmp/open-agents-code-server.pid";
 const CODE_EDITOR_LOCK_DIR = "/tmp/open-agents-code-server.lock";
@@ -140,6 +142,7 @@ const connectSandboxMock = mock(async () => ({
 }));
 
 mock.module("@/app/api/sessions/_lib/session-context", () => ({
+  ...realLibSessionContext,
   requireAuthenticatedUser: requireAuthenticatedUserMock,
   requireOwnedSession: requireOwnedSessionMock,
 }));
@@ -149,6 +152,7 @@ mock.module("@open-agents/sandbox", () => ({
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => currentAuthSession,
 }));
 

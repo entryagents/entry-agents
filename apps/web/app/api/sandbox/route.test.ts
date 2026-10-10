@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+import * as realGithubUrls from "@/lib/github/urls";
+import * as realGithubApp from "@/lib/github/app";
+import * as realDbSessions from "@/lib/db/sessions";
 import {
   DEFAULT_SANDBOX_TIMEOUT_MS,
   DEFAULT_SANDBOX_VCPUS,
@@ -72,6 +76,7 @@ let currentDotenvContent: string;
 let currentDotenvError: Error | null;
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => ({
     user: {
       id: "user-1",
@@ -90,6 +95,7 @@ mock.module("@/lib/github/users", () => ({
 }));
 
 mock.module("@/lib/github/urls", () => ({
+  ...realGithubUrls,
   parseGitHubHttpsUrl: (repoUrl: string) => {
     let parsed: URL;
     try {
@@ -119,6 +125,7 @@ mock.module("@/lib/github/access", () => ({
 }));
 
 mock.module("@/lib/github/app", () => ({
+  ...realGithubApp,
   mintInstallationToken: async () => ({
     token: "installation-token-mock",
     expiresAt: null,
@@ -147,6 +154,7 @@ mock.module("@/lib/vercel/projects", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatsBySessionId: async () => [],
   getSessionById: async () => sessionRecord,
   updateSession: async (sessionId: string, patch: Record<string, unknown>) => {

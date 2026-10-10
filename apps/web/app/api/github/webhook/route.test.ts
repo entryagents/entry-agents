@@ -1,5 +1,8 @@
 import { createHmac } from "crypto";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realDbClient from "@/lib/db/client";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realDbInstallations from "@/lib/db/installations";
 
 mock.module("server-only", () => ({}));
 
@@ -34,6 +37,7 @@ const archiveSessionCalls: Array<{
 }> = [];
 
 mock.module("@/lib/db/client", () => ({
+  ...realDbClient,
   db: {
     query: {
       sessions: {
@@ -44,6 +48,7 @@ mock.module("@/lib/db/client", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   updateSession: async (id: string, patch: Record<string, unknown>) => {
     updateSessionCalls.push({ id, patch });
     const found = linkedSessions.find((s) => s.id === id);
@@ -71,6 +76,7 @@ mock.module("@/lib/sandbox/archive-session", () => ({
 // Installation-webhook branches aren't exercised by these tests, but the
 // route module still imports these — stub them out so the import succeeds.
 mock.module("@/lib/db/installations", () => ({
+  ...realDbInstallations,
   deleteInstallationByInstallationId: async () => 0,
   getInstallationsByInstallationId: async () => [],
   updateInstallationsByInstallationId: async () => 0,

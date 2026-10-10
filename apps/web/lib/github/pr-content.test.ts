@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibGeneratePrHelpers from "@/app/api/generate-pr/_lib/generate-pr-helpers";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realDbClient from "@/lib/db/client";
 
 mock.module("server-only", () => ({}));
 
@@ -34,10 +37,12 @@ function restoreEnv() {
 }
 
 mock.module("@/app/api/generate-pr/_lib/generate-pr-helpers", () => ({
+  ...realLibGeneratePrHelpers,
   getConversationContext: async () => "",
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getSessionById: async () => sessionRecord,
   getChatsBySessionId: async () => chats,
 }));
@@ -47,6 +52,7 @@ mock.module("@/lib/github/users", () => ({
 }));
 
 mock.module("@/lib/db/client", () => ({
+  ...realDbClient,
   db: {
     query: {
       users: {

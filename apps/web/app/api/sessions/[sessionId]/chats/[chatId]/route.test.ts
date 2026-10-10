@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realDbUserPreferences from "@/lib/db/user-preferences";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
 
 type AuthResult =
   | {
@@ -80,11 +84,13 @@ const updateChatCalls: Array<{
 const deleteChatCalls: string[] = [];
 
 mock.module("@/app/api/sessions/_lib/session-context", () => ({
+  ...realLibSessionContext,
   requireAuthenticatedUser: async () => authResult,
   requireOwnedSessionChat: async () => ownedSessionChatResult,
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   updateChat: async (
     chatId: string,
     patch: { title?: string; modelId?: string },
@@ -100,6 +106,7 @@ mock.module("@/lib/db/sessions", () => ({
 }));
 
 mock.module("@/lib/db/user-preferences", () => ({
+  ...realDbUserPreferences,
   getUserPreferences: async () => ({
     defaultModelId: "model-default",
     defaultSubagentModelId: null,
@@ -116,6 +123,7 @@ mock.module("@/lib/db/user-preferences", () => ({
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => currentSession,
 }));
 

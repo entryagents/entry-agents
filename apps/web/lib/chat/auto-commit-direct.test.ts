@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realAiModule from "ai";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realGithubApp from "@/lib/github/app";
 
 // ── spy state ──────────────────────────────────────────────────────
 
@@ -83,6 +85,7 @@ mock.module("@open-agents/sandbox", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatsBySessionId: async () => [],
   getSessionById: async () => null,
   updateSession: async () => {},
@@ -106,6 +109,7 @@ mock.module("@/lib/github/commit", () => ({
 }));
 
 mock.module("@/lib/github/app", () => ({
+  ...realGithubApp,
   withScopedInstallationOctokit: async ({
     operation,
   }: {

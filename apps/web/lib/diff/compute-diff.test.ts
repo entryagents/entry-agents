@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realSandboxUtils from "@/lib/sandbox/utils";
 
 // ── Spy state ──────────────────────────────────────────────────────
 
@@ -24,10 +26,12 @@ const updateSessionSpy = mock((_id: string, _patch: Record<string, unknown>) =>
 // ── Module mocks ───────────────────────────────────────────────────
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   updateSession: updateSessionSpy,
 }));
 
 mock.module("@/lib/sandbox/utils", () => ({
+  ...realSandboxUtils,
   isSandboxUnavailableError: (msg: string) =>
     msg.includes("sandbox unavailable"),
 }));

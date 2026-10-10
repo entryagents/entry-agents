@@ -1,4 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
+import * as realLibChatInstanceManager from "@/lib/chat-instance-manager";
+import * as realLibWorkspaceStatusStore from "@/lib/workspace-status-store";
 
 const spies = {
   abortChatInstanceTransport: mock((_chatId: string) => {}),
@@ -7,11 +9,13 @@ const spies = {
 };
 
 mock.module("@/lib/chat-instance-manager", () => ({
+  ...realLibChatInstanceManager,
   abortChatInstanceTransport: spies.abortChatInstanceTransport,
   removeChatInstance: spies.removeChatInstance,
 }));
 
 mock.module("@/lib/workspace-status-store", () => ({
+  ...realLibWorkspaceStatusStore,
   clearChatWorkspaceStatus: spies.clearChatWorkspaceStatus,
 }));
 

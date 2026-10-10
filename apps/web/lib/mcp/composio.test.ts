@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realDbComposioSessions from "@/lib/db/composio-sessions";
 
 // getComposioMcpServerConfig() dynamic-imports both "@composio/core"
 // and "@/lib/db/composio-sessions" -- mocked here the same way
@@ -44,6 +45,7 @@ mock.module("@composio/core", () => ({
 
 const storedSessionIds = new Map<string, string>();
 mock.module("@/lib/db/composio-sessions", () => ({
+  ...realDbComposioSessions,
   getComposioSessionId: async (userId: string) =>
     storedSessionIds.get(userId) ?? null,
   setComposioSessionId: async (userId: string, sessionId: string) => {

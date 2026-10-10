@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+import * as realDbInstallations from "@/lib/db/installations";
 
 mock.module("server-only", () => ({}));
 
@@ -18,6 +20,7 @@ let syncError: Error | null;
 let syncErrorIsAuth = false;
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => authSession,
 }));
 
@@ -33,6 +36,7 @@ mock.module("@/lib/github/users", () => ({
 }));
 
 mock.module("@/lib/db/installations", () => ({
+  ...realDbInstallations,
   getInstallationsByUserId: async () => installations,
 }));
 

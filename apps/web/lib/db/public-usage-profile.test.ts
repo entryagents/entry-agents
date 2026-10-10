@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realClient from "./client";
+import * as realUsage from "./usage";
+import * as realUsageInsights from "./usage-insights";
 
 type MockPublicUser = {
   id: string;
@@ -39,6 +42,7 @@ const getUsageInsightsMock = mock(async () => ({
 }));
 
 mock.module("./client", () => ({
+  ...realClient,
   db: {
     select: () => ({
       from: () => ({
@@ -53,10 +57,12 @@ mock.module("./client", () => ({
 }));
 
 mock.module("./usage", () => ({
+  ...realUsage,
   getUsageHistory: getUsageHistoryMock,
 }));
 
 mock.module("./usage-insights", () => ({
+  ...realUsageInsights,
   getUsageInsights: getUsageInsightsMock,
 }));
 
