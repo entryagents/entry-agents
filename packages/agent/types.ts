@@ -1,5 +1,5 @@
-import type { SandboxState } from "@open-agents/sandbox";
-import { isKnownSandboxType } from "@open-agents/sandbox/registry.js";
+import type { SandboxState } from "@entry-agents/sandbox";
+import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
 import type { LanguageModel, LanguageModelUsage } from "ai";
 import { z } from "zod";
 import type { AgentSandboxContext } from "./open-agent";

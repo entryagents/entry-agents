@@ -2,12 +2,12 @@ import {
   connectSandbox,
   requireSandboxProvider,
   type SandboxState,
-} from "@open-agents/sandbox";
+} from "@entry-agents/sandbox";
 import {
   DEFAULT_SANDBOX_PROVIDER,
   isUserSelectableSandboxType,
   type SandboxProviderId,
-} from "@open-agents/sandbox/registry.js";
+} from "@entry-agents/sandbox/registry.js";
 import {
   requireAuthenticatedUser,
   requireOwnedSession,

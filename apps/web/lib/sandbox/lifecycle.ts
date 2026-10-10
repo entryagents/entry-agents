@@ -5,7 +5,7 @@ import {
   getSandboxProvider,
   isKnownSandboxType,
   type SandboxState,
-} from "@open-agents/sandbox";
+} from "@entry-agents/sandbox";
 import {
   getChatsBySessionId,
   getSessionById,

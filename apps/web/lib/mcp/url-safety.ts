@@ -1,4 +1,4 @@
-import { isAllowedWebUrl, isPrivateHost } from "@open-agents/agent";
+import { isAllowedWebUrl, isPrivateHost } from "@entry-agents/agent";
 import { lookup } from "node:dns/promises";
 
 // MCP connections in the self-serve "paste any MCP server URL" path

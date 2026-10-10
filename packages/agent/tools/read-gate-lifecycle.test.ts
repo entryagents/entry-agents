@@ -5,7 +5,7 @@ import path from "node:path";
 import type { ModelMessage } from "ai";
 import { createReadFileState, rebuildReadFileState } from "./read-state";
 
-mock.module("@open-agents/sandbox", () => ({
+mock.module("@entry-agents/sandbox", () => ({
   connectSandbox: async (state: {
     sandboxId?: string;
     workingDirectory?: string;

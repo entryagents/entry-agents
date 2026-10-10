@@ -121,7 +121,7 @@ Use `workspace:*` for internal packages:
 ```json
 {
   "dependencies": {
-    "@open-agents/sandbox": "workspace:*"
+    "@entry-agents/sandbox": "workspace:*"
   }
 }
 ```

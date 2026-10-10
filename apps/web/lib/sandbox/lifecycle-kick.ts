@@ -8,7 +8,7 @@ import {
   updateSession,
 } from "@/lib/db/sessions";
 import { SANDBOX_LIFECYCLE_STALE_RUN_GRACE_MS } from "./config";
-import { isKnownSandboxType } from "@open-agents/sandbox/registry.js";
+import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
 import {
   evaluateSandboxLifecycle,
   getLifecycleDueAtMs,

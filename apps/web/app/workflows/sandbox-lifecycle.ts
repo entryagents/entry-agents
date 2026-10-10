@@ -12,7 +12,7 @@ import type { SandboxMigrationResult } from "@/lib/sandbox/migration";
 import { canOperateOnSandbox } from "@/lib/sandbox/utils";
 // Dependency-free (registry-types.ts has no imports), so it is safe to
 // import statically here just like canOperateOnSandbox -- see the note below.
-import { isKnownSandboxType } from "@open-agents/sandbox/registry.js";
+import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
 
 // NOTE ON IMPORTS IN THIS FILE (fixed 2026-08-29): everything below
 // that touches the database (getSessionById/updateSession,

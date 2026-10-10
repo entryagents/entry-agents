@@ -1,4 +1,4 @@
-import { toErrorMessage } from "@open-agents/sandbox";
+import { toErrorMessage } from "@entry-agents/sandbox";
 import { getWorkflowMetadata } from "workflow";
 import {
   claimSessionSandboxProvisioningRunId,

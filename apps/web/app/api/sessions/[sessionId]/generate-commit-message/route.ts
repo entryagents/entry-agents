@@ -1,6 +1,6 @@
-import { connectSandbox } from "@open-agents/sandbox";
+import { connectSandbox } from "@entry-agents/sandbox";
 import { generateText } from "ai";
-import { gateway } from "@open-agents/agent";
+import { gateway } from "@entry-agents/agent";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import { checkBotProtection } from "@/lib/botid";
 import { getSessionById } from "@/lib/db/sessions";

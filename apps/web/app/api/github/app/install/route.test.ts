@@ -78,7 +78,7 @@ describe("GET /api/github/app/install", () => {
     installations = [{ installationId: 1 }];
 
     Object.assign(process.env, {
-      NEXT_PUBLIC_GITHUB_APP_SLUG: "open-agents",
+      NEXT_PUBLIC_GITHUB_APP_SLUG: "entry-agents",
       NODE_ENV: "test",
     });
   });
@@ -122,7 +122,7 @@ describe("GET /api/github/app/install", () => {
     expect(location).toBeTruthy();
     const redirectUrl = new URL(location as string);
     expect(redirectUrl.origin).toBe("https://github.com");
-    expect(redirectUrl.pathname).toContain("open-agents");
+    expect(redirectUrl.pathname).toContain("entry-agents");
   });
 
   test("blocks managed template trial users", async () => {

@@ -1,5 +1,5 @@
 import path from "node:path";
-import { connectSandbox } from "@open-agents/sandbox";
+import { connectSandbox } from "@entry-agents/sandbox";
 import {
   requireAuthenticatedUser,
   requireOwnedSession,
@@ -78,7 +78,7 @@ interface PersistedDevServerTarget {
 }
 
 const SUPPORTED_PORTS = new Set(DEFAULT_SANDBOX_PORTS);
-const DEV_SERVER_PIDFILE_PREFIX = ".open-agents-dev-server";
+const DEV_SERVER_PIDFILE_PREFIX = ".entry-agents-dev-server";
 const DEV_SERVER_STATE_FILENAME = `${DEV_SERVER_PIDFILE_PREFIX}-state.json`;
 const INSTALL_COMMANDS: Record<PackageManager, string> = {
   bun: "bun install",

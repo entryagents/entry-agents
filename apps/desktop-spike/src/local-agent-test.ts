@@ -20,12 +20,12 @@ import {
   connectSandbox,
   type Sandbox,
   type SandboxState,
-} from "@open-agents/sandbox";
+} from "@entry-agents/sandbox";
 import {
   openAgent,
   sharedProvider,
   defaultModelLabel,
-} from "@open-agents/agent";
+} from "@entry-agents/agent";
 
 const ENABLE_AGENT = process.env.SPIKE_ENABLE_AGENT === "1";
 const SPIKE_MODEL = process.env.SPIKE_MODEL ?? "mimo-v2.6-flash:free";

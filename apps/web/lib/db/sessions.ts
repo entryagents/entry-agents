@@ -1,5 +1,5 @@
-import type { SandboxState } from "@open-agents/sandbox";
-import { isKnownSandboxType } from "@open-agents/sandbox/registry.js";
+import type { SandboxState } from "@entry-agents/sandbox";
+import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
 import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { db } from "./client";
 import {

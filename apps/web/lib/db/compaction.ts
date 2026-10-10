@@ -1,6 +1,6 @@
 import { and, desc, gte, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import type { CompactionEvent } from "@open-agents/agent";
+import type { CompactionEvent } from "@entry-agents/agent";
 import { db } from "./client";
 import { compactionEvents, usageEvents } from "./schema";
 

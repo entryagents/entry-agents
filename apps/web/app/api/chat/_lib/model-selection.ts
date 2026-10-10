@@ -1,4 +1,4 @@
-import type { AgentModelSelection } from "@open-agents/agent";
+import type { AgentModelSelection } from "@entry-agents/agent";
 import { isModelDisabled } from "@/lib/model-availability";
 import {
   sanitizeReasoningEffort,

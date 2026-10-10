@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { SkillMetadata } from "@open-agents/agent";
+import type { SkillMetadata } from "@entry-agents/agent";
 import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
 import * as realDbSessions from "@/lib/db/sessions";
 import * as realLibSkillsCache from "@/lib/skills-cache";
@@ -138,7 +138,7 @@ function registerRouteMocks() {
     isSandboxUnavailableError: () => false,
   }));
 
-  mock.module("@open-agents/sandbox", () => ({
+  mock.module("@entry-agents/sandbox", () => ({
     connectSandbox: async (sandboxState: TestSandboxState) => {
       connectCalls.push(sandboxState);
       return {
@@ -154,7 +154,7 @@ function registerRouteMocks() {
     },
   }));
 
-  mock.module("@open-agents/agent", () => ({
+  mock.module("@entry-agents/agent", () => ({
     discoverSkills: async (_sandbox: unknown, skillDirs: string[]) => {
       discoverCalls.push({ skillDirs });
       return discoveredSkills;
@@ -163,7 +163,7 @@ function registerRouteMocks() {
     // lib/skills/directories.ts's getSandboxSkillDirectories) -- this
     // mock predated that feature and was missing the export entirely,
     // breaking the whole module resolution for anything importing
-    // "@open-agents/agent" during this test.
+    // "@entry-agents/agent" during this test.
     seedBuiltinSkills: async () => undefined,
   }));
 }

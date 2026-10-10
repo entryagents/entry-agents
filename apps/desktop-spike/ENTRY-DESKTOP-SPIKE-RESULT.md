@@ -21,7 +21,7 @@ traffic through Entry Gateway. **Zero changes to `packages/agent` or `packages/s
 
 ```
 bare node process (tsx)
-  → @open-agents/sandbox connectSandbox()          packages/sandbox/factory.ts
+  → @entry-agents/sandbox connectSandbox()          packages/sandbox/factory.ts
     → registry dispatch on state.type === "local"  packages/sandbox/registry.ts
       → connectLocal() → new LocalSandbox(rootDir) packages/sandbox/local/sandbox.ts
   → openAgent (ToolLoopAgent instance)             packages/agent/open-agent.ts
@@ -61,8 +61,8 @@ SPIKE_ENABLE_AGENT=1 pnpm spike
 
 ## Existing Entry code reused (unmodified)
 
-- `@open-agents/agent`: `openAgent` (ToolLoopAgent), `sharedProvider`, `defaultModelLabel`, tools/write.ts (+ its sandbox resolution & approval gating)
-- `@open-agents/sandbox`: `connectSandbox`, factory, registry, `LocalSandbox` (`connectLocal`), `SandboxState`
+- `@entry-agents/agent`: `openAgent` (ToolLoopAgent), `sharedProvider`, `defaultModelLabel`, tools/write.ts (+ its sandbox resolution & approval gating)
+- `@entry-agents/sandbox`: `connectSandbox`, factory, registry, `LocalSandbox` (`connectLocal`), `SandboxState`
 
 ## Runtime dependencies verified absent
 

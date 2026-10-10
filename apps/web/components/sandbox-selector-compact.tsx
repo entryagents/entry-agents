@@ -19,7 +19,7 @@ import {
   DEFAULT_SANDBOX_PROVIDER,
   listUserSelectableSandboxProviders,
   USER_SELECTABLE_SANDBOX_TYPES,
-} from "@open-agents/sandbox/registry.js";
+} from "@entry-agents/sandbox/registry.js";
 
 /**
  * Providers a user may pick. Derived from the sandbox registry, so adding

@@ -8,7 +8,7 @@ import {
   type SandboxProvider,
   type SandboxState,
   type Source,
-} from "@open-agents/sandbox";
+} from "@entry-agents/sandbox";
 import {
   getSessionById,
   updateSessionIfNotArchived,

@@ -109,7 +109,7 @@ response back, propagates aborts, and never returns the key.
 
 ## 8. MCP (Step 12) — status
 
-- **Supported:** `createMcpToolSet` (real `@open-agents/agent` export) merged via the host's
+- **Supported:** `createMcpToolSet` (real `@entry-agents/agent` export) merged via the host's
   `extraTools` per call; failure-degradation verified (unreachable server → recorded failure, no
   tools, no throw).
 - **Not yet tested:** a live MCP server on this machine (`ENTRY_MCP_SERVER_CMD` unset) — the test

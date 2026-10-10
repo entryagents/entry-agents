@@ -173,7 +173,7 @@ describe("buildPublicUsageProfileData", () => {
         topRepositories: [
           {
             repoOwner: "vercel",
-            repoName: "open-agents",
+            repoName: "entry-agents",
             sessionCount: 3,
             trackedPrCount: 2,
             linesAdded: 40,
@@ -224,7 +224,7 @@ describe("buildPublicUsageProfileData", () => {
       topRepositories: [
         {
           repoOwner: "vercel",
-          repoName: "open-agents",
+          repoName: "entry-agents",
           sessionCount: 3,
           trackedPrCount: 2,
           linesAdded: 40,
