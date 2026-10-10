@@ -22,7 +22,10 @@ export class EntryAgentHandler {
 
   constructor(
     /** Resolves the authenticated Desktop Backend transport for this user session. */
-    private readonly resolveBackend: () => { baseURL: string; sessionToken: string },
+    private readonly resolveBackend: () => {
+      baseURL: string;
+      sessionToken: string;
+    },
     /** Resolves the model id (from the Desktop Backend's model catalog). */
     private readonly resolveModelId: () => string,
   ) {}
@@ -50,13 +53,23 @@ export class EntryAgentHandler {
     // Send a user message; events stream back over "entry:event".
     ipcMain.handle(
       "entry:send",
-      async (_e, payload: { sessionId: string; text: string; history?: unknown[] }) => {
+      async (
+        _e,
+        payload: { sessionId: string; text: string; history?: unknown[] },
+      ) => {
         const session = this.requireSession(payload.sessionId);
-        session.host.send(payload.text, (event: DesktopIpcEvent) => {
-          if (!session.sender.isDestroyed()) {
-            session.sender.send("entry:event", { sessionId: payload.sessionId, event });
-          }
-        }, payload.history ?? []);
+        session.host.send(
+          payload.text,
+          (event: DesktopIpcEvent) => {
+            if (!session.sender.isDestroyed()) {
+              session.sender.send("entry:event", {
+                sessionId: payload.sessionId,
+                event,
+              });
+            }
+          },
+          payload.history ?? [],
+        );
         return { ok: true };
       },
     );
@@ -64,13 +77,24 @@ export class EntryAgentHandler {
     // Approval decision → host.respondToApproval (addToolApprovalResponse).
     ipcMain.handle(
       "entry:approval",
-      (_e, payload: { sessionId: string; approvalId: string; approved: boolean; reason?: string }) => {
+      (
+        _e,
+        payload: {
+          sessionId: string;
+          approvalId: string;
+          approved: boolean;
+          reason?: string;
+        },
+      ) => {
         const session = this.requireSession(payload.sessionId);
         const routed = session.host.respondToApproval(payload.approvalId, {
           approved: payload.approved,
           reason: payload.reason,
         });
-        if (!routed) throw new Error(`Unknown approval id for this session: ${payload.approvalId}`);
+        if (!routed)
+          throw new Error(
+            `Unknown approval id for this session: ${payload.approvalId}`,
+          );
         return { ok: true };
       },
     );
@@ -83,13 +107,16 @@ export class EntryAgentHandler {
     });
 
     // Dispose session (window close / project switch).
-    ipcMain.handle("entry:dispose", async (_e, payload: { sessionId: string }) => {
-      const session = this.sessions.get(payload.sessionId);
-      if (!session) return { ok: true }; // idempotent
-      await session.host.stop();
-      this.sessions.delete(payload.sessionId);
-      return { ok: true };
-    });
+    ipcMain.handle(
+      "entry:dispose",
+      async (_e, payload: { sessionId: string }) => {
+        const session = this.sessions.get(payload.sessionId);
+        if (!session) return { ok: true }; // idempotent
+        await session.host.stop();
+        this.sessions.delete(payload.sessionId);
+        return { ok: true };
+      },
+    );
   }
 
   /** Shuts down every live session (app quit). */

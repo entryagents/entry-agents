@@ -21,7 +21,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
   const deviceCode = body.device_code;
-  if (typeof deviceCode !== "string" || deviceCode.length < 16 || deviceCode.length > 128) {
+  if (
+    typeof deviceCode !== "string" ||
+    deviceCode.length < 16 ||
+    deviceCode.length > 128
+  ) {
     return NextResponse.json({ error: "invalid_device_code" }, { status: 400 });
   }
 
@@ -34,7 +38,12 @@ export async function POST(req: NextRequest) {
   if (rows.length === 0) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
-  const row = rows[0] as { status: string; session_token: string | null; user_id: string | null; expires_at: Date };
+  const row = rows[0] as {
+    status: string;
+    session_token: string | null;
+    user_id: string | null;
+    expires_at: Date;
+  };
 
   if (new Date(row.expires_at).getTime() < Date.now()) {
     return NextResponse.json({ status: "expired" });
@@ -49,5 +58,9 @@ export async function POST(req: NextRequest) {
     SET session_token = NULL
     WHERE device_code = ${deviceCode}`;
 
-  return NextResponse.json({ status: "approved", session_token: row.session_token, user_id: row.user_id });
+  return NextResponse.json({
+    status: "approved",
+    session_token: row.session_token,
+    user_id: row.user_id,
+  });
 }

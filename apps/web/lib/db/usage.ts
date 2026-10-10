@@ -104,7 +104,9 @@ export async function getUsageHistory(
       inputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)::double precision`,
       cachedInputTokens: sql<number>`coalesce(sum(${usageEvents.cachedInputTokens}), 0)::double precision`,
       outputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)::double precision`,
-      costUsd: sql<number | null>`sum(${usageEvents.costUsd})::double precision`,
+      costUsd: sql<
+        number | null
+      >`sum(${usageEvents.costUsd})::double precision`,
       messageCount: sql<number>`coalesce(sum(case when ${usageEvents.agentType} = 'main' then 1 else 0 end), 0)::double precision`,
       toolCallCount: sql<number>`coalesce(sum(${usageEvents.toolCallCount}), 0)::double precision`,
     })

@@ -33,9 +33,15 @@ async function getAccount(userId: string, provider: string) {
     WHERE user_id = ${userId} AND provider_id = ${provider}
     ORDER BY access_token_expires_at DESC NULLS FIRST
     LIMIT 1`;
-  return (rows[0] as
-    | { account_id: string; access_token: string | null; refresh_token: string | null; access_token_expires_at: Date | string | null; scope: string | null }
-    | undefined);
+  return rows[0] as
+    | {
+        account_id: string;
+        access_token: string | null;
+        refresh_token: string | null;
+        access_token_expires_at: Date | string | null;
+        scope: string | null;
+      }
+    | undefined;
 }
 
 function expiryIso(value: Date | string | null): string | null {
@@ -53,8 +59,15 @@ function isExpired(expiresAt: Date | string | null): boolean {
 async function refreshAccessToken(
   provider: "github" | "vercel",
   refreshToken: string,
-): Promise<{ accessToken: string; expiresIn: number | null; scope: string | null } | null> {
-  const endpoints: Record<string, { url: string; clientIdEnv: string; secretEnv: string }> = {
+): Promise<{
+  accessToken: string;
+  expiresIn: number | null;
+  scope: string | null;
+} | null> {
+  const endpoints: Record<
+    string,
+    { url: string; clientIdEnv: string; secretEnv: string }
+  > = {
     github: {
       url: "https://github.com/login/oauth/access_token",
       clientIdEnv: "NEXT_PUBLIC_GITHUB_CLIENT_ID",
@@ -79,13 +92,24 @@ async function refreshAccessToken(
   });
   const res = await fetch(cfg.url, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+      accept: "application/json",
+    },
     body,
   });
   if (!res.ok) return null;
-  const data = (await res.json()) as { access_token?: string; expires_in?: number; scope?: string };
+  const data = (await res.json()) as {
+    access_token?: string;
+    expires_in?: number;
+    scope?: string;
+  };
   if (!data.access_token) return null;
-  return { accessToken: data.access_token, expiresIn: data.expires_in ?? null, scope: data.scope ?? null };
+  return {
+    accessToken: data.access_token,
+    expiresIn: data.expires_in ?? null,
+    scope: data.scope ?? null,
+  };
 }
 
 async function persistRefreshedToken(
@@ -122,7 +146,13 @@ export async function GET(req: NextRequest) {
         expiresAt: expiryIso(account?.access_token_expires_at ?? null),
       });
     } catch {
-      status.push({ provider, connected: false, accountLogin: null, scope: null, expiresAt: null });
+      status.push({
+        provider,
+        connected: false,
+        accountLogin: null,
+        scope: null,
+        expiresAt: null,
+      });
     }
   }
   return NextResponse.json({ integrations: status });
@@ -169,7 +199,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (!account.refresh_token) {
-    return NextResponse.json({ error: "reconnected_required" }, { status: 401 });
+    return NextResponse.json(
+      { error: "reconnected_required" },
+      { status: 401 },
+    );
   }
 
   const refreshed = await refreshAccessToken(provider, account.refresh_token);
@@ -179,14 +212,22 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    await persistRefreshedToken(user.id, provider, refreshed.accessToken, refreshed.expiresIn, refreshed.scope);
+    await persistRefreshedToken(
+      user.id,
+      provider,
+      refreshed.accessToken,
+      refreshed.expiresIn,
+      refreshed.scope,
+    );
   } catch {
     // token still usable even if the write fails; proceed
   }
   return NextResponse.json({
     token: refreshed.accessToken,
     scope: refreshed.scope ?? account.scope ?? null,
-    expiresAt: refreshed.expiresIn ? new Date(Date.now() + refreshed.expiresIn * 1000).toISOString() : null,
+    expiresAt: refreshed.expiresIn
+      ? new Date(Date.now() + refreshed.expiresIn * 1000).toISOString()
+      : null,
   });
 }
 

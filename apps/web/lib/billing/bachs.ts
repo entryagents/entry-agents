@@ -176,7 +176,9 @@ export async function createCheckoutSession(
   const pricing = {
     currency: "USD",
     amount: usdCentsToDecimalString(params.amountCents),
-    ...(params.currencyOptions ? { currency_options: params.currencyOptions } : {}),
+    ...(params.currencyOptions
+      ? { currency_options: params.currencyOptions }
+      : {}),
   };
 
   const currencyPin = params.billingCurrency
@@ -368,7 +370,8 @@ export function verifyBachsSignature(
   const secret = params.secret ?? process.env.BACHS_WEBHOOK_SECRET;
   if (!secret) return false;
 
-  const tolerance = params.toleranceSeconds ?? WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS;
+  const tolerance =
+    params.toleranceSeconds ?? WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS;
   const now = params.nowSeconds ?? Math.floor(Date.now() / 1000);
 
   let timestamp: number | null = null;

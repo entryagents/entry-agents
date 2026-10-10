@@ -36,7 +36,10 @@ function getErrorMessage(body: unknown, fallback: string): string {
   return body.error;
 }
 
-async function waitForEditorReady(sessionId: string, attempts = 10): Promise<CodeEditorStatusResponse | null> {
+async function waitForEditorReady(
+  sessionId: string,
+  attempts = 10,
+): Promise<CodeEditorStatusResponse | null> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const response = await fetch(`/api/sessions/${sessionId}/code-editor`, {
       cache: "no-store",

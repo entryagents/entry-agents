@@ -1,8 +1,17 @@
 import { nanoid } from "nanoid";
 import { getServerSession } from "@/lib/session/get-server-session";
-import { createCheckoutSession, updateSubscription, bachsErrorCode } from "@/lib/billing/bachs";
+import {
+  createCheckoutSession,
+  updateSubscription,
+  bachsErrorCode,
+} from "@/lib/billing/bachs";
 import { getUserBillingState } from "@/lib/billing/credit-ledger";
-import { PLAN_CATALOG, isPlanId, resolveProductIdForPlan, localCurrencyOptionsFor } from "@/lib/billing/plans";
+import {
+  PLAN_CATALOG,
+  isPlanId,
+  resolveProductIdForPlan,
+  localCurrencyOptionsFor,
+} from "@/lib/billing/plans";
 
 interface CheckoutRequest {
   /** One of "plus" | "goat" | "pro" | "max" for a subscription checkout. */
@@ -121,7 +130,8 @@ export async function POST(req: Request) {
     // the saved card now; a downgrade becomes customer credit applied to
     // future invoices).
     const billingState = await getUserBillingState(session.user.id);
-    const existingSubscriptionId = billingState?.billingSubscriptionCode ?? null;
+    const existingSubscriptionId =
+      billingState?.billingSubscriptionCode ?? null;
 
     if (existingSubscriptionId && billingState?.plan !== plan.id) {
       try {

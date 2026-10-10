@@ -150,8 +150,7 @@ export async function PUT(req: Request) {
   if (!getSandboxCapabilities(String(sandboxType)).snapshots) {
     return Response.json(
       {
-        error:
-          "Snapshot restoration is not supported by this sandbox provider",
+        error: "Snapshot restoration is not supported by this sandbox provider",
       },
       { status: 400 },
     );

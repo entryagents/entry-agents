@@ -169,10 +169,7 @@ describe("tools execute behavior", () => {
       contentHash: hashFileContent("line-1\nline-2\nline-3"),
       // File content is wrapped in a prompt-injection boundary
       // (upstream #875); the numbered lines live inside it.
-      content: wrapExternalFileContent(
-        "notes.txt",
-        "2: line-2\n3: line-3",
-      ),
+      content: wrapExternalFileContent("notes.txt", "2: line-2\n3: line-3"),
     });
   });
 
@@ -247,10 +244,7 @@ describe("tools execute behavior", () => {
     // Read gate (read-state.ts): edits require a prior read of the
     // current on-disk content. One shared context so the read counts.
     const context = createContext(sandbox);
-    await readFileTool().execute?.(
-      { filePath },
-      executionOptions(context),
-    );
+    await readFileTool().execute?.({ filePath }, executionOptions(context));
 
     const result = await editFileTool().execute?.(
       { filePath, oldString: "alpha", newString: "beta" },
@@ -272,10 +266,7 @@ describe("tools execute behavior", () => {
     // Read gate (read-state.ts): edits require a prior read of the
     // current on-disk content. One shared context so the read counts.
     const context = createContext(sandbox);
-    await readFileTool().execute?.(
-      { filePath },
-      executionOptions(context),
-    );
+    await readFileTool().execute?.({ filePath }, executionOptions(context));
 
     const result = await editFileTool().execute?.(
       { filePath, oldString: "alpha", newString: "beta", replaceAll: true },

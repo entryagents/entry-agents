@@ -375,8 +375,9 @@ export function resolvePlanForProductId(
   }
 
   return (
-    Object.values(PLAN_CATALOG).find((plan) => plan.bachsProductId === productId)
-      ?.id ?? null
+    Object.values(PLAN_CATALOG).find(
+      (plan) => plan.bachsProductId === productId,
+    )?.id ?? null
   );
 }
 

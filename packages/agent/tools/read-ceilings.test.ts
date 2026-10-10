@@ -24,9 +24,7 @@ describe("read ceilings (Command Code read-tool model)", () => {
   test("isLikelyBinary detects NUL bytes in the head", () => {
     expect(isLikelyBinary("plain text\nwith lines")).toBe(false);
     expect(isLikelyBinary(`text\x00more`.repeat(1))).toBe(true);
-    expect(isLikelyBinary(`${"x".repeat(9000)}\x00buried-past-8k`)).toBe(
-      false,
-    );
+    expect(isLikelyBinary(`${"x".repeat(9000)}\x00buried-past-8k`)).toBe(false);
   });
 
   test("isDevicePath refuses /dev and /proc/N/fd before any I/O", () => {

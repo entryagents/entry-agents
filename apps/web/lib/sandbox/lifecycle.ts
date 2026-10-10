@@ -1,6 +1,11 @@
 import "server-only";
 
-import { connectSandbox, getSandboxProvider, isKnownSandboxType, type SandboxState } from "@open-agents/sandbox";
+import {
+  connectSandbox,
+  getSandboxProvider,
+  isKnownSandboxType,
+  type SandboxState,
+} from "@open-agents/sandbox";
 import {
   getChatsBySessionId,
   getSessionById,
@@ -10,7 +15,11 @@ import {
   SANDBOX_INACTIVITY_TIMEOUT_MS,
   SANDBOX_MIGRATION_LEAD_MS,
 } from "./config";
-import { canOperateOnSandbox, clearSandboxState, getModalVolumeName } from "./utils";
+import {
+  canOperateOnSandbox,
+  clearSandboxState,
+  getModalVolumeName,
+} from "./utils";
 
 export type SandboxLifecycleState =
   | "provisioning"

@@ -89,7 +89,11 @@ describe("createMcpToolSet", () => {
 
     const needsApproval = result.tools["mcp__c__do_thing"]?.needsApproval as (
       args: unknown,
-      ctx: { toolCallId: string; messages: unknown[]; experimental_context?: unknown },
+      ctx: {
+        toolCallId: string;
+        messages: unknown[];
+        experimental_context?: unknown;
+      },
     ) => Promise<boolean>;
 
     const baseCtx = { toolCallId: "test-call", messages: [] };

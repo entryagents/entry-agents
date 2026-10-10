@@ -86,7 +86,10 @@ export async function performSandboxMigration(
   }
 
   const sandboxState = session.sandboxState;
-  if (!canOperateOnSandbox(sandboxState) || !isKnownSandboxType(sandboxState.type)) {
+  if (
+    !canOperateOnSandbox(sandboxState) ||
+    !isKnownSandboxType(sandboxState.type)
+  ) {
     return { action: "skipped", reason: "sandbox-not-operable" };
   }
 

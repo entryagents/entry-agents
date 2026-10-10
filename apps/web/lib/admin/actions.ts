@@ -471,7 +471,9 @@ export async function setAdminFreeTierGateStatus(
  * previous hardcoded title model was killed by its gateway route
  * disappearing. Admin-only.
  */
-export async function setAdminTitleModel(modelId: string | null): Promise<void> {
+export async function setAdminTitleModel(
+  modelId: string | null,
+): Promise<void> {
   const adminUserId = await requireAdmin();
   await setTitleModelId(modelId, adminUserId);
 }

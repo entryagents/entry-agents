@@ -1,7 +1,4 @@
-import {
-  estimateModelUsageCost,
-  type AvailableModelCost,
-} from "@/lib/models";
+import { estimateModelUsageCost, type AvailableModelCost } from "@/lib/models";
 import type { LanguageModelUsage } from "ai";
 import type { SubagentBudgetGuard } from "@open-agents/agent";
 
@@ -167,8 +164,7 @@ export function applySpendToBudgets(input: {
     candidates.push({ cents: balance, reason: "credit" });
   }
   const exhaustedReason =
-    candidates.length > 0 &&
-    Math.min(...candidates.map((c) => c.cents)) <= 0
+    candidates.length > 0 && Math.min(...candidates.map((c) => c.cents)) <= 0
       ? candidates.reduce((a, b) => (b.cents < a.cents ? b : a)).reason
       : null;
 
@@ -271,7 +267,7 @@ export function computeRealtimeSpendCap(input: {
   if (millionOutputCostUsd === undefined || millionOutputCostUsd <= 0) {
     return { blockReason: null };
   }
-  const centsPerOutputToken = millionOutputCostUsd * 100 / 1_000_000;
+  const centsPerOutputToken = (millionOutputCostUsd * 100) / 1_000_000;
 
   const affordableOutputTokens = Math.floor(
     (remainingForOutputCents * OUTPUT_BUDGET_MARGIN) / centsPerOutputToken,
@@ -320,8 +316,12 @@ export interface SubagentBudgetGuardCallbacks {
 export function buildSubagentBudgetGuard(
   callbacks: SubagentBudgetGuardCallbacks,
 ): SubagentBudgetGuard {
-  const bindingBudget = (): { cents: number; reason: "window" | "credit" } | null => {
-    const candidates: Array<{ cents: number; reason: "window" | "credit" }> = [];
+  const bindingBudget = (): {
+    cents: number;
+    reason: "window" | "credit";
+  } | null => {
+    const candidates: Array<{ cents: number; reason: "window" | "credit" }> =
+      [];
     const windowBudget = callbacks.getWindowRemainingCents();
     if (windowBudget !== null && Number.isFinite(windowBudget)) {
       candidates.push({ cents: windowBudget, reason: "window" });

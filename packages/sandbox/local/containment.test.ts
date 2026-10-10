@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { connectLocal, LocalSandbox, LocalSandboxPathError } from "./sandbox.ts";
+import {
+  connectLocal,
+  LocalSandbox,
+  LocalSandboxPathError,
+} from "./sandbox.ts";
 
 async function makeTmpDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "local-sandbox-test-"));
@@ -40,7 +44,11 @@ async function trySymlink(target: string, linkPath: string): Promise<boolean> {
 }
 
 /** Asserts the operation rejects with the sandbox containment error. */
-async function expectRejected(op: Promise<unknown>, label: string, input?: string) {
+async function expectRejected(
+  op: Promise<unknown>,
+  label: string,
+  input?: string,
+) {
   let error: unknown;
   try {
     await op;
@@ -69,7 +77,9 @@ describe("LocalSandbox workspace containment", () => {
     const sandbox = new LocalSandbox(root);
 
     await expect(sandbox.access(root)).resolves.toBeUndefined();
-    await expect(sandbox.readdir(root, { withFileTypes: true })).resolves.toBeArray();
+    await expect(
+      sandbox.readdir(root, { withFileTypes: true }),
+    ).resolves.toBeArray();
     await expect(sandbox.stat(root)).resolves.toBeDefined();
 
     await fs.rm(base, { recursive: true, force: true });
@@ -82,7 +92,9 @@ describe("LocalSandbox workspace containment", () => {
     await sandbox.writeFile("hello.txt", "hi");
     expect(await sandbox.readFile("hello.txt")).toBe("hi");
     expect(await sandbox.readFile(path.join(root, "hello.txt"))).toBe("hi");
-    await expect(sandbox.access(path.join(root, "hello.txt"))).resolves.toBeUndefined();
+    await expect(
+      sandbox.access(path.join(root, "hello.txt")),
+    ).resolves.toBeUndefined();
 
     await fs.rm(base, { recursive: true, force: true });
   });
@@ -92,11 +104,19 @@ describe("LocalSandbox workspace containment", () => {
     const sandbox = new LocalSandbox(root);
 
     await sandbox.writeFile("src/components/App.tsx", "export default null;");
-    expect(await sandbox.readFile("src/components/App.tsx")).toBe("export default null;");
+    expect(await sandbox.readFile("src/components/App.tsx")).toBe(
+      "export default null;",
+    );
     await sandbox.writeFile("foo/bar/baz.txt", "deep");
-    expect(await sandbox.readFile(path.join(root, "foo/bar/baz.txt"))).toBe("deep");
-    await expect(sandbox.mkdir("src/newdir", { recursive: true })).resolves.toBeUndefined();
-    await expect(sandbox.readdir("src", { withFileTypes: true })).resolves.toBeArray();
+    expect(await sandbox.readFile(path.join(root, "foo/bar/baz.txt"))).toBe(
+      "deep",
+    );
+    await expect(
+      sandbox.mkdir("src/newdir", { recursive: true }),
+    ).resolves.toBeUndefined();
+    await expect(
+      sandbox.readdir("src", { withFileTypes: true }),
+    ).resolves.toBeArray();
 
     await fs.rm(base, { recursive: true, force: true });
   });
@@ -106,9 +126,13 @@ describe("LocalSandbox workspace containment", () => {
     const sandbox = new LocalSandbox(root);
 
     await sandbox.writeFile("src/brand/new-file.txt", "created");
-    expect(await fs.readFile(path.join(root, "src/brand/new-file.txt"), "utf-8")).toBe("created");
+    expect(
+      await fs.readFile(path.join(root, "src/brand/new-file.txt"), "utf-8"),
+    ).toBe("created");
     // nonexistent + relative path resolution must not throw
-    await expect(sandbox.access("nope/still-nope.txt")).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(sandbox.access("nope/still-nope.txt")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
 
     await fs.rm(base, { recursive: true, force: true });
   });
@@ -128,8 +152,12 @@ describe("LocalSandbox workspace containment", () => {
     }
     const sandbox = new LocalSandbox(root);
 
-    expect(await sandbox.readFile("safe-link/inside.txt")).toBe("inside content");
-    await expect(sandbox.readdir("safe-link", { withFileTypes: true })).resolves.toBeArray();
+    expect(await sandbox.readFile("safe-link/inside.txt")).toBe(
+      "inside content",
+    );
+    await expect(
+      sandbox.readdir("safe-link", { withFileTypes: true }),
+    ).resolves.toBeArray();
 
     await fs.rm(base, { recursive: true, force: true });
   });
@@ -139,9 +167,18 @@ describe("LocalSandbox workspace containment", () => {
     const { base, root } = await makeLandscape();
     const sandbox = new LocalSandbox(root);
 
-    await expectRejected(sandbox.readFile("../outside/secret.txt"), "../outside");
-    await expectRejected(sandbox.readFile("../../outside/secret.txt"), "../../outside");
-    await expectRejected(sandbox.writeFile("../outside/planted.txt", "x"), "write ../outside");
+    await expectRejected(
+      sandbox.readFile("../outside/secret.txt"),
+      "../outside",
+    );
+    await expectRejected(
+      sandbox.readFile("../../outside/secret.txt"),
+      "../../outside",
+    );
+    await expectRejected(
+      sandbox.writeFile("../outside/planted.txt", "x"),
+      "write ../outside",
+    );
     await expectRejected(sandbox.access("../outside"), "access ../outside");
 
     await fs.rm(base, { recursive: true, force: true });
@@ -175,8 +212,14 @@ describe("LocalSandbox workspace containment", () => {
       sandbox.writeFile(path.join(outside, "planted.txt"), "x"),
       "absolute outside write",
     );
-    await expectRejected(sandbox.mkdir(outside, { recursive: true }), "absolute outside mkdir");
-    await expectRejected(sandbox.readdir(outside, { withFileTypes: true }), "absolute outside readdir");
+    await expectRejected(
+      sandbox.mkdir(outside, { recursive: true }),
+      "absolute outside mkdir",
+    );
+    await expectRejected(
+      sandbox.readdir(outside, { withFileTypes: true }),
+      "absolute outside readdir",
+    );
 
     await fs.rm(base, { recursive: true, force: true });
   });
@@ -193,10 +236,22 @@ describe("LocalSandbox workspace containment", () => {
 
     // The symlink exists and is lexically inside root, but resolves outside.
     expect(await fs.readlink(path.join(root, "escape-link"))).toBe(outside);
-    await expectRejected(sandbox.readFile("escape-link/secret.txt"), "symlink escape read");
-    await expectRejected(sandbox.writeFile("escape-link/planted.txt", "x"), "symlink escape write");
-    await expectRejected(sandbox.readdir("escape-link", { withFileTypes: true }), "symlink escape readdir");
-    await expectRejected(sandbox.access("escape-link"), "symlink escape access");
+    await expectRejected(
+      sandbox.readFile("escape-link/secret.txt"),
+      "symlink escape read",
+    );
+    await expectRejected(
+      sandbox.writeFile("escape-link/planted.txt", "x"),
+      "symlink escape write",
+    );
+    await expectRejected(
+      sandbox.readdir("escape-link", { withFileTypes: true }),
+      "symlink escape readdir",
+    );
+    await expectRejected(
+      sandbox.access("escape-link"),
+      "symlink escape access",
+    );
 
     await fs.rm(base, { recursive: true, force: true });
   });
@@ -205,7 +260,10 @@ describe("LocalSandbox workspace containment", () => {
     const { base, root, outside } = await makeLandscape();
     // project/chain/inner -> ../../outside   (escape via nested dir)
     await fs.mkdir(path.join(root, "chain"), { recursive: true });
-    const linkedInner = await trySymlink(outside, path.join(root, "chain", "inner"));
+    const linkedInner = await trySymlink(
+      outside,
+      path.join(root, "chain", "inner"),
+    );
     // project/outer -> chain/inner  (second hop)
     const linkedOuter = await trySymlink(
       path.join(root, "chain", "inner"),
@@ -218,9 +276,15 @@ describe("LocalSandbox workspace containment", () => {
     }
     const sandbox = new LocalSandbox(root);
 
-    await expectRejected(sandbox.readFile("chain/inner/secret.txt"), "chain hop 1");
+    await expectRejected(
+      sandbox.readFile("chain/inner/secret.txt"),
+      "chain hop 1",
+    );
     await expectRejected(sandbox.readFile("outer/secret.txt"), "chain hop 2");
-    await expectRejected(sandbox.writeFile("outer/planted.txt", "x"), "chain hop 2 write");
+    await expectRejected(
+      sandbox.writeFile("outer/planted.txt", "x"),
+      "chain hop 2 write",
+    );
 
     await fs.rm(base, { recursive: true, force: true });
   });
@@ -261,8 +325,14 @@ describe("LocalSandbox workspace containment", () => {
 
     const result = await sandbox.exec("pwd", outside, 5000).catch((e) => e);
     expect(result).toBeInstanceOf(LocalSandboxPathError);
-    await expectRejected(sandbox.exec("pwd", "../outside", 5000), "exec ../outside");
-    await expectRejected(sandbox.exec("pwd", path.join(outside, "..", "outside"), 5000), "exec normalized escape");
+    await expectRejected(
+      sandbox.exec("pwd", "../outside", 5000),
+      "exec ../outside",
+    );
+    await expectRejected(
+      sandbox.exec("pwd", path.join(outside, "..", "outside"), 5000),
+      "exec normalized escape",
+    );
 
     await fs.rm(base, { recursive: true, force: true });
   });
@@ -277,7 +347,10 @@ describe("LocalSandbox workspace containment", () => {
     }
     const sandbox = new LocalSandbox(root);
 
-    await expectRejected(sandbox.exec("pwd", "escape-link", 5000), "exec via symlinked cwd");
+    await expectRejected(
+      sandbox.exec("pwd", "escape-link", 5000),
+      "exec via symlinked cwd",
+    );
 
     await fs.rm(base, { recursive: true, force: true });
   });
@@ -287,7 +360,9 @@ describe("LocalSandbox workspace containment", () => {
     const { base, root, outside, collision } = await makeLandscape();
     const sandbox = new LocalSandbox(root, { allowedRoots: [outside] });
 
-    expect(await sandbox.readFile(path.join(outside, "secret.txt"))).toBe("top secret");
+    expect(await sandbox.readFile(path.join(outside, "secret.txt"))).toBe(
+      "top secret",
+    );
     await expectRejected(
       sandbox.readFile(path.join(collision, "collision.txt")),
       "unlisted sibling still rejected",
@@ -301,13 +376,19 @@ describe("LocalSandbox workspace containment", () => {
     const linkRoot = path.join(base, "project-link");
     const linked = await trySymlink(root, linkRoot);
     if (!linked) {
-      throw new Error("SYMLINK UNAVAILABLE: cannot symlink the root in this environment.");
+      throw new Error(
+        "SYMLINK UNAVAILABLE: cannot symlink the root in this environment.",
+      );
     }
     const sandbox = new LocalSandbox(linkRoot);
 
     await sandbox.writeFile("via-link.txt", "ok");
-    expect(await fs.readFile(path.join(root, "via-link.txt"), "utf-8")).toBe("ok");
-    expect(await sandbox.readFile(path.join(linkRoot, "via-link.txt"))).toBe("ok");
+    expect(await fs.readFile(path.join(root, "via-link.txt"), "utf-8")).toBe(
+      "ok",
+    );
+    expect(await sandbox.readFile(path.join(linkRoot, "via-link.txt"))).toBe(
+      "ok",
+    );
 
     await fs.rm(base, { recursive: true, force: true });
   });

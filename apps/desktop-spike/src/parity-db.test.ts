@@ -56,9 +56,8 @@ beforeAll(async () => {
   process.env.POSTGRES_URL = POSTGRES_URL;
   sqlClient = postgres.default(POSTGRES_URL, { max: 5 });
   schema = await import("../../web/lib/db/schema.ts");
-  sessionsDb = (await import(
-    "../../web/lib/db/sessions.ts"
-  )) as unknown as DbModule;
+  sessionsDb =
+    (await import("../../web/lib/db/sessions.ts")) as unknown as DbModule;
 
   // --- the future Desktop Backend auth seam, proven with real rows: ------
   // Surface "web" signs in via GitHub OAuth (better-auth):
@@ -277,7 +276,11 @@ parityDescribe("Phase 4: real-DB cross-surface parity", () => {
       VALUES (${nanoid()}, ${googleAccountId}, 'google', ${userId}, 'gmail.readonly')`;
     const linked = await sqlClient`
       SELECT provider_id, account_id FROM accounts WHERE user_id = ${userId} ORDER BY provider_id`;
-    expect(linked.map((r) => r.provider_id)).toEqual(["github", "github", "google"]);
+    expect(linked.map((r) => r.provider_id)).toEqual([
+      "github",
+      "github",
+      "google",
+    ]);
     // Cleanup the proof row (schema untouched, nothing migrated):
     await sqlClient`
       DELETE FROM accounts WHERE account_id = ${googleAccountId} AND provider_id = 'google'`;

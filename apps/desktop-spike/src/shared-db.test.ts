@@ -32,7 +32,8 @@ beforeAll(async () => {
   process.env.POSTGRES_URL = POSTGRES_URL;
   sqlClient = postgres.default(POSTGRES_URL, { max: 5 });
   schema = await import("../../web/lib/db/schema.ts");
-  sessionsDb = (await import("../../web/lib/db/sessions.ts")) as unknown as DbModule;
+  sessionsDb =
+    (await import("../../web/lib/db/sessions.ts")) as unknown as DbModule;
 
   userId = nanoid();
   await sqlClient`
@@ -84,7 +85,10 @@ sharedDbDescribe("Phase 6 Step 14: desktop ↔ web shared DB", () => {
         toolCallId: "call_x1",
         toolName: "write",
         state: "output-available",
-        input: { filePath: "electron-proof.txt", content: "electron shell works" },
+        input: {
+          filePath: "electron-proof.txt",
+          content: "electron shell works",
+        },
         output: { success: true, bytesWritten: 20 },
       },
     ] as never;
@@ -98,7 +102,9 @@ sharedDbDescribe("Phase 6 Step 14: desktop ↔ web shared DB", () => {
     // Web surface: read back — identical. Ownership chains through the
     // session (chats has no userId column; Phase 3 finding).
     const chat = await sessionsDb.getChatById(chatId);
-    expect((chat as unknown as { sessionId: string }).sessionId).toBe(sessionId);
+    expect((chat as unknown as { sessionId: string }).sessionId).toBe(
+      sessionId,
+    );
     const owner = await sessionsDb.getSessionById(sessionId);
     expect(owner?.userId).toBe(userId);
     const msgs = await sessionsDb.getChatMessages(chatId);

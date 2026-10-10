@@ -389,9 +389,7 @@ describe("/api/chat route", () => {
     const body = (await response.json()) as { error: string };
 
     expect(response.status).toBe(403);
-    expect(body.error).toBe(
-      "This session has a 5 message limit.",
-    );
+    expect(body.error).toBe("This session has a 5 message limit.");
     expect(startCalls).toHaveLength(0);
   });
 

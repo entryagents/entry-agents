@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import {
-  ShieldCheck, Hammer, Loader2, Paintbrush, Telescope } from "lucide-react";
+  ShieldCheck,
+  Hammer,
+  Loader2,
+  Paintbrush,
+  Telescope,
+} from "lucide-react";
 import type { TaskPendingToolCall, TaskToolUIPart } from "@open-agents/agent";
 import { formatTokens, toRelativePath } from "@open-agents/shared";
 import { cn } from "@/lib/utils";

@@ -127,7 +127,8 @@ export default function OgImage() {
               maxWidth: 720,
             }}
           >
-            AI coding agents in isolated cloud sandboxes that work autonomously until the job is done.
+            AI coding agents in isolated cloud sandboxes that work autonomously
+            until the job is done.
           </div>
         </div>
 

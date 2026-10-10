@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { ToolRenderState } from "@open-agents/shared/lib/tool-state";
 import { renderToStaticMarkup } from "react-dom/server";
-import { resolveBrandToolDisplay, BrandToolRenderer } from "./brand-tool-renderer";
+import {
+  resolveBrandToolDisplay,
+  BrandToolRenderer,
+} from "./brand-tool-renderer";
 
 const baseState: ToolRenderState = {
   running: false,
@@ -45,8 +48,10 @@ describe("resolveBrandToolDisplay", () => {
 
   test("github cli action prefixes gh to the args", () => {
     expect(
-      resolveBrandToolDisplay("github_cli", { action: "cli", args: "pr checks 12" })
-        .summary,
+      resolveBrandToolDisplay("github_cli", {
+        action: "cli",
+        args: "pr checks 12",
+      }).summary,
     ).toBe("gh pr checks 12");
   });
 
@@ -62,7 +67,8 @@ describe("resolveBrandToolDisplay", () => {
 
   test("vercel_api shows method + path, defaulting to GET", () => {
     expect(
-      resolveBrandToolDisplay("vercel_api", { path: "v13/deployments" }).summary,
+      resolveBrandToolDisplay("vercel_api", { path: "v13/deployments" })
+        .summary,
     ).toBe("GET v13/deployments");
     expect(
       resolveBrandToolDisplay("vercel_api", {
@@ -73,9 +79,9 @@ describe("resolveBrandToolDisplay", () => {
   });
 
   test("empty inputs never render blank summaries", () => {
-    expect(
-      resolveBrandToolDisplay("github_cli", undefined).summary,
-    ).toBe("...");
+    expect(resolveBrandToolDisplay("github_cli", undefined).summary).toBe(
+      "...",
+    );
     expect(resolveBrandToolDisplay("vercel_api", undefined).summary).toBe(
       "GET ...",
     );

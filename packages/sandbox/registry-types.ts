@@ -157,7 +157,11 @@ export const SANDBOX_PROVIDER_METADATA: Record<
 };
 
 /** Every id the factory can dispatch to. */
-export const SANDBOX_TYPES = ["modal", "local", "boxd"] as const satisfies readonly SandboxProviderId[];
+export const SANDBOX_TYPES = [
+  "modal",
+  "local",
+  "boxd",
+] as const satisfies readonly SandboxProviderId[];
 
 /**
  * Providers a user may pick in the UI. `local` is dev/test only.
@@ -189,10 +193,7 @@ export const CONTEXT_SANDBOX_TYPES = {
 export function listProvidersForContext(
   context: keyof typeof CONTEXT_SANDBOX_TYPES = "web",
 ): SandboxProviderId[] {
-  return [
-    ...USER_SELECTABLE_SANDBOX_TYPES,
-    ...CONTEXT_SANDBOX_TYPES[context],
-  ];
+  return [...USER_SELECTABLE_SANDBOX_TYPES, ...CONTEXT_SANDBOX_TYPES[context]];
 }
 
 /** Is `value` a selectable provider in the given runtime context? */
@@ -200,9 +201,7 @@ export function isSelectableInContext(
   value: unknown,
   context: keyof typeof CONTEXT_SANDBOX_TYPES = "web",
 ): boolean {
-  return listProvidersForContext(context).includes(
-    value as SandboxProviderId,
-  );
+  return listProvidersForContext(context).includes(value as SandboxProviderId);
 }
 
 /** Provider used when a session has no explicit choice. */
@@ -244,9 +243,7 @@ export function listUserSelectableSandboxProviders(): SandboxProviderMetadata[] 
  * disabled capability set so callers degrade instead of throwing on
  * malformed/legacy rows.
  */
-export function getSandboxCapabilities(
-  id: string,
-): SandboxCapabilities {
+export function getSandboxCapabilities(id: string): SandboxCapabilities {
   return (
     getSandboxProviderMetadata(id)?.capabilities ?? {
       persistentResume: false,

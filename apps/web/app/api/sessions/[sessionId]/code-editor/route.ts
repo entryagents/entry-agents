@@ -6,7 +6,11 @@ import {
 import { CODE_SERVER_PORT, DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { provisionSessionSandbox } from "@/lib/sandbox/provisioning";
-import { isSandboxActive, isSandboxState, isSandboxUnavailableError } from "@/lib/sandbox/utils";
+import {
+  isSandboxActive,
+  isSandboxState,
+  isSandboxUnavailableError,
+} from "@/lib/sandbox/utils";
 
 type RouteContext = {
   params: Promise<{ sessionId: string }>;
@@ -79,11 +83,17 @@ async function connectCodeEditorSandbox(sessionId: string, userId: string) {
       const provisioned = await provisionSessionSandbox({ sessionId, userId });
       return { ok: true as const, sandbox: provisioned.sandbox };
     } catch (recoveryError) {
-      console.error("Failed to recover Workspace for code editor:", recoveryError);
+      console.error(
+        "Failed to recover Workspace for code editor:",
+        recoveryError,
+      );
       return {
         ok: false as const,
         response: Response.json(
-          { error: "Workspace is temporarily unavailable. Please retry in a moment." },
+          {
+            error:
+              "Workspace is temporarily unavailable. Please retry in a moment.",
+          },
           { status: 503 },
         ),
       };
@@ -243,7 +253,7 @@ async function acquireCodeServerLaunchLock(
   // but short enough to recover automatically after a lost request.
   await sandbox
     .exec(
-      `find ${shellQuote(CODE_SERVER_LOCKDIR)} -maxdepth 0 -mmin +0.5 -exec rmdir {} \; 2>/dev/null || true`,
+      `find ${shellQuote(CODE_SERVER_LOCKDIR)} -maxdepth 0 -mmin +0.5 -exec rmdir {} ; 2>/dev/null || true`,
       "/tmp",
       3_000,
     )
@@ -287,8 +297,17 @@ export async function GET(_req: Request, context: RouteContext) {
     const running = await isCodeServerRunning(sandbox);
 
     return Response.json(
-      { running, url: running && sandbox.domain ? sandbox.domain(port) : null, port } satisfies CodeEditorStatusResponse,
-      { headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } },
+      {
+        running,
+        url: running && sandbox.domain ? sandbox.domain(port) : null,
+        port,
+      } satisfies CodeEditorStatusResponse,
+      {
+        headers: {
+          "Cache-Control": "no-store",
+          "Referrer-Policy": "no-referrer",
+        },
+      },
     );
   } catch (error) {
     console.error("Failed to check code editor status:", error);
@@ -346,8 +365,16 @@ export async function POST(req: Request, context: RouteContext) {
       // Reuse an existing code-server process when we can positively identify it.
       if (await isCodeServerRunning(sandbox)) {
         return Response.json(
-          { url: sandbox.domain(port), port } satisfies CodeEditorLaunchResponse,
-          { headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } },
+          {
+            url: sandbox.domain(port),
+            port,
+          } satisfies CodeEditorLaunchResponse,
+          {
+            headers: {
+              "Cache-Control": "no-store",
+              "Referrer-Policy": "no-referrer",
+            },
+          },
         );
       }
 
@@ -367,7 +394,9 @@ export async function POST(req: Request, context: RouteContext) {
       try {
         await sandbox.execDetached(launchCommand, workingDirectory);
         if (!(await waitForCodeServer(sandbox))) {
-          throw new Error("Code editor did not become ready on its Workspace port");
+          throw new Error(
+            "Code editor did not become ready on its Workspace port",
+          );
         }
       } catch (error) {
         await sandbox
@@ -382,7 +411,12 @@ export async function POST(req: Request, context: RouteContext) {
 
       return Response.json(
         { url: sandbox.domain(port), port } satisfies CodeEditorLaunchResponse,
-        { headers: { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" } },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+          },
+        },
       );
     } finally {
       await releaseCodeServerLaunchLock(sandbox);

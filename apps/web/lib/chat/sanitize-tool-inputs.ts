@@ -67,7 +67,9 @@ function sanitizeToolPartInput(
   return { ...part, input: {} };
 }
 
-export function sanitizeMessageToolInputs(message: WebAgentUIMessage): WebAgentUIMessage {
+export function sanitizeMessageToolInputs(
+  message: WebAgentUIMessage,
+): WebAgentUIMessage {
   return (() => {
     let mutated = false;
     const parts = message.parts.map((part) => {
@@ -83,6 +85,8 @@ export function sanitizeMessageToolInputs(message: WebAgentUIMessage): WebAgentU
   })();
 }
 
-export function sanitizeToolInputs(messages: WebAgentUIMessage[]): WebAgentUIMessage[] {
+export function sanitizeToolInputs(
+  messages: WebAgentUIMessage[],
+): WebAgentUIMessage[] {
   return messages.map(sanitizeMessageToolInputs);
 }

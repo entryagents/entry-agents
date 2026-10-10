@@ -130,7 +130,8 @@ async function createWithQuotaFallback(
       cpu: MODAL_DEFAULT_CPU,
       // Keep any explicitly-requested memory; only the default is reduced.
       memoryMiB:
-        config.memoryMiB === undefined || config.memoryMiB === MODAL_DEFAULT_MEMORY_MIB
+        config.memoryMiB === undefined ||
+        config.memoryMiB === MODAL_DEFAULT_MEMORY_MIB
           ? MODAL_CHEAP_MEMORY_MIB
           : config.memoryMiB,
       ports: undefined,

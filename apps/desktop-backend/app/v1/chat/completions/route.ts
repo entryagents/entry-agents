@@ -19,7 +19,10 @@ export async function POST(req: NextRequest) {
   const gatewayBase = process.env.GATEWAY_BASE_URL;
   const gatewayKey = process.env.GATEWAY_API_KEY;
   if (!gatewayBase || !gatewayKey) {
-    return NextResponse.json({ error: "Model gateway unavailable" }, { status: 503 });
+    return NextResponse.json(
+      { error: "Model gateway unavailable" },
+      { status: 503 },
+    );
   }
 
   let body: unknown;
@@ -31,19 +34,26 @@ export async function POST(req: NextRequest) {
 
   let upstream: Response;
   try {
-    upstream = await fetch(`${gatewayBase.replace(/\/$/, "")}/v1/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${gatewayKey}`,
-        "http-referer": process.env.NEXT_PUBLIC_SITE_URL ?? "https://entry-agents.dev",
-        "x-title": "Entry Desktop",
+    upstream = await fetch(
+      `${gatewayBase.replace(/\/$/, "")}/v1/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${gatewayKey}`,
+          "http-referer":
+            process.env.NEXT_PUBLIC_SITE_URL ?? "https://entry-agents.dev",
+          "x-title": "Entry Desktop",
+        },
+        body: JSON.stringify(body),
+        signal: req.signal, // propagate desktop cancellation
       },
-      body: JSON.stringify(body),
-      signal: req.signal, // propagate desktop cancellation
-    });
+    );
   } catch {
-    return NextResponse.json({ error: "Model gateway unreachable" }, { status: 504 });
+    return NextResponse.json(
+      { error: "Model gateway unreachable" },
+      { status: 504 },
+    );
   }
 
   if (!upstream.ok) {

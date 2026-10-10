@@ -47,9 +47,7 @@ export function isModalConfigured(): boolean {
 }
 
 /** Resolve (creating if needed) the Modal App that owns our sandboxes. */
-export async function getModalApp(
-  client: ModalClient,
-): Promise<App> {
+export async function getModalApp(client: ModalClient): Promise<App> {
   if (cachedApp) {
     return cachedApp;
   }

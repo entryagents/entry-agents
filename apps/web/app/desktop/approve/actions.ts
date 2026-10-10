@@ -33,7 +33,9 @@ export type ApproveResult =
   | { ok: true }
   | { error: "unauthorized" | "invalid_code" | "not_found" | "expired" };
 
-export async function approveDesktopDevice(code: string): Promise<ApproveResult> {
+export async function approveDesktopDevice(
+  code: string,
+): Promise<ApproveResult> {
   const session = await getServerSession();
   if (!session?.user?.id) return { error: "unauthorized" };
 
@@ -46,9 +48,16 @@ export async function approveDesktopDevice(code: string): Promise<ApproveResult>
     WHERE code = ${code}
     LIMIT 1`);
 
-  const row = (rows as unknown as { device_code: string; status: string; expires_at: Date | string }[])[0];
+  const row = (
+    rows as unknown as {
+      device_code: string;
+      status: string;
+      expires_at: Date | string;
+    }[]
+  )[0];
   if (!row) return { error: "not_found" };
-  if (new Date(row.expires_at).getTime() < Date.now()) return { error: "expired" };
+  if (new Date(row.expires_at).getTime() < Date.now())
+    return { error: "expired" };
 
   // Bind the approving user's live Better Auth session token to the device row.
   const tokenRes = await db.execute(sql`

@@ -187,9 +187,7 @@ describe("/api/sessions/[sessionId]/chats/[chatId]/messages/[messageId]", () => 
     const body = (await response.json()) as { error: string };
 
     expect(response.status).toBe(403);
-    expect(body.error).toBe(
-      "Message deletion is disabled for this session.",
-    );
+    expect(body.error).toBe("Message deletion is disabled for this session.");
     expect(deleteCalls).toHaveLength(0);
   });
 

@@ -73,9 +73,6 @@ export function emitCompactionEvent(event: CompactionEvent): void {
       );
     });
   } catch (error) {
-    console.error(
-      "[auto-compact] compaction telemetry sink threw:",
-      error,
-    );
+    console.error("[auto-compact] compaction telemetry sink threw:", error);
   }
 }

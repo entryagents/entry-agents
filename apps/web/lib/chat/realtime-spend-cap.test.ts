@@ -29,7 +29,9 @@ const usage = (input: number, cacheRead = 0) =>
 
 describe("estimateNextStepInputTokens", () => {
   test("uses last step's real input grown 20%", () => {
-    expect(estimateNextStepInputTokens(usage(10_000), () => 5_000)).toBe(12_000);
+    expect(estimateNextStepInputTokens(usage(10_000), () => 5_000)).toBe(
+      12_000,
+    );
   });
 
   test("first step falls back to chars/4 + 8k overhead", () => {

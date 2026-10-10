@@ -478,5 +478,4 @@ export async function fetchAllLanguageModelsWithContext(): Promise<
 
 /** Backwards-compatible alias -- the admin models page's original name
  *  for fetchAllLanguageModelsWithContext(). */
-export const fetchAllLanguageModelsForAdmin =
-  fetchAllLanguageModelsWithContext;
+export const fetchAllLanguageModelsForAdmin = fetchAllLanguageModelsWithContext;

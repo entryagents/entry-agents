@@ -10,7 +10,9 @@ export const LEGACY_THEME_STORAGE_KEY = "open-agents-theme";
 
 export type ThemePreference = "light" | "dark" | "system";
 
-export function isThemePreference(value: string | null): value is ThemePreference {
+export function isThemePreference(
+  value: string | null,
+): value is ThemePreference {
   return value === "light" || value === "dark" || value === "system";
 }
 

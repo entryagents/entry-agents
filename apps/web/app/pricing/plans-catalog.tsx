@@ -63,9 +63,7 @@ function EntryWindowsCard({
   return (
     <div className="mt-3 rounded-2xl border border-(--l-border) bg-(--l-fg)/[0.04] px-5 py-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-(--l-fg)">
-          Entry Windows
-        </p>
+        <p className="text-sm font-semibold text-(--l-fg)">Entry Windows</p>
         <p className="text-xs text-(--l-fg-3)">
           Rolling limits -- no fixed reset time
         </p>
@@ -82,7 +80,8 @@ function EntryWindowsCard({
               <div className="flex items-center justify-between text-xs text-(--l-fg-2)">
                 <span>Rolling {row.key}</span>
                 <span className={full ? "font-semibold text-red-500" : ""}>
-                  {formatUsdCents(row.usedCents)} of {formatUsdCents(row.limitCents)}
+                  {formatUsdCents(row.usedCents)} of{" "}
+                  {formatUsdCents(row.limitCents)}
                   {full ? " -- full, refills as usage slides out" : ""}
                 </span>
               </div>
@@ -205,9 +204,12 @@ export function PlansCatalog() {
                   <span className="font-semibold text-(--l-fg)">
                     {me.planName}
                   </span>{" "}
-                  plan -- {formatUsdCents(me.creditBalanceCents)} credit remaining.
+                  plan -- {formatUsdCents(me.creditBalanceCents)} credit
+                  remaining.
                 </p>
-                {me.usageWindows && <EntryWindowsCard windows={me.usageWindows} />}
+                {me.usageWindows && (
+                  <EntryWindowsCard windows={me.usageWindows} />
+                )}
               </div>
             )}
 
@@ -233,7 +235,7 @@ export function PlansCatalog() {
                         )}
                       </div>
                       <div className="mt-2 text-3xl font-semibold tracking-tight">
-                          {formatUsdCents(plan.priceUsdCents)}
+                        {formatUsdCents(plan.priceUsdCents)}
                         <span className="text-sm font-normal text-(--l-fg-3)">
                           /mo
                         </span>

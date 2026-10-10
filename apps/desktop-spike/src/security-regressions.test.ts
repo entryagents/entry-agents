@@ -78,7 +78,9 @@ describe("Phase 6 security regressions", () => {
       try {
         writeFileSync(join(outside, "secret.txt"), "top secret");
         // absolute outside-root read → LocalSandboxPathError
-        await expect(sandbox.readFile(join(outside, "secret.txt"), "utf-8")).rejects.toThrow();
+        await expect(
+          sandbox.readFile(join(outside, "secret.txt"), "utf-8"),
+        ).rejects.toThrow();
         // traversal → rejected
         await expect(
           sandbox.readFile(join(root, "..", "..", "etc", "passwd"), "utf-8"),
@@ -95,8 +97,12 @@ describe("Phase 6 security regressions", () => {
     // Phase 7: allowlist now mirrors the DEPLOYED Project-B surface.
     expect(isAllowedDesktopRoute("POST", "/api/desktop/chat")).toBe(true);
     expect(isAllowedDesktopRoute("POST", "/api/desktop/chats")).toBe(true);
-    expect(isAllowedDesktopRoute("GET", "/api/desktop/chats/abc123")).toBe(true);
-    expect(isAllowedDesktopRoute("POST", "/api/desktop/chats/abc123/messages")).toBe(true);
+    expect(isAllowedDesktopRoute("GET", "/api/desktop/chats/abc123")).toBe(
+      true,
+    );
+    expect(
+      isAllowedDesktopRoute("POST", "/api/desktop/chats/abc123/messages"),
+    ).toBe(true);
     expect(isAllowedDesktopRoute("POST", "/api/desktop/usage")).toBe(true);
     expect(isAllowedDesktopRoute("GET", "/api/desktop/models")).toBe(true);
     expect(isAllowedDesktopRoute("GET", "/api/desktop/health")).toBe(true);
@@ -104,7 +110,9 @@ describe("Phase 6 security regressions", () => {
     expect(isAllowedDesktopRoute("POST", "/api/auth/sign-in")).toBe(false);
     // Not exposed to desktop:
     expect(isAllowedDesktopRoute("POST", "/api/chat")).toBe(false); // web Workflow path
-    expect(isAllowedDesktopRoute("GET", "/api/sessions/abc/dev-server")).toBe(false);
+    expect(isAllowedDesktopRoute("GET", "/api/sessions/abc/dev-server")).toBe(
+      false,
+    );
     expect(isAllowedDesktopRoute("GET", "/api/admin/anything")).toBe(false);
     expect(isAllowedDesktopRoute("DELETE", "/api/usage")).toBe(false);
   });

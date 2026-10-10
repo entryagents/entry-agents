@@ -13,12 +13,12 @@
   "dependencies": {
     "@ai-sdk/anthropic": "catalog:",
     "@ai-sdk/google": "catalog:",
+    "@ai-sdk/mcp": "1.0.72",
     "@ai-sdk/openai": "catalog:",
     "@ai-sdk/openai-compatible": "catalog:",
     "@open-agents/sandbox": "workspace:*",
     "ai": "catalog:",
-    "zod": "catalog:",
-    "@ai-sdk/mcp": "1.0.72"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@ai-sdk/devtools": "^0.0.15",

@@ -26,7 +26,5 @@ export const dynamic = "force-dynamic";
  * redirects here; the model price table moved to /model.
  */
 export default function PricingPage() {
-  return (
-    <PlansCatalog />
-  );
+  return <PlansCatalog />;
 }

@@ -89,7 +89,9 @@ describe("LocalSandbox detached process lifecycle", () => {
     );
     try {
       await new Promise((r) => setTimeout(r, 300));
-      const pid = Number((await fs.readFile(path.join(root, "pid.txt"), "utf-8")).trim());
+      const pid = Number(
+        (await fs.readFile(path.join(root, "pid.txt"), "utf-8")).trim(),
+      );
       expect(Number.isFinite(pid)).toBe(true);
       // alive: signal 0 succeeds
       expect(() => process.kill(pid, 0)).not.toThrow();
@@ -108,7 +110,10 @@ describe("LocalSandbox detached process lifecycle", () => {
     const sandbox = new LocalSandbox(root);
 
     const { commandId } = await sandbox.execDetached("sleep 30", root);
-    const { commandId: secondId } = await sandbox.execDetached("sleep 30", root);
+    const { commandId: secondId } = await sandbox.execDetached(
+      "sleep 30",
+      root,
+    );
     try {
       expect(commandId).not.toBe(secondId); // ids are unique per sandbox
 
@@ -135,7 +140,10 @@ describe("LocalSandbox detached process lifecycle", () => {
     await expect(sandbox.killCommand(commandId)).resolves.toBeUndefined();
 
     // Race window: grab a live one, let it die, then kill by id.
-    const { commandId: racingId } = await sandbox.execDetached("sleep 0.05", root);
+    const { commandId: racingId } = await sandbox.execDetached(
+      "sleep 0.05",
+      root,
+    );
     await new Promise((r) => setTimeout(r, 200));
     await expect(sandbox.killCommand(racingId)).resolves.toBeUndefined();
   });
@@ -147,7 +155,9 @@ describe("LocalSandbox detached process lifecycle", () => {
     // Never spawned by this sandbox -- including values that look like PIDs.
     await expect(sandbox.killCommand("local-999")).resolves.toBeUndefined();
     await expect(sandbox.killCommand("1")).resolves.toBeUndefined(); // init!
-    await expect(sandbox.killCommand(process.pid.toString())).resolves.toBeUndefined();
+    await expect(
+      sandbox.killCommand(process.pid.toString()),
+    ).resolves.toBeUndefined();
     await expect(sandbox.killCommand("")).resolves.toBeUndefined();
 
     // A DIFFERENT sandbox instance's ids are foreign to this one.
@@ -178,9 +188,9 @@ describe("LocalSandbox detached process lifecycle", () => {
     await expect(
       sandbox.execDetached("true", path.join(base, "outside-dir")),
     ).rejects.toBeInstanceOf(LocalSandboxPathError);
-    await expect(
-      sandbox.execDetached("true", "/etc"),
-    ).rejects.toBeInstanceOf(LocalSandboxPathError);
+    await expect(sandbox.execDetached("true", "/etc")).rejects.toBeInstanceOf(
+      LocalSandboxPathError,
+    );
   });
 
   test("dev-server-style: Node server binds a port, stays up, then dies on kill", async () => {

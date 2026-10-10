@@ -16,10 +16,7 @@ import { SWRConfig } from "swr";
 import { GitHubReconnectGate } from "@/components/github-reconnect-gate";
 import { authClient } from "@/lib/auth/client";
 import { FetchError } from "@/lib/swr";
-import {
-  readStoredTheme,
-  THEME_STORAGE_KEY,
-} from "@/lib/theme-storage";
+import { readStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme-storage";
 
 const DARK_MODE_MEDIA_QUERY = "(prefers-color-scheme: dark)";
 

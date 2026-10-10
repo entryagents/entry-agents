@@ -85,7 +85,7 @@ function carryForward(
   state: SandboxState | undefined,
   drop: readonly string[],
 ): Record<string, unknown> {
-  const carried: Record<string, unknown> = { ...(state ?? {}) };
+  const carried: Record<string, unknown> = { ...state };
   for (const key of drop) {
     delete carried[key];
   }
@@ -99,12 +99,16 @@ const boxdProvider: SandboxProvider = {
   capabilities: SANDBOX_PROVIDER_METADATA.boxd.capabilities,
 
   async connect(state, options) {
-    if (state.type !== "boxd") throw new UnsupportedSandboxProviderError(String(state.type));
+    if (state.type !== "boxd")
+      throw new UnsupportedSandboxProviderError(String(state.type));
     return connectBoxd(state as { type: "boxd" } & BoxdState, options);
   },
 
   buildProvisionState({ existing, sessionId, source }) {
-    const current = existing?.type === "boxd" ? (existing as { type: "boxd" } & BoxdState) : undefined;
+    const current =
+      existing?.type === "boxd"
+        ? (existing as { type: "boxd" } & BoxdState)
+        : undefined;
     // Always persist the session-derived name. Older rows could contain
     // `entry-undefined` because boxd's connector originally expected a
     // sessionId that was never included in persisted provider state.
@@ -119,7 +123,8 @@ const boxdProvider: SandboxProvider = {
       .slice(0, 24);
     const stableMachineName = `entry-${sessionNameHash}`;
     const machineName =
-      current?.machineName && !/^entry-undefined(?:-|$)/.test(current.machineName)
+      current?.machineName &&
+      !/^entry-undefined(?:-|$)/.test(current.machineName)
         ? current.machineName
         : stableMachineName;
     return {
@@ -214,9 +219,7 @@ export const SANDBOX_PROVIDERS: Record<SandboxProviderId, SandboxProvider> = {
   local: localProvider,
 };
 
-export function getSandboxProvider(
-  id: string,
-): SandboxProvider | undefined {
+export function getSandboxProvider(id: string): SandboxProvider | undefined {
   return SANDBOX_PROVIDERS[id as SandboxProviderId];
 }
 

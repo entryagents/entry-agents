@@ -972,13 +972,14 @@ export async function upsertChatMessageAndClearActiveStream(
         .update(chats)
         .set({ activeStreamId: null })
         .where(
-          and(eq(chats.id, data.chatId), eq(chats.activeStreamId, workflowRunId)),
+          and(
+            eq(chats.id, data.chatId),
+            eq(chats.activeStreamId, workflowRunId),
+          ),
         );
     }
 
-    return status === "conflict"
-      ? { status }
-      : { status, message: message! };
+    return status === "conflict" ? { status } : { status, message: message! };
   });
 }
 

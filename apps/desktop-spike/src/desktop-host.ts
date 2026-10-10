@@ -54,11 +54,35 @@ export type DesktopIpcEvent =
   | { type: "turn-started"; turnId: string }
   | { type: "text-delta"; turnId: string; text: string }
   | { type: "reasoning-delta"; turnId: string; text: string }
-  | { type: "tool-call"; turnId: string; toolCallId: string; toolName: string; input: unknown }
+  | {
+      type: "tool-call";
+      turnId: string;
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+    }
   | { type: "tool-result"; turnId: string; toolCallId: string; output: unknown }
-  | { type: "tool-error"; turnId: string; toolCallId: string; errorText: string }
-  | { type: "approval-request"; turnId: string; approvalId: string; toolCallId: string; toolName: string; input: unknown }
-  | { type: "usage"; turnId: string; inputTokens: number; cachedInputTokens: number; outputTokens: number }
+  | {
+      type: "tool-error";
+      turnId: string;
+      toolCallId: string;
+      errorText: string;
+    }
+  | {
+      type: "approval-request";
+      turnId: string;
+      approvalId: string;
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+    }
+  | {
+      type: "usage";
+      turnId: string;
+      inputTokens: number;
+      cachedInputTokens: number;
+      outputTokens: number;
+    }
   | { type: "error"; turnId: string; message: string }
   | { type: "turn-finished"; turnId: string; finishReason: string }
   | { type: "stopped"; turnId: string };
@@ -150,12 +174,15 @@ export interface TurnUsage {
 
 export function accumulateUsage(
   current: TurnUsage,
-  stepUsage: {
-    inputTokens?: number;
-    outputTokens?: number;
-    inputTokenDetails?: { cacheReadTokens?: number };
-    cachedInputTokens?: number;
-  } | null | undefined,
+  stepUsage:
+    | {
+        inputTokens?: number;
+        outputTokens?: number;
+        inputTokenDetails?: { cacheReadTokens?: number };
+        cachedInputTokens?: number;
+      }
+    | null
+    | undefined,
 ): TurnUsage {
   if (!stepUsage) return current;
   return {
@@ -190,7 +217,10 @@ export class EntryAgentHost {
    * LocalSandbox only — an unknown provider type throws (registry has no
    * silent fallback), so "desktop accidentally used Vercel" is impossible.
    */
-  async start(): Promise<{ sandboxState: SandboxState; workingDirectory: string }> {
+  async start(): Promise<{
+    sandboxState: SandboxState;
+    workingDirectory: string;
+  }> {
     const state: SandboxState = {
       type: "local",
       rootDir: this.options.projectRoot,
@@ -238,12 +268,19 @@ export class EntryAgentHost {
     // The authenticated transport is passed per-call through the agent's
     // gatewayConfig seam → sharedProvider({config}) instead.
     const messages = [...history, { role: "user", content: text } as never];
-    let usage: TurnUsage = { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
+    let usage: TurnUsage = {
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+    };
     let finishReason = "unknown";
 
     try {
       const { sandboxState, workingDirectory } = {
-        sandboxState: { type: "local", rootDir: this.options.projectRoot } as SandboxState,
+        sandboxState: {
+          type: "local",
+          rootDir: this.options.projectRoot,
+        } as SandboxState,
         workingDirectory: this.options.projectRoot,
       };
 
@@ -260,7 +297,9 @@ export class EntryAgentHost {
               },
             },
             permissionMode: "ask",
-            ...(this.options.extraTools ? { extraTools: this.options.extraTools } : {}),
+            ...(this.options.extraTools
+              ? { extraTools: this.options.extraTools }
+              : {}),
           } as OpenAgentCallOptions,
           abortSignal: abort.signal,
         });
@@ -314,7 +353,10 @@ export class EntryAgentHost {
         // approved tools / emits denied outputs from that message).
         if (approvalRequest) {
           emit({ type: "approval-request", turnId, ...approvalRequest });
-          const decision = await this.waitForApproval(approvalRequest.approvalId, abort.signal);
+          const decision = await this.waitForApproval(
+            approvalRequest.approvalId,
+            abort.signal,
+          );
           messages.push({
             role: "tool",
             content: [

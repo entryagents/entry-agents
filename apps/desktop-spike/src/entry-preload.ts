@@ -16,12 +16,23 @@ contextBridge.exposeInMainWorld("entryAgent", {
     approvalId: string,
     approved: boolean,
     reason?: string,
-  ) => ipcRenderer.invoke("entry:approval", { sessionId, approvalId, approved, reason }),
+  ) =>
+    ipcRenderer.invoke("entry:approval", {
+      sessionId,
+      approvalId,
+      approved,
+      reason,
+    }),
   stop: (sessionId: string) => ipcRenderer.invoke("entry:stop", { sessionId }),
-  dispose: (sessionId: string) => ipcRenderer.invoke("entry:dispose", { sessionId }),
-  onEvent: (listener: (payload: { sessionId: string; event: unknown }) => void) => {
-    const wrapped = (_e: unknown, payload: { sessionId: string; event: unknown }) =>
-      listener(payload);
+  dispose: (sessionId: string) =>
+    ipcRenderer.invoke("entry:dispose", { sessionId }),
+  onEvent: (
+    listener: (payload: { sessionId: string; event: unknown }) => void,
+  ) => {
+    const wrapped = (
+      _e: unknown,
+      payload: { sessionId: string; event: unknown },
+    ) => listener(payload);
     ipcRenderer.on("entry:event", wrapped);
     return () => ipcRenderer.removeListener("entry:event", wrapped);
   },

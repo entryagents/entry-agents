@@ -35,18 +35,49 @@ export const DESKTOP_BACKEND_ALLOWED_ROUTES: Array<{
   pattern: RegExp;
   capability: string;
 }> = [
-  { method: "GET", pattern: /^\/api\/desktop\/health\/?$/, capability: "health" },
-  { method: "GET", pattern: /^\/api\/desktop\/models\/?$/, capability: "model catalog" },
-  { method: "POST", pattern: /^\/api\/desktop\/chat\/?$/, capability: "model/Gateway proxy" },
-  { method: "POST", pattern: /^\/api\/desktop\/chats\/?$/, capability: "chat persistence" },
-  { method: "GET", pattern: /^\/api\/desktop\/chats\/[^/]+\/?$/, capability: "chat read" },
-  { method: "POST", pattern: /^\/api\/desktop\/chats\/[^/]+\/messages\/?$/, capability: "chat append" },
-  { method: "POST", pattern: /^\/api\/desktop\/usage\/?$/, capability: "usage reporting" },
+  {
+    method: "GET",
+    pattern: /^\/api\/desktop\/health\/?$/,
+    capability: "health",
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/desktop\/models\/?$/,
+    capability: "model catalog",
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/desktop\/chat\/?$/,
+    capability: "model/Gateway proxy",
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/desktop\/chats\/?$/,
+    capability: "chat persistence",
+  },
+  {
+    method: "GET",
+    pattern: /^\/api\/desktop\/chats\/[^/]+\/?$/,
+    capability: "chat read",
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/desktop\/chats\/[^/]+\/messages\/?$/,
+    capability: "chat append",
+  },
+  {
+    method: "POST",
+    pattern: /^\/api\/desktop\/usage\/?$/,
+    capability: "usage reporting",
+  },
 ];
 
 /** Fail-closed check. Sessions/chats/usage business logic is reused from
  * lib/db — only ROUTE exposure is restricted, never duplicated. */
-export function isAllowedDesktopRoute(method: string, pathname: string): boolean {
+export function isAllowedDesktopRoute(
+  method: string,
+  pathname: string,
+): boolean {
   return DESKTOP_BACKEND_ALLOWED_ROUTES.some(
     (r) => r.method === method && r.pattern.test(pathname),
   );
@@ -71,7 +102,9 @@ export function createDesktopModelProxy(options: {
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     const userId = await options.authenticate(token);
     if (!userId) {
-      return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+      });
     }
 
     const upstreamHeaders: Record<string, string> = {
@@ -84,13 +117,16 @@ export function createDesktopModelProxy(options: {
       upstreamHeaders[h] = undefined as never;
     }
 
-    const upstream = await fetchImpl(`${options.gatewayBaseURL}/chat/completions`, {
-      method: "POST",
-      headers: upstreamHeaders,
-      body: await req.text(),
-      // Propagate client aborts (Stop button) to the Gateway request.
-      signal: req.signal,
-    });
+    const upstream = await fetchImpl(
+      `${options.gatewayBaseURL}/chat/completions`,
+      {
+        method: "POST",
+        headers: upstreamHeaders,
+        body: await req.text(),
+        // Propagate client aborts (Stop button) to the Gateway request.
+        signal: req.signal,
+      },
+    );
 
     const headers = new Headers();
     for (const h of ["content-type", "transfer-encoding"]) {

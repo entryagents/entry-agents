@@ -3,11 +3,7 @@ import { isFriendlyChatErrorText } from "./friendly-error";
 
 describe("isFriendlyChatErrorText", () => {
   test("matches an exact friendly error string", () => {
-    expect(
-      isFriendlyChatErrorText(
-        "The request was stopped.",
-      ),
-    ).toBe(true);
+    expect(isFriendlyChatErrorText("The request was stopped.")).toBe(true);
   });
 
   test("matches with surrounding whitespace", () => {

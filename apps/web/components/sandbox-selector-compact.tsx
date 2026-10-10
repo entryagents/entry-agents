@@ -40,7 +40,8 @@ export const SANDBOX_OPTIONS: SandboxOption[] =
     description: provider.description,
   }));
 
-export const DEFAULT_SANDBOX_TYPE: SandboxType = DEFAULT_SANDBOX_PROVIDER as SandboxType;
+export const DEFAULT_SANDBOX_TYPE: SandboxType =
+  DEFAULT_SANDBOX_PROVIDER as SandboxType;
 
 interface SandboxSelectorCompactProps {
   value: SandboxType;
