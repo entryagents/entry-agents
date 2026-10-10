@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realDbSessions from "@/lib/db/sessions";
 
 type ChatRecord = { id: string };
 type MessageRecord = {
@@ -10,6 +11,7 @@ let chats: ChatRecord[] = [];
 let messagesByChatId: Record<string, MessageRecord[]> = {};
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatsBySessionId: async () => chats,
   getChatMessages: async (chatId: string) => messagesByChatId[chatId] ?? [],
 }));

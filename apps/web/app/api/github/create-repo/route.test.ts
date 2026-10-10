@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
 
 mock.module("server-only", () => ({}));
 
@@ -11,6 +12,7 @@ type AuthSession = {
 let authSession: AuthSession;
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => authSession,
 }));
 

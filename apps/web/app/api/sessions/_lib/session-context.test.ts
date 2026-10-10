@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+import * as realDbSessions from "@/lib/db/sessions";
 
 type AuthSession = { user: { id: string } } | null;
 
@@ -27,10 +29,12 @@ let chatRecord: ChatRecord | null = {
 };
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => authSession,
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getSessionById: async () => sessionRecord,
   getChatById: async () => chatRecord,
 }));

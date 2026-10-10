@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realAiModule from "ai";
 import type { WebAgentUIMessage } from "@/app/types";
+import * as realDbSessions from "@/lib/db/sessions";
 
 let upsertResult: { status: "inserted" | "updated" | "conflict" } = {
   status: "inserted",
@@ -15,6 +16,7 @@ mock.module("ai", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   upsertChatMessageScoped: upsertSpy,
 }));
 

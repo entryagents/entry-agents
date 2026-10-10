@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realTelegramAlerts from "./telegram-alerts";
 
 type RedisOptions = Record<string, unknown>;
 type RedisTransactionResult = [Error | null, unknown];
@@ -46,6 +47,7 @@ mock.module("ioredis", () => ({
 }));
 
 mock.module("./telegram-alerts", () => ({
+  ...realTelegramAlerts,
   sendTelegramMessage: mock(async (text: string) => {
     telegramState.sentMessages.push(text);
     return true;

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realDbSessions from "@/lib/db/sessions";
 
 type AuthSession = { user: { id: string } } | null;
 
@@ -17,6 +19,7 @@ const deletedShareChatIds: string[] = [];
 
 function registerRouteMocks() {
   mock.module("@/app/api/sessions/_lib/session-context", () => ({
+    ...realLibSessionContext,
     requireAuthenticatedUser: async () =>
       currentSession
         ? {
@@ -80,6 +83,7 @@ function registerRouteMocks() {
   }));
 
   mock.module("@/lib/db/sessions", () => ({
+    ...realDbSessions,
     getShareByChatId: async () => shareRecord,
     createShareIfNotExists: async (input: { id: string; chatId: string }) => {
       createShareInputs.push(input);

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+import * as realDbUserPreferences from "@/lib/db/user-preferences";
 
 let currentSession: {
   authProvider?: "vercel" | "github";
@@ -25,10 +27,12 @@ const preferencesState = {
 const updateCalls: Array<Record<string, unknown>> = [];
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => currentSession,
 }));
 
 mock.module("@/lib/db/user-preferences", () => ({
+  ...realDbUserPreferences,
   getUserPreferences: async (_userId: string) => preferencesState,
   updateUserPreferences: async (
     _userId: string,

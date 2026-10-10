@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realAuthConfig from "@/lib/auth/config";
+import * as realDbClient from "@/lib/db/client";
+import * as realDbSchema from "@/lib/db/schema";
 
 let getAccessTokenResult: { accessToken?: string | null } | null;
 let getAccessTokenError: Error | null;
@@ -22,6 +25,7 @@ mock.module("next/headers", () => ({
 }));
 
 mock.module("@/lib/auth/config", () => ({
+  ...realAuthConfig,
   auth: {
     api: {
       getAccessToken: getAccessTokenSpy,
@@ -30,10 +34,12 @@ mock.module("@/lib/auth/config", () => ({
 }));
 
 mock.module("@/lib/db/client", () => ({
+  ...realDbClient,
   db: {},
 }));
 
 mock.module("@/lib/db/schema", () => ({
+  ...realDbSchema,
   accounts: {},
 }));
 

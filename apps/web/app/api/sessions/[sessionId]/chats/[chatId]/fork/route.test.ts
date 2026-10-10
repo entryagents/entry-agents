@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realDbSessions from "@/lib/db/sessions";
 
 type AuthResult =
   | {
@@ -76,11 +78,13 @@ const forkCalls: Array<{
 }> = [];
 
 mock.module("@/app/api/sessions/_lib/session-context", () => ({
+  ...realLibSessionContext,
   requireAuthenticatedUser: async () => authResult,
   requireOwnedSessionChat: async () => ownedSessionChatResult,
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatById: async (chatId: string) => {
     getChatByIdCalls.push(chatId);
     return existingChat;

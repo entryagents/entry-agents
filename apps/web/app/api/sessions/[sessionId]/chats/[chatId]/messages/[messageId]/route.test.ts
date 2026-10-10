@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
 
 type AuthResult =
   | {
@@ -58,6 +61,7 @@ let deleteResult: DeleteMessageResult = {
 const deleteCalls: Array<{ chatId: string; messageId: string }> = [];
 
 mock.module("@/app/api/sessions/_lib/session-context", () => ({
+  ...realLibSessionContext,
   requireAuthenticatedUser: async () => authResult,
   requireOwnedSessionChat: async () => ownedSessionChatResult,
 }));
@@ -65,6 +69,7 @@ mock.module("@/app/api/sessions/_lib/session-context", () => ({
 let mockWorkflowStatus = "running";
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   deleteChatMessageAndFollowing: async (chatId: string, messageId: string) => {
     deleteCalls.push({ chatId, messageId });
     return deleteResult;
@@ -81,6 +86,7 @@ mock.module("workflow/api", () => ({
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => currentAuthSession,
 }));
 

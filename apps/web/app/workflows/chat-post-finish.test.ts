@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { WebAgentUIMessage } from "@/app/types";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realDbUsage from "@/lib/db/usage";
+import * as realDiffComputeDiff from "@/lib/diff/compute-diff";
 
 // ── Mutable spy state ──────────────────────────────────────────────
 
@@ -56,6 +59,7 @@ const spies = {
 // ── Module mocks (must appear before the module-under-test import) ──
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   claimChatActiveStreamId: spies.claimChatActiveStreamId,
   compareAndSetChatActiveStreamId: spies.compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists: spies.createChatMessageIfNotExists,
@@ -68,6 +72,7 @@ mock.module("@/lib/db/sessions", () => ({
 }));
 
 mock.module("@/lib/db/usage", () => ({
+  ...realDbUsage,
   recordUsage: spies.recordUsage,
 }));
 
@@ -81,6 +86,7 @@ mock.module("@open-agents/sandbox", () => ({
 }));
 
 mock.module("@/lib/diff/compute-diff", () => ({
+  ...realDiffComputeDiff,
   computeAndCacheDiff: spies.computeAndCacheDiff,
 }));
 

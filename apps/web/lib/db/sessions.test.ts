@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realClient from "./client";
 
 type UpsertMode = "inserted" | "updated" | "conflict";
 
@@ -65,6 +66,7 @@ const fakeDb = {
 };
 
 mock.module("./client", () => ({
+  ...realClient,
   db: fakeDb,
 }));
 

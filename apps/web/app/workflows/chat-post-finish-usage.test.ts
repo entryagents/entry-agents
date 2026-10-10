@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { LanguageModelUsage } from "ai";
 import type { WebAgentUIMessage } from "@/app/types";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realDbUsage from "@/lib/db/usage";
+import * as realDbWorkflowRuns from "@/lib/db/workflow-runs";
 
 function makeUsage(
   partial: Partial<LanguageModelUsage> &
@@ -46,6 +49,7 @@ const spies = {
 };
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   claimChatActiveStreamId: mock(() => Promise.resolve(true)),
   compareAndSetChatActiveStreamId: mock(() => Promise.resolve(true)),
   createChatMessageIfNotExists: mock(() => Promise.resolve(undefined)),
@@ -63,10 +67,12 @@ mock.module("@/lib/sandbox/lifecycle", () => ({
 }));
 
 mock.module("@/lib/db/usage", () => ({
+  ...realDbUsage,
   recordUsage: spies.recordUsage,
 }));
 
 mock.module("@/lib/db/workflow-runs", () => ({
+  ...realDbWorkflowRuns,
   recordWorkflowRun: spies.recordWorkflowRun,
 }));
 

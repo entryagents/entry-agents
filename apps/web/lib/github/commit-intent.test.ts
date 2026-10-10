@@ -1,6 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
+import * as realUsers from "./users";
 
 mock.module("./users", () => ({
+  ...realUsers,
   getGitHubUserProfile: async () => null,
 }));
 

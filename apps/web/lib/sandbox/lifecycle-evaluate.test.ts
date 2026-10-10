@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realDbSessions from "@/lib/db/sessions";
 
 mock.module("server-only", () => ({}));
 
@@ -44,6 +45,7 @@ const spies = {
 };
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatsBySessionId: spies.getChatsBySessionId,
   getSessionById: spies.getSessionById,
   updateSession: spies.updateSession,

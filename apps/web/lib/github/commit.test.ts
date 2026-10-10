@@ -1,10 +1,12 @@
 import { describe, expect, mock, test } from "bun:test";
 import type { CommitIntentFile } from "./commit-intent";
 import type { CommitOctokit } from "./commit";
+import * as realUsers from "./users";
 
 mock.module("server-only", () => ({}));
 
 mock.module("./users", () => ({
+  ...realUsers,
   getGitHubUserProfile: async () => null,
 }));
 

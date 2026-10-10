@@ -1,5 +1,8 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realAiModule from "ai";
+import * as realChatCreateCancelableReadableStream from "@/lib/chat/create-cancelable-readable-stream";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+import * as realDbSessions from "@/lib/db/sessions";
 
 // ── Mutable state ──────────────────────────────────────────────────
 
@@ -77,14 +80,17 @@ mock.module("workflow/api", () => ({
 }));
 
 mock.module("@/lib/chat/create-cancelable-readable-stream", () => ({
+  ...realChatCreateCancelableReadableStream,
   createCancelableReadableStream: (stream: ReadableStream) => stream,
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => currentAuthSession,
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   getChatById: async () => chatRecord,
   getSessionById: async () => sessionRecord,
   updateChatActiveStreamId: spies.updateChatActiveStreamId,

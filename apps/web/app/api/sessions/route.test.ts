@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { VercelProjectSelection } from "@/lib/vercel/types";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+import * as realLibRandomCity from "@/lib/random-city";
+import * as realDbUserPreferences from "@/lib/db/user-preferences";
+import * as realDbVercelProjectLinks from "@/lib/db/vercel-project-links";
+import * as realDbSessions from "@/lib/db/sessions";
 
 let currentSession: {
   authProvider?: "vercel" | "github";
@@ -28,14 +33,17 @@ const provisioningKickCalls: string[] = [];
 const originalNodeEnv = process.env.NODE_ENV;
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => currentSession,
 }));
 
 mock.module("@/lib/random-city", () => ({
+  ...realLibRandomCity,
   getRandomCityName: () => "Oslo",
 }));
 
 mock.module("@/lib/db/user-preferences", () => ({
+  ...realDbUserPreferences,
   getUserPreferences: async () => ({
     defaultModelId: "anthropic/claude-haiku-4.5",
     defaultSubagentModelId: null,
@@ -52,6 +60,7 @@ mock.module("@/lib/db/user-preferences", () => ({
 }));
 
 mock.module("@/lib/db/vercel-project-links", () => ({
+  ...realDbVercelProjectLinks,
   getVercelProjectLinkByRepo: async () => savedLink,
   upsertVercelProjectLink: async (input: Record<string, unknown>) => {
     upsertCalls.push(input);
@@ -74,6 +83,7 @@ mock.module("@/lib/vercel/projects", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   countSessionsByUserId: async () => existingSessionCount,
   createSessionWithInitialChat: async (input: {
     session: Record<string, unknown>;

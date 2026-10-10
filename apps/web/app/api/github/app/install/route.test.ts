@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { NextRequest } from "next/server";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+import * as realDbInstallations from "@/lib/db/installations";
 
 let authSession: {
   authProvider: "vercel";
@@ -15,6 +17,7 @@ mock.module("arctic", () => ({
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => authSession,
 }));
 
@@ -30,6 +33,7 @@ mock.module("@/lib/github/users", () => ({
 }));
 
 mock.module("@/lib/db/installations", () => ({
+  ...realDbInstallations,
   getInstallationsByUserId: async () => installations,
 }));
 

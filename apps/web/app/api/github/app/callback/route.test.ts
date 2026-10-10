@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
 
 let authSession: { user: { id: string } } | null;
 let cookieValues: Record<string, string>;
@@ -25,6 +26,7 @@ mock.module("next/headers", () => ({
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => authSession,
 }));
 

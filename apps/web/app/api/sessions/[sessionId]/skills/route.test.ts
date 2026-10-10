@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { SkillMetadata } from "@open-agents/agent";
+import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realLibSkillsCache from "@/lib/skills-cache";
+import * as realSandboxUtils from "@/lib/sandbox/utils";
 
 mock.module("server-only", () => ({}));
 
@@ -36,6 +40,7 @@ let isAuthenticated = true;
 
 function registerRouteMocks() {
   mock.module("@/app/api/sessions/_lib/session-context", () => ({
+    ...realLibSessionContext,
     requireAuthenticatedUser: async () =>
       isAuthenticated
         ? {
@@ -81,6 +86,7 @@ function registerRouteMocks() {
   }));
 
   mock.module("@/lib/db/sessions", () => ({
+    ...realDbSessions,
     updateSession: async (
       _sessionId: string,
       patch: Record<string, unknown>,
@@ -94,6 +100,7 @@ function registerRouteMocks() {
   }));
 
   mock.module("@/lib/skills-cache", () => ({
+    ...realLibSkillsCache,
     getCachedSkills: async (
       sessionId: string,
       sandboxState: TestSandboxState | null,
@@ -115,6 +122,7 @@ function registerRouteMocks() {
   }));
 
   mock.module("@/lib/sandbox/utils", () => ({
+    ...realSandboxUtils,
     clearSandboxState: () => null,
     clearUnavailableSandboxState: () => null,
     hasRuntimeSandboxState: (state: TestSandboxState | null) => {

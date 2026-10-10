@@ -1,5 +1,12 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realAiModule from "ai";
+import * as realChatCreateCancelableReadableStream from "@/lib/chat/create-cancelable-readable-stream";
+import * as realDbSessions from "@/lib/db/sessions";
+import * as realDbUserPreferences from "@/lib/db/user-preferences";
+import * as realLibSkillsCache from "@/lib/skills-cache";
+import * as realSandboxConfig from "@/lib/sandbox/config";
+import * as realSandboxUtils from "@/lib/sandbox/utils";
+import * as realSessionGetServerSession from "@/lib/session/get-server-session";
 
 mock.module("server-only", () => ({}));
 
@@ -144,6 +151,7 @@ mock.module("@/app/workflows/chat", () => ({
 }));
 
 mock.module("@/lib/chat/create-cancelable-readable-stream", () => ({
+  ...realChatCreateCancelableReadableStream,
   createCancelableReadableStream: (stream: ReadableStream) => stream,
 }));
 
@@ -168,6 +176,7 @@ mock.module("@open-agents/sandbox", () => ({
 }));
 
 mock.module("@/lib/db/sessions", () => ({
+  ...realDbSessions,
   claimChatActiveStreamId: claimChatActiveStreamIdSpy,
   compareAndSetChatActiveStreamId: compareAndSetChatActiveStreamIdSpy,
   countUserMessagesByUserId: async () => existingUserMessageCount,
@@ -187,10 +196,12 @@ mock.module("@/lib/db/sessions", () => ({
 }));
 
 mock.module("@/lib/db/user-preferences", () => ({
+  ...realDbUserPreferences,
   getUserPreferences: async () => preferencesState,
 }));
 
 mock.module("@/lib/skills-cache", () => ({
+  ...realLibSkillsCache,
   getCachedSkills: async () => cachedSkillsState,
   setCachedSkills: async () => {},
 }));
@@ -200,6 +211,7 @@ mock.module("@/lib/github/token", () => ({
 }));
 
 mock.module("@/lib/sandbox/config", () => ({
+  ...realSandboxConfig,
   DEFAULT_SANDBOX_PORTS: [],
 }));
 
@@ -208,10 +220,12 @@ mock.module("@/lib/sandbox/lifecycle", () => ({
 }));
 
 mock.module("@/lib/sandbox/utils", () => ({
+  ...realSandboxUtils,
   isSandboxActive: () => isSandboxActive,
 }));
 
 mock.module("@/lib/session/get-server-session", () => ({
+  ...realSessionGetServerSession,
   getServerSession: async () => currentAuthSession,
 }));
 
