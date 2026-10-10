@@ -1,5 +1,5 @@
-import type { Sandbox } from "@open-agents/sandbox";
-import { gateway } from "@open-agents/agent";
+import type { Sandbox } from "@entry-agents/sandbox";
+import { gateway } from "@entry-agents/agent";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { eq } from "drizzle-orm";

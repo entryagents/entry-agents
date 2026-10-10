@@ -1,6 +1,6 @@
 "use client";
 
-import { formatTokens } from "@open-agents/shared";
+import { formatTokens } from "@entry-agents/shared";
 import { Loader2, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import {

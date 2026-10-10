@@ -1,8 +1,8 @@
 import "server-only";
 
 import path from "node:path";
-import type { Sandbox } from "@open-agents/sandbox";
-import { seedBuiltinSkills } from "@open-agents/agent";
+import type { Sandbox } from "@entry-agents/sandbox";
+import { seedBuiltinSkills } from "@entry-agents/agent";
 import { resolveSandboxHomeDirectory } from "@/lib/sandbox/home-directory";
 
 const PROJECT_SKILL_BASE_FOLDERS = [".claude", ".agents"];

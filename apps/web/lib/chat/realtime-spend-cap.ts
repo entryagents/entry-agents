@@ -1,6 +1,6 @@
 import { estimateModelUsageCost, type AvailableModelCost } from "@/lib/models";
 import type { LanguageModelUsage } from "ai";
-import type { SubagentBudgetGuard } from "@open-agents/agent";
+import type { SubagentBudgetGuard } from "@entry-agents/agent";
 
 /**
  * REAL-TIME window/balance spend capping (owner 2026-09-15: "make the

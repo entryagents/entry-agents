@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { isKnownSandboxType } from "@open-agents/sandbox/registry.js";
-import { getSandboxProvider } from "@open-agents/sandbox";
+import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
+import { getSandboxProvider } from "@entry-agents/sandbox";
 import { SANDBOX_MIGRATION_LEAD_MS } from "./config";
 import { isSandboxMigrationDue } from "./lifecycle";
 import {

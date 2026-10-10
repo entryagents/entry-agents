@@ -1,6 +1,6 @@
 "use client";
 
-import { formatTokens } from "@open-agents/shared";
+import { formatTokens } from "@entry-agents/shared";
 import { AlertTriangle, Loader2, Search } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";

@@ -197,7 +197,7 @@ describe("EntryAgentHost native runtime", () => {
     });
     await host.start();
     const sandbox =
-      host.sandboxInstance as import("@open-agents/sandbox").Sandbox & {
+      host.sandboxInstance as import("@entry-agents/sandbox").Sandbox & {
         execDetached?: (
           c: string,
           cwd: string,

@@ -125,7 +125,7 @@ pass**. The Desktop Backend remains "apps/web deployed twice" (Phase 3 recommend
 
 `extraTools` is the designed injection point; the host accepts a caller-built toolset.
 Entry's MCP implementation supports http/sse transports host-side (stdio via the same
-`@open-agents/agent` machinery in any Node process). Not exercised against a live MCP
+`@entry-agents/agent` machinery in any Node process). Not exercised against a live MCP
 server in this phase — **NOT TESTED**, no fake coverage.
 
 ## 9. Security summary — where every secret lives

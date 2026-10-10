@@ -11,7 +11,7 @@ import "server-only";
  */
 export async function deleteModalSessionVolume(volumeName: string) {
   const { deleteModalVolume, createModalClient } =
-    await import("@open-agents/sandbox");
+    await import("@entry-agents/sandbox");
   const client = await createModalClient();
   await deleteModalVolume(client, volumeName);
 }

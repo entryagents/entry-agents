@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
         browser: "./vendored-web/lib/skills/global-skill-refs.ts",
         default: "./vendored-web/lib/skills/global-skill-refs.ts",
       },
-      "@open-agents/sandbox": {
+      "@entry-agents/sandbox": {
         browser: "./types/sandbox-state.d.ts",
         default: "./types/sandbox-state.d.ts",
       },

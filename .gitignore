@@ -42,9 +42,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # ide
 .claude
 
-# open-agents dev server artifacts
-.open-agents-dev-server-state.json
-.open-agents-dev-server-*.pid
+# entry-agents dev server artifacts
+.entry-agents-dev-server-state.json
+.entry-agents-dev-server-*.pid
 .env*
 
 # Agent tool scratch (web-fetch cache etc) -- never commit

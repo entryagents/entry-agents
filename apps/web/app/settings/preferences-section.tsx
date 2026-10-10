@@ -7,7 +7,7 @@ import {
   DEFAULT_SANDBOX_TYPE,
   type SandboxType,
 } from "@/components/sandbox-selector-compact";
-import { listUserSelectableSandboxProviders } from "@open-agents/sandbox/registry.js";
+import { listUserSelectableSandboxProviders } from "@entry-agents/sandbox/registry.js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

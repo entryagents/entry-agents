@@ -1,8 +1,8 @@
 "use client";
 
-import type { TaskPendingToolCall } from "@open-agents/agent";
-import { formatTokens, toRelativePath } from "@open-agents/shared";
-import type { ToolRenderState } from "@open-agents/shared/lib/tool-state";
+import type { TaskPendingToolCall } from "@entry-agents/agent";
+import { formatTokens, toRelativePath } from "@entry-agents/shared";
+import type { ToolRenderState } from "@entry-agents/shared/lib/tool-state";
 import {
   ShieldCheck,
   Bot,

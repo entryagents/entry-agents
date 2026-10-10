@@ -25,7 +25,7 @@
       "@/lib/skills/global-skill-refs": [
         "./vendored-web/lib/skills/global-skill-refs.ts"
       ],
-      "@open-agents/sandbox": ["./types/sandbox-state.d.ts"]
+      "@entry-agents/sandbox": ["./types/sandbox-state.d.ts"]
     }
   },
   "include": [

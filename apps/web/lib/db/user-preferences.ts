@@ -4,7 +4,7 @@ import type { SandboxType } from "@/components/sandbox-selector-compact";
 import {
   DEFAULT_SANDBOX_PROVIDER,
   isUserSelectableSandboxType,
-} from "@open-agents/sandbox/registry.js";
+} from "@entry-agents/sandbox/registry.js";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import {
   normalizeGlobalSkillRefs,

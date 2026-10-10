@@ -1,4 +1,4 @@
-import type { Sandbox } from "@open-agents/sandbox";
+import type { Sandbox } from "@entry-agents/sandbox";
 
 /**
  * Top-level directory chat image attachments get offloaded into (see

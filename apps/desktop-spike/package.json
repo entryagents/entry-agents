@@ -1,5 +1,5 @@
 {
-  "name": "@open-agents/entry-desktop-spike",
+  "name": "@entry-agents/entry-desktop-spike",
   "private": true,
   "type": "module",
   "scripts": {
@@ -7,8 +7,8 @@
     "electron": "electron electron-dist/entry-electron-main.cjs"
   },
   "dependencies": {
-    "@open-agents/agent": "workspace:*",
-    "@open-agents/sandbox": "workspace:*",
+    "@entry-agents/agent": "workspace:*",
+    "@entry-agents/sandbox": "workspace:*",
     "nanoid": "^5.0.0",
     "postgres": "^3.4.0",
     "tsx": "^4.19.2"

@@ -1,12 +1,12 @@
 "use client";
 
 import type { UseChatHelpers } from "@ai-sdk/react";
-import type { SandboxState } from "@open-agents/sandbox";
+import type { SandboxState } from "@entry-agents/sandbox";
 import {
   DEFAULT_SANDBOX_PROVIDER,
   isKnownSandboxType,
   USER_SELECTABLE_SANDBOX_TYPES,
-} from "@open-agents/sandbox/registry.js";
+} from "@entry-agents/sandbox/registry.js";
 import {
   createContext,
   type ReactNode,

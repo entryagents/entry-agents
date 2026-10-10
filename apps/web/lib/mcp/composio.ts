@@ -1,4 +1,4 @@
-import type { McpServerConfig } from "@open-agents/agent";
+import type { McpServerConfig } from "@entry-agents/agent";
 
 // Wires Composio (https://composio.dev) in as one more MCP server for
 // the chat request path, on the exact same generic connect/merge

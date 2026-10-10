@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 // "ai", and mock.module replaces the whole module namespace for every
 // consumer in this test file, not just this file's own import.
 import * as realAiModule from "ai";
-import * as realAgentModule from "@open-agents/agent";
+import * as realAgentModule from "@entry-agents/agent";
 import * as realSessionGetServerSession from "@/lib/session/get-server-session";
 
 const generateTextCalls: Array<{
@@ -44,12 +44,12 @@ mock.module("ai", () => ({
   },
 }));
 
-// route.ts's `gateway` comes from "@open-agents/agent" (it's
+// route.ts's `gateway` comes from "@entry-agents/agent" (it's
 // packages/agent/models.ts's sharedProvider re-export), not from "ai"
 // -- mocking "ai".gateway alone never touches the function route.ts
 // actually calls, and the real one needs GATEWAY_BASE_URL/GATEWAY_API_KEY
 // env vars this test doesn't set.
-mock.module("@open-agents/agent", () => ({
+mock.module("@entry-agents/agent", () => ({
   ...realAgentModule,
   gateway: (modelId: string) => modelId,
 }));

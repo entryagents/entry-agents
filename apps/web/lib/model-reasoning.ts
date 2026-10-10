@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ProviderOptionsByProvider } from "@open-agents/agent";
+import type { ProviderOptionsByProvider } from "@entry-agents/agent";
 import { isClaudeModelId, isGeminiModelId } from "@/lib/models";
 
 /**

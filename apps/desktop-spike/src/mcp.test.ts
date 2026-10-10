@@ -45,7 +45,7 @@ describe("Phase 6 Step 12: MCP integration", () => {
   }, 10_000);
 
   test("createMcpToolSet degrades cleanly when a server is unreachable", async () => {
-    const { createMcpToolSet } = await import("@open-agents/agent");
+    const { createMcpToolSet } = await import("@entry-agents/agent");
     const result = await createMcpToolSet([
       {
         name: "unreachable",

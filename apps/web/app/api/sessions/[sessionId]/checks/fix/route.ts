@@ -7,7 +7,7 @@ import { getUserGitHubToken } from "@/lib/github/token";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { Octokit } from "@octokit/rest";
 import { generateText } from "ai";
-import { gateway } from "@open-agents/agent";
+import { gateway } from "@entry-agents/agent";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 
 type RouteContext = {

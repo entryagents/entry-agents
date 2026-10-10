@@ -94,7 +94,7 @@ mock.module("@/lib/db/sessions", () => ({
   getChatsBySessionId: mock(async () => []),
 }));
 
-mock.module("@open-agents/sandbox", () => ({
+mock.module("@entry-agents/sandbox", () => ({
   connectSandbox: spies.connectSandbox,
   packWorkspacePayload: spies.packWorkspacePayload,
   restoreWorkspacePayload: spies.restoreWorkspacePayload,

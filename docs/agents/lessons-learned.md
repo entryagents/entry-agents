@@ -671,7 +671,7 @@ surface: it statically imported `loadHumanEvalSubset`,
 `HUMANEVAL_SUITE_VERSION`, and `runHumanEvalTask` from
 `lib/benchmarks/humaneval-runner.ts`, which touches `node:child_process`
 (spawns `python3` to grade candidate solutions), `node:fs/promises`,
-`node:os`, `node:path`, and `@open-agents/sandbox`'s `connectLocal`
+`node:os`, `node:path`, and `@entry-agents/sandbox`'s `connectLocal`
 (itself pulling in `@vercel/sandbox` transitively via the package's
 barrel `index.ts`). Deploy failed with six separate
 `workflow-node-module-error` diagnostics pointing at that one file.
@@ -691,7 +691,7 @@ at call time instead of importing it statically at the top of the file.
 Lesson (generalizing beyond just DB access, which is how this rule was
 first written up): **any** Node-only API -- `fs`, `path`, `os`,
 `child_process`, or a package that transitively depends on one of
-those (like `@vercel/sandbox` via `@open-agents/sandbox`) -- must never
+those (like `@vercel/sandbox` via `@entry-agents/sandbox`) -- must never
 be reachable via a static top-of-file import anywhere in a
 `"use workflow"` file's module graph, including inside files it imports
 that *look* pure but aren't. `tsc --noEmit` does not catch this at all;
@@ -1281,7 +1281,7 @@ into the real chat request path.
   API responses only ever return `hasHeaders: boolean`.
 - `lib/mcp/url-safety.ts`: SSRF guard for user-supplied server URLs.
   Two layers -- reuses `isAllowedWebUrl` (now exported from
-  `@open-agents/agent`, shared with `web_fetch`) for write-time
+  `@entry-agents/agent`, shared with `web_fetch`) for write-time
   protocol/literal-IP checks, plus a fresh `dns.lookup` resolution
   right before every real connection attempt to close the DNS-rebinding
   gap (a hostname that resolved public at save-time could resolve
@@ -1970,7 +1970,7 @@ connect-failure-increments-count, pack-failure-increments-count, first-failure-s
 already-migrating skip, and not-due-yet skip (doesn't touch the counter). Added 4 tests for
 `getMigrationRetryBackoffMs` in `lifecycle.test.ts`. Confirmed the new test file collides with
 `archive-session.test.ts`/`lifecycle-evaluate.test.ts` when run as a full directory glob in one
-`bun test` process (all three independently `mock.module` the same `@open-agents/sandbox` path,
+`bun test` process (all three independently `mock.module` the same `@entry-agents/sandbox` path,
 and Bun's mock registry isn't file-scoped) -- this is exactly why `pnpm test:isolated`
 (`scripts/test-isolated.ts`) spawns one `bun test <file>` process per file; confirmed all pass that
 way (matches CI). Not a real regression, just the same known class of issue.
@@ -2008,7 +2008,7 @@ even if every actual call site is safely inside a `"use step"` function. Fixed b
   a step, since it just computes a sleep duration), so it can never be a dynamic import; it has to
   be a *safe* static import instead. Moved its 4 unit tests to a new `migration-backoff.test.ts`.
 - `canOperateOnSandbox` (from `lib/sandbox/utils.ts`) stays a static import -- confirmed
-  dependency-free (only imports `config.ts` and a type from `@open-agents/sandbox`).
+  dependency-free (only imports `config.ts` and a type from `@entry-agents/sandbox`).
 
 Verified with a genuinely fresh local build (`rm -rf .next && next build`, bypassing the
 `db:migrate:apply` step per the skill's documented sandbox `DATABASE_URL` limitation) -- reproduced
@@ -2928,9 +2928,9 @@ change to just model and show all model price" (commit 6fdc801).
 ## 2026-09-17: Workflow SDK restricted-bundle regression — compaction sink in workflow scope
 
 - Symptom: after the 0056/0057 FK fix cleared the migration error, builds STILL failed at the workflow compile: 21 `workflow-node-module-error` violations (`path` x10, `node:fs/promises`, `node:child_process`, `node:async_hooks`, `postgres`, `nanoid`, plus `Could not resolve "pkce-challenge"` via @ai-sdk/mcp). Same SDK version (workflow 5.0.0-beta.40) had compiled the cd37cae graph clean two days earlier — Vercel-side enforcement changed, but the strictness is the SDK's documented direction, so fix forward, don't chase the flip.
-- Root cause: bfb15f5 put `runWithCompactionSink` (from `@open-agents/agent`) and `recordCompactionEvent` (from `@/lib/db/compaction`) as STATIC imports CALLED DIRECTLY in the `runAgentWorkflow` ("use workflow") body. The Workflow SDK's bundler pulls a statically-imported symbol's entire module graph into the restricted workflow bundle when referenced from workflow scope: async_hooks from compaction-telemetry, and via agent/index the WHOLE agent package (every tool's `path`/`fs`/`child_process` imports, skills, sandbox/local, mcp → pkce-challenge), plus postgres/nanoid from lib/db. Step-only static imports (e.g. `createMcpToolSet`, only referenced inside runAgentStep) were fine — the plugin only errors on builtins that SURVIVE tree-shaking in the emitted workflow chunk.
+- Root cause: bfb15f5 put `runWithCompactionSink` (from `@entry-agents/agent`) and `recordCompactionEvent` (from `@/lib/db/compaction`) as STATIC imports CALLED DIRECTLY in the `runAgentWorkflow` ("use workflow") body. The Workflow SDK's bundler pulls a statically-imported symbol's entire module graph into the restricted workflow bundle when referenced from workflow scope: async_hooks from compaction-telemetry, and via agent/index the WHOLE agent package (every tool's `path`/`fs`/`child_process` imports, skills, sandbox/local, mcp → pkce-challenge), plus postgres/nanoid from lib/db. Step-only static imports (e.g. `createMcpToolSet`, only referenced inside runAgentStep) were fine — the plugin only errors on builtins that SURVIVE tree-shaking in the emitted workflow chunk.
 - Fix: moved the sink INSIDE `runAgentStep` ("use step"): dynamic-import `runWithCompactionSink`/`recordCompactionEvent` (same pattern as resolveChatModelSelection/isUserAdmin in that file), and wrap the `webAgent.stream()` + toUIMessageStream for-await consumption in the sink. Per-step scoping preserved (suspend/resume between steps can't lose the ALS context); every emitCompactionEvent (main model + subagents) still fires inside the sink.
-- LESSON: the workflow function body may only call "use step" functions, Workflow SDK APIs, and pure helpers. Any static import from `@open-agents/agent`, `@/lib/db/*`, or anything touching Node built-ins must be a dynamic `await import()` INSIDE a "use step" function, never referenced from the workflow body. When a step needs to observe something happening inside it (like telemetry), wrap inside the step, not around the step call.
+- LESSON: the workflow function body may only call "use step" functions, Workflow SDK APIs, and pure helpers. Any static import from `@entry-agents/agent`, `@/lib/db/*`, or anything touching Node built-ins must be a dynamic `await import()` INSIDE a "use step" function, never referenced from the workflow body. When a step needs to observe something happening inside it (like telemetry), wrap inside the step, not around the step call.
 - Reproduced and verified locally: `pnpm exec next build` in apps/web went from 21 errors to `✓ Compiled workflows in 1.7s (129 steps, 5 workflows)` + full build EXIT=0.
 
 - **2026-09-17, metrics semantics must be explicit across Gateway and Entry:** Gateway `gw_metrics_*`.`tokens_input` is uncached-only after route normalization, with `tokens_cache_read`/`tokens_cache_write` separate. Entry `usage_events.input_tokens` is the full prompt total and `cached_input_tokens` is a detail. Gateway's headline incorrectly used uncached input + output, hiding most prompt traffic; fixed it to include cache reads/writes. Entry's usage UI now exposes cache-read tokens instead of hiding them. Never compare or reuse the two dashboards' token formulas without checking the raw field semantics.

@@ -61,11 +61,11 @@ const TOKENS_PER_MILLION = 1_000_000;
  * Deliberately duplicated here instead of importing the one in
  * packages/agent/models.ts: this file (apps/web/lib/models.ts) has zero
  * imports and is safe to pull into Client Component bundles (e.g. the
- * model picker). @open-agents/agent's barrel index.ts re-exports
+ * model picker). @entry-agents/agent's barrel index.ts re-exports
  * open-agent.ts -> tools/task.ts -> packages/sandbox, which requires
  * Node-only built-ins (stream/promises) that Next's Client Component SSR
  * webpack config can't resolve -- any *value* import from
- * "@open-agents/agent" (not just a `import type`) drags that whole graph
+ * "@entry-agents/agent" (not just a `import type`) drags that whole graph
  * into any client-reachable bundle and breaks the build. Confirmed
  * 2026-08-13: this exact failure when apps/web/lib/model-reasoning.ts
  * (imported by the Client Component session-chat-content.tsx) switched

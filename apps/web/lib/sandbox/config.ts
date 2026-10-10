@@ -4,7 +4,7 @@
  */
 
 import { isHobbyResourceProfile } from "../deployment/resource-profile.ts";
-import type { DriveMountConfig } from "@open-agents/sandbox";
+import type { DriveMountConfig } from "@entry-agents/sandbox";
 
 /**
  * Mount path for the session workspace drive. This is the same directory

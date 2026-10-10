@@ -11,7 +11,7 @@ mock.module("ai", () => ({
   tool: <T extends Record<string, unknown>>(definition: T) => definition,
 }));
 
-mock.module("@open-agents/sandbox", () => ({
+mock.module("@entry-agents/sandbox", () => ({
   connectSandbox: async (state: { sandboxId?: string }) => {
     if (!state.sandboxId) {
       throw new Error("Missing sandboxId in test sandbox state.");

@@ -368,7 +368,7 @@ mock.module("ai", () => ({
     }),
 }));
 
-mock.module("@open-agents/agent", () => ({}));
+mock.module("@entry-agents/agent", () => ({}));
 
 mock.module("@/lib/db/sessions", () => ({
   ...realDbSessions,

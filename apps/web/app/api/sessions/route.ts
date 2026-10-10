@@ -3,7 +3,7 @@ import {
   DEFAULT_SANDBOX_PROVIDER,
   isUserSelectableSandboxType,
   type SandboxProviderId,
-} from "@open-agents/sandbox/registry.js";
+} from "@entry-agents/sandbox/registry.js";
 import { checkBotProtection } from "@/lib/botid";
 import {
   createSessionWithInitialChat,
@@ -379,7 +379,7 @@ export async function POST(req: Request) {
         globalSkillRefs: preferences.globalSkillRefs,
         sandboxState: {
           type: sandboxType,
-        } as import("@open-agents/sandbox").SandboxState,
+        } as import("@entry-agents/sandbox").SandboxState,
         lifecycleState: "provisioning",
         lifecycleVersion: 0,
       },

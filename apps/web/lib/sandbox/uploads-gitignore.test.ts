@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { Sandbox } from "@open-agents/sandbox";
+import type { Sandbox } from "@entry-agents/sandbox";
 import { ensureUploadsGitignored } from "./uploads-gitignore";
 
 /**

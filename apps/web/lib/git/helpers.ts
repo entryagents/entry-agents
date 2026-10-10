@@ -1,5 +1,5 @@
 import { generateText } from "ai";
-import { gateway } from "@open-agents/agent";
+import { gateway } from "@entry-agents/agent";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 
 export const SAFE_BRANCH_PATTERN = /^[\w\-/.]+$/;

@@ -1,5 +1,5 @@
-import { openAgent } from "@open-agents/agent";
-import { connectSandbox, type Sandbox } from "@open-agents/sandbox";
+import { openAgent } from "@entry-agents/agent";
+import { connectSandbox, type Sandbox } from "@entry-agents/sandbox";
 import type { LanguageModelUsage, ModelMessage } from "ai";
 import { addLanguageModelUsage } from "@/app/workflows/usage-utils";
 import { TERMINAL_BENCH_TASK_FILES } from "./terminal-bench-smoke-task";

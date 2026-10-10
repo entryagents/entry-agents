@@ -3,9 +3,9 @@ import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context"
 import * as realDbSessions from "@/lib/db/sessions";
 
 const DEV_SERVER_PID_FILE =
-  "/vercel/sandbox/apps/web/.open-agents-dev-server-3000.pid";
+  "/vercel/sandbox/apps/web/.entry-agents-dev-server-3000.pid";
 const DEV_SERVER_STATE_FILE =
-  "/vercel/sandbox/.open-agents-dev-server-state.json";
+  "/vercel/sandbox/.entry-agents-dev-server-state.json";
 const RUNNING_PID = "4242";
 
 const currentSessionRecord = {
@@ -191,7 +191,7 @@ const execDetachedMock = mock(async (command: string, cwd: string) => {
   lastLaunchCwd = cwd;
 
   const pidFilePath = command.match(
-    /> '([^']+\.open-agents-dev-server-[0-9]+\.pid)'/,
+    /> '([^']+\.entry-agents-dev-server-[0-9]+\.pid)'/,
   )?.[1];
   if (pidFilePath) {
     setMockFile(pidFilePath, `${RUNNING_PID}\n`);
@@ -225,7 +225,7 @@ mock.module("@/app/api/sessions/_lib/session-context", () => ({
   requireOwnedSession: requireOwnedSessionMock,
 }));
 
-mock.module("@open-agents/sandbox", () => ({
+mock.module("@entry-agents/sandbox", () => ({
   connectSandbox: connectSandboxMock,
 }));
 
@@ -713,7 +713,7 @@ describe("relaunchDevServerAfterMigration", () => {
   test("does nothing when no dev server was running before migration", async () => {
     const { relaunchDevServerAfterMigration } = await routeModulePromise;
 
-    // No .open-agents-dev-server-state.json in the (freshly restored)
+    // No .entry-agents-dev-server-state.json in the (freshly restored)
     // workspace -- readFile throws, readPersistedDevServerTarget treats
     // that as "nothing persisted".
     const result = await relaunchDevServerAfterMigration(

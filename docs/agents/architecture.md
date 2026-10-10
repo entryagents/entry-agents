@@ -30,8 +30,8 @@ The `task` tool delegates to specialized subagents:
 apps/
   web/           # Web interface
 packages/
-  agent/         # Core agent logic (@open-agents/agent)
-  sandbox/       # Sandbox abstraction (@open-agents/sandbox)
-  shared/        # Shared utilities (@open-agents/shared)
+  agent/         # Core agent logic (@entry-agents/agent)
+  sandbox/       # Sandbox abstraction (@entry-agents/sandbox)
+  shared/        # Shared utilities (@entry-agents/shared)
   tsconfig/      # Shared TypeScript configs
 ```

@@ -9,7 +9,7 @@ import {
   pruneMessages,
   type UIMessageChunk,
 } from "ai";
-import type { SandboxState } from "@open-agents/sandbox";
+import type { SandboxState } from "@entry-agents/sandbox";
 import {
   reportUndefined,
   withoutUndefined,
@@ -22,7 +22,7 @@ import {
   type OpenAgentCallOptions,
   type VercelApiResult,
   type VercelCliToolResult,
-} from "@open-agents/agent";
+} from "@entry-agents/agent";
 import { FatalError, getWorkflowMetadata, getWritable } from "workflow";
 import { getRun } from "workflow/api";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
@@ -1294,7 +1294,7 @@ async function performAgentCommitAndPush(params: {
 }> {
   "use step";
 
-  const { connectSandbox } = await import("@open-agents/sandbox");
+  const { connectSandbox } = await import("@entry-agents/sandbox");
   const { performAutoCommit } = await import("@/lib/chat/auto-commit-direct");
 
   const sandbox = await connectSandbox(params.sandboxState);
@@ -1486,7 +1486,7 @@ async function snapshotSandboxStep(
   "use step";
 
   const { getSessionById, updateSession } = await import("@/lib/db/sessions");
-  const { connectSandbox } = await import("@open-agents/sandbox");
+  const { connectSandbox } = await import("@entry-agents/sandbox");
   const { canOperateOnSandbox, hasResumableSandboxState } =
     await import("@/lib/sandbox/utils");
 
@@ -1530,7 +1530,7 @@ async function deleteSandboxStep(
   "use step";
 
   const { getSessionById, updateSession } = await import("@/lib/db/sessions");
-  const { connectSandbox } = await import("@open-agents/sandbox");
+  const { connectSandbox } = await import("@entry-agents/sandbox");
   const { canOperateOnSandbox, clearSandboxState, hasResumableSandboxState } =
     await import("@/lib/sandbox/utils");
 
@@ -1735,7 +1735,7 @@ async function performAgentVercelCli(params: {
 }): Promise<VercelCliToolResult> {
   "use step";
 
-  const { connectSandbox } = await import("@open-agents/sandbox");
+  const { connectSandbox } = await import("@entry-agents/sandbox");
   const { getUserVercelToken } = await import("@/lib/vercel/token");
   const { getVercelProjectLinkByRepo } =
     await import("@/lib/db/vercel-project-links");
@@ -1884,7 +1884,7 @@ async function performAgentGithubCli(params: {
   "use step";
 
   const { connectSandbox, withTemporaryGitHubAuth } =
-    await import("@open-agents/sandbox");
+    await import("@entry-agents/sandbox");
   const { verifyRepoAccess } = await import("@/lib/github/access");
   const { mintInstallationToken, revokeInstallationToken } =
     await import("@/lib/github/app");
@@ -3239,7 +3239,7 @@ const runAgentStep = async (
                   /^entry-undefined(?:-|$)/.test(currentMachineName))
               ) {
                 const { requireSandboxProvider } =
-                  await import("@open-agents/sandbox");
+                  await import("@entry-agents/sandbox");
                 repairedSandboxState = requireSandboxProvider(
                   "boxd",
                 ).buildProvisionState({
@@ -3431,7 +3431,7 @@ const runAgentStep = async (
     // suspend/resume between steps can never lose the AsyncLocalStorage
     // context. Fire-and-forget inside the sink -- telemetry can never
     // break the model step (see compaction-telemetry.ts).
-    const { runWithCompactionSink } = await import("@open-agents/agent");
+    const { runWithCompactionSink } = await import("@entry-agents/agent");
     const { recordCompactionEvent } = await import("@/lib/db/compaction");
 
     const result = await runWithCompactionSink(

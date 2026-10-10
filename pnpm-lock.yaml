@@ -87,7 +87,7 @@ importers:
 
   .:
     devDependencies:
-      '@open-agents/sandbox':
+      '@entry-agents/sandbox':
         specifier: workspace:*
         version: link:packages/sandbox
       oxfmt:
@@ -151,10 +151,10 @@ importers:
 
   apps/desktop-spike:
     dependencies:
-      '@open-agents/agent':
+      '@entry-agents/agent':
         specifier: workspace:*
         version: link:../../packages/agent
-      '@open-agents/sandbox':
+      '@entry-agents/sandbox':
         specifier: workspace:*
         version: link:../../packages/sandbox
       nanoid:
@@ -185,6 +185,15 @@ importers:
       '@composio/core':
         specifier: ^0.17.0
         version: 0.17.0(@smithy/signature-v4@5.6.12)(zod@4.4.3)
+      '@entry-agents/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
+      '@entry-agents/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
+      '@entry-agents/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       '@lobehub/icons':
         specifier: ^5.15.0
         version: 5.15.0(@lobehub/ui@5.29.1)(@types/react@19.2.7)(antd@6.5.4(date-fns@4.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -194,15 +203,6 @@ importers:
       '@octokit/rest':
         specifier: ^22.0.1
         version: 22.0.1
-      '@open-agents/agent':
-        specifier: workspace:*
-        version: link:../../packages/agent
-      '@open-agents/sandbox':
-        specifier: workspace:*
-        version: link:../../packages/sandbox
-      '@open-agents/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
       '@pierre/diffs':
         specifier: ^1.0.10
         version: 1.2.7(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -384,7 +384,7 @@ importers:
       '@ai-sdk/openai-compatible':
         specifier: 'catalog:'
         version: 2.0.48(zod@4.4.3)
-      '@open-agents/sandbox':
+      '@entry-agents/sandbox':
         specifier: workspace:*
         version: link:../sandbox
       ai:
@@ -400,7 +400,7 @@ importers:
       '@ai-sdk/devtools':
         specifier: ^0.0.15
         version: 0.0.15
-      '@open-agents/tsconfig':
+      '@entry-agents/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/bun':
@@ -422,7 +422,7 @@ importers:
         specifier: ^5
         version: 5.9.3
     devDependencies:
-      '@open-agents/tsconfig':
+      '@entry-agents/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/bun':
@@ -441,7 +441,7 @@ importers:
         specifier: ^5
         version: 5.9.3
     devDependencies:
-      '@open-agents/tsconfig':
+      '@entry-agents/tsconfig':
         specifier: workspace:*
         version: link:../tsconfig
       '@types/bun':

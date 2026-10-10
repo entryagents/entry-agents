@@ -7,7 +7,7 @@ import {
   requireSandboxProvider,
   restoreWorkspacePayload,
   type Sandbox,
-} from "@open-agents/sandbox";
+} from "@entry-agents/sandbox";
 import {
   claimSessionSandboxMigration,
   getSessionById,

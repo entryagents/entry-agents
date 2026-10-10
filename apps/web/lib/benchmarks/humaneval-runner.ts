@@ -1,9 +1,9 @@
-import { openAgent } from "@open-agents/agent";
+import { openAgent } from "@entry-agents/agent";
 import {
   connectLocal,
   connectSandbox,
   type Sandbox,
-} from "@open-agents/sandbox";
+} from "@entry-agents/sandbox";
 import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -21,7 +21,7 @@ import {
 // list/version -- especially anything reachable from a `"use workflow"`
 // function body -- should import from "./humaneval-tasks" directly
 // instead, since importing *this* file pulls in Node-only modules
-// (child_process/fs/os/path/@open-agents/sandbox) that the Workflow SDK
+// (child_process/fs/os/path/@entry-agents/sandbox) that the Workflow SDK
 // bundler will reject outside a `"use step"` function.
 export { HUMANEVAL_SUITE_VERSION, type HumanEvalTask, loadHumanEvalSubset };
 
