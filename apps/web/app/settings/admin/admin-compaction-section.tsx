@@ -96,8 +96,8 @@ export function AdminCompactionSection() {
         </div>
         <CardDescription>
           Auto-compaction firings recorded across all chats. Every time a
-          turn&apos;s context crosses the threshold of the model&apos;s
-          window, one row is written here.
+          turn&apos;s context crosses the threshold of the model&apos;s window,
+          one row is written here.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -110,21 +110,14 @@ export function AdminCompactionSection() {
         ) : data ? (
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-4">
-              <AdminStatCard
-                label="Firings"
-                value={String(data.eventCount)}
-              />
+              <AdminStatCard label="Firings" value={String(data.eventCount)} />
               <AdminStatCard
                 label="Chats affected"
                 value={String(data.chatCount)}
               />
               <AdminStatCard
                 label="Avg tokens reclaimed"
-                value={
-                  savingsPct > 0
-                    ? `${savingsPct}% per firing`
-                    : "—"
-                }
+                value={savingsPct > 0 ? `${savingsPct}% per firing` : "—"}
               />
               <AdminStatCard
                 label="Near-window turns"
@@ -146,8 +139,7 @@ export function AdminCompactionSection() {
                     ? formatTime(data.latestEventAt)
                     : "unknown"}
                   {" · "}
-                  Total reclaimed:{" "}
-                  {formatTokens(data.totalTokensSaved)} tokens
+                  Total reclaimed: {formatTokens(data.totalTokensSaved)} tokens
                 </p>
                 <div className="max-h-64 overflow-auto rounded-md border">
                   <table className="w-full text-xs">

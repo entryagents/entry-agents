@@ -90,7 +90,9 @@ export async function POST(
     return NextResponse.json({ error: "Not found" }, { status: 403 });
   }
   const session = chat.sessionId
-    ? await db.query.sessions.findFirst({ where: eq(sessions.id, chat.sessionId) })
+    ? await db.query.sessions.findFirst({
+        where: eq(sessions.id, chat.sessionId),
+      })
     : undefined;
   if (!session || session.userId !== user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -124,9 +126,12 @@ export async function GET(
     // GET and the messages POST (prevents cross-tenant chat reading; an
     // unscoped getChatById/getChatMessages would leak any user's messages).
     const chat = await getChatById(chatId);
-    if (!chat) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!chat)
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
     const session = chat.sessionId
-      ? await db.query.sessions.findFirst({ where: eq(sessions.id, chat.sessionId) })
+      ? await db.query.sessions.findFirst({
+          where: eq(sessions.id, chat.sessionId),
+        })
       : undefined;
     if (!session || session.userId !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -135,6 +140,9 @@ export async function GET(
     return NextResponse.json({ messages });
   } catch (error) {
     console.error("GET /api/desktop/chats/:id/messages failed:", error);
-    return NextResponse.json({ error: "Failed to list messages" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to list messages" },
+      { status: 500 },
+    );
   }
 }

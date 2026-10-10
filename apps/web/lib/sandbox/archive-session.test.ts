@@ -14,7 +14,10 @@ interface TestSessionRecord {
   cloneUrl: string | null;
   prNumber: number | null;
   prStatus: "open" | "merged" | "closed" | null;
-  sandboxState: { type: "modal"; volumeName?: string; expiresAt?: number } | { type: "local" } | null;
+  sandboxState:
+    | { type: "modal"; volumeName?: string; expiresAt?: number }
+    | { type: "local" }
+    | null;
   snapshotUrl: string | null;
   lifecycleState: "active" | "archived" | null;
   lifecycleError: string | null;

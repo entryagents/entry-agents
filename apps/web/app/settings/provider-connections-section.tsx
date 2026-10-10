@@ -68,7 +68,9 @@ export function ProviderConnectionsSection() {
       <div className="flex items-center justify-between gap-3 p-4">
         <div className="flex items-center gap-2 text-sm">
           <GoogleIcon className="size-5" />
-          <span>{connected ? "Google account connected" : "Google account"}</span>
+          <span>
+            {connected ? "Google account connected" : "Google account"}
+          </span>
         </div>
         {isLoading ? (
           <span className="text-xs text-muted-foreground">Loading...</span>

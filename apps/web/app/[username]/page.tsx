@@ -311,7 +311,8 @@ export default async function PublicUsagePage({
         {/* Footer */}
         <div className="mt-16 flex items-center justify-between gap-4 border-t border-border/50 pt-6">
           <span className="font-mono text-xs text-muted-foreground">
-            {SITE_DOMAIN}{publicProfilePath}
+            {SITE_DOMAIN}
+            {publicProfilePath}
             {profile.dateSelection.value
               ? `?date=${profile.dateSelection.value}`
               : ""}

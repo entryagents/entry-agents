@@ -102,9 +102,7 @@ export async function getCompactionOverview(
       eventCount === 0 ? 0 : Math.round(totals.post / eventCount),
     totalTokensSaved: Math.max(0, totals.pre - totals.post),
     latestEventAt:
-      rows.length > 0
-        ? new Date(rows[0].createdAt).toISOString()
-        : null,
+      rows.length > 0 ? new Date(rows[0].createdAt).toISOString() : null,
     events: rows.slice(0, 50).map((r) => ({
       id: r.id,
       chatId: r.chatId,

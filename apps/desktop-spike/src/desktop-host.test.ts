@@ -48,7 +48,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   backendServer.close();
-  await Promise.all(tmpRoots.map((d) => fs.rm(d, { recursive: true, force: true })));
+  await Promise.all(
+    tmpRoots.map((d) => fs.rm(d, { recursive: true, force: true })),
+  );
 });
 
 describe("stream adapter (pure)", () => {
@@ -56,17 +58,35 @@ describe("stream adapter (pure)", () => {
     const turn = "t1";
     const events = [
       ...mapChunkToIpcEvents({ type: "text-delta", delta: "hello" }, turn),
-      ...mapChunkToIpcEvents({ type: "reasoning-delta", delta: "thinking" }, turn),
       ...mapChunkToIpcEvents(
-        { type: "tool-input-available", toolCallId: "c1", toolName: "bash", input: { command: "ls" } },
+        { type: "reasoning-delta", delta: "thinking" },
         turn,
       ),
       ...mapChunkToIpcEvents(
-        { type: "tool-output-available", toolCallId: "c1", output: { ok: true } },
+        {
+          type: "tool-input-available",
+          toolCallId: "c1",
+          toolName: "bash",
+          input: { command: "ls" },
+        },
         turn,
       ),
       ...mapChunkToIpcEvents(
-        { type: "tool-approval-request", approvalId: "a1", toolCallId: "c2", toolName: "write", input: {} },
+        {
+          type: "tool-output-available",
+          toolCallId: "c1",
+          output: { ok: true },
+        },
+        turn,
+      ),
+      ...mapChunkToIpcEvents(
+        {
+          type: "tool-approval-request",
+          approvalId: "a1",
+          toolCallId: "c2",
+          toolName: "write",
+          input: {},
+        },
         turn,
       ),
       ...mapChunkToIpcEvents({ type: "error", errorText: "boom" }, turn),
@@ -77,8 +97,19 @@ describe("stream adapter (pure)", () => {
     expect(events).toEqual([
       { type: "text-delta", turnId: turn, text: "hello" },
       { type: "reasoning-delta", turnId: turn, text: "thinking" },
-      { type: "tool-call", turnId: turn, toolCallId: "c1", toolName: "bash", input: { command: "ls" } },
-      { type: "tool-result", turnId: turn, toolCallId: "c1", output: { ok: true } },
+      {
+        type: "tool-call",
+        turnId: turn,
+        toolCallId: "c1",
+        toolName: "bash",
+        input: { command: "ls" },
+      },
+      {
+        type: "tool-result",
+        turnId: turn,
+        toolCallId: "c1",
+        output: { ok: true },
+      },
       {
         type: "approval-request",
         turnId: turn,
@@ -92,13 +123,24 @@ describe("stream adapter (pure)", () => {
   });
 
   test("usage accumulation folds cache-read tokens across steps", () => {
-    let u = accumulateUsage({ inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 }, {
-      inputTokens: 100,
-      outputTokens: 10,
-      inputTokenDetails: { cacheReadTokens: 40 },
+    let u = accumulateUsage(
+      { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 },
+      {
+        inputTokens: 100,
+        outputTokens: 10,
+        inputTokenDetails: { cacheReadTokens: 40 },
+      },
+    );
+    u = accumulateUsage(u, {
+      inputTokens: 50,
+      outputTokens: 5,
+      cachedInputTokens: 20,
     });
-    u = accumulateUsage(u, { inputTokens: 50, outputTokens: 5, cachedInputTokens: 20 });
-    expect(u).toEqual({ inputTokens: 150, cachedInputTokens: 60, outputTokens: 15 });
+    expect(u).toEqual({
+      inputTokens: 150,
+      cachedInputTokens: 60,
+      outputTokens: 15,
+    });
   });
 });
 
@@ -107,7 +149,10 @@ describe("EntryAgentHost native runtime", () => {
     const root = await makeRoot();
     const host = new EntryAgentHost({
       projectRoot: root,
-      backend: { baseURL: `http://127.0.0.1:${backendPort}`, sessionToken: "desk-session-token" },
+      backend: {
+        baseURL: `http://127.0.0.1:${backendPort}`,
+        sessionToken: "desk-session-token",
+      },
       modelId: "mimo-v2.6-flash:free",
     });
     const { sandboxState, workingDirectory } = await host.start();
@@ -121,12 +166,17 @@ describe("EntryAgentHost native runtime", () => {
     const root = await makeRoot();
     const host = new EntryAgentHost({
       projectRoot: root,
-      backend: { baseURL: `http://127.0.0.1:${backendPort}`, sessionToken: "t" },
+      backend: {
+        baseURL: `http://127.0.0.1:${backendPort}`,
+        sessionToken: "t",
+      },
       modelId: "mimo-v2.6-flash:free",
     });
     await host.start();
     const sandbox = host.sandboxInstance!;
-    await expect(sandbox.readFile("../outside.txt")).rejects.toThrow(/outside|not allowed|denied|traversal|contain/i);
+    await expect(sandbox.readFile("../outside.txt")).rejects.toThrow(
+      /outside|not allowed|denied|traversal|contain/i,
+    );
     // And inside still works:
     await sandbox.writeFile("hello.txt", "from the host");
     expect(await sandbox.readFile("hello.txt")).toBe("from the host");
@@ -137,14 +187,21 @@ describe("EntryAgentHost native runtime", () => {
     const root = await makeRoot();
     const host = new EntryAgentHost({
       projectRoot: root,
-      backend: { baseURL: `http://127.0.0.1:${backendPort}`, sessionToken: "t" },
+      backend: {
+        baseURL: `http://127.0.0.1:${backendPort}`,
+        sessionToken: "t",
+      },
       modelId: "mimo-v2.6-flash:free",
     });
     await host.start();
-    const sandbox = host.sandboxInstance as import("@open-agents/sandbox").Sandbox & {
-      execDetached?: (c: string, cwd: string) => Promise<{ commandId: string }>;
-      killCommand?: (id: string) => Promise<void>;
-    };
+    const sandbox =
+      host.sandboxInstance as import("@open-agents/sandbox").Sandbox & {
+        execDetached?: (
+          c: string,
+          cwd: string,
+        ) => Promise<{ commandId: string }>;
+        killCommand?: (id: string) => Promise<void>;
+      };
     const { commandId } = await sandbox.execDetached!("sleep 30", root);
     expect(commandId).toMatch(/^local-\d+$/);
     await sandbox.killCommand!(commandId); // resolves; unknown/foreign ids are no-ops
@@ -173,7 +230,9 @@ describe("EntryAgentHost native runtime", () => {
       // never needs it: assert the host exposes only the backend base URL
       // + session token through its own config, and that after a send()
       // (which we don't run here — network) the env is restored.
-      expect(envSeenByAgent.GATEWAY_BASE_URL).toBe(REAL_GATEWAY_KEY ? process.env.GATEWAY_BASE_URL : undefined);
+      expect(envSeenByAgent.GATEWAY_BASE_URL).toBe(
+        REAL_GATEWAY_KEY ? process.env.GATEWAY_BASE_URL : undefined,
+      );
       // Directly verify the swap/restore behavior with a failing send:
       await host.send("ping", () => {}); // will error against stub (no model), env restored in finally
       // Key restored exactly as it was:
@@ -189,7 +248,10 @@ describe("EntryAgentHost native runtime", () => {
     const root = await makeRoot();
     const host = new EntryAgentHost({
       projectRoot: root,
-      backend: { baseURL: `http://127.0.0.1:${backendPort}/v1`, sessionToken: "desk-session-token" },
+      backend: {
+        baseURL: `http://127.0.0.1:${backendPort}/v1`,
+        sessionToken: "desk-session-token",
+      },
       modelId: "mimo-v2.6-flash:free",
     });
     await host.start();

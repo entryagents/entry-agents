@@ -169,7 +169,9 @@ export class ModalCloudSandbox implements Sandbox {
   private getCommandEnv(): Record<string, string> {
     return {
       ...this.env,
-      ...(this.brokeredGitHubToken ? { GITHUB_TOKEN: this.brokeredGitHubToken } : {}),
+      ...(this.brokeredGitHubToken
+        ? { GITHUB_TOKEN: this.brokeredGitHubToken }
+        : {}),
       GIT_CONFIG_COUNT: "1",
       GIT_CONFIG_KEY_0: "safe.directory",
       GIT_CONFIG_VALUE_0: "*",
@@ -184,7 +186,9 @@ export class ModalCloudSandbox implements Sandbox {
     const proc = await this.sdk.exec(["bash", "-c", command], {
       workdir: this.workingDirectory,
       env: this.getCommandEnv(),
-      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+      ...(options.timeoutMs !== undefined
+        ? { timeoutMs: options.timeoutMs }
+        : {}),
     });
     const stdout = await proc.stdout.readText();
     const stderr = await proc.stderr.readText();
@@ -341,7 +345,11 @@ export class ModalCloudSandbox implements Sandbox {
     return Buffer.from(result.stdout.replace(/\s+/g, ""), "base64");
   }
 
-  async writeFile(path: string, content: string, _encoding: "utf-8"): Promise<void> {
+  async writeFile(
+    path: string,
+    content: string,
+    _encoding: "utf-8",
+  ): Promise<void> {
     await this.writeFileBuffer(path, Buffer.from(content, "utf-8"));
   }
 
@@ -379,7 +387,7 @@ export class ModalCloudSandbox implements Sandbox {
       isDirectory: () => isDir,
       isFile: () => !isDir,
       size: Number.parseInt(parts[1] ?? "0", 10) || 0,
-      mtimeMs: (Number.parseInt(parts[2] ?? "0", 10) * 1000) || 0,
+      mtimeMs: Number.parseInt(parts[2] ?? "0", 10) * 1000 || 0,
     };
   }
 
@@ -394,14 +402,18 @@ export class ModalCloudSandbox implements Sandbox {
     const flags = options?.recursive ? "-p " : "";
     const result = await this.runCommand(`mkdir ${flags}${shellEscape(path)}`);
     if (result.exitCode !== 0) {
-      const alreadyExists = options?.recursive && /File exists/i.test(result.stderr);
+      const alreadyExists =
+        options?.recursive && /File exists/i.test(result.stderr);
       if (!alreadyExists) {
         throw new Error(`Failed to create directory: ${path}`);
       }
     }
   }
 
-  async readdir(path: string, _options: { withFileTypes: true }): Promise<Dirent[]> {
+  async readdir(
+    path: string,
+    _options: { withFileTypes: true },
+  ): Promise<Dirent[]> {
     const result = await this.runCommand(
       `find ${shellEscape(path)} -maxdepth 1 -mindepth 1 -printf '%y %f\\n'`,
     );
@@ -520,7 +532,9 @@ export class ModalCloudSandbox implements Sandbox {
         exitCode,
         stdout: truncate(stdout),
         stderr: truncate(stderr),
-        truncated: stdout.length > MAX_OUTPUT_LENGTH || stderr.length > MAX_OUTPUT_LENGTH,
+        truncated:
+          stdout.length > MAX_OUTPUT_LENGTH ||
+          stderr.length > MAX_OUTPUT_LENGTH,
         killedExternally: this.killedCommandIds.has(cmdId),
       };
     } catch (error) {
@@ -643,7 +657,10 @@ export class ModalCloudSandbox implements Sandbox {
   }
 
   /** Run an operation with a GitHub token scoped to exactly that work. */
-  async withGitHubAuth<T>(token: string, operation: () => Promise<T>): Promise<T> {
+  async withGitHubAuth<T>(
+    token: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
     const previous = this.brokeredGitHubToken;
     this.brokeredGitHubToken = token;
     try {
@@ -770,7 +787,9 @@ function shellEscape(value: string): string {
 }
 
 function truncate(text: string): string {
-  return text.length <= MAX_OUTPUT_LENGTH ? text : text.slice(0, MAX_OUTPUT_LENGTH);
+  return text.length <= MAX_OUTPUT_LENGTH
+    ? text
+    : text.slice(0, MAX_OUTPUT_LENGTH);
 }
 
 function errorMessage(error: unknown): string {
@@ -804,15 +823,13 @@ function abortRace(signal: AbortSignal): Promise<void> {
  * Reads incrementally with `getReader()` and returns as soon as the marker
  * + digits are complete, leaving the rest of the stream unconsumed.
  */
-async function readPid(
-  stream: {
-    readText(): Promise<string>;
-    getReader?: () => {
-      read(): Promise<{ done?: boolean; value?: unknown }>;
-      releaseLock(): void;
-    };
-  },
-): Promise<string | undefined> {
+async function readPid(stream: {
+  readText(): Promise<string>;
+  getReader?: () => {
+    read(): Promise<{ done?: boolean; value?: unknown }>;
+    releaseLock(): void;
+  };
+}): Promise<string | undefined> {
   if (typeof stream.getReader !== "function") {
     // Fallback for streams that only expose the one-shot read (tests and
     // any future SDK shape change).

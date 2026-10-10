@@ -3,7 +3,11 @@ import { sanitizeToolInputs } from "./sanitize-tool-inputs";
 import type { WebAgentUIMessage } from "@/app/types";
 
 function msg(parts: unknown[]): WebAgentUIMessage {
-  return { id: "m1", role: "assistant", parts: parts as never } as WebAgentUIMessage;
+  return {
+    id: "m1",
+    role: "assistant",
+    parts: parts as never,
+  } as WebAgentUIMessage;
 }
 
 describe("sanitizeToolInputs", () => {

@@ -238,155 +238,171 @@ describe("isChatStreamingProbeResponse", () => {
 
 describe("getDeadTurnRetryAction (hard strategy)", () => {
   test("regenerates when the last message is a user message (no output yet)", () => {
-    const action = getDeadTurnRetryAction([
-      { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
-    ],
-      "hard");
+    const action = getDeadTurnRetryAction(
+      [{ id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] }],
+      "hard",
+    );
     expect(action).toBe("regenerate");
   });
 
   test("regenerates when the last assistant message is empty", () => {
-    const action = getDeadTurnRetryAction([
-      { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
-      { id: "a1", role: "assistant", parts: [] },
-    ],
-      "hard");
+    const action = getDeadTurnRetryAction(
+      [
+        { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+        { id: "a1", role: "assistant", parts: [] },
+      ],
+      "hard",
+    );
     expect(action).toBe("regenerate");
   });
 
   test("regenerates when the last assistant message is only step-start parts", () => {
-    const action = getDeadTurnRetryAction([
-      { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
-      { id: "a1", role: "assistant", parts: [{ type: "step-start" }] },
-    ],
-      "hard");
+    const action = getDeadTurnRetryAction(
+      [
+        { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+        { id: "a1", role: "assistant", parts: [{ type: "step-start" }] },
+      ],
+      "hard",
+    );
     expect(action).toBe("regenerate");
   });
 
   test("regenerates when the last assistant message is only the friendly error notice", () => {
-    const action = getDeadTurnRetryAction([
-      { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
-      {
-        id: "a1",
-        role: "assistant",
-        parts: [
-          {
-            type: "text",
-            text: "The AI provider is temporarily unavailable. Please try again in a moment.",
-          },
-        ],
-      },
-    ],
-      "hard");
+    const action = getDeadTurnRetryAction(
+      [
+        { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+        {
+          id: "a1",
+          role: "assistant",
+          parts: [
+            {
+              type: "text",
+              text: "The AI provider is temporarily unavailable. Please try again in a moment.",
+            },
+          ],
+        },
+      ],
+      "hard",
+    );
     expect(action).toBe("regenerate");
   });
 
   test("regenerates for a friendly error notice with the repeat-failure suffix", () => {
-    const action = getDeadTurnRetryAction([
-      { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
-      {
-        id: "a1",
-        role: "assistant",
-        parts: [
-          {
-            type: "text",
-            text: "The request took too long and timed out. Please try again. This looks like a repeating issue rather than a one-off, so retrying probably won't help -- try switching models, or let us know if it keeps happening.",
-          },
-        ],
-      },
-    ],
-      "hard");
+    const action = getDeadTurnRetryAction(
+      [
+        { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+        {
+          id: "a1",
+          role: "assistant",
+          parts: [
+            {
+              type: "text",
+              text: "The request took too long and timed out. Please try again. This looks like a repeating issue rather than a one-off, so retrying probably won't help -- try switching models, or let us know if it keeps happening.",
+            },
+          ],
+        },
+      ],
+      "hard",
+    );
     expect(action).toBe("regenerate");
   });
 
   test("continues when the last assistant message has completed tool calls", () => {
-    const action = getDeadTurnRetryAction([
-      { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
-      {
-        id: "a1",
-        role: "assistant",
-        parts: [
-          { type: "step-start" },
-          {
-            type: "tool-bash",
-            toolCallId: "tc1",
-            state: "output-available",
-            input: { command: "ls" },
-            output: {
-              success: true,
-              exitCode: 0,
-              stdout: "file.txt",
-              stderr: "",
+    const action = getDeadTurnRetryAction(
+      [
+        { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+        {
+          id: "a1",
+          role: "assistant",
+          parts: [
+            { type: "step-start" },
+            {
+              type: "tool-bash",
+              toolCallId: "tc1",
+              state: "output-available",
+              input: { command: "ls" },
+              output: {
+                success: true,
+                exitCode: 0,
+                stdout: "file.txt",
+                stderr: "",
+              },
             },
-          },
-        ],
-      },
-    ],
-      "hard");
+          ],
+        },
+      ],
+      "hard",
+    );
     expect(action).toBe("continue");
   });
 
   test("continues when the last assistant message has real partial text", () => {
-    const action = getDeadTurnRetryAction([
-      { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
-      {
-        id: "a1",
-        role: "assistant",
-        parts: [
-          { type: "text", text: "Let me look at your project files first." },
-        ],
-      },
-    ],
-      "hard");
+    const action = getDeadTurnRetryAction(
+      [
+        { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+        {
+          id: "a1",
+          role: "assistant",
+          parts: [
+            { type: "text", text: "Let me look at your project files first." },
+          ],
+        },
+      ],
+      "hard",
+    );
     expect(action).toBe("continue");
   });
 
   test("continues when the last assistant message has data parts", () => {
-    const action = getDeadTurnRetryAction([
-      { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
-      {
-        id: "a1",
-        role: "assistant",
-        parts: [
-          {
-            type: "data-workspace-status",
-            id: "d1",
-            data: { status: "setting-up", message: "Preparing workspace" },
-          },
-        ],
-      },
-    ],
-      "hard");
+    const action = getDeadTurnRetryAction(
+      [
+        { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+        {
+          id: "a1",
+          role: "assistant",
+          parts: [
+            {
+              type: "data-workspace-status",
+              id: "d1",
+              data: { status: "setting-up", message: "Preparing workspace" },
+            },
+          ],
+        },
+      ],
+      "hard",
+    );
     expect(action).toBe("continue");
   });
 
   test("continues when an error notice coexists with real work", () => {
-    const action = getDeadTurnRetryAction([
-      { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
-      {
-        id: "a1",
-        role: "assistant",
-        parts: [
-          {
-            type: "tool-bash",
-            toolCallId: "tc1",
-            state: "output-available",
-            input: { command: "ls" },
-            output: {
-              success: true,
-              exitCode: 0,
-              stdout: "file.txt",
-              stderr: "",
+    const action = getDeadTurnRetryAction(
+      [
+        { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
+        {
+          id: "a1",
+          role: "assistant",
+          parts: [
+            {
+              type: "tool-bash",
+              toolCallId: "tc1",
+              state: "output-available",
+              input: { command: "ls" },
+              output: {
+                success: true,
+                exitCode: 0,
+                stdout: "file.txt",
+                stderr: "",
+              },
             },
-          },
-          {
-            type: "text",
-            text: "Something went wrong while generating a response. Please try again -- if this keeps happening, try switching models.",
-          },
-        ],
-      },
-    ],
-      "hard");
+            {
+              type: "text",
+              text: "Something went wrong while generating a response. Please try again -- if this keeps happening, try switching models.",
+            },
+          ],
+        },
+      ],
+      "hard",
+    );
     expect(action).toBe("continue");
   });
 });
@@ -410,7 +426,9 @@ describe("getDeadTurnRetryAction (soft strategy / auto recovery)", () => {
   ];
 
   test("self-heals by continuing a dead turn with partial work", () => {
-    expect(getDeadTurnRetryAction(partialWorkMessages, "soft")).toBe("continue");
+    expect(getDeadTurnRetryAction(partialWorkMessages, "soft")).toBe(
+      "continue",
+    );
   });
 
   test("does nothing when the dead turn has no partial work", () => {
@@ -472,25 +490,29 @@ describe("getDeadTurnRetryAction (stacking guard)", () => {
   ];
 
   test("soft does not stack a second continuation prompt", () => {
-    expect(
-      getDeadTurnRetryAction(messagesAfterFailedContinue, "soft"),
-    ).toBe("none");
+    expect(getDeadTurnRetryAction(messagesAfterFailedContinue, "soft")).toBe(
+      "none",
+    );
   });
 
   test("hard resubmits the existing continuation prompt instead of stacking", () => {
     // regenerate() with a trailing user message keeps it and resubmits it
     // (verified against the AI SDK implementation), so the partial
     // assistant work below it stays in history.
-    expect(
-      getDeadTurnRetryAction(messagesAfterFailedContinue, "hard"),
-    ).toBe("regenerate");
+    expect(getDeadTurnRetryAction(messagesAfterFailedContinue, "hard")).toBe(
+      "regenerate",
+    );
   });
 
   test("a user message that merely looks similar is not treated as the prompt", () => {
     expect(
       getDeadTurnRetryAction(
         [
-          { id: "u1", role: "user", parts: [{ type: "text", text: "build it" }] },
+          {
+            id: "u1",
+            role: "user",
+            parts: [{ type: "text", text: "build it" }],
+          },
           {
             id: "a1",
             role: "assistant",

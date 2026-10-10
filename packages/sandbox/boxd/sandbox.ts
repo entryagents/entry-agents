@@ -60,22 +60,31 @@ export class BoxdSandbox implements Sandbox {
 
   private commandEnv(): Record<string, string> | undefined {
     return this.githubToken
-      ? { ...(this.env ?? {}), GITHUB_TOKEN: this.githubToken }
+      ? { ...this.env, GITHUB_TOKEN: this.githubToken }
       : this.env;
   }
 
   async readFile(path: string, _encoding: "utf-8"): Promise<string> {
     this.assertRunning();
-    const bytes = await this.client.machines.files.download(this.machineId, path);
+    const bytes = await this.client.machines.files.download(
+      this.machineId,
+      path,
+    );
     return new TextDecoder().decode(bytes);
   }
 
   async readFileBuffer(path: string): Promise<Buffer> {
     this.assertRunning();
-    return Buffer.from(await this.client.machines.files.download(this.machineId, path));
+    return Buffer.from(
+      await this.client.machines.files.download(this.machineId, path),
+    );
   }
 
-  async writeFile(path: string, content: string, _encoding: "utf-8"): Promise<void> {
+  async writeFile(
+    path: string,
+    content: string,
+    _encoding: "utf-8",
+  ): Promise<void> {
     await this.writeFileBuffer(path, Buffer.from(content, "utf8"));
   }
 
@@ -106,7 +115,8 @@ export class BoxdSandbox implements Sandbox {
       cwd: BOXD_WORKING_DIRECTORY,
       env: this.commandEnv(),
     });
-    if (!result.success) throw new Error(result.stderr || `Path does not exist: ${path}`);
+    if (!result.success)
+      throw new Error(result.stderr || `Path does not exist: ${path}`);
   }
 
   async mkdir(path: string, _options?: { recursive?: boolean }): Promise<void> {
@@ -117,8 +127,14 @@ export class BoxdSandbox implements Sandbox {
     });
   }
 
-  async readdir(path: string, _options: { withFileTypes: true }): Promise<Dirent[]> {
-    const listing = await this.client.machines.files.listDir(this.machineId, path);
+  async readdir(
+    path: string,
+    _options: { withFileTypes: true },
+  ): Promise<Dirent[]> {
+    const listing = await this.client.machines.files.listDir(
+      this.machineId,
+      path,
+    );
     return listing.entries.map(asDirent);
   }
 
@@ -163,6 +179,10 @@ export class BoxdSandbox implements Sandbox {
   }
 
   getState(): { type: "boxd"; machineId: string; machineName: string } {
-    return { type: "boxd", machineId: this.machineId, machineName: this.machineName };
+    return {
+      type: "boxd",
+      machineId: this.machineId,
+      machineName: this.machineName,
+    };
   }
 }

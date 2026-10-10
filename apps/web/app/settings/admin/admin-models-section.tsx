@@ -232,12 +232,16 @@ export function AdminModelsSection() {
     try {
       await setAdminTitleModel(value);
       toast.success(
-        value ? `Chat titles will use ${value}` : "Chat titles back on the default model",
+        value
+          ? `Chat titles will use ${value}`
+          : "Chat titles back on the default model",
       );
     } catch (err) {
       setTitleModelState(previous);
       toast.error(
-        err instanceof Error ? err.message : "Failed to update the title model.",
+        err instanceof Error
+          ? err.message
+          : "Failed to update the title model.",
       );
     } finally {
       setTitlePending(false);
@@ -273,7 +277,9 @@ export function AdminModelsSection() {
               <SelectValue placeholder="Select a model" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__default__">Default (step-5-preview)</SelectItem>
+              <SelectItem value="__default__">
+                Default (step-5-preview)
+              </SelectItem>
               {(data ?? []).map((row) => (
                 <SelectItem key={row.id} value={row.id}>
                   {row.id}

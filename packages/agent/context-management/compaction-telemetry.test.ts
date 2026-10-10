@@ -27,7 +27,12 @@ function buildOversizedHistory(): ModelMessage[] {
     messages.push({
       role: "assistant",
       content: [
-        { type: "tool-call", toolCallId: `call-${i}`, toolName: "read", input: { path: `file-${i}.ts` } },
+        {
+          type: "tool-call",
+          toolCallId: `call-${i}`,
+          toolName: "read",
+          input: { path: `file-${i}.ts` },
+        },
       ],
     });
     messages.push({
@@ -69,11 +74,14 @@ test("oversized history compacts and reports through the in-scope sink", async (
   expect(history.length).toBeGreaterThan(PROTECTED_RECENT_MESSAGES);
 
   let result: ModelMessage[] = [];
-  await runWithCompactionSink(async (event) => {
-    events.push(event);
-  }, async () => {
-    result = maybeCompactMessages({ messages: history, model });
-  });
+  await runWithCompactionSink(
+    async (event) => {
+      events.push(event);
+    },
+    async () => {
+      result = maybeCompactMessages({ messages: history, model });
+    },
+  );
 
   // Compaction actually fired -- payloads collapsed in place, so the
   // serialized footprint must shrink (message count may stay equal).
@@ -93,17 +101,23 @@ test("oversized history compacts and reports through the in-scope sink", async (
 
 test("small history compacts nothing and reports nothing", async () => {
   const events: CompactionEvent[] = [];
-  const history: ModelMessage[] = Array.from({ length: PROTECTED_RECENT_MESSAGES + 10 }, (_, i) => ({
-    role: "user" as const,
-    content: `tiny message ${i}`,
-  }));
+  const history: ModelMessage[] = Array.from(
+    { length: PROTECTED_RECENT_MESSAGES + 10 },
+    (_, i) => ({
+      role: "user" as const,
+      content: `tiny message ${i}`,
+    }),
+  );
 
   let result: ModelMessage[] = [];
-  await runWithCompactionSink(async (event) => {
-    events.push(event);
-  }, async () => {
-    result = maybeCompactMessages({ messages: history, model });
-  });
+  await runWithCompactionSink(
+    async (event) => {
+      events.push(event);
+    },
+    async () => {
+      result = maybeCompactMessages({ messages: history, model });
+    },
+  );
 
   expect(result.length).toBe(history.length);
   expect(events.length).toBe(0);
@@ -112,11 +126,14 @@ test("small history compacts nothing and reports nothing", async () => {
 test("sink failures are swallowed and do not break compaction", async () => {
   const history = buildOversizedHistory();
   let result: ModelMessage[] = [];
-  await runWithCompactionSink(async () => {
-    throw new Error("sink exploded");
-  }, async () => {
-    result = maybeCompactMessages({ messages: history, model });
-  });
+  await runWithCompactionSink(
+    async () => {
+      throw new Error("sink exploded");
+    },
+    async () => {
+      result = maybeCompactMessages({ messages: history, model });
+    },
+  );
 
   // Compaction still completed even though the sink rejected.
   expect(JSON.stringify(result).length).toBeLessThan(

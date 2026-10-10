@@ -129,7 +129,8 @@ EXAMPLES:
       { command, cwd, detached },
       { experimental_context, abortSignal },
     ) => {
-      const { sandbox, commandGate } = await getSandboxForCommand(experimental_context);
+      const { sandbox, commandGate } =
+        await getSandboxForCommand(experimental_context);
       const workingDirectory = sandbox.workingDirectory;
       const migrationNotice = commandGate.waitedForMigration
         ? {

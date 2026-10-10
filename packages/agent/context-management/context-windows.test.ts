@@ -3,9 +3,9 @@ import { getContextWindowForModel } from "./context-windows";
 
 describe("getContextWindowForModel", () => {
   test("live gateway context_window overrides the static fallback", () => {
-    expect(
-      getContextWindowForModel("brand-new-model", 1_000_000),
-    ).toBe(1_000_000);
+    expect(getContextWindowForModel("brand-new-model", 1_000_000)).toBe(
+      1_000_000,
+    );
   });
 
   test("DeepSeek V4.1 Flash fallback is 1M when the live catalog is unavailable", () => {

@@ -239,13 +239,17 @@ describe("provider state shape and persistence", () => {
     const provider = requireSandboxProvider("boxd");
     const first = provider.buildProvisionState({ sessionId: "abc-123" });
     expect(first).toMatchObject({ type: "boxd" });
-    expect((first as { machineName: string }).machineName).toMatch(/^entry-[a-f0-9]{24}$/);
+    expect((first as { machineName: string }).machineName).toMatch(
+      /^entry-[a-f0-9]{24}$/,
+    );
 
     const repaired = provider.buildProvisionState({
       sessionId: "abc-123",
       existing: { type: "boxd", machineName: "entry-undefined" },
     });
-    expect(repaired).toMatchObject({ machineName: (first as { machineName: string }).machineName });
+    expect(repaired).toMatchObject({
+      machineName: (first as { machineName: string }).machineName,
+    });
   });
 
   test("source is carried through for modal", () => {
@@ -294,6 +298,8 @@ describe("capability differences", () => {
     expect(requireSandboxProvider("modal").capabilities).toBe(
       MODAL_CAPABILITIES,
     );
-    expect(requireSandboxProvider("local").capabilities).toBe(LOCAL_CAPABILITIES);
+    expect(requireSandboxProvider("local").capabilities).toBe(
+      LOCAL_CAPABILITIES,
+    );
   });
 });

@@ -46,7 +46,10 @@ async function claimEventOnce(
 }
 
 /** Decimal string -> USD integer cents. Null for anything not USD. */
-function usdDecimalToCents(amount: string | null, currency: string | null): number | null {
+function usdDecimalToCents(
+  amount: string | null,
+  currency: string | null,
+): number | null {
   if (currency !== "USD" || !amount) return null;
   const parsed = Number(amount);
   if (!Number.isFinite(parsed)) return null;

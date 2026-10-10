@@ -50,9 +50,9 @@ export default async function ModelPage() {
                 Model.
               </h1>
               <p className="mt-4 text-balance text-base leading-relaxed text-(--l-fg-2) sm:mt-6 sm:text-xl">
-                Pay-as-you-go, per token. No markup, no subscription required
-                to start. Free models cost nothing to run. Every model the
-                platform can route is listed -- see{" "}
+                Pay-as-you-go, per token. No markup, no subscription required to
+                start. Free models cost nothing to run. Every model the platform
+                can route is listed -- see{" "}
                 <a
                   href="/pricing"
                   className="underline decoration-(--l-fg-3) underline-offset-4 transition-colors hover:text-(--l-fg)"

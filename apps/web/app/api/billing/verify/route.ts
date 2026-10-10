@@ -33,7 +33,10 @@ export async function GET(req: Request) {
     // Bachs' own session), but the status leak is real. Require
     // metadata.userId to match the caller before saying anything.
     if (metadata.userId !== session.user.id) {
-      return Response.json({ error: "Not authorized for this checkout" }, { status: 403 });
+      return Response.json(
+        { error: "Not authorized for this checkout" },
+        { status: 403 },
+      );
     }
 
     // `completed` is the terminal paid state on the session object;

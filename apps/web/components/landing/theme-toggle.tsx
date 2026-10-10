@@ -1,10 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  readStoredTheme,
-  THEME_STORAGE_KEY,
-} from "@/lib/theme-storage";
+import { readStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme-storage";
 
 type Theme = "system" | "light" | "dark";
 

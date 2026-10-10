@@ -175,7 +175,9 @@ export class LocalSandbox implements Sandbox {
         const parent = path.dirname(anchor);
         /* c8 ignore next 3 -- only reachable at a filesystem root */
         if (parent === anchor) break;
-        tail = tail ? path.join(path.basename(anchor), tail) : path.basename(anchor);
+        tail = tail
+          ? path.join(path.basename(anchor), tail)
+          : path.basename(anchor);
         anchor = parent;
       }
     }
@@ -357,7 +359,10 @@ export class LocalSandbox implements Sandbox {
    * Not a PTY: interactive use is out of scope by design (OAgent's PTY layer
    * covers terminals in a later phase).
    */
-  async execDetached(command: string, cwd: string): Promise<{ commandId: string }> {
+  async execDetached(
+    command: string,
+    cwd: string,
+  ): Promise<{ commandId: string }> {
     const resolvedCwd = await this.resolvePath(cwd);
 
     const child = spawn("bash", ["-c", command], {
@@ -474,7 +479,8 @@ export class LocalSandbox implements Sandbox {
         live.map(
           ({ child }) =>
             new Promise<void>((resolve) => {
-              if (child.exitCode !== null || child.signalCode !== null) return resolve();
+              if (child.exitCode !== null || child.signalCode !== null)
+                return resolve();
               child.once("exit", () => resolve());
             }),
         ),

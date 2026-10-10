@@ -29,7 +29,9 @@ export function unauthorized(): NextResponse {
  * Resolve the desktop bearer token to a user via the real auth_sessions
  * table. Returns null for missing/expired/unknown tokens (fail closed).
  */
-export async function requireDesktopUser(req: NextRequest): Promise<DesktopUser | null> {
+export async function requireDesktopUser(
+  req: NextRequest,
+): Promise<DesktopUser | null> {
   const auth = req.headers.get("authorization");
   if (!auth?.startsWith("Bearer ")) return null;
   const token = auth.slice(7).trim();

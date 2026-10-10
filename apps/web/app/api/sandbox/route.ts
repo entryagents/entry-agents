@@ -110,7 +110,10 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (body.sandboxType !== undefined && !isUserSelectableSandboxType(body.sandboxType)) {
+  if (
+    body.sandboxType !== undefined &&
+    !isUserSelectableSandboxType(body.sandboxType)
+  ) {
     return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
   }
 

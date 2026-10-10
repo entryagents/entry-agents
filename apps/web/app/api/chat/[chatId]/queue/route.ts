@@ -52,12 +52,12 @@ function normalize(value: unknown): QueuedPrompt[] {
   );
 }
 
-
 function parseQueuedList(value: unknown): QueuedPrompt[] | null {
   if (!Array.isArray(value) || value.length > MAX_QUEUED_PROMPTS) return null;
   const normalized = normalize(value);
   if (normalized.length !== value.length) return null;
-  if (normalized.some((item) => item.text.length > MAX_TEXT_LENGTH)) return null;
+  if (normalized.some((item) => item.text.length > MAX_TEXT_LENGTH))
+    return null;
   return normalized;
 }
 
@@ -83,10 +83,7 @@ async function writeQueue(
 
 async function authorize(
   context: RouteContext,
-): Promise<
-  | { ok: true; chatId: string }
-  | { ok: false; response: Response }
-> {
+): Promise<{ ok: true; chatId: string } | { ok: false; response: Response }> {
   const authResult = await requireAuthenticatedUser();
   if (!authResult.ok) {
     return { ok: false, response: authResult.response };

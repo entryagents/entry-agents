@@ -144,7 +144,8 @@ export function AdminUsageSection() {
                         {formatTokens(
                           model.totalInputTokens + model.totalOutputTokens,
                         )}{" "}
-                        tokens · {formatTokens(model.totalCachedInputTokens)} cached
+                        tokens · {formatTokens(model.totalCachedInputTokens)}{" "}
+                        cached
                       </p>
                     </div>
                     <p className="shrink-0 tabular-nums text-muted-foreground">

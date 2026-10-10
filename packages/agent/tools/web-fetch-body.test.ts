@@ -16,9 +16,7 @@ describe("buildWebFetchBodyFileName", () => {
 
   it("is deterministic for the same URL", () => {
     const url = "https://example.com/a/b?x=1";
-    expect(buildWebFetchBodyFileName(url)).toBe(
-      buildWebFetchBodyFileName(url),
-    );
+    expect(buildWebFetchBodyFileName(url)).toBe(buildWebFetchBodyFileName(url));
   });
 
   it("includes the host slug for recognizability", () => {

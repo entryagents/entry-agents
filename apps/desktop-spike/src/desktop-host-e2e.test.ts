@@ -72,7 +72,8 @@ if (enabled) {
         },
       );
       res.writeHead(upstream.status, {
-        "content-type": upstream.headers.get("content-type") ?? "text/event-stream",
+        "content-type":
+          upstream.headers.get("content-type") ?? "text/event-stream",
       });
       if (upstream.body) {
         for await (const chunk of upstream.body) res.write(Buffer.from(chunk));
@@ -122,7 +123,7 @@ describe("Phase 5 end-to-end: local agent + server-side gateway credential", () 
       try {
         await host.send(
           'Create a file named exactly "host-proof.txt" in the current directory. ' +
-            'Its entire content must be exactly this one line: written by the native host',
+            "Its entire content must be exactly this one line: written by the native host",
           (e) => events.push(e),
         );
 

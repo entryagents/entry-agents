@@ -69,9 +69,10 @@ export default function AiCodingAgentPage() {
               Work in an isolated sandbox
             </h2>
             <p className="mt-3 leading-relaxed text-(--l-fg-2)">
-              Each session has filesystem, outbound network, and runtime access in its
-              own private Workspace. The agent can start from nothing, inspect
-              files, research the web, and run the tools needed to complete a task.
+              Each session has filesystem, outbound network, and runtime access
+              in its own private Workspace. The agent can start from nothing,
+              inspect files, research the web, and run the tools needed to
+              complete a task.
             </p>
           </article>
           <article>

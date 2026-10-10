@@ -33,7 +33,9 @@ const authed = (extra?: Record<string, string>) => ({
 
 const chatId = `p7-e2e-${Date.now().toString(36)}`;
 const db = DB_URL
-  ? await import("postgres").then((m) => m.default(DB_URL, { prepare: false, max: 1 }))
+  ? await import("postgres").then((m) =>
+      m.default(DB_URL, { prepare: false, max: 1 }),
+    )
   : null;
 
 afterAll(async () => {
@@ -45,15 +47,21 @@ describe("Phase 7: route allowlist (local, deterministic)", () => {
     expect(isAllowedDesktopRoute("GET", "/api/desktop/health")).toBe(true);
     expect(isAllowedDesktopRoute("POST", "/api/desktop/chat")).toBe(true);
     expect(isAllowedDesktopRoute("POST", "/api/desktop/chats")).toBe(true);
-    expect(isAllowedDesktopRoute("GET", "/api/desktop/chats/abc123")).toBe(true);
-    expect(isAllowedDesktopRoute("POST", "/api/desktop/chats/abc123/messages")).toBe(true);
+    expect(isAllowedDesktopRoute("GET", "/api/desktop/chats/abc123")).toBe(
+      true,
+    );
+    expect(
+      isAllowedDesktopRoute("POST", "/api/desktop/chats/abc123/messages"),
+    ).toBe(true);
     expect(isAllowedDesktopRoute("POST", "/api/desktop/usage")).toBe(true);
     expect(isAllowedDesktopRoute("GET", "/api/desktop/models")).toBe(true);
   });
   test("fail-closed for everything else", () => {
     expect(isAllowedDesktopRoute("GET", "/api/desktop/debug")).toBe(false);
     expect(isAllowedDesktopRoute("POST", "/api/auth/login")).toBe(false);
-    expect(isAllowedDesktopRoute("DELETE", "/api/desktop/chats/abc")).toBe(false);
+    expect(isAllowedDesktopRoute("DELETE", "/api/desktop/chats/abc")).toBe(
+      false,
+    );
     expect(isAllowedDesktopRoute("GET", "/api/admin/anything")).toBe(false);
     expect(isAllowedDesktopRoute("GET", "/api/chat")).toBe(false);
   });
@@ -94,19 +102,23 @@ if (RUN_LIVE) {
       });
       expect(cr.status).toBe(200);
 
-      const mr = await fetch(`${PROJECT_B_URL}/api/desktop/chats/${chatId}/messages`, {
-        method: "POST",
-        headers: authed(),
-        body: JSON.stringify({
-          messageId: `${chatId}-m1`,
-          role: "user",
-          parts: [{ type: "text", text: "P7 live desktop marker" }],
-        }),
-      });
+      const mr = await fetch(
+        `${PROJECT_B_URL}/api/desktop/chats/${chatId}/messages`,
+        {
+          method: "POST",
+          headers: authed(),
+          body: JSON.stringify({
+            messageId: `${chatId}-m1`,
+            role: "user",
+            parts: [{ type: "text", text: "P7 live desktop marker" }],
+          }),
+        },
+      );
       expect(mr.status).toBe(200);
 
       if (db) {
-        const rows = await db`SELECT parts FROM chat_messages WHERE id = ${`${chatId}-m1`}`;
+        const rows =
+          await db`SELECT parts FROM chat_messages WHERE id = ${`${chatId}-m1`}`;
         expect(rows.length).toBe(1);
         expect(rows[0].parts[0].text).toBe("P7 live desktop marker");
       }
@@ -127,8 +139,15 @@ if (RUN_LIVE) {
       const texts = j.messages.map((m: { parts: Array<{ text?: string }> }) =>
         m.parts.map((p) => p.text ?? "").join(""),
       );
-      console.log("DEBUG texts:", JSON.stringify(j.messages).slice(0, 400), "msgCount:", (j.messages||[]).length);
-      expect(texts.some((t: string) => t.includes("P7 live web marker"))).toBe(true);
+      console.log(
+        "DEBUG texts:",
+        JSON.stringify(j.messages).slice(0, 400),
+        "msgCount:",
+        (j.messages || []).length,
+      );
+      expect(texts.some((t: string) => t.includes("P7 live web marker"))).toBe(
+        true,
+      );
     });
 
     test("usage recorded via the REAL recordUsage path with source=desktop", async () => {
@@ -148,7 +167,8 @@ if (RUN_LIVE) {
       const j = await r.json();
       expect(j.source).toBe("desktop");
       if (db) {
-        const rows = await db`SELECT source, input_tokens, output_tokens FROM usage_events
+        const rows =
+          await db`SELECT source, input_tokens, output_tokens FROM usage_events
                               WHERE user_id = (SELECT user_id FROM sessions WHERE id = ${SESSION1})
                               ORDER BY created_at DESC LIMIT 1`;
         expect(rows.length).toBe(1);
@@ -158,22 +178,28 @@ if (RUN_LIVE) {
       }
     });
 
-    test("gateway proxy: real generation, key never in response", { timeout: 60000 }, async () => {
-      const r = await fetch(`${PROJECT_B_URL}/api/desktop/chat`, {
-        method: "POST",
-        headers: authed(),
-        body: JSON.stringify({
-          model: "mimo-v2.6-flash:free",
-          messages: [{ role: "user", content: "Reply with exactly: P7-PROXY-OK" }],
-          max_tokens: 20,
-        }),
-      });
-      expect(r.status).toBe(200);
-      const body = await r.text();
-      expect(body).toContain("P7-PROXY-OK");
-      expect(body).not.toContain("sk_live_");
-      expect(body).not.toContain("sk-");
-    });
+    test(
+      "gateway proxy: real generation, key never in response",
+      { timeout: 60000 },
+      async () => {
+        const r = await fetch(`${PROJECT_B_URL}/api/desktop/chat`, {
+          method: "POST",
+          headers: authed(),
+          body: JSON.stringify({
+            model: "mimo-v2.6-flash:free",
+            messages: [
+              { role: "user", content: "Reply with exactly: P7-PROXY-OK" },
+            ],
+            max_tokens: 20,
+          }),
+        });
+        expect(r.status).toBe(200);
+        const body = await r.text();
+        expect(body).toContain("P7-PROXY-OK");
+        expect(body).not.toContain("sk_live_");
+        expect(body).not.toContain("sk-");
+      },
+    );
 
     test("ownership: user2 cannot read/append user1's chat", async () => {
       if (!TOKEN2) return;
@@ -181,15 +207,21 @@ if (RUN_LIVE) {
         headers: { Authorization: `Bearer ${TOKEN2}` },
       });
       expect(r1.status).toBe(403);
-      const r2 = await fetch(`${PROJECT_B_URL}/api/desktop/chats/${chatId}/messages`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${TOKEN2}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messageId: `evil-${Date.now()}`,
-          role: "user",
-          parts: [{ type: "text", text: "intrusion" }],
-        }),
-      });
+      const r2 = await fetch(
+        `${PROJECT_B_URL}/api/desktop/chats/${chatId}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${TOKEN2}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messageId: `evil-${Date.now()}`,
+            role: "user",
+            parts: [{ type: "text", text: "intrusion" }],
+          }),
+        },
+      );
       expect(r2.status).toBe(403);
     });
 
@@ -197,7 +229,10 @@ if (RUN_LIVE) {
       const r1 = await fetch(`${PROJECT_B_URL}/api/desktop/chats`, {
         method: "POST",
         headers: authed(),
-        body: JSON.stringify({ chatId: `${chatId}-bad`, sessionId: "no-such-session-zz" }),
+        body: JSON.stringify({
+          chatId: `${chatId}-bad`,
+          sessionId: "no-such-session-zz",
+        }),
       });
       expect(r1.status).toBe(403);
       const r2 = await fetch(`${PROJECT_B_URL}/api/desktop/chat`, {

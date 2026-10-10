@@ -24,7 +24,9 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 403 });
   }
   const session = chat.sessionId
-    ? await db.query.sessions.findFirst({ where: eq(sessions.id, chat.sessionId) })
+    ? await db.query.sessions.findFirst({
+        where: eq(sessions.id, chat.sessionId),
+      })
     : undefined;
   if (!session || session.userId !== user.id) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });

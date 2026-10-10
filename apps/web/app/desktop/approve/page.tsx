@@ -23,7 +23,9 @@ function ApproveForm() {
   const { isAuthenticated, loading: sessionLoading } = useSession();
   const code = (params.get("code") ?? "").replace(/\D/g, "").slice(0, 6);
   const validCode = /^\d{6}$/.test(code);
-  const [state, setState] = useState<"idle" | "working" | "done" | string>("idle");
+  const [state, setState] = useState<"idle" | "working" | "done" | string>(
+    "idle",
+  );
   const triedRef = useRef(false);
 
   // Auto-approve as soon as we have a valid code AND a web session.

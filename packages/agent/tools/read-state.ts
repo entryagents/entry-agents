@@ -42,10 +42,7 @@ export function currentFileHash(raw: string): string {
   return hashFileContent(normalizeFileContent(raw));
 }
 
-function foldStateFromToolOutput(
-  output: unknown,
-  state: ReadFileState,
-): void {
+function foldStateFromToolOutput(output: unknown, state: ReadFileState): void {
   if (typeof output !== "object" || output === null) {
     return;
   }

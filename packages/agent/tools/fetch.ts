@@ -399,9 +399,14 @@ EXAMPLES:
     ].join("\n");
 
     try {
-      const result = await sandbox.exec(command, workingDirectory, timeoutMs + 5_000, {
-        signal: abortSignal,
-      });
+      const result = await sandbox.exec(
+        command,
+        workingDirectory,
+        timeoutMs + 5_000,
+        {
+          signal: abortSignal,
+        },
+      );
 
       if (result.exitCode !== 0 && result.exitCode !== 23) {
         return {
@@ -420,7 +425,9 @@ EXAMPLES:
       const responseBody =
         lines.length >= 2 ? lines.slice(0, -2).join("\n") : output;
       const status = /^\d+$/.test(statusText) ? parseInt(statusText, 10) : null;
-      const size = /^\d+$/.test(sizeText) ? parseInt(sizeText, 10) : responseBody.length;
+      const size = /^\d+$/.test(sizeText)
+        ? parseInt(sizeText, 10)
+        : responseBody.length;
       const truncated = result.exitCode === 23 || size > MAX_BODY_LENGTH;
 
       return {

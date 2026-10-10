@@ -182,9 +182,7 @@ describe("/api/sessions POST vercel project linking", () => {
     const body = (await response.json()) as { error: string };
 
     expect(response.status).toBe(403);
-    expect(body.error).toBe(
-      "Your account includes 1 trial session.",
-    );
+    expect(body.error).toBe("Your account includes 1 trial session.");
     expect(createCalls).toHaveLength(0);
   });
 

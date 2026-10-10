@@ -38,10 +38,7 @@ import {
   getNextLifecycleVersion,
 } from "@/lib/sandbox/lifecycle";
 import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
-import {
-  isSandboxActive,
-  isSandboxState,
-} from "@/lib/sandbox/utils";
+import { isSandboxActive, isSandboxState } from "@/lib/sandbox/utils";
 import { installGlobalSkills } from "@/lib/skills/global-skill-installer";
 import { eq } from "drizzle-orm";
 

@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getInstallationByUserAndId } from "@/lib/db/installations";
-import {
-  getCachedUserRepoIndex,
-  saveUserRepoIndex,
-} from "@/lib/db/repo-index";
+import { getCachedUserRepoIndex, saveUserRepoIndex } from "@/lib/db/repo-index";
 import { getLastRepoByUserId } from "@/lib/db/last-repo";
 import {
   filterRepositories,
@@ -30,8 +27,7 @@ function boostLastUsedRepo(
   const owner = lastRepo.owner.toLowerCase();
   const name = lastRepo.repo.toLowerCase();
   const index = repos.findIndex(
-    (repo) =>
-      repo.full_name.toLowerCase() === `${owner}/${name}`,
+    (repo) => repo.full_name.toLowerCase() === `${owner}/${name}`,
   );
 
   if (index <= 0) {

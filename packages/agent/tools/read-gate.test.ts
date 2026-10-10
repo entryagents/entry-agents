@@ -27,9 +27,8 @@ mock.module("@open-agents/sandbox", () => ({
 const { readFileTool } = await import("./read");
 const { editFileTool, writeFileTool } = await import("./write");
 const { hashFileContent } = await import("./read-ceilings");
-const { createReadFileState, rebuildReadFileState } = await import(
-  "./read-state"
-);
+const { createReadFileState, rebuildReadFileState } =
+  await import("./read-state");
 
 const workingDirectory = await mkdtemp(path.join(tmpdir(), "read-gate-"));
 
@@ -68,10 +67,7 @@ function executionOptions(experimental_context: unknown) {
 }
 
 async function runRead(context: unknown, filePath: string) {
-  return readFileTool().execute?.(
-    { filePath },
-    executionOptions(context),
-  );
+  return readFileTool().execute?.({ filePath }, executionOptions(context));
 }
 
 async function runEdit(
@@ -86,11 +82,7 @@ async function runEdit(
   );
 }
 
-async function runWrite(
-  context: unknown,
-  filePath: string,
-  content: string,
-) {
+async function runWrite(context: unknown, filePath: string, content: string) {
   return writeFileTool().execute?.(
     { filePath, content },
     executionOptions(context),
@@ -104,7 +96,12 @@ describe("read-before-edit gate", () => {
     const filePath = path.join(workingDirectory, "unread.ts");
     await writeFile(filePath, "const a = 1;\n", "utf-8");
 
-    const result = await runEdit(context, filePath, "const a = 1", "const a = 2");
+    const result = await runEdit(
+      context,
+      filePath,
+      "const a = 1",
+      "const a = 2",
+    );
 
     expect(result).toMatchObject({
       success: false,
@@ -122,7 +119,12 @@ describe("read-before-edit gate", () => {
     await writeFile(filePath, "const a = 1;\n", "utf-8");
 
     await runRead(context, filePath);
-    const result = await runEdit(context, filePath, "const a = 1", "const a = 2");
+    const result = await runEdit(
+      context,
+      filePath,
+      "const a = 1",
+      "const a = 2",
+    );
 
     expect(result).toMatchObject({
       success: true,
@@ -144,7 +146,12 @@ describe("read-before-edit gate", () => {
     // Out-of-band modification (bash sed, git checkout, subagent...)
     await writeFile(filePath, "const a = 99; // changed externally\n", "utf-8");
 
-    const result = await runEdit(context, filePath, "const a = 1", "const a = 2");
+    const result = await runEdit(
+      context,
+      filePath,
+      "const a = 1",
+      "const a = 2",
+    );
     expect(result).toMatchObject({
       success: false,
       gate: "stale",

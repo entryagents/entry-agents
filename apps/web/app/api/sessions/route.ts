@@ -199,7 +199,10 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (body.sandboxType !== undefined && !isUserSelectableSandboxType(body.sandboxType)) {
+  if (
+    body.sandboxType !== undefined &&
+    !isUserSelectableSandboxType(body.sandboxType)
+  ) {
     return Response.json({ error: "Invalid sandbox type" }, { status: 400 });
   }
 
@@ -374,7 +377,9 @@ export async function POST(req: Request) {
           ? effectiveAutoCreatePr
           : false,
         globalSkillRefs: preferences.globalSkillRefs,
-        sandboxState: { type: sandboxType } as import("@open-agents/sandbox").SandboxState,
+        sandboxState: {
+          type: sandboxType,
+        } as import("@open-agents/sandbox").SandboxState,
         lifecycleState: "provisioning",
         lifecycleVersion: 0,
       },

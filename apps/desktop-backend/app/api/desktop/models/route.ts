@@ -25,6 +25,9 @@ export async function GET(req: NextRequest) {
   if (!upstream?.ok) {
     return NextResponse.json({ error: "Catalog unavailable" }, { status: 502 });
   }
-  const data = (await upstream.json()) as { data?: unknown[]; models?: unknown[] };
+  const data = (await upstream.json()) as {
+    data?: unknown[];
+    models?: unknown[];
+  };
   return NextResponse.json({ models: data.data ?? data.models ?? [] });
 }

@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { Sandbox } from "./interface.ts";
-import {
-  packWorkspacePayload,
-  restoreWorkspacePayload,
-} from "./migrate.ts";
+import { packWorkspacePayload, restoreWorkspacePayload } from "./migrate.ts";
 
 /**
  * Regression tests for the pack/restore round-trip.
@@ -42,14 +39,21 @@ function createFakeSandbox(options: FakeSandboxOptions = {}): {
     async exec(command: string) {
       execs.push(command);
 
-      if (command === "git rev-parse --is-inside-work-tree 2>/dev/null || echo no") {
+      if (
+        command === "git rev-parse --is-inside-work-tree 2>/dev/null || echo no"
+      ) {
         return { success: true, stdout: "true\n", stderr: "", exitCode: 0 };
       }
 
       // The commit probe introduced by the fix.
       if (command === "git rev-parse --verify HEAD") {
         return emptyRepo
-          ? { success: false, stdout: "", stderr: "fatal: Needed a single revision\n", exitCode: 128 }
+          ? {
+              success: false,
+              stdout: "",
+              stderr: "fatal: Needed a single revision\n",
+              exitCode: 128,
+            }
           : { success: true, stdout: "abc123\n", stderr: "", exitCode: 0 };
       }
 
@@ -213,7 +217,12 @@ describe("restoreWorkspacePayload", () => {
       ...rest: [string, number, { signal?: AbortSignal }?]
     ) => {
       if (command === "git init") {
-        return { success: false, stdout: "", stderr: "permission denied", exitCode: 1 };
+        return {
+          success: false,
+          stdout: "",
+          stderr: "permission denied",
+          exitCode: 1,
+        };
       }
       return original(command, ...rest);
     };

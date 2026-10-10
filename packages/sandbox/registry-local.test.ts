@@ -29,15 +29,17 @@ describe("local provider discoverability", () => {
       fs.mkdtemp(`${process.env.TMPDIR ?? "/tmp"}/p2c-`),
     );
     try {
-      const sandbox = await connectSandbox(
-        { type: "local", rootDir: dir } as never,
-      );
+      const sandbox = await connectSandbox({
+        type: "local",
+        rootDir: dir,
+      } as never);
       // LocalSandbox is the only provider with a synchronous
       // path-contained readFile that takes (path) in this shape; assert on
       // something implementation-specific instead of instanceof, since the
       // registry returns the Sandbox interface.
-      expect(typeof (sandbox as never as { execDetached: unknown }).execDetached)
-        .toBe("function");
+      expect(
+        typeof (sandbox as never as { execDetached: unknown }).execDetached,
+      ).toBe("function");
       expect(
         typeof (sandbox as never as { killCommand: unknown }).killCommand,
       ).toBe("function");
@@ -79,7 +81,11 @@ describe("web vs desktop provider availability", () => {
   });
 
   test("desktop context: local selectable, web providers still available", () => {
-    expect(listProvidersForContext("desktop")).toEqual(["boxd", "modal", "local"]);
+    expect(listProvidersForContext("desktop")).toEqual([
+      "boxd",
+      "modal",
+      "local",
+    ]);
     expect(isSelectableInContext("local", "desktop")).toBe(true);
     expect(isSelectableInContext("nope", "desktop")).toBe(false);
   });
@@ -110,7 +116,10 @@ describe("other providers untouched", () => {
   });
 
   test("every registered provider has metadata (no dangling ids)", () => {
-    const ids: SandboxProviderId[] = [...USER_SELECTABLE_SANDBOX_TYPES, "local"];
+    const ids: SandboxProviderId[] = [
+      ...USER_SELECTABLE_SANDBOX_TYPES,
+      "local",
+    ];
     for (const id of ids) {
       expect(SANDBOX_PROVIDER_METADATA[id]).toBeDefined();
     }

@@ -21,7 +21,9 @@ export async function POST(_req: NextRequest) {
 
   const deviceCode = randomBytes(32).toString("base64url");
   // Short human-readable code the user types/sees on the approve page.
-  const code = String(parseInt(randomBytes(3).toString("hex"), 16) % 1000000).padStart(6, "0");
+  const code = String(
+    parseInt(randomBytes(3).toString("hex"), 16) % 1000000,
+  ).padStart(6, "0");
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
   await sql`

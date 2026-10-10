@@ -74,8 +74,8 @@ export function LandingFaq() {
               answered.
             </h2>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">
-              What Entry Agents is, how sessions run, and what it costs.
-              More on the{" "}
+              What Entry Agents is, how sessions run, and what it costs. More on
+              the{" "}
               <a
                 href={`${SITE_URL}/pricing`}
                 className="underline underline-offset-4 hover:text-(--l-fg)"

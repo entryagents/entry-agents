@@ -107,9 +107,9 @@ describe("step argument serialization", () => {
   test("nested undefined anywhere in a step argument is rejected", () => {
     // The failure is not specific to a top-level field -- the SDK walks
     // the whole payload, so a nested `undefined` fails the same way.
-    expect(
-      isSerializableStepArgument({ a: { b: undefined }, c: 1 }),
-    ).toBe(false);
+    expect(isSerializableStepArgument({ a: { b: undefined }, c: 1 })).toBe(
+      false,
+    );
   });
 });
 
@@ -122,7 +122,7 @@ describe("the workflow source keeps the step boundary undefined-free", () => {
    * wrun_41M3880KMW0GVKCWFQNXBGM686.
    */
   const readChatSource = () =>
-    Bun.file(new URL("./chat.ts", import.meta.url)).text();
+    Bun.file(new URL("chat.ts", import.meta.url)).text();
 
   test("no step call passes `params: input.params` verbatim", async () => {
     const source = await readChatSource();
@@ -148,7 +148,7 @@ describe("the workflow source keeps the step boundary undefined-free", () => {
 
 describe("closures never cross the workflow -> step boundary", () => {
   const readChatSource = () =>
-    Bun.file(new URL("./chat.ts", import.meta.url)).text();
+    Bun.file(new URL("chat.ts", import.meta.url)).text();
 
   /**
    * Regression for PR #13 (6f336cd), which put the sandbox-lifecycle
@@ -173,7 +173,7 @@ describe("closures never cross the workflow -> step boundary", () => {
    */
   test("sandboxControl crosses as plain data, not as closures", async () => {
     const source = await readChatSource();
-    expect(source).toContain('sandboxControl: {\n        sessionId:');
+    expect(source).toContain("sandboxControl: {\n        sessionId:");
     expect(source).not.toContain(
       "status: () => getSandboxStatusStep(options.sessionId)",
     );
@@ -181,9 +181,7 @@ describe("closures never cross the workflow -> step boundary", () => {
 
   test("WorkflowAgentOptions omits every field that holds functions", async () => {
     const source = await readChatSource();
-    expect(source).toContain(
-      '"github" | "vercel" | "sandboxControl"',
-    );
+    expect(source).toContain('"github" | "vercel" | "sandboxControl"');
   });
 
   test("the closures are rebuilt inside runAgentStep", async () => {

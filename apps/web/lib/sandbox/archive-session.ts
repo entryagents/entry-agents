@@ -5,7 +5,11 @@ import { getSessionById, updateSession } from "@/lib/db/sessions";
 import { findPullRequest, getPullRequestStatus } from "@/lib/github/pulls";
 import { getUserGitHubToken } from "@/lib/github/token";
 import { kickArchiveSandboxStopWorkflow } from "./archive-sandbox-kick";
-import { canOperateOnSandbox, clearSandboxState, getModalVolumeName } from "./utils";
+import {
+  canOperateOnSandbox,
+  clearSandboxState,
+  getModalVolumeName,
+} from "./utils";
 
 type SessionRecord = NonNullable<Awaited<ReturnType<typeof getSessionById>>>;
 type SessionUpdateInput = Parameters<typeof updateSession>[1];

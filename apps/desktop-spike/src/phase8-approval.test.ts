@@ -1,4 +1,3 @@
-
 import { describe, expect, test } from "bun:test";
 import { EntryAgentHost } from "./desktop-host";
 
@@ -10,7 +9,10 @@ describe("Phase 8: deployed approval routing", () => {
   test("waitForApproval registers before respondToApproval resolves", async () => {
     const host = new EntryAgentHost({
       projectRoot: "/tmp",
-      backend: { baseURL: "https://entry-project-b.vercel.app/v1", sessionToken: "fake-token-for-test-aaaaaaaa" },
+      backend: {
+        baseURL: "https://entry-project-b.vercel.app/v1",
+        sessionToken: "fake-token-for-test-aaaaaaaa",
+      },
       modelId: "test-model",
     });
     // Simulate the gate: register first (as waitForApproval does), then route.

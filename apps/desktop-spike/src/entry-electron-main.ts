@@ -20,7 +20,9 @@ const DESKTOP_SESSION_TOKEN = process.env.ENTRY_DESKTOP_SESSION_TOKEN ?? "";
 const MODEL_ID = process.env.ENTRY_DESKTOP_MODEL ?? "mimo-v2.6-flash:free";
 
 if (!BACKEND_BASE_URL || !DESKTOP_SESSION_TOKEN) {
-  console.error("[entry] ENTRY_DESKTOP_BACKEND_URL / ENTRY_DESKTOP_SESSION_TOKEN required");
+  console.error(
+    "[entry] ENTRY_DESKTOP_BACKEND_URL / ENTRY_DESKTOP_SESSION_TOKEN required",
+  );
   app.quit();
 }
 
@@ -29,10 +31,7 @@ const entryHandler = new EntryAgentHandler(
   () => MODEL_ID,
 );
 
-const DIST_DIR =
-  typeof __dirname !== "undefined"
-    ? __dirname
-    : ".";
+const DIST_DIR = typeof __dirname !== "undefined" ? __dirname : ".";
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -51,7 +50,9 @@ function createWindow(): void {
   win.webContents.on("console-message", (...args: unknown[]) => {
     const first = args[0] as { message?: string };
     const message =
-      typeof first?.message === "string" ? first.message : String(args[2] ?? "");
+      typeof first?.message === "string"
+        ? first.message
+        : String(args[2] ?? "");
     console.log("[renderer]", message);
     if (message.includes("E2E_DONE")) {
       console.log("=== RENDERER E2E COMPLETE ===");
@@ -75,7 +76,9 @@ app.whenReady().then(() => {
   // renderer-driven, but every privileged operation goes through main.
   ipcMain.handle("entry:pick-project", async () => {
     const { dialog } = await import("electron");
-    const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+    });
     return result.canceled ? null : result.filePaths[0];
   });
 

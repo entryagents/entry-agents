@@ -104,8 +104,8 @@ export function AssistantMessageGroups({
     : message.metadata?.creditExhausted
       ? "Ran out of credit mid-response, so generation stopped here. Top up or upgrade your plan to continue."
       : message.metadata?.turnSpendCapped
-      ? "This response got unusually expensive (a long tool-call loop) and was stopped early to protect your credit balance. Send a follow-up message to continue."
-      : null;
+        ? "This response got unusually expensive (a long tool-call loop) and was stopped early to protect your credit balance. Send a follow-up message to continue."
+        : null;
 
   const stopNoticeCard = stopNotice ? (
     <div className="w-fit max-w-[80%] rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-sm text-amber-700 dark:text-amber-400">

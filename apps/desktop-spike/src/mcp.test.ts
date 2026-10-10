@@ -48,7 +48,11 @@ describe("Phase 6 Step 12: MCP integration", () => {
   test("createMcpToolSet degrades cleanly when a server is unreachable", async () => {
     const { createMcpToolSet } = await import("@open-agents/agent");
     const result = await createMcpToolSet([
-      { name: "unreachable", transport: "sse", url: "http://127.0.0.1:1/sse" } as never,
+      {
+        name: "unreachable",
+        transport: "sse",
+        url: "http://127.0.0.1:1/sse",
+      } as never,
     ]);
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0]!.name).toBe("unreachable");

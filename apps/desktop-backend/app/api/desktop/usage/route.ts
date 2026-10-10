@@ -34,10 +34,7 @@ async function getUsageWindowTotals(userId: string): Promise<WindowTotals> {
       and(
         eq(creditTransactions.userId, userId),
         eq(creditTransactions.type, "usage_debit"),
-        gte(
-          creditTransactions.createdAt,
-          sql`now() - interval '30 days'`,
-        ),
+        gte(creditTransactions.createdAt, sql`now() - interval '30 days'`),
       ),
     );
   const s = sums[0];
@@ -122,7 +119,10 @@ export async function POST(req: NextRequest) {
   }
 
   const inputTokens = Math.max(0, Math.floor(body.inputTokens ?? 0));
-  const cachedInputTokens = Math.max(0, Math.floor(body.cachedInputTokens ?? 0));
+  const cachedInputTokens = Math.max(
+    0,
+    Math.floor(body.cachedInputTokens ?? 0),
+  );
   const outputTokens = Math.max(0, Math.floor(body.outputTokens ?? 0));
 
   await db.insert(usageEvents).values({

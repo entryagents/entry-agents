@@ -262,8 +262,7 @@ describe("/api/sessions/[sessionId]/code-editor", () => {
       },
     };
     const { POST } = await routeModulePromise;
-    const expectedError =
-      "The code editor is disabled for this session.";
+    const expectedError = "The code editor is disabled for this session.";
 
     const response = await POST(
       new Request(

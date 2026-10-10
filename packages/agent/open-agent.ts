@@ -254,7 +254,9 @@ export const openAgent = new ToolLoopAgent({
       // Desktop (Phase 6): per-call transport/auth config — keeps the
       // session token out of the process environment entirely. Web hosts
       // omit it and keep the env-var path.
-      ...(mainSelection.gatewayConfig ? { config: mainSelection.gatewayConfig } : {}),
+      ...(mainSelection.gatewayConfig
+        ? { config: mainSelection.gatewayConfig }
+        : {}),
     });
     const subagentModel = subagentSelection
       ? sharedProvider(subagentSelection.id, {

@@ -27,7 +27,11 @@ interface CreateChatBody {
   desktop?: boolean;
 }
 
-async function ensureDesktopAgentSession(userId: string, title: string, chatId?: string) {
+async function ensureDesktopAgentSession(
+  userId: string,
+  title: string,
+  chatId?: string,
+) {
   // Deterministic per chat: one chat ↔ one session. A random id per call
   // orphaned a session row every time an existing chatId re-persisted with a
   // different session (ownership mismatch → 403 + empty session → web 404).
@@ -143,6 +147,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ chats: rows });
   } catch (error) {
     console.error("GET /api/desktop/chats failed:", error);
-    return NextResponse.json({ error: "Failed to list chats" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to list chats" },
+      { status: 500 },
+    );
   }
 }
