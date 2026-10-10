@@ -1,12 +1,12 @@
 /**
  * Theme preference storage.
  *
- * Renamed from `open-agents-theme` (the pre-rename product name) to
+ * Renamed from `entry-agents-theme` (the pre-rename product name) to
  * `entry-theme`. The old key is still read once and migrated so nobody
  * silently loses a light/dark choice they already made.
  */
 export const THEME_STORAGE_KEY = "entry-theme";
-export const LEGACY_THEME_STORAGE_KEY = "open-agents-theme";
+export const LEGACY_THEME_STORAGE_KEY = "entry-agents-theme";
 
 export type ThemePreference = "light" | "dark" | "system";
 
