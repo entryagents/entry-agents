@@ -11,7 +11,6 @@
  * records MCP as NOT YET TESTED against a live server — never faked.
  */
 import { describe, expect, test } from "bun:test";
-import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

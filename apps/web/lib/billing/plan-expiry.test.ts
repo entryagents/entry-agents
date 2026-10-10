@@ -1,5 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { shouldAutoRevertToFree, PLAN_EXPIRY_GRACE_MS } from "./plans";
+import {
+  consumedFromGrantPool,
+  expiredGrantCentsOnPlanEnd,
+  shouldAutoRevertToFree,
+  PLAN_EXPIRY_GRACE_MS,
+} from "./plans";
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOW = Date.parse("2026-09-15T12:00:00Z");
@@ -54,8 +59,6 @@ describe("shouldAutoRevertToFree (own expiry enforcement, no Paystack reliance)"
     expect(shouldAutoRevertToFree("plus", "not-a-date", NOW)).toBe(false);
   });
 });
-
-import { consumedFromGrantPool, expiredGrantCentsOnPlanEnd } from "./plans";
 
 describe("grant pool: consumption + expiry math (credit dies with the plan)", () => {
   test("usage consumes the pool first, capped at the pool", () => {

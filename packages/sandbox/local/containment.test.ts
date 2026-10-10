@@ -2,11 +2,7 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-  connectLocal,
-  LocalSandbox,
-  LocalSandboxPathError,
-} from "./sandbox.ts";
+import { LocalSandbox, LocalSandboxPathError } from "./sandbox.ts";
 
 async function makeTmpDir(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), "local-sandbox-test-"));

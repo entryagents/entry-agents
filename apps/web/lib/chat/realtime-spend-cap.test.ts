@@ -1,4 +1,5 @@
 import { describe, test, expect } from "bun:test";
+import type { LanguageModelUsage } from "ai";
 import {
   applySpendToBudgets,
   buildSubagentBudgetGuard,
@@ -25,7 +26,7 @@ const usage = (input: number, cacheRead = 0) =>
     outputTokens: 100,
     totalTokens: input + 100,
     outputTokenDetails: {},
-  }) as any;
+  }) as unknown as LanguageModelUsage;
 
 describe("estimateNextStepInputTokens", () => {
   test("uses last step's real input grown 20%", () => {

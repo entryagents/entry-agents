@@ -28,8 +28,14 @@ async function bootstrapWorkspace(
   // Keep the repository credential in the machine environment rather than
   // embedding it in the remote URL or shell command. Git reads this config
   // from the environment for the duration of each clone/fetch only.
+  // Shell parameter expansion inside the command string is intentional.
+  // Shell parameter expansion inside the command string is intentional.
+  /* oxlint-disable eslint/no-template-curly-in-string -- git http.extraheader
+     value expands in the shell, not JS */
   const git =
     'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="Authorization: Bearer ${GITHUB_TOKEN:-}" git';
+  /* oxlint-enable eslint/no-template-curly-in-string */
+
   if (source?.repo) {
     // Do not send a compound if/then/else shell program to the provider. The
     // boxd command runner has historically parsed that form inconsistently,

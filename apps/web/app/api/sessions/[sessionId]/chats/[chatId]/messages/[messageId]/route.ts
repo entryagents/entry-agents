@@ -7,7 +7,6 @@ import {
   deleteChatMessageAndFollowing,
   updateChatActiveStreamId,
 } from "@/lib/db/sessions";
-import { getServerSession } from "@/lib/session/get-server-session";
 
 type RouteContext = {
   params: Promise<{ sessionId: string; chatId: string; messageId: string }>;
@@ -19,7 +18,6 @@ export async function DELETE(req: Request, context: RouteContext) {
     return authResult.response;
   }
 
-  const session = await getServerSession();
   const { sessionId, chatId, messageId } = await context.params;
 
   const chatContext = await requireOwnedSessionChat({

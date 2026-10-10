@@ -1,4 +1,3 @@
-import { NextRequest, NextResponse } from "next/server";
 import { getSql } from "@/lib/sql";
 
 export const runtime = "nodejs";

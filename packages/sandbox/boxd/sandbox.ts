@@ -1,8 +1,10 @@
-import type { Boxd } from "@boxd-sh/sdk";
-import type { DirEntry, ExecResult as BoxdExecResult } from "@boxd-sh/sdk";
+import type {
+  Boxd,
+  DirEntry,
+  ExecResult as BoxdExecResult,
+} from "@boxd-sh/sdk";
 import type { Dirent } from "node:fs";
 import type {
-  ActiveCommandInfo,
   ExecResult,
   Sandbox,
   SandboxHooks,
@@ -174,7 +176,7 @@ export class BoxdSandbox implements Sandbox {
     this.stopped = true;
   }
 
-  domain(port: number): string {
+  domain(_port: number): string {
     return `${this.machineName}.boxd.sh`;
   }
 

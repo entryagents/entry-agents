@@ -13,7 +13,6 @@ import {
   readFileSync,
   rmSync,
   existsSync,
-  mkdirSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
@@ -307,7 +306,9 @@ try {
 // ── Cleanup + report ─────────────────────────────────────────────────────
 try {
   rmSync(projectDir, { recursive: true, force: true });
-} catch {}
+} catch {
+  // best-effort cleanup: a leftover temp dir is harmless
+}
 note(`temp project cleaned up: ${!existsSync(projectDir)}`);
 clearTimeout(watchdog);
 printSummary();

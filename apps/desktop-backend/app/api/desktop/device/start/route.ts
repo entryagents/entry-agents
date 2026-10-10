@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes, createHash } from "crypto";
+import { randomBytes } from "crypto";
 import { getSql } from "@/lib/sql";
 import { ensureDeviceTable } from "@/lib/device-codes";
 

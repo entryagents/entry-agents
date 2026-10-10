@@ -51,8 +51,14 @@ describe("Phase 6 security regressions", () => {
       const envBefore = process.env.GATEWAY_API_KEY;
       const envBeforeToken = process.env.ENTRY_DESKTOP_SESSION_TOKEN;
       // ...and an agent-run bash subprocess sees the HOST's token nowhere:
+      // Shell parameter expansion inside the command string is intentional.
+      // Shell parameter expansion inside the command string is intentional.
+      /* oxlint-disable eslint/no-template-curly-in-string -- probe expands in
+         the shell, not JS */
       const probe = await host.sandboxInstance!.exec(
         "echo TOKEN=${ENTRY_DESKTOP_SESSION_TOKEN:-unset} KEY=${GATEWAY_API_KEY:-unset} URL=${GATEWAY_BASE_URL:-unset}",
+        /* oxlint-enable eslint/no-template-curly-in-string */
+
         root,
         10_000,
       );

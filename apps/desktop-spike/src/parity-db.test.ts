@@ -20,7 +20,6 @@
  * Requires POSTGRES_URL env (not committed; local dev secret).
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import * as postgres from "postgres";
 
@@ -38,7 +37,6 @@ if (!POSTGRES_URL) {
 // Real application code under test (imported from apps/web source):
 type DbModule = typeof import("../../web/lib/db/sessions.ts");
 let sessionsDb: DbModule;
-let schema: typeof import("../../web/lib/db/schema.ts");
 let sqlClient: postgres.Sql;
 
 // Test identity + fixtures (all created through real application functions)
@@ -55,7 +53,6 @@ beforeAll(async () => {
   if (!POSTGRES_URL) return; // environment without the dev DB — suite skipped
   process.env.POSTGRES_URL = POSTGRES_URL;
   sqlClient = postgres.default(POSTGRES_URL, { max: 5 });
-  schema = await import("../../web/lib/db/schema.ts");
   sessionsDb =
     (await import("../../web/lib/db/sessions.ts")) as unknown as DbModule;
 

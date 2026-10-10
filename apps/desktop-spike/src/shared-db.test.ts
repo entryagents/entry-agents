@@ -21,7 +21,6 @@ if (!POSTGRES_URL) {
 
 type DbModule = typeof import("../../web/lib/db/sessions.ts");
 let sessionsDb: DbModule;
-let schema: typeof import("../../web/lib/db/schema.ts");
 let sqlClient: postgres.Sql;
 let userId: string;
 let sessionId: string;
@@ -31,7 +30,6 @@ beforeAll(async () => {
   if (!POSTGRES_URL) return; // environment without the dev DB — suite skipped
   process.env.POSTGRES_URL = POSTGRES_URL;
   sqlClient = postgres.default(POSTGRES_URL, { max: 5 });
-  schema = await import("../../web/lib/db/schema.ts");
   sessionsDb =
     (await import("../../web/lib/db/sessions.ts")) as unknown as DbModule;
 

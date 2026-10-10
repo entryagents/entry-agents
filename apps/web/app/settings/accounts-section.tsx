@@ -419,7 +419,7 @@ function ConnectionStatusButton({
 }
 
 export function AccountsSection() {
-  const { hasGitHubAccount, hasGitHub, loading, session } = useSession();
+  const { hasGitHubAccount, hasGitHub, loading } = useSession();
   const { mutate } = useSWRConfig();
   const [unlinking, setUnlinking] = useState(false);
   const [disconnectOpen, setDisconnectOpen] = useState(false);

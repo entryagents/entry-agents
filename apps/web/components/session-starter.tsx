@@ -289,7 +289,7 @@ export function SessionStarter({
 
         {mode === "empty" && (
           <p className="text-center text-sm text-muted-foreground dark:text-neutral-500">
-            "Start a new chat -- no repository required."
+            &quot;Start a new chat -- no repository required.&quot;
           </p>
         )}
 

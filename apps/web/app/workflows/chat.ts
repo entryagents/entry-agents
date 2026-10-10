@@ -74,7 +74,6 @@ import {
   classifyChatError,
   serializeErrorForDiagnostics,
   toFriendlyChatErrorText,
-  toSafeChatError,
 } from "@/lib/chat/friendly-error";
 import { getChatById, getSessionById } from "@/lib/db/sessions";
 import { getUserPreferences } from "@/lib/db/user-preferences";

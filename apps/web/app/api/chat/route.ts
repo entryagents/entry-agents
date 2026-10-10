@@ -11,7 +11,6 @@ import {
   compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists,
   getChatById,
-  getChatMessageByIdForChat,
   isFirstChatMessage,
   touchChat,
   updateChat,
