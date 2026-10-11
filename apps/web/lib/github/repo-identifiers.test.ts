@@ -22,8 +22,8 @@ describe("repo-identifiers", () => {
 
   test("parses only real github.com HTTPS repo URLs", () => {
     expect(
-      parseGitHubHttpsUrl("https://github.com/vercel/open-agents.git"),
-    ).toEqual({ owner: "vercel", repo: "entry-agents" });
+      parseGitHubHttpsUrl("https://github.com/entryagents/entry-agents.git"),
+    ).toEqual({ owner: "entryagents", repo: "entry-agents" });
     expect(
       parseGitHubHttpsUrl("https://attacker.example/github.com/vercel/repo"),
     ).toBeNull();
@@ -34,8 +34,10 @@ describe("repo-identifiers", () => {
   });
 
   test("parses SSH GitHub URLs without accepting arbitrary hosts", () => {
-    expect(parseGitHubUrl("git@github.com:vercel/open-agents.git")).toEqual({
-      owner: "vercel",
+    expect(
+      parseGitHubUrl("git@github.com:entryagents/entry-agents.git"),
+    ).toEqual({
+      owner: "entryagents",
       repo: "entry-agents",
     });
     expect(
