@@ -7,6 +7,7 @@ import {
 import type { WebAgentUIMessage } from "@/app/types";
 import { updateChatActiveStreamId } from "@/lib/db/sessions";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
+import { isDefinitelyGoneRunError } from "@/lib/workflow-run-recovery";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
@@ -97,8 +98,19 @@ export async function GET(request: Request, context: RouteContext) {
         "x-workflow-stream-tail-index": String(tailIndex),
       },
     });
-  } catch {
-    // Workflow run not found or inaccessible — clear stale ID.
+  } catch (error) {
+    // Only a definitive "run does not exist / aged out" proves the stored
+    // id is stale. A transient failure (network, throttling, world error)
+    // must be retryable: answering 204 here tells the client the stream is
+    // gone for good, so a reconnecting client gives up on a run that is
+    // very much alive.
+    if (!isDefinitelyGoneRunError(error)) {
+      return new Response(null, {
+        status: 503,
+        headers: { "Retry-After": "1" },
+      });
+    }
+
     await updateChatActiveStreamId(chatId, null);
     return new Response(null, { status: 204 });
   }

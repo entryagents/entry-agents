@@ -3,6 +3,7 @@ import {
   requireAuthenticatedUser,
   requireOwnedSessionChat,
 } from "@/app/api/sessions/_lib/session-context";
+import { isDefinitelyGoneRunError } from "@/lib/workflow-run-recovery";
 import {
   deleteChatMessageAndFollowing,
   updateChatActiveStreamId,
@@ -44,11 +45,25 @@ export async function DELETE(req: Request, context: RouteContext) {
           { status: 409 },
         );
       }
-    } catch {
-      // Workflow run not found — treat as stale.
+    } catch (error) {
+      // Only a definitive not-found/expired proves the id is stale. A
+      // transient failure must NOT clear it: that would let this delete
+      // remove messages out from under a workflow that is still writing
+      // them.
+      if (!isDefinitelyGoneRunError(error)) {
+        return Response.json(
+          {
+            error:
+              "Temporarily unable to verify this chat's active run. Please retry.",
+          },
+          { status: 503, headers: { "Retry-After": "1" } },
+        );
+      }
+      // Definitively gone — treat as stale and fall through.
     }
 
-    // Workflow is terminal or not found — clear the stale activeStreamId.
+    // Workflow is terminal or definitively gone — clear the stale
+    // activeStreamId.
     await updateChatActiveStreamId(chatId, null);
   }
 

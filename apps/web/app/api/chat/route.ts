@@ -11,11 +11,13 @@ import {
   compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists,
   getChatById,
+  getChatMessageByIdForChat,
   isFirstChatMessage,
   touchChat,
   updateChat,
 } from "@/lib/db/sessions";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
+import { isDefinitelyGoneRunError } from "@/lib/workflow-run-recovery";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
   requireAuthenticatedUser,
@@ -94,6 +96,34 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+
+    if (existingStreamResolution.action === "unknown") {
+      // The active run's state could not be determined. Do NOT start a
+      // second workflow for this chat on a maybe: the run may be alive.
+      // A retryable status lets the client re-attempt shortly.
+      return Response.json(
+        {
+          error:
+            "Temporarily unable to verify this chat's active run. Please retry.",
+        },
+        { status: 503, headers: { "Retry-After": "1" } },
+      );
+    }
+  }
+
+  // Idempotency for a lost response: if this exact user turn already ran to
+  // completion, a retry (the POST response was lost, or the user
+  // double-submitted) must not start a second workflow for it -- the
+  // response is already persisted. Gated on the chat's terminal run status
+  // so a turn that died mid-stream stays regenerable.
+  if (await isAlreadyCompletedTurn(chat, messages, chatId)) {
+    return Response.json(
+      {
+        error:
+          "This turn already completed. Reload the chat to see its response.",
+      },
+      { status: 409 },
+    );
   }
 
   await Promise.all([
@@ -165,6 +195,10 @@ type ExistingActiveStreamResolution =
     }
   | {
       action: "conflict";
+    }
+  | {
+      /** Could not determine the run's state (transient failure). */
+      action: "unknown";
     };
 
 const ACTIVE_STREAM_RECONCILIATION_MAX_ATTEMPTS = 3;
@@ -193,8 +227,18 @@ async function reconcileExistingActiveStream(
           ),
         };
       }
-    } catch {
-      // Workflow not found or inaccessible — try to clear the stale stream ID.
+    } catch (error) {
+      // Only a definitive "this run does not exist" (or has aged out of
+      // retention) proves the stored id is stale. A transient failure --
+      // network blip, throttling, a world error -- says nothing about the
+      // run, which may be alive and streaming: clearing its slot would
+      // orphan a live workflow and let a second one start for this chat,
+      // duplicating the response and the billing. Report "unknown" and let
+      // the caller retry instead.
+      if (!isDefinitelyGoneRunError(error)) {
+        return { action: "unknown" };
+      }
+      // Definitively gone: fall through and try to clear the stale id.
     }
 
     const cleared = await compareAndSetChatActiveStreamId(
@@ -211,6 +255,39 @@ async function reconcileExistingActiveStream(
   }
 
   return currentStreamId ? { action: "conflict" } : { action: "ready" };
+}
+
+/**
+ * True when the last user message in this request already has a persisted
+ * assistant reply AND the chat's run reached a terminal "completed" state.
+ *
+ * The status gate matters: a run that crashed mid-stream leaves
+ * `lastAssistantMessageAt` set too, and that turn must stay regenerable.
+ */
+async function isAlreadyCompletedTurn(
+  chat: { status?: string | null; lastAssistantMessageAt?: Date | null },
+  messages: WebAgentUIMessage[],
+  chatId: string,
+): Promise<boolean> {
+  if (chat.status !== "completed") {
+    return false;
+  }
+
+  const lastUserMessage = messages.at(-1);
+  if (lastUserMessage?.role !== "user") {
+    return false;
+  }
+
+  const userMessageRow = await getChatMessageByIdForChat(
+    lastUserMessage.id,
+    chatId,
+  );
+  if (!userMessageRow) {
+    return false;
+  }
+
+  const lastAssistantAt = chat.lastAssistantMessageAt;
+  return Boolean(lastAssistantAt && lastAssistantAt > userMessageRow.createdAt);
 }
 
 async function persistLatestUserMessage(
