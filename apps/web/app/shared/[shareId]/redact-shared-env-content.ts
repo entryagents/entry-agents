@@ -31,6 +31,8 @@ const SECRET_LOOKING_LINE_PATTERNS: RegExp[] = [
   /-----END [A-Z ]*PRIVATE KEY-----/,
   // Bearer/Authorization header echoes.
   /\bAuthorization:\s*Bearer\s+\S+/i,
+  // Connection strings with embedded credentials (postgres://user:pass@host).
+  /\b(postgres|postgresql|mysql|mariadb|mongodb(\+srv)?|redis|amqp|ftp):\/\/[^:\s/]+:[^@\s/]+@/i,
 ];
 
 function redactSecretLookingText(text: string): string {
@@ -45,6 +47,28 @@ function redactSecretLookingText(text: string): string {
         ? REDACTED_SECRET_LINE
         : line,
     )
+    .join("\n");
+}
+
+/**
+ * Same line scan as redactSecretLookingText, but for read-tool output
+ * whose lines carry a "123: " prefix: the prefix is preserved and only
+ * the body is tested, so a secret on line 42 still redacts that line.
+ */
+function redactSecretLookingReadContent(content: string): string {
+  if (content.length === 0) {
+    return "";
+  }
+
+  return content
+    .split("\n")
+    .map((line) => {
+      const prefix = line.match(/^(\d+:\s)/);
+      const body = prefix ? line.slice(prefix[0].length) : line;
+      return redactSecretLookingText(body) === body
+        ? line
+        : `${prefix ? prefix[0] : ""}${REDACTED_SECRET_LINE}`;
+    })
     .join("\n");
 }
 
@@ -109,14 +133,16 @@ function redactReadContent(content: string): string {
     .join("\n");
 }
 
-function sanitizeReadOutput(output: unknown): unknown {
+function sanitizeReadOutput(output: unknown, fullRedact: boolean): unknown {
   if (!isRecord(output) || typeof output.content !== "string") {
     return output;
   }
 
   return {
     ...output,
-    content: redactReadContent(output.content),
+    content: fullRedact
+      ? redactReadContent(output.content)
+      : redactSecretLookingReadContent(output.content),
   };
 }
 
@@ -145,17 +171,18 @@ function sanitizeTaskOutput(output: unknown): unknown {
 function sanitizeToolOutput(
   toolName: NestedSensitiveToolName,
   output: unknown,
+  fullRedact: boolean,
 ): unknown {
   if (isRecord(output) && output.type === "json" && isRecord(output.value)) {
     return {
       ...output,
-      value: sanitizeToolOutput(toolName, output.value),
+      value: sanitizeToolOutput(toolName, output.value, fullRedact),
     };
   }
 
   switch (toolName) {
     case "read":
-      return sanitizeReadOutput(output);
+      return sanitizeReadOutput(output, fullRedact);
     case "task":
       return sanitizeTaskOutput(output);
     case "bash":
@@ -171,8 +198,7 @@ function getSensitiveToolName(
 ): SensitiveToolName | null {
   if (
     (toolName === "read" || toolName === "write" || toolName === "edit") &&
-    isRecord(input) &&
-    isEnvFilePath(input.filePath)
+    isRecord(input)
   ) {
     return toolName;
   }
@@ -180,13 +206,22 @@ function getSensitiveToolName(
   return null;
 }
 
+/** .env-style paths get whole-content redaction; everything else is line-scanned. */
+function isFullRedactFilePath(input: unknown): boolean {
+  return isRecord(input) && isEnvFilePath(input.filePath);
+}
+
 function sanitizeToolCallInput(
   toolName: SensitiveToolName,
   input: unknown,
+  fullRedact: boolean,
 ): unknown {
   if (!isRecord(input)) {
     return input;
   }
+
+  const redactString = (text: string, placeholder: string): string =>
+    fullRedact ? redactText(text, placeholder) : redactSecretLookingText(text);
 
   switch (toolName) {
     case "read":
@@ -196,7 +231,7 @@ function sanitizeToolCallInput(
         ...input,
         content:
           typeof input.content === "string"
-            ? redactText(input.content, REDACTED_WRITE_LINE)
+            ? redactString(input.content, REDACTED_WRITE_LINE)
             : input.content,
       };
     case "edit":
@@ -204,11 +239,11 @@ function sanitizeToolCallInput(
         ...input,
         oldString:
           typeof input.oldString === "string"
-            ? redactText(input.oldString, REDACTED_EDIT_OLD_LINE)
+            ? redactString(input.oldString, REDACTED_EDIT_OLD_LINE)
             : input.oldString,
         newString:
           typeof input.newString === "string"
-            ? redactText(input.newString, REDACTED_EDIT_NEW_LINE)
+            ? redactString(input.newString, REDACTED_EDIT_NEW_LINE)
             : input.newString,
       };
   }
@@ -219,7 +254,10 @@ function sanitizeSubagentFinalMessages(messages: unknown): unknown {
     return messages;
   }
 
-  const nestedSensitiveToolCalls = new Map<string, NestedSensitiveToolName>();
+  const nestedSensitiveToolCalls = new Map<
+    string,
+    { tool: NestedSensitiveToolName; fullRedact: boolean }
+  >();
 
   for (const message of messages) {
     if (!isRecord(message) || message.role !== "assistant") {
@@ -242,12 +280,18 @@ function sanitizeSubagentFinalMessages(messages: unknown): unknown {
 
       const sensitiveToolName = getSensitiveToolName(part.toolName, part.input);
       if (sensitiveToolName) {
-        nestedSensitiveToolCalls.set(part.toolCallId, sensitiveToolName);
+        nestedSensitiveToolCalls.set(part.toolCallId, {
+          tool: sensitiveToolName,
+          fullRedact: isFullRedactFilePath(part.input),
+        });
         continue;
       }
 
       if (part.toolName === "task") {
-        nestedSensitiveToolCalls.set(part.toolCallId, "task");
+        nestedSensitiveToolCalls.set(part.toolCallId, {
+          tool: "task",
+          fullRedact: false,
+        });
         continue;
       }
 
@@ -255,7 +299,10 @@ function sanitizeSubagentFinalMessages(messages: unknown): unknown {
       // bash calls inside a task's final message log were never
       // secret-scanned, unlike the top-level tool-bash handling above.
       if (part.toolName === "bash") {
-        nestedSensitiveToolCalls.set(part.toolCallId, "bash");
+        nestedSensitiveToolCalls.set(part.toolCallId, {
+          tool: "bash",
+          fullRedact: false,
+        });
       }
     }
   }
@@ -283,7 +330,11 @@ function sanitizeSubagentFinalMessages(messages: unknown): unknown {
 
           return {
             ...part,
-            input: sanitizeToolCallInput(sensitiveToolName, part.input),
+            input: sanitizeToolCallInput(
+              sensitiveToolName,
+              part.input,
+              isFullRedactFilePath(part.input),
+            ),
           };
         }
 
@@ -292,11 +343,17 @@ function sanitizeSubagentFinalMessages(messages: unknown): unknown {
           typeof part.toolCallId === "string" &&
           nestedSensitiveToolCalls.has(part.toolCallId)
         ) {
+          const nested = nestedSensitiveToolCalls.get(part.toolCallId);
+          if (!nested) {
+            return part;
+          }
+
           return {
             ...part,
             output: sanitizeToolOutput(
-              nestedSensitiveToolCalls.get(part.toolCallId) ?? "read",
+              nested.tool,
               part.output,
+              nested.fullRedact,
             ),
           };
         }
@@ -312,34 +369,34 @@ function sanitizeMessagePart(
 ): WebAgentUIMessagePart {
   switch (part.type) {
     case "tool-read":
-      if (
-        !isEnvFilePath(part.input?.filePath) ||
-        part.state !== "output-available"
-      ) {
+      if (part.state !== "output-available") {
         return part;
       }
 
       return {
         ...part,
-        output: sanitizeReadOutput(part.output) as typeof part.output,
+        output: sanitizeReadOutput(
+          part.output,
+          isFullRedactFilePath(part.input),
+        ) as typeof part.output,
       } as WebAgentUIMessagePart;
     case "tool-write":
-      if (!isEnvFilePath(part.input?.filePath)) {
-        return part;
-      }
-
       return {
         ...part,
-        input: sanitizeToolCallInput("write", part.input) as typeof part.input,
+        input: sanitizeToolCallInput(
+          "write",
+          part.input,
+          isFullRedactFilePath(part.input),
+        ) as typeof part.input,
       } as WebAgentUIMessagePart;
     case "tool-edit":
-      if (!isEnvFilePath(part.input?.filePath)) {
-        return part;
-      }
-
       return {
         ...part,
-        input: sanitizeToolCallInput("edit", part.input) as typeof part.input,
+        input: sanitizeToolCallInput(
+          "edit",
+          part.input,
+          isFullRedactFilePath(part.input),
+        ) as typeof part.input,
       } as WebAgentUIMessagePart;
     case "tool-task":
       if (part.state !== "output-available") {
