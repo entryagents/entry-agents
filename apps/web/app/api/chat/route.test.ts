@@ -30,6 +30,8 @@ interface TestChatRecord {
   sessionId: string;
   modelId: string | null;
   activeStreamId: string | null;
+  status?: string | null;
+  lastAssistantMessageAt?: Date | null;
 }
 
 let sessionRecord: TestSessionRecord | null;
@@ -47,6 +49,7 @@ let existingScopedChatMessage: { id: string } | null = null;
 let isSandboxActive = true;
 let existingRunStatus: string = "completed";
 let getRunShouldThrow = false;
+let getRunErrorName = "Error";
 let claimActiveStreamDefaultResult = true;
 let compareAndSetDefaultResult = true;
 let compareAndSetResults: boolean[] = [];
@@ -130,7 +133,9 @@ mock.module("workflow/api", () => ({
   },
   getRun: () => {
     if (getRunShouldThrow) {
-      throw new Error("Run not found");
+      throw Object.assign(new Error("Run not found"), {
+        name: getRunErrorName,
+      });
     }
 
     return {
@@ -267,6 +272,7 @@ describe("/api/chat route", () => {
     isSandboxActive = true;
     existingRunStatus = "completed";
     getRunShouldThrow = false;
+    getRunErrorName = "Error";
     claimActiveStreamDefaultResult = true;
     compareAndSetDefaultResult = true;
     compareAndSetResults = [];
@@ -313,6 +319,8 @@ describe("/api/chat route", () => {
       sessionId: "session-1",
       modelId: null,
       activeStreamId: null,
+      status: "idle",
+      lastAssistantMessageAt: null,
     };
   });
 
@@ -651,10 +659,34 @@ describe("/api/chat route", () => {
     );
   });
 
-  test("starts new workflow when the existing run cannot be loaded and clears the stale stream id first", async () => {
+  // RELIABILITY REGRESSION TEST (2026-10-11): a transient run-lookup
+  // failure used to be treated as "run not found", clearing the
+  // activeStreamId of a run that may still be alive and streaming. The
+  // orphaned run kept burning tokens while the next submit started a
+  // SECOND workflow for the same chat -- a duplicated response and
+  // duplicated billing. Only a definitive not-found/expired may clear.
+  test("does not clear a live run's slot when the run lookup fails transiently", async () => {
+    if (!chatRecord) throw new Error("chatRecord must be set");
+    chatRecord.activeStreamId = "wrun_live-999";
+    getRunShouldThrow = true;
+    getRunErrorName = "WorkflowWorldError";
+
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createValidRequest());
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("1");
+    expect(startCalls).toHaveLength(0);
+    expect(compareAndSetChatActiveStreamIdSpy).not.toHaveBeenCalled();
+    expect(claimChatActiveStreamIdSpy).not.toHaveBeenCalled();
+  });
+
+  test("clears the stream id and starts fresh only when the run is definitively gone", async () => {
     if (!chatRecord) throw new Error("chatRecord must be set");
     chatRecord.activeStreamId = "wrun_missing-789";
     getRunShouldThrow = true;
+    getRunErrorName = "WorkflowRunNotFoundError";
 
     const { POST } = await routeModulePromise;
 
@@ -670,6 +702,46 @@ describe("/api/chat route", () => {
       "chat-1",
       "wrun_test-123",
     );
+  });
+
+  // IDEMPOTENCY REGRESSION TEST: a client retry after the POST response was
+  // lost must not start a second workflow for a turn that already ran to
+  // completion -- the response is already persisted.
+  test("does not start a second workflow for a turn that already completed", async () => {
+    if (!chatRecord) throw new Error("chatRecord must be set");
+    chatRecord.status = "completed";
+    chatRecord.lastAssistantMessageAt = new Date("2026-10-11T12:00:05Z");
+    existingScopedChatMessage = {
+      id: "user-1",
+      createdAt: new Date("2026-10-11T12:00:00Z"),
+    } as unknown as { id: string };
+
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createValidRequest());
+
+    expect(response.status).toBe(409);
+    expect(startCalls).toHaveLength(0);
+    expect(compareAndSetChatActiveStreamIdSpy).not.toHaveBeenCalled();
+  });
+
+  // A turn that died mid-stream also has lastAssistantMessageAt set, but
+  // its run never reached "completed" -- it must stay regenerable.
+  test("still regenerates when the previous turn failed mid-stream", async () => {
+    if (!chatRecord) throw new Error("chatRecord must be set");
+    chatRecord.status = "failed";
+    chatRecord.lastAssistantMessageAt = new Date("2026-10-11T12:00:05Z");
+    existingScopedChatMessage = {
+      id: "user-1",
+      createdAt: new Date("2026-10-11T12:00:00Z"),
+    } as unknown as { id: string };
+
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createValidRequest());
+
+    expect(response.ok).toBe(true);
+    expect(startCalls).toHaveLength(1);
   });
 
   test("succeeds when the started workflow already claimed the stream slot", async () => {
