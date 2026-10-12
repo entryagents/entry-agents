@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireDesktopUser, unauthorized } from "@/lib/auth";
+import { debitUsage } from "@/lib/billing/credit-ledger";
+import { estimateModelUsageCost } from "@/lib/models";
+import { fetchAllLanguageModelsForAdmin } from "@/lib/models-with-context";
+import {
+  settleStepCost,
+  type UsageAccrualState,
+} from "@/lib/billing/usage-accrual";
+import { recordUsage } from "@/lib/db/usage";
 
 export const runtime = "nodejs";
 
@@ -11,6 +19,16 @@ export const runtime = "nodejs";
  * transport boundary (Phase 5/6 architecture, now deployed).
  */
 export const maxDuration = 300;
+
+function getModelId(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const anyBody = body as { model?: string; modelId?: string };
+  return typeof anyBody.model === "string"
+    ? anyBody.model
+    : typeof anyBody.modelId === "string"
+      ? anyBody.modelId
+      : null;
+}
 
 export async function POST(req: NextRequest) {
   const user = await requireDesktopUser(req);
@@ -32,6 +50,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  const modelId = getModelId(body);
+  const catalog = modelId
+    ? await fetchAllLanguageModelsForAdmin().catch(() => [])
+    : [];
+  const modelCost = catalog.find((m) => m.id === modelId)?.cost;
   let upstream: Response;
   try {
     upstream = await fetch(
@@ -69,10 +92,54 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Stream the body through untouched (usage metadata, request ids and
-  // cache info ride inside the SSE payload). The key is not in the response.
   const headers = new Headers();
   const ct = upstream.headers.get("content-type");
   if (ct) headers.set("content-type", ct);
-  return new Response(upstream.body, { status: upstream.status, headers });
+
+  const body = upstream.body;
+  if (!body || !modelId) {
+    return new Response(body, { status: upstream.status, headers });
+  }
+
+  const [forClient, forBilling] = body.tee();
+  void (async () => {
+    try {
+      const text = await new Response(forBilling).text();
+      const match = text.match(
+        /"usage"\s*:\s*\{[^}]*"prompt_tokens"\s*:\s*(\d+)[^}]*"completion_tokens"\s*:\s*(\d+)[^}]*\}/s,
+      );
+      if (!match) return;
+      const inputTokens = Number(match[1]);
+      const outputTokens = Number(match[2]);
+      const costUsd = estimateModelUsageCost(
+        {
+          inputTokens,
+          outputTokens,
+          cachedInputTokens: 0,
+        },
+        modelCost,
+      );
+      if (typeof costUsd !== "number") return;
+      const state: UsageAccrualState = { carryCents: 0 };
+      const billable = settleStepCost(state, costUsd);
+      if (billable > 0) {
+        await debitUsage(user.id, billable, {
+          modelId,
+          description: `Desktop model usage for ${modelId}`,
+        });
+      }
+      await recordUsage(user.id, {
+        source: "desktop",
+        modelId,
+        inputTokens,
+        outputTokens,
+        cachedInputTokens: 0,
+        costUsd,
+      });
+    } catch {
+      // billing should never block the response stream
+    }
+  })();
+
+  return new Response(forClient, { status: upstream.status, headers });
 }

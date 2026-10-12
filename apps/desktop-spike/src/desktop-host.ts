@@ -18,9 +18,9 @@
  * The agent executes locally against the user's filesystem via LocalSandbox.
  */
 import { randomUUID } from "node:crypto";
-import { connectSandbox } from "@entry-agents/sandbox";
-import type { Sandbox, SandboxState } from "@entry-agents/sandbox";
-import { openAgent, type OpenAgentCallOptions } from "@entry-agents/agent";
+import { connectSandbox } from "@open-agents/sandbox";
+import type { Sandbox, SandboxState } from "@open-agents/sandbox";
+import { openAgent, type OpenAgentCallOptions } from "@open-agents/agent";
 
 /** Credentials for the Desktop Backend. Never a production secret. */
 export interface DesktopBackendConfig {
@@ -204,6 +204,10 @@ export function accumulateUsage(
 export class EntryAgentHost {
   private sandbox: Sandbox | null = null;
   private activeTurn: { turnId: string; abort: AbortController } | null = null;
+  private turnInFlight: Promise<{
+    messages: unknown[];
+    usage: TurnUsage;
+  }> | null = null;
   private readonly pendingApprovals = new Map<
     string,
     { resolve: (d: { approved: boolean; reason?: string }) => void }
@@ -256,6 +260,9 @@ export class EntryAgentHost {
   ): Promise<{ messages: unknown[]; usage: TurnUsage }> {
     if (!this.sandbox) throw new Error("EntryAgentHost.start() was not called");
     if (this.stopped) throw new Error("EntryAgentHost has been stopped");
+    if (this.turnInFlight) {
+      throw new Error("A turn is already in progress");
+    }
 
     const turnId = randomUUID();
     const abort = new AbortController();
@@ -275,130 +282,134 @@ export class EntryAgentHost {
     };
     let finishReason = "unknown";
 
-    try {
-      const { sandboxState, workingDirectory } = {
-        sandboxState: {
-          type: "local",
-          rootDir: this.options.projectRoot,
-        } as SandboxState,
-        workingDirectory: this.options.projectRoot,
-      };
+    this.turnInFlight = (async () => {
+      try {
+        const { sandboxState, workingDirectory } = {
+          sandboxState: {
+            type: "local",
+            rootDir: this.options.projectRoot,
+          } as SandboxState,
+          workingDirectory: this.options.projectRoot,
+        };
 
-      for (let step = 0; step < MAX_TURN_STEPS; step++) {
-        const stream = await openAgent.stream({
-          messages: messages as never,
-          options: {
-            sandbox: { state: sandboxState, workingDirectory },
-            model: {
-              id: this.options.modelId,
-              gatewayConfig: {
-                baseURL: this.options.backend.baseURL,
-                apiKey: this.options.backend.sessionToken,
+        for (let step = 0; step < MAX_TURN_STEPS; step++) {
+          const stream = await openAgent.stream({
+            messages: messages as never,
+            options: {
+              sandbox: { state: sandboxState, workingDirectory },
+              model: {
+                id: this.options.modelId,
+                gatewayConfig: {
+                  baseURL: this.options.backend.baseURL,
+                  apiKey: this.options.backend.sessionToken,
+                },
               },
-            },
-            permissionMode: "ask",
-            ...(this.options.extraTools
-              ? { extraTools: this.options.extraTools }
-              : {}),
-          } as OpenAgentCallOptions,
-          abortSignal: abort.signal,
-        });
+              permissionMode: "ask",
+              ...(this.options.extraTools
+                ? { extraTools: this.options.extraTools }
+                : {}),
+            } as OpenAgentCallOptions,
+            abortSignal: abort.signal,
+          });
 
-        let stepFinishReason = "unknown";
-        // Approval request observed in this step's stream, if any.
-        let approvalRequest: {
-          approvalId: string;
-          toolCallId: string;
-          toolName: string;
-          input: unknown;
-        } | null = null;
+          let stepFinishReason = "unknown";
+          // Approval request observed in this step's stream, if any.
+          let approvalRequest: {
+            approvalId: string;
+            toolCallId: string;
+            toolName: string;
+            input: unknown;
+          } | null = null;
 
-        for await (const chunk of stream.toUIMessageStream()) {
-          const c = chunk as Record<string, unknown>;
-          if (c.type === "tool-approval-request") {
-            approvalRequest = {
-              approvalId: String(c.approvalId),
-              toolCallId: String(c.toolCallId),
-              toolName: String(c.toolName ?? ""),
-              input: c.input,
-            };
+          for await (const chunk of stream.toUIMessageStream()) {
+            const c = chunk as Record<string, unknown>;
+            if (c.type === "tool-approval-request") {
+              approvalRequest = {
+                approvalId: String(c.approvalId),
+                toolCallId: String(c.toolCallId),
+                toolName: String(c.toolName ?? ""),
+                input: c.input,
+              };
+            }
+            for (const event of mapChunkToIpcEvents(c, turnId)) {
+              // approval-request is emitted ONCE from the gate below (after
+              // waitForApproval is registered) — emitting it here races the
+              // renderer's immediate respondApproval IPC against registration.
+              if (event.type !== "approval-request") emit(event);
+            }
+            if (typeof c.type === "string" && c.type.startsWith("finish")) {
+              stepFinishReason = String(c.finishReason ?? stepFinishReason);
+            }
           }
-          for (const event of mapChunkToIpcEvents(c, turnId)) {
-            // approval-request is emitted ONCE from the gate below (after
-            // waitForApproval is registered) — emitting it here races the
-            // renderer's immediate respondApproval IPC against registration.
-            if (event.type !== "approval-request") emit(event);
+
+          // stream.totalUsage aggregates every step (per-step UI chunks don't
+          // carry usage on this AI SDK version) — authoritative per turn.
+          const total = await stream.totalUsage;
+          usage = accumulateUsage(usage, total as never);
+
+          // The AI SDK's own response messages (assistant tool calls + the
+          // tool-result message) are the authoritative append — hand-building
+          // them from raw chunks would drop the tool results and stall the loop.
+          const response = await stream.response;
+          messages.push(...(response.messages as never[]));
+
+          // Approval gate: the SDK paused with a tool-approval-request part in
+          // the assistant message and did NOT execute the tool. Route the
+          // decision to the renderer, then append the tool-role
+          // tool-approval-response message the SDK expects on the next
+          // stream() call (standardizePrompt → collectToolApprovals executes
+          // approved tools / emits denied outputs from that message).
+          if (approvalRequest) {
+            emit({ type: "approval-request", turnId, ...approvalRequest });
+            const decision = await this.waitForApproval(
+              approvalRequest.approvalId,
+              abort.signal,
+            );
+            messages.push({
+              role: "tool",
+              content: [
+                {
+                  type: "tool-approval-response",
+                  approvalId: approvalRequest.approvalId,
+                  approved: decision.approved,
+                  ...(decision.reason ? { reason: decision.reason } : {}),
+                },
+              ],
+            } as never);
+            // If denied, the SDK turns the response into a tool-result with
+            // type "execution-denied" output — the loop continues so the
+            // model sees the denial. Either way, keep looping.
+            finishReason = "tool-calls";
+            continue;
           }
-          if (typeof c.type === "string" && c.type.startsWith("finish")) {
-            stepFinishReason = String(c.finishReason ?? stepFinishReason);
-          }
+
+          finishReason = stepFinishReason;
+
+          // Continue the turn while the model is still asking for tools
+          // (the web host's loop, mirrored here); stop on any terminal reason.
+          if (stepFinishReason !== "tool-calls") break;
         }
 
-        // stream.totalUsage aggregates every step (per-step UI chunks don't
-        // carry usage on this AI SDK version) — authoritative per turn.
-        const total = await stream.totalUsage;
-        usage = accumulateUsage(usage, total as never);
-
-        // The AI SDK's own response messages (assistant tool calls + the
-        // tool-result message) are the authoritative append — hand-building
-        // them from raw chunks would drop the tool results and stall the loop.
-        const response = await stream.response;
-        messages.push(...(response.messages as never[]));
-
-        // Approval gate: the SDK paused with a tool-approval-request part in
-        // the assistant message and did NOT execute the tool. Route the
-        // decision to the renderer, then append the tool-role
-        // tool-approval-response message the SDK expects on the next
-        // stream() call (standardizePrompt → collectToolApprovals executes
-        // approved tools / emits denied outputs from that message).
-        if (approvalRequest) {
-          emit({ type: "approval-request", turnId, ...approvalRequest });
-          const decision = await this.waitForApproval(
-            approvalRequest.approvalId,
-            abort.signal,
-          );
-          messages.push({
-            role: "tool",
-            content: [
-              {
-                type: "tool-approval-response",
-                approvalId: approvalRequest.approvalId,
-                approved: decision.approved,
-                ...(decision.reason ? { reason: decision.reason } : {}),
-              },
-            ],
-          } as never);
-          // If denied, the SDK turns the response into a tool-result with
-          // type "execution-denied" output — the loop continues so the
-          // model sees the denial. Either way, keep looping.
-          finishReason = "tool-calls";
-          continue;
+        emit({ type: "usage", turnId, ...usage });
+        emit({ type: "turn-finished", turnId, finishReason });
+        return { messages, usage };
+      } catch (error) {
+        if (abort.signal.aborted) {
+          emit({ type: "stopped", turnId });
+        } else {
+          emit({
+            type: "error",
+            turnId,
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
-
-        finishReason = stepFinishReason;
-
-        // Continue the turn while the model is still asking for tools
-        // (the web host's loop, mirrored here); stop on any terminal reason.
-        if (stepFinishReason !== "tool-calls") break;
+        return { messages, usage };
+      } finally {
+        this.activeTurn = null;
+        this.turnInFlight = null;
       }
-
-      emit({ type: "usage", turnId, ...usage });
-      emit({ type: "turn-finished", turnId, finishReason });
-      return { messages, usage };
-    } catch (error) {
-      if (abort.signal.aborted) {
-        emit({ type: "stopped", turnId });
-      } else {
-        emit({
-          type: "error",
-          turnId,
-          message: error instanceof Error ? error.message : String(error),
-        });
-      }
-      return { messages, usage };
-    } finally {
-      this.activeTurn = null;
-    }
+    })();
+    return this.turnInFlight;
   }
 
   /**
