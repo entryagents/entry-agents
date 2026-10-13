@@ -43,6 +43,11 @@ export function ReadRenderer({
               truncated?: boolean;
               nextOffset?: number | null;
               unchanged?: boolean;
+              image?: {
+                mediaType: string;
+                data: string;
+                sizeBytes: number;
+              };
             }
           | undefined)
       : undefined;
@@ -50,6 +55,9 @@ export function ReadRenderer({
   const startLine = output?.startLine;
   const endLine = output?.endLine;
   const fileContent = output?.content;
+  const imagePreview = output?.image
+    ? `data:${output.image.mediaType};base64,${output.image.data}`
+    : null;
   const isPartialRead =
     startLine !== undefined &&
     endLine !== undefined &&
@@ -74,7 +82,15 @@ export function ReadRenderer({
     ? partialReadFileOptions
     : defaultFileOptions;
 
-  const expandedContent = cleanContent ? (
+  const expandedContent = imagePreview ? (
+    <div className="flex max-h-96 items-center justify-center overflow-auto rounded-md border border-border bg-muted/20 p-3">
+      <img
+        src={imagePreview}
+        alt={filePath}
+        className="max-h-80 max-w-full rounded object-contain"
+      />
+    </div>
+  ) : cleanContent ? (
     <div className="max-h-96 overflow-auto rounded-md border border-border">
       <DiffsFile
         file={{ name: rawFilePath, contents: cleanContent }}
