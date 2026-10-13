@@ -1,9 +1,14 @@
 "use client";
 
+import { Loader2, Lock } from "lucide-react";
+import { useState } from "react";
+import useSWR from "swr";
 import { useSession } from "@/hooks/use-session";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lock } from "lucide-react";
+import { authClient } from "@/lib/auth/client";
+import { fetcher } from "@/lib/swr";
 
 function VercelIcon({ className }: { className?: string }) {
   return (
@@ -44,14 +49,48 @@ export function VercelSectionSkeleton() {
   );
 }
 
+/**
+ * Vercel section on /settings/connections. Two distinct states:
+ * - Users who signed in WITH Vercel: their login is the Vercel account, so
+ *   it shows as managed.
+ * - Users who signed in with Google/GitHub: Vercel is NOT connected until
+ *   they link it -- render a Connect button (better-auth linkSocial stores
+ *   the vercel account row the deployment integration reads tokens from).
+ *   The old UI assumed the Vercel-login case for everyone, so a
+ *   Google-authenticated user had no way to connect at all.
+ */
 export function VercelSection() {
   const { session, loading } = useSession();
+  const {
+    data,
+    isLoading: accountsLoading,
+    mutate,
+  } = useSWR<{
+    providers: string[];
+  }>("/api/auth/accounts", fetcher);
+  const [linking, setLinking] = useState(false);
+  const user = session?.user;
 
-  if (loading) {
+  const linked = data?.providers.includes("vercel") ?? false;
+
+  async function connectVercel() {
+    setLinking(true);
+    try {
+      await authClient.linkSocial({
+        provider: "vercel",
+        callbackURL: "/settings/connections",
+        errorCallbackURL: "/settings/connections",
+      });
+      await mutate();
+    } finally {
+      setLinking(false);
+    }
+  }
+
+  if (loading || accountsLoading) {
     return <VercelSectionSkeleton />;
   }
 
-  const user = session?.user;
   if (!user) {
     return null;
   }
@@ -64,7 +103,7 @@ export function VercelSection() {
           <span className="text-sm font-medium">Vercel</span>
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Login is managed by Vercel
+          Connect your Vercel account to enable deployments.
         </p>
       </div>
 
@@ -87,10 +126,23 @@ export function VercelSection() {
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Lock className="size-3" />
-            <span>Managed</span>
-          </div>
+          {linked ? (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Lock className="size-3" />
+              <span>Connected</span>
+            </div>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={linking}
+              onClick={() => void connectVercel()}
+            >
+              {linking && <Loader2 className="mr-1.5 size-3 animate-spin" />}
+              Connect
+            </Button>
+          )}
         </div>
       </div>
     </div>

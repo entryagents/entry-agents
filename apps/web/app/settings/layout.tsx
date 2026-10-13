@@ -9,7 +9,6 @@ import {
   Plug,
   Settings as SettingsIcon,
   ShieldAlert,
-  Router,
   SlidersHorizontal,
   User,
 } from "lucide-react";
@@ -94,14 +93,7 @@ const baseSidebarItems = [
     id: "models",
     label: "Models",
     href: "/settings/models",
-    icon: Router,
-    SlidersHorizontal,
-  },
-  {
-    id: "gateway",
-    label: "Gateway",
-    href: "/settings/gateway",
-    icon: Router,
+    icon: SlidersHorizontal,
   },
   {
     id: "mcp-servers",

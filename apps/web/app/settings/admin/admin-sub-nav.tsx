@@ -25,9 +25,9 @@ const ADMIN_TABS = [
     icon: Cpu,
   },
   {
-    id: "benchmarks",
-    label: "Benchmarks",
-    href: "/settings/admin/benchmarks",
+    id: "gateway",
+    label: "Gateway",
+    href: "/settings/admin/gateway",
     icon: Gauge,
   },
   {

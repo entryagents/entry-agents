@@ -70,6 +70,9 @@ interface MetricsBucket {
     total: number;
   };
   estimatedSpend: number;
+  // Added 2026-10 (and only present per-model): what the cached
+  // tokens WOULD have cost at the full input rate minus the cache-read rate.
+  estimatedCacheSavingsUsd?: number;
   latency: LatencyStats;
   ttft: LatencyStats;
   statusBreakdown: Record<string, number>;
@@ -82,8 +85,8 @@ interface CircuitBreakerDetail {
 }
 
 // Per-day history rows returned by the gateway's /metrics since
-// 2026-09-10 (gw_metrics_daily -- UTC-day rollups with unbounded
-// retention). Null when the gateway is older than that, running on its
+// 2026-09-10 (gw_metrics_daily -- WAT/Africa-Lagos-day rollups with
+// unbounded retention). Null when the gateway is older than that, running on its
 // in-memory fallback without any recorded days, or the DB read failed.
 interface DailyMetricsRow {
   day: string; // "YYYY-MM-DD" in Nigeria local time (12am WAT rollover)
@@ -117,6 +120,11 @@ interface MetricsResponse {
   modelCount: number;
   providerCount: number;
   daily?: DailyMetricsRow[] | null;
+  // The gateway reports whether metrics are persisted to Postgres or held
+  // in-memory on a single instance -- the daily history is unbounded only
+  // in the postgres case.
+  metricsBackend?: string;
+  definitions?: Record<string, string>;
 }
 
 interface ModelInfo {
@@ -354,6 +362,7 @@ function UsageBreakdownTable({
           <TableHead className="text-right">Tokens In</TableHead>
           <TableHead className="text-right">Tokens Out</TableHead>
           <TableHead className="text-right">Spend</TableHead>
+          <TableHead className="text-right">Cache Saved</TableHead>
           <TableHead className="text-right">p50</TableHead>
           <TableHead className="text-right">Errors</TableHead>
           {cbKeyPrefix && <TableHead>Health</TableHead>}
@@ -396,6 +405,11 @@ function UsageBreakdownTable({
               </TableCell>
               <TableCell className="text-right font-mono text-xs text-[#ff8a3d]">
                 ${(b.estimatedSpend || 0).toFixed(4)}
+              </TableCell>
+              <TableCell className="text-right font-mono text-xs text-emerald-300">
+                {(b.estimatedCacheSavingsUsd || 0) > 0
+                  ? `$${(b.estimatedCacheSavingsUsd || 0).toFixed(4)}`
+                  : "—"}
               </TableCell>
               <TableCell className="text-right font-mono text-xs">
                 {b.latency?.count ? formatLatency(b.latency.p50) : "—"}
@@ -558,9 +572,15 @@ export function GatewayDashboard() {
     try {
       const [healthRes, metricsRes, modelsRes, routesRes] = await Promise.all([
         fetch(`${url}/health`, { headers }),
-        fetch(`${url}/metrics`, { headers }),
+        // The inference key no longer has metrics access on the gateway;
+        // the proxy attaches the OIDC-verified dashboard credential.
+        fetch("/api/settings/gateway-metrics?path=/metrics", {
+          cache: "no-store",
+        }),
         fetch(`${url}/v1/models`, { headers }),
-        fetch(`${url}/v1/debug/routes`, { headers }),
+        fetch("/api/settings/gateway-metrics?path=/v1/debug/routes", {
+          cache: "no-store",
+        }),
       ]);
 
       if (!healthRes.ok) {
