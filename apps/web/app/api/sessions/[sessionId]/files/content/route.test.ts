@@ -90,6 +90,8 @@ mock.module("@entry-agents/sandbox", () => ({
         readFileCalls.push({ path, encoding });
         return readFileImplementation(path, encoding);
       },
+      readFileBuffer: async (path: string) =>
+        Buffer.from(await readFileImplementation(path, "utf-8"), "utf-8"),
     };
   },
 }));
@@ -203,6 +205,8 @@ describe("/api/sessions/[sessionId]/files/content", () => {
       path: string;
       content: string;
       size: number;
+      kind: string;
+      mimeType: string;
     };
 
     expect(response.status).toBe(200);
@@ -210,6 +214,8 @@ describe("/api/sessions/[sessionId]/files/content", () => {
       path: "apps/web/lib/test file.ts",
       content: "export const answer = 42;\n",
       size: 42,
+      kind: "text",
+      mimeType: "text/plain",
     });
     expect(connectCalls).toEqual([
       {
@@ -218,12 +224,34 @@ describe("/api/sessions/[sessionId]/files/content", () => {
       },
     ]);
     expect(statCalls).toEqual(["/workspace/apps/web/lib/test file.ts"]);
-    expect(readFileCalls).toEqual([
-      {
-        path: "/workspace/apps/web/lib/test file.ts",
-        encoding: "utf-8",
-      },
-    ]);
+    expect(readFileCalls).toHaveLength(0);
+  });
+
+  test("returns an inline preview for supported binary files", async () => {
+    statImplementation = async () => ({
+      isDirectory: () => false,
+      isFile: () => true,
+      size: 4,
+    });
+    readFileImplementation = async () => "\0PNG";
+    const { GET } = await loadRouteModule();
+
+    const response = await GET(
+      new Request(
+        "http://localhost/api/sessions/session-1/files/content?path=images/logo.png",
+      ),
+      createContext(),
+    );
+    const body = (await response.json()) as {
+      kind: string;
+      mimeType: string;
+      contentBase64: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.kind).toBe("image");
+    expect(body.mimeType).toBe("image/png");
+    expect(body.contentBase64).toBe(Buffer.from("\0PNG").toString("base64"));
   });
 
   test("rejects directories instead of trying to read them", async () => {

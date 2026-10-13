@@ -16,13 +16,16 @@ export type WorkspaceFileContentResponse = {
   path: string;
   content: string;
   size: number;
+  kind?: "text" | "image" | "pdf" | "audio" | "video" | "binary";
+  mimeType?: string;
+  contentBase64?: string;
 };
 
 type RouteContext = {
   params: Promise<{ sessionId: string }>;
 };
 
-const MAX_FILE_PREVIEW_BYTES = 200_000;
+const MAX_FILE_PREVIEW_BYTES = 5_000_000;
 
 function normalizeRequestedFilePath(rawPath: string | null): string | null {
   if (!rawPath) {
@@ -46,6 +49,40 @@ function normalizeRequestedFilePath(rawPath: string | null): string | null {
   }
 
   return normalizedPath;
+}
+
+function getPreviewMimeType(filePath: string): string | null {
+  const extension = posix.extname(filePath).toLowerCase();
+  const mimeTypes: Record<string, string> = {
+    ".avif": "image/avif",
+    ".bmp": "image/bmp",
+    ".gif": "image/gif",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".png": "image/png",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+    ".pdf": "application/pdf",
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".ogg": "audio/ogg",
+    ".wav": "audio/wav",
+    ".webm": "video/webm",
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+  };
+  return mimeTypes[extension] ?? null;
+}
+
+function getPreviewKind(
+  mimeType: string | null,
+): WorkspaceFileContentResponse["kind"] {
+  if (!mimeType) return "binary";
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType.startsWith("audio/")) return "audio";
+  if (mimeType.startsWith("video/")) return "video";
+  return "binary";
 }
 
 function isMissingFileError(message: string): boolean {
@@ -109,18 +146,32 @@ export async function GET(req: Request, context: RouteContext) {
       );
     }
 
-    const content = await sandbox.readFile(fullPath, "utf-8");
-    if (content.includes("\0")) {
-      return Response.json(
-        { error: "Binary files cannot be previewed" },
-        { status: 400 },
-      );
+    const previewMimeType = getPreviewMimeType(filePath);
+    const buffer = await sandbox.readFileBuffer(fullPath);
+    const isBinary = buffer.includes(0);
+
+    if (isBinary) {
+      const kind = getPreviewKind(previewMimeType);
+      const response: WorkspaceFileContentResponse = {
+        path: filePath,
+        content: "",
+        size: stats.size,
+        kind,
+        mimeType: previewMimeType ?? "application/octet-stream",
+        contentBase64: buffer.toString("base64"),
+      };
+      return Response.json(response, {
+        headers: { "Cache-Control": "no-store" },
+      });
     }
 
+    const content = buffer.toString("utf-8");
     const response: WorkspaceFileContentResponse = {
       path: filePath,
       content,
       size: stats.size,
+      kind: "text",
+      mimeType: "text/plain",
     };
 
     return Response.json(response, {

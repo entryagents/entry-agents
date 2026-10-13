@@ -23,7 +23,7 @@ const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "Which AI models does Entry Agents support?",
     answer:
-      "Entry Agents supports multiple AI models with per-token usage pricing. You can pick a default model and switch it per session.",
+      "Entry Agents routes through Entry Gateway, supporting multiple AI models with per-token usage pricing. You can pick a default model and switch it per session.",
   },
   {
     question: "Do I need to install anything to use Entry Agents?",
