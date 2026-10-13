@@ -3019,3 +3019,5 @@ The benchmark result status is intentionally separate from model availability:
 `passed=false` with an `error_message` means infrastructure or grader failure,
 not a model-generated wrong answer. Keep those cases visible and never report
 an infrastructure error as a model score.
+
+The thinking panel was receiving live Gateway SSE, but the web chat hook throttled UI state updates to 75ms. That made fast reasoning deltas visibly lag behind the stream. Keep the chat UI throttle near one animation frame, currently 16ms, while leaving server-side stream forwarding unbuffered.
