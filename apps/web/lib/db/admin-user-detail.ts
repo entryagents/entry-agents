@@ -1,6 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
-import { estimateModelUsageCost, type AvailableModel } from "@/lib/models";
-import { costForModel } from "./admin-usage";
+import type { AvailableModel } from "@/lib/models";
 import { db } from "./client";
 import { accounts, sessions, usageEvents, users } from "./schema";
 
@@ -81,6 +80,7 @@ export async function getAdminUserProfile(
         inputTokens: usageEvents.inputTokens,
         cachedInputTokens: usageEvents.cachedInputTokens,
         outputTokens: usageEvents.outputTokens,
+        costUsd: usageEvents.costUsd,
       })
       .from(usageEvents)
       .where(eq(usageEvents.userId, userId)),
@@ -94,17 +94,7 @@ export async function getAdminUserProfile(
   for (const row of usageRows) {
     totalInputTokens += row.inputTokens;
     totalOutputTokens += row.outputTokens;
-    const cost = costForModel(row.modelId, modelCostCatalog);
-    // Priced per-event (this row's own token counts), not on a pre-summed
-    // total -- see the doc comment above.
-    const estimated = estimateModelUsageCost(
-      {
-        inputTokens: row.inputTokens,
-        cachedInputTokens: row.cachedInputTokens,
-        outputTokens: row.outputTokens,
-      },
-      cost,
-    );
+    const estimated = row.costUsd ?? undefined;
     if (estimated === undefined) {
       hasUnpricedUsage = true;
     } else {
@@ -168,6 +158,7 @@ export async function getAdminUserUsageTrend(
       inputTokens: usageEvents.inputTokens,
       cachedInputTokens: usageEvents.cachedInputTokens,
       outputTokens: usageEvents.outputTokens,
+        costUsd: usageEvents.costUsd,
     })
     .from(usageEvents)
     .where(
@@ -180,16 +171,7 @@ export async function getAdminUserUsageTrend(
   >();
 
   for (const row of rows) {
-    const cost = costForModel(row.modelId, modelCostCatalog);
-    const estimated =
-      estimateModelUsageCost(
-        {
-          inputTokens: row.inputTokens,
-          cachedInputTokens: row.cachedInputTokens,
-          outputTokens: row.outputTokens,
-        },
-        cost,
-      ) ?? 0;
+    const estimated = row.costUsd ?? 0;
 
     const existing = byDay.get(row.day) ?? {
       totalTokens: 0,
@@ -242,6 +224,7 @@ export async function getAdminUserModelBreakdown(
       inputTokens: usageEvents.inputTokens,
       cachedInputTokens: usageEvents.cachedInputTokens,
       outputTokens: usageEvents.outputTokens,
+        costUsd: usageEvents.costUsd,
     })
     .from(usageEvents)
     .where(eq(usageEvents.userId, userId));
@@ -250,15 +233,7 @@ export async function getAdminUserModelBreakdown(
 
   for (const row of rows) {
     const modelKey = row.modelId ?? "unknown";
-    const cost = costForModel(row.modelId, modelCostCatalog);
-    const estimated = estimateModelUsageCost(
-      {
-        inputTokens: row.inputTokens,
-        cachedInputTokens: row.cachedInputTokens,
-        outputTokens: row.outputTokens,
-      },
-      cost,
-    );
+    const estimated = row.costUsd ?? undefined;
 
     const existing = byModel.get(modelKey);
     if (existing) {
@@ -302,9 +277,8 @@ export interface AdminUserModelCallRow {
  * Raw, per-call usage log for one user (one row per usage_event, not
  * aggregated) -- the "every model call with its own input/output/cache
  * tokens and cost" table on the admin drill-down page. Most recent
- * first. Each row is priced on its own token counts (same per-event
- * pricing approach as getAdminUserProfile/getAdminUserModelBreakdown
- * above -- never pre-sum before pricing).
+ * first. The cost shown is the immutable cost_usd snapshot recorded with
+ * that call.
  */
 export async function getAdminUserModelCallLog(
   userId: string,
@@ -320,6 +294,7 @@ export async function getAdminUserModelCallLog(
       inputTokens: usageEvents.inputTokens,
       cachedInputTokens: usageEvents.cachedInputTokens,
       outputTokens: usageEvents.outputTokens,
+        costUsd: usageEvents.costUsd,
       createdAt: usageEvents.createdAt,
     })
     .from(usageEvents)
@@ -328,15 +303,7 @@ export async function getAdminUserModelCallLog(
     .limit(limit);
 
   return rows.map((row) => {
-    const cost = costForModel(row.modelId, modelCostCatalog);
-    const estimatedCostUsd = estimateModelUsageCost(
-      {
-        inputTokens: row.inputTokens,
-        cachedInputTokens: row.cachedInputTokens,
-        outputTokens: row.outputTokens,
-      },
-      cost,
-    );
+    const estimatedCostUsd = row.costUsd ?? undefined;
     return {
       id: row.id,
       modelId: row.modelId ?? "unknown",

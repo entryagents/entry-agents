@@ -1,8 +1,7 @@
 import { desc, ilike, inArray, or, sql } from "drizzle-orm";
-import { estimateModelUsageCost, type AvailableModel } from "@/lib/models";
+import type { AvailableModel } from "@/lib/models";
 import { db } from "./client";
 import { accounts, sessions, usageEvents, users } from "./schema";
-import { costForModel } from "./admin-usage";
 
 export interface AdminSignupRow {
   id: string;
@@ -176,6 +175,9 @@ export async function searchAdminUsers(
         totalInputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)::double precision`,
         totalCachedInputTokens: sql<number>`coalesce(sum(${usageEvents.cachedInputTokens}), 0)::double precision`,
         totalOutputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)::double precision`,
+        storedCostUsd: sql<number>`coalesce(sum(${usageEvents.costUsd}), 0)::double precision`,
+        eventCount: sql<number>`count(*)::int`,
+        pricedEventCount: sql<number>`count(${usageEvents.costUsd})::int`,
       })
       .from(usageEvents)
       .where(inArray(usageEvents.userId, userIds))
@@ -196,15 +198,8 @@ export async function searchAdminUsers(
     }
   >();
   for (const row of usageRows) {
-    const cost = costForModel(row.modelId, modelCostCatalog);
-    const estimatedCost = estimateModelUsageCost(
-      {
-        inputTokens: row.totalInputTokens,
-        cachedInputTokens: row.totalCachedInputTokens,
-        outputTokens: row.totalOutputTokens,
-      },
-      cost,
-    );
+    const estimatedCost =
+      row.pricedEventCount === row.eventCount ? row.storedCostUsd : undefined;
     const existing = usageByUser.get(row.userId) ?? {
       inputTokens: 0,
       outputTokens: 0,

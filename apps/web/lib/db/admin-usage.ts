@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { estimateModelUsageCost, type AvailableModel } from "@/lib/models";
+import type { AvailableModel } from "@/lib/models";
 import { db } from "./client";
 import { usageEvents, users } from "./schema";
 
@@ -10,7 +10,7 @@ export interface AdminUsagePerModelRow {
   totalInputTokens: number;
   totalCachedInputTokens: number;
   totalOutputTokens: number;
-  /** undefined when the model isn't in the live cost catalog (unpriced). */
+  /** undefined when one or more events have no persisted cost snapshot. */
   estimatedCostUsd: number | undefined;
 }
 
@@ -33,7 +33,7 @@ export interface AdminPlatformUsageOverview {
   totalCachedInputTokens: number;
   totalOutputTokens: number;
   totalEstimatedCostUsd: number;
-  /** True if any usage fell under a model missing from the cost catalog. */
+  /** True if any usage event has no persisted cost snapshot. */
   hasUnpricedUsage: boolean;
   perModel: AdminUsagePerModelRow[];
   topUsers: AdminUsageTopUserRow[];
@@ -49,46 +49,31 @@ interface RawUserEventRow {
   inputTokens: number;
   cachedInputTokens: number;
   outputTokens: number;
+  costUsd: number | null;
 }
 
 export interface AdminUsageOverviewOptions {
   /** Lookback window in days. Defaults to 30. */
   days?: number;
-  /** Live model cost catalog (from fetchAvailableLanguageModels()). */
-  modelCostCatalog: AvailableModel[];
+  /**
+   * Retained for call-site compatibility. Historical usage ignores this
+   * catalog and reads the per-event cost snapshot instead.
+   */
+  modelCostCatalog?: AvailableModel[];
   /** Max number of top-spending users to return. Defaults to 10. */
   topUserLimit?: number;
 }
 
-export function costForModel(
-  modelId: string | null,
-  catalog: AvailableModel[],
-): AvailableModel["cost"] | undefined {
-  if (!modelId) return undefined;
-  return catalog.find((model) => model.id === modelId)?.cost;
-}
-
 /**
  * Platform-wide usage + estimated spend across every user, for the admin
- * dashboard. Built directly on the existing `usage_events` table (same
- * source the per-user usage-insights views already read from) -- no
- * schema changes needed. Cost is estimated client-side (in this function)
- * from the live per-model pricing catalog since usage_events only stores
- * raw token counts, not a persisted dollar cost.
+ * dashboard. Cost is read from the immutable `usage_events.cost_usd`
+ * snapshot written when the event is recorded. It must never be recalculated
+ * from the live model catalog: routes can be removed and prices can change.
+ * Legacy rows with no snapshot remain explicitly unpriced rather than being
+ * silently repriced with today's catalog.
  *
- * FIXED 2026-08-17: this used to have Postgres sum() raw token counts
- * across every event in the window *before* handing the totals to
- * estimateModelUsageCost once. That's wrong for any model with a
- * `cost.context_over_200k` premium tier (currently grok-4.5) --
- * resolveCostTier's ">200k" check is meant to apply to a single request's
- * own prompt size, not a user's cumulative 30-day total. A heavy user who
- * never sent one single 200k+ prompt could still cross 200k in the SUM
- * and get 2x'd across their *entire* usage, wildly inflating estimated
- * spend (this is what produced the bogus ~$600 estimate an admin saw on
- * a user's profile). Fix: fetch raw per-event rows and price each one
- * individually (so the 200k check sees that one event's real
- * inputTokens), THEN sum the resulting dollar amounts -- never sum
- * tokens across separate events before pricing them.
+ * Historical costs are read from each usage event's immutable cost_usd
+ * snapshot. The live model catalog is intentionally not consulted here.
  */
 export async function getAdminPlatformUsageOverview(
   options: AdminUsageOverviewOptions,
@@ -109,6 +94,7 @@ export async function getAdminPlatformUsageOverview(
       inputTokens: usageEvents.inputTokens,
       cachedInputTokens: usageEvents.cachedInputTokens,
       outputTokens: usageEvents.outputTokens,
+      costUsd: usageEvents.costUsd,
     })
     .from(usageEvents)
     .innerJoin(users, sql`${usageEvents.userId} = ${users.id}`)
@@ -132,18 +118,10 @@ export async function getAdminPlatformUsageOverview(
     totalCachedInputTokens += row.cachedInputTokens;
     totalOutputTokens += row.outputTokens;
 
-    // Priced per-event, on this event's own token counts -- see the
-    // function doc comment above for why this must not be a pre-summed
-    // total.
-    const cost = costForModel(row.modelId, options.modelCostCatalog);
-    const estimatedCost = estimateModelUsageCost(
-      {
-        inputTokens: row.inputTokens,
-        cachedInputTokens: row.cachedInputTokens,
-        outputTokens: row.outputTokens,
-      },
-      cost,
-    );
+    // This is the cost snapshot captured when the event was processed.
+    // Never look up live route pricing here: model routes and prices are
+    // mutable, historical usage is not.
+    const estimatedCost = row.costUsd ?? undefined;
     const rowIsUnpriced = estimatedCost === undefined;
     if (rowIsUnpriced) {
       hasUnpricedUsage = true;
