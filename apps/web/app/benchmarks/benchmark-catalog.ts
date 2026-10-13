@@ -48,7 +48,7 @@ export const BENCHMARK_TRACKS: BenchmarkTrack[] = [
     description:
       "Repository editing tasks across multiple programming languages.",
     metric: "Tests passing",
-    source: "https://aider.chat/docs/leaderboards/",
+    source: "https://aider.chat/",
     color: "#f59e0b",
   },
 ];

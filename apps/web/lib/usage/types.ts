@@ -31,21 +31,6 @@ export interface UsageRepositoryInsight {
   totalLinesChanged: number;
 }
 
-export interface UsageDomainLeaderboardRow {
-  userId: string;
-  username: string;
-  name: string | null;
-  avatarUrl: string | null;
-  totalTokens: number;
-  mostUsedModelId: string | null;
-  mostUsedModelTokens: number;
-}
-
-export interface UsageDomainLeaderboard {
-  domain: string;
-  rows: UsageDomainLeaderboardRow[];
-}
-
 export interface UsageInsights {
   lookbackDays: number;
   pr: UsagePrInsights;

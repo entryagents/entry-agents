@@ -11,7 +11,6 @@ import {
   ShieldAlert,
   Router,
   SlidersHorizontal,
-  Trophy,
   User,
 } from "lucide-react";
 import Link from "next/link";
@@ -29,7 +28,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AccountsSectionSkeleton } from "./accounts-section";
-import { LeaderboardSectionSkeleton } from "./leaderboard-section";
 import { McpServersSectionSkeleton } from "./mcp-servers-section";
 import { PreferencesSectionSkeleton } from "./preferences-section";
 
@@ -98,12 +96,6 @@ const baseSidebarItems = [
     href: "/settings/models",
     icon: Router,
     SlidersHorizontal,
-  },
-  {
-    id: "leaderboard",
-    label: "Leaderboard",
-    href: "/settings/leaderboard",
-    icon: Trophy,
   },
   {
     id: "gateway",
@@ -265,8 +257,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <PreferencesSectionSkeleton />
     ) : activeItem?.id === "models" ? (
       <PreferencesSectionSkeleton />
-    ) : activeItem?.id === "leaderboard" ? (
-      <LeaderboardSectionSkeleton />
     ) : activeItem?.id === "mcp-servers" ? (
       <McpServersSectionSkeleton />
     ) : (

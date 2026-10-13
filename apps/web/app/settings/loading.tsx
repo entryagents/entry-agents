@@ -1,5 +1,4 @@
 import { AccountsSectionSkeleton } from "./accounts-section";
-import { LeaderboardSectionSkeleton } from "./leaderboard-section";
 import {
   ModelPreferencesSectionSkeleton,
   PreferencesSectionSkeleton,
@@ -87,27 +86,12 @@ function ModelsPageLoading() {
   );
 }
 
-function LeaderboardPageLoading() {
-  return (
-    <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Leaderboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Internal organization leaderboard ranked by token usage.
-        </p>
-      </div>
-      <LeaderboardSectionSkeleton />
-    </div>
-  );
-}
-
 export default function SettingsLoading() {
   return <ProfilePageLoading />;
 }
 
 export {
   ConnectionsPageLoading,
-  LeaderboardPageLoading,
   ModelsPageLoading,
   PreferencesPageLoading,
   ProfilePageLoading,

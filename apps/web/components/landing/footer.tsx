@@ -87,21 +87,6 @@ export function LandingFooter() {
         </div>
 
         <div className="flex items-center justify-between px-6 pt-6 pb-6 md:pt-0 md:px-10 md:pb-10">
-          <a
-            href="https://vercel.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-(--l-fg)"
-          >
-            <svg
-              viewBox="0 0 76 65"
-              className="h-4"
-              fill="currentColor"
-              aria-hidden="true"
-            >
-              <path d="M37.5274 0L75.0548 65H0L37.5274 0Z" />
-            </svg>
-          </a>
           <ThemeToggle />
         </div>
       </div>

@@ -52,7 +52,6 @@ interface ModelUsage {
 interface UsageResponse {
   usage: DailyUsageRow[];
   insights: UsageInsights;
-  domainLeaderboard: unknown;
 }
 
 interface ModelsResponse {
@@ -408,15 +407,12 @@ function ProfileSidebar({
         </div>
       </div>
 
-      {/* Rank + Email */}
-      <div className="space-y-1">
-        <p className="text-sm font-medium text-foreground">#1 in Vercel</p>
-        {session.user.email && (
-          <p className="truncate text-sm text-muted-foreground">
-            {session.user.email}
-          </p>
-        )}
-      </div>
+      {/* Email */}
+      {session.user.email && (
+        <p className="truncate text-sm text-muted-foreground">
+          {session.user.email}
+        </p>
+      )}
 
       {/* Stats */}
       {totals && (

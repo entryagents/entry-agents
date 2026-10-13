@@ -9,7 +9,7 @@ import { GitHubReconnectDialog } from "./github-reconnect-dialog";
 // Pages where GitHub access actually matters: session/chat pages (repo
 // selection and repo-backed actions live there) and the connections
 // settings page itself. Everywhere else -- Models, Profile, Preferences,
-// Usage, Leaderboard, the marketing/landing pages, etc. -- has nothing to
+// Usage, the marketing/landing pages, etc. -- has nothing to
 // do with git and must stay usable even if the GitHub connection is
 // broken. Not all users use GitHub for their sessions at all, so this
 // gate should never be the thing standing between someone and an

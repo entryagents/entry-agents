@@ -17,7 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { estimateModelUsageCost, type AvailableModel } from "@/lib/models";
 import { fetcher } from "@/lib/swr";
 import { formatDateOnly } from "@/lib/usage/date-range";
-import type { UsageDomainLeaderboard, UsageInsights } from "@/lib/usage/types";
+import type { UsageInsights } from "@/lib/usage/types";
 import { UsageInsightsSection } from "./usage/usage-insights-section";
 
 interface DailyUsageRow {
@@ -76,7 +76,6 @@ interface PieSegment {
 interface UsageResponse {
   usage: DailyUsageRow[];
   insights: UsageInsights;
-  domainLeaderboard: UsageDomainLeaderboard | null;
 }
 
 interface ModelsResponse {
