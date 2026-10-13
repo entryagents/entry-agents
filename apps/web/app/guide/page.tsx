@@ -366,13 +366,6 @@ Please reproduce the problem, inspect the browser and server errors, find the sm
               <p>Choose or inspect model availability for your sessions.</p>
             </div>
             <div>
-              <h4 className="font-semibold text-(--l-fg)">Gateway</h4>
-              <p>
-                Advanced model-routing defaults. Beginners can normally leave
-                these settings alone.
-              </p>
-            </div>
-            <div>
               <h4 className="font-semibold text-(--l-fg)">Usage</h4>
               <p>
                 Review usage and credit activity so you can understand where
@@ -508,11 +501,54 @@ Please reproduce the problem, inspect the browser and server errors, find the sm
             </li>
           </ol>
           <p>
-            There is no separate Workspace or sandbox charge in the product
-            model described by Entry’s pricing information. Credits are for
-            model usage. The internal name “Gateway” refers to the service that
-            routes model requests, but beginners do not need to configure it.
+            There is no separate Workspace or sandbox charge. Credits pay for
+            model usage, and the live pricing page is the source of truth for
+            current plan prices and limits.
           </p>
+          <h3 className="mt-8 text-xl font-semibold text-(--l-fg)">
+            What happens from plan to renewal
+          </h3>
+          <ol className="mt-4 list-decimal space-y-3 pl-6">
+            <li>
+              Start on Free with a one-time $1 credit and access to the Free
+              model. No card is required for the trial.
+            </li>
+            <li>
+              Choose a paid plan when you need more credit or access to all
+              models. Plus is $5/month for $10 credit, Entry is $13/month for
+              $50 credit, Pro is $20/month for $100 credit, and Max is $40/month
+              for $180 credit.
+            </li>
+            <li>
+              Complete checkout. Your plan becomes active and its included
+              credit is added to your balance.
+            </li>
+            <li>
+              Each model request spends credit based on the model and the work
+              involved. Longer conversations, larger answers, and tool-heavy
+              tasks normally use more.
+            </li>
+            <li>
+              Check the remaining balance and usage in Pricing or Settings →
+              Usage. A top-up can add separate pay-as-you-go credit when that
+              option is available.
+            </li>
+            <li>
+              At the next successful monthly renewal, the plan charge is made
+              and that plan’s included credit is added again. Existing balance
+              is not silently replaced by the renewal grant.
+            </li>
+            <li>
+              Entry has extra rolling usage windows: $10 over five hours, $25
+              over seven days, and $50 over 30 days. These refill continuously
+              as older usage leaves each window.
+            </li>
+            <li>
+              If you cancel, checkout fails, or the balance is too low, review
+              the billing page before starting expensive work. The plan page
+              always shows the current prices and availability.
+            </li>
+          </ol>
           <div className="grid gap-6 md:grid-cols-3">
             <div>
               <h3 className="font-semibold text-(--l-fg)">Small edit</h3>
@@ -658,13 +694,6 @@ Please reproduce the problem, inspect the browser and server errors, find the sm
             <div>
               <dt className="font-semibold text-(--l-fg)">Credits</dt>
               <dd>The usage balance applied to model requests.</dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Gateway</dt>
-              <dd>
-                An internal model-routing service. You normally do not need to
-                configure it.
-              </dd>
             </div>
             <div>
               <dt className="font-semibold text-(--l-fg)">Diff</dt>

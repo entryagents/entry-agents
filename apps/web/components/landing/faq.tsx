@@ -23,7 +23,7 @@ const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "Which AI models does Entry Agents support?",
     answer:
-      "Entry Agents routes through Entry Gateway that supports many providers and models, from Claude and GPT to DeepSeek and Qwen, with per-token pay-as-you-go pricing. You can pick a default model and switch it per session.",
+      "Entry Agents supports multiple AI models with per-token usage pricing. You can pick a default model and switch it per session.",
   },
   {
     question: "Do I need to install anything to use Entry Agents?",

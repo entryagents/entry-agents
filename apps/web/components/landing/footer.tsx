@@ -69,9 +69,6 @@ export function LandingFooter() {
                 AI SDK
               </a>
               <span className="font-sans text-sm text-(--l-fg-2)">
-                Entry Gateway
-              </span>
-              <span className="font-sans text-sm text-(--l-fg-2)">
                 Workspace
               </span>
               <a
@@ -86,7 +83,7 @@ export function LandingFooter() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between px-6 pt-6 pb-6 md:pt-0 md:px-10 md:pb-10">
+        <div className="flex items-center justify-end px-6 pt-6 pb-6 md:pt-0 md:px-10 md:pb-10">
           <ThemeToggle />
         </div>
       </div>

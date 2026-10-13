@@ -14,7 +14,7 @@ const items: readonly BentoItem[] = [
   },
   {
     id: "002",
-    title: "Entry model gateway",
+    title: "Multiple AI models",
     body: "Route requests across supported models with fallbacks, rate limiting, and usage observability.",
   },
   {
@@ -81,8 +81,8 @@ export function LandingBento() {
           </div>
           <div className="md:pl-10">
             <p className="max-w-md text-balance text-base leading-relaxed text-(--l-fg-2)">
-              Built for real software work: Entry Gateway, private Workspaces,
-              and durable workflows for agents that ship code.
+              Built for real software work: multiple models and private
+              Workspaces, and durable workflows for agents that ship code.
             </p>
             <div className="mt-6">
               <Link
