@@ -12,24 +12,17 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "node:path";
 import { EntryAgentHandler } from "./entry-agent.handler.ts";
+import { signInDesktop } from "./desktop-auth.ts";
 
 // Desktop session transport (from sign-in; in this spike, from env of the
 // LAUNCHER — which is the user's own shell, not the packaged app).
-const BACKEND_BASE_URL = process.env.ENTRY_DESKTOP_BACKEND_URL ?? "";
-const DESKTOP_SESSION_TOKEN = process.env.ENTRY_DESKTOP_SESSION_TOKEN ?? "";
+const BACKEND_BASE_URL =
+  process.env.ENTRY_DESKTOP_BACKEND_URL ??
+  "https://entry-desktop-backend.vercel.app";
+const WEB_BASE_URL =
+  process.env.ENTRY_WEB_BASE_URL ?? "https://entry-agents.dev";
 const MODEL_ID = process.env.ENTRY_DESKTOP_MODEL ?? "mimo-v2.6-flash:free";
-
-if (!BACKEND_BASE_URL || !DESKTOP_SESSION_TOKEN) {
-  console.error(
-    "[entry] ENTRY_DESKTOP_BACKEND_URL / ENTRY_DESKTOP_SESSION_TOKEN required",
-  );
-  app.quit();
-}
-
-const entryHandler = new EntryAgentHandler(
-  () => ({ baseURL: BACKEND_BASE_URL, sessionToken: DESKTOP_SESSION_TOKEN }),
-  () => MODEL_ID,
-);
+let entryHandler: EntryAgentHandler | null = null;
 
 /* oxlint-disable-next-line unicorn/prefer-module -- dual CJS/ESM bundle: __dirname is feature-detected for the CJS build */
 /* oxlint-disable-next-line unicorn/prefer-module -- dual CJS/ESM bundle: __dirname is feature-detected for the CJS build */
@@ -71,7 +64,19 @@ function createWindow(): void {
   return void win;
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  let auth: Awaited<ReturnType<typeof signInDesktop>>;
+  try {
+    auth = await signInDesktop(BACKEND_BASE_URL, WEB_BASE_URL);
+  } catch (error) {
+    console.error("[entry] desktop sign-in failed", error);
+    app.quit();
+    return;
+  }
+  entryHandler = new EntryAgentHandler(
+    () => ({ baseURL: BACKEND_BASE_URL, sessionToken: auth.sessionToken }),
+    () => MODEL_ID,
+  );
   entryHandler.register();
 
   // Renderer-facing surface a renderer may query — project selection stays
@@ -91,5 +96,5 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  entryHandler.disposeAll().finally(() => app.quit());
+  entryHandler?.disposeAll().finally(() => app.quit());
 });

@@ -18,9 +18,9 @@
  * The agent executes locally against the user's filesystem via LocalSandbox.
  */
 import { randomUUID } from "node:crypto";
-import { connectSandbox } from "@open-agents/sandbox";
-import type { Sandbox, SandboxState } from "@open-agents/sandbox";
-import { openAgent, type OpenAgentCallOptions } from "@open-agents/agent";
+import { connectSandbox } from "@entry-agents/sandbox";
+import type { Sandbox, SandboxState } from "@entry-agents/sandbox";
+import { openAgent, type OpenAgentCallOptions } from "@entry-agents/agent";
 
 /** Credentials for the Desktop Backend. Never a production secret. */
 export interface DesktopBackendConfig {
