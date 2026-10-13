@@ -26,10 +26,33 @@ const MODEL_ID = process.env.ENTRY_DESKTOP_MODEL ?? "mimo-v2.6-flash:free";
 let entryHandler: EntryAgentHandler | null = null;
 let primeRuntime: PrimeRuntimeAdapter | null = null;
 let primeSessionId: string | null = null;
+let loginWindow: BrowserWindow | null = null;
 
 /* oxlint-disable-next-line unicorn/prefer-module -- dual CJS/ESM bundle: __dirname is feature-detected for the CJS build */
 /* oxlint-disable-next-line unicorn/prefer-module -- dual CJS/ESM bundle: __dirname is feature-detected for the CJS build */
 const DIST_DIR = typeof __dirname !== "undefined" ? __dirname : ".";
+
+function createLoginWindow(): BrowserWindow {
+  const win = new BrowserWindow({
+    width: 440,
+    height: 560,
+    resizable: false,
+    title: "Sign in to Entry",
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+  :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,sans-serif;background:#09090b;color:#fafafa}
+  body{margin:0;min-height:100vh;display:grid;place-items:center}.card{width:300px;text-align:center}
+  .mark{width:56px;height:56px;margin:0 auto 24px;border-radius:16px;background:#fff;color:#09090b;display:grid;place-items:center;font-size:28px;font-weight:800}
+  h1{font-size:25px;margin:0 0 12px}p{color:#a1a1aa;line-height:1.55;margin:0}.hint{margin-top:26px;font-size:13px}
+  </style></head><body><main class="card"><div class="mark">E</div><h1>Sign in to Entry</h1><p>Your browser will open securely to complete sign-in. Return here when approval is complete.</p><p class="hint">Entry Desktop keeps your desktop conversations on this device.</p></main></body></html>`;
+  void win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  return win;
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -68,14 +91,19 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  loginWindow = createLoginWindow();
   let auth: Awaited<ReturnType<typeof signInDesktop>>;
   try {
     auth = await signInDesktop(BACKEND_BASE_URL, WEB_BASE_URL);
   } catch (error) {
     console.error("[entry] desktop sign-in failed", error);
+    loginWindow?.close();
+    loginWindow = null;
     app.quit();
     return;
   }
+  loginWindow?.close();
+  loginWindow = null;
   entryHandler = new EntryAgentHandler(
     () => ({ baseURL: BACKEND_BASE_URL, sessionToken: auth.sessionToken }),
     () => MODEL_ID,
