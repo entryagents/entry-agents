@@ -30,7 +30,9 @@ import {
   subscribeChatWorkspaceStatus,
 } from "@/lib/workspace-status-store";
 
-const CHAT_UI_UPDATE_THROTTLE_MS = 75;
+// Keep stream updates close to the browser paint rate. The previous 75 ms
+// throttle made reasoning text visibly lag behind the Gateway SSE stream.
+const CHAT_UI_UPDATE_THROTTLE_MS = 16;
 
 export type RetryChatStreamOptions = {
   auto?: boolean;
