@@ -110,11 +110,10 @@ export class PrimeRuntimeAdapter {
         cleanup();
         reject(error);
       });
-      socket.setTimeout(30_000, () =>
-        finish(reject)(
-          new Error("Timed out waiting for Prime daemon response"),
-        ),
-      );
+      socket.setTimeout(30_000, () => {
+        cleanup();
+        reject(new Error("Timed out waiting for Prime daemon response"));
+      });
     });
   }
 
