@@ -94,7 +94,11 @@ export async function POST(
         where: eq(sessions.id, chat.sessionId),
       })
     : undefined;
-  if (!session || session.userId !== user.id) {
+  if (
+    !session ||
+    session.userId !== user.id ||
+    !session.id.startsWith("desktop-")
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -133,7 +137,11 @@ export async function GET(
           where: eq(sessions.id, chat.sessionId),
         })
       : undefined;
-    if (!session || session.userId !== user.id) {
+    if (
+      !session ||
+      session.userId !== user.id ||
+      !session.id.startsWith("desktop-")
+    ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const messages = await getChatMessages(chatId);

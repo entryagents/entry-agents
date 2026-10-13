@@ -1,6 +1,16 @@
-import type { SandboxState } from "@entry-agents/sandbox";
-import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
-import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import type { SandboxState } from "@open-agents/sandbox";
+import { isKnownSandboxType } from "@open-agents/sandbox/registry.js";
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  ne,
+  notLike,
+  or,
+  sql,
+} from "drizzle-orm";
 import { db } from "./client";
 import {
   chatMessages,
@@ -231,6 +241,7 @@ export type SessionWithUnread = SessionSidebarFields & {
 
 type GetSessionsWithUnreadByUserIdOptions = {
   status?: "all" | "active" | "archived";
+  excludeDesktop?: boolean;
   limit?: number;
   offset?: number;
 };
@@ -253,6 +264,10 @@ export async function getSessionsWithUnreadByUserId(
       : status === "archived"
         ? eq(sessions.status, "archived")
         : undefined;
+
+  const userScope = options?.excludeDesktop
+    ? and(eq(sessions.userId, userId), notLike(sessions.id, "desktop-%"))
+    : eq(sessions.userId, userId);
 
   const baseQuery = db
     .select({
@@ -288,11 +303,7 @@ export async function getSessionsWithUnreadByUserId(
       chatReads,
       and(eq(chatReads.chatId, chats.id), eq(chatReads.userId, userId)),
     )
-    .where(
-      statusFilter
-        ? and(eq(sessions.userId, userId), statusFilter)
-        : eq(sessions.userId, userId),
-    )
+    .where(statusFilter ? and(userScope, statusFilter) : userScope)
     .groupBy(sessions.id)
     .orderBy(desc(sessions.createdAt));
 
