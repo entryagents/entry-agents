@@ -30,7 +30,7 @@ describe("rebuildReadFileState", () => {
     expect(state.size).toBe(0);
   });
 
-  test("folds read/edit/write outputs into the store", () => {
+  test("folds only read outputs into the store", () => {
     const messages: ModelMessage[] = [
       toolResultMessage("read", {
         success: true,
@@ -49,8 +49,8 @@ describe("rebuildReadFileState", () => {
       }),
     ];
     const state = rebuildReadFileState(messages);
-    expect(state.get("a.txt")).toBe("h-a-2"); // last write wins
-    expect(state.get("b.txt")).toBe("h-b-1");
+    expect(state.get("a.txt")).toBe("h-a-1"); // writes are not read evidence
+    expect(state.has("b.txt")).toBe(false);
   });
 
   test("skips failed outputs, foreign tools, and malformed entries", () => {

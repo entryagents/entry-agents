@@ -61,12 +61,12 @@ function foldStateFromToolOutput(output: unknown, state: ReadFileState): void {
   state.set(filePath, contentHash);
 }
 
-const GATED_TOOL_NAMES = new Set(["read", "edit", "write"]);
+const READ_EVIDENCE_TOOL_NAME = "read";
 
 /**
  * Durability by derivation (no separate storage to drift): every
- * successful read/edit/write output carries the contentHash of the
- * version it produced, so the state can be rebuilt by replaying the
+ * successful read output carries the contentHash of the version
+ * the model actually saw, so the state can be rebuilt by replaying the
  * message history. Last write wins. Survives refresh, resume, and
  * workflow suspend/resume for free.
  *
@@ -94,7 +94,7 @@ export function rebuildReadFileState(
       if (candidate.type !== "tool-result") {
         continue;
       }
-      if (!GATED_TOOL_NAMES.has(String(candidate.toolName))) {
+      if (String(candidate.toolName) !== READ_EVIDENCE_TOOL_NAME) {
         continue;
       }
       foldStateFromToolOutput(candidate.output, store);

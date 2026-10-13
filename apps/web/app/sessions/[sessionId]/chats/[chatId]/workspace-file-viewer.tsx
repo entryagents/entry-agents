@@ -1,7 +1,14 @@
 "use client";
 
 import { File as DiffsFile } from "@pierre/diffs/react";
-import { Check, CodeXml, Copy, Loader2, RefreshCw } from "lucide-react";
+import {
+  Check,
+  CodeXml,
+  Copy,
+  FileText,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import useSWR from "swr";
@@ -238,6 +245,9 @@ function ViewerBody({
     getDefaultViewerMode(filePath),
   );
   const hasContent = response != null && response.content.length > 0;
+  const binaryPreview = response?.contentBase64
+    ? `data:${response.mimeType ?? "application/octet-stream"};base64,${response.contentBase64}`
+    : null;
   const prettyViewKind = getPrettyViewKind(filePath);
   const supportsPrettyView = prettyViewKind != null;
   const fileOptions = shouldWrapFileContent(filePath)
@@ -315,7 +325,47 @@ function ViewerBody({
             {errorMessage}
           </div>
         ) : response ? (
-          response.content.length === 0 ? (
+          response.kind === "image" && binaryPreview ? (
+            <div className="flex min-h-full items-center justify-center p-6">
+              <img
+                src={binaryPreview}
+                alt={filePath.split("/").pop() ?? filePath}
+                className="max-h-[calc(88vh-8rem)] max-w-full rounded-md object-contain shadow-sm"
+              />
+            </div>
+          ) : response.kind === "pdf" && binaryPreview ? (
+            <iframe
+              title={filePath}
+              src={binaryPreview}
+              className="h-[calc(88vh-8rem)] min-h-[28rem] w-full border-0"
+            />
+          ) : response.kind === "audio" && binaryPreview ? (
+            <div className="flex justify-center p-8">
+              <audio controls src={binaryPreview} className="w-full max-w-xl" />
+            </div>
+          ) : response.kind === "video" && binaryPreview ? (
+            <div className="flex justify-center p-6">
+              <video
+                controls
+                src={binaryPreview}
+                className="max-h-[calc(88vh-8rem)] max-w-full rounded-md"
+              />
+            </div>
+          ) : response.kind === "binary" && binaryPreview ? (
+            <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
+              <FileText className="h-8 w-8 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                This binary file cannot be displayed inline.
+              </p>
+              <a
+                href={binaryPreview}
+                download={filePath.split("/").pop() ?? "download"}
+                className="text-sm font-medium text-primary underline underline-offset-4"
+              >
+                Download file
+              </a>
+            </div>
+          ) : response.content.length === 0 ? (
             <div className="px-4 py-6 text-sm text-muted-foreground">
               This file is empty.
             </div>

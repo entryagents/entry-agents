@@ -86,7 +86,7 @@ describe("read gate lifecycle", () => {
     expect(edit).toMatchObject({ success: true });
   });
 
-  test("write then edit without an intervening read is allowed", async () => {
+  test("write then edit requires an intervening read", async () => {
     const dir = await mkdtemp(path.join(tmpdir(), "gate-"));
     const context = contextFor(dir);
     await writeFileTool().execute?.(
@@ -97,7 +97,7 @@ describe("read gate lifecycle", () => {
       { filePath: "fresh.txt", oldString: "hello", newString: "HELLO" },
       executionOptions(context),
     );
-    expect(edit).toMatchObject({ success: true });
+    expect(edit).toMatchObject({ success: false, gate: "unread" });
   });
 
   test("REGRESSION: re-reading a DIFFERENT range returns those lines, not the notice", async () => {

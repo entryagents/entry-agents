@@ -161,7 +161,7 @@ describe("read-before-edit gate", () => {
     ).toContain("changed since it was last read");
   });
 
-  test("consecutive edits without a re-read are allowed (edit updates its own state)", async () => {
+  test("consecutive edits without a re-read are refused", async () => {
     const sandbox = createSandbox();
     const context = createContext(sandbox);
     const filePath = path.join(workingDirectory, "chain.ts");
@@ -172,9 +172,9 @@ describe("read-before-edit gate", () => {
     const second = await runEdit(context, filePath, "two", "TWO");
 
     expect(first).toMatchObject({ success: true });
-    expect(second).toMatchObject({ success: true });
+    expect(second).toMatchObject({ success: false, gate: "stale" });
     const onDisk = await readFile(filePath, "utf-8");
-    expect(onDisk).toBe("ONE\nTWO\nthree\n");
+    expect(onDisk).toBe("ONE\ntwo\nthree\n");
   });
 
   test("partial reads count as reads (hash of the full file)", async () => {
@@ -273,7 +273,10 @@ describe("read-before-overwrite gate (write tool)", () => {
       contentHash: hashFileContent("new contents\n"),
     });
 
-    // An edit right after the overwrite needs no re-read
+    // A write is not read evidence. Read the new contents before editing.
+    const blockedEdit = await runEdit(context, filePath, "new", "NEW");
+    expect(blockedEdit).toMatchObject({ success: false, gate: "stale" });
+    await runRead(context, filePath);
     const edit = await runEdit(context, filePath, "new", "NEW");
     expect(edit).toMatchObject({ success: true });
   });

@@ -170,10 +170,10 @@ EXAMPLES:
         await sandbox.mkdir(dir, { recursive: true });
         await sandbox.writeFile(absolutePath, content, "utf-8");
 
-        // The write itself is the newest "seen" version — record it
-        // so a following edit never demands a redundant re-read.
+        // A write is not read evidence. Any later edit or overwrite must
+        // read the resulting file first, so the model cannot chain blind
+        // mutations from content it has not actually seen.
         const contentHash = currentFileHash(content);
-        readState.set(displayPath, contentHash);
 
         const stats = await sandbox.stat(absolutePath);
 
@@ -348,10 +348,9 @@ EXAMPLES:
 
         await sandbox.writeFile(absolutePath, newContent, "utf-8");
 
-        // The edit itself is the newest "seen" version — record it
-        // so consecutive edits never demand redundant re-reads.
+        // An edit is not read evidence. A later mutation must read the
+        // new file contents before changing it again.
         const contentHash = currentFileHash(newContent);
-        readState.set(displayPath, contentHash);
 
         return {
           success: true,

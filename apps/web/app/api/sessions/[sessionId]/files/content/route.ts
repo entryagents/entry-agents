@@ -57,19 +57,53 @@ function getPreviewMimeType(filePath: string): string | null {
     ".avif": "image/avif",
     ".bmp": "image/bmp",
     ".gif": "image/gif",
+    ".heic": "image/heic",
+    ".heif": "image/heif",
+    ".ico": "image/x-icon",
     ".jpeg": "image/jpeg",
     ".jpg": "image/jpeg",
     ".png": "image/png",
     ".svg": "image/svg+xml",
+    ".tif": "image/tiff",
+    ".tiff": "image/tiff",
     ".webp": "image/webp",
     ".pdf": "application/pdf",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
     ".m4a": "audio/mp4",
+    ".mid": "audio/midi",
+    ".midi": "audio/midi",
     ".mp3": "audio/mpeg",
+    ".oga": "audio/ogg",
     ".ogg": "audio/ogg",
     ".wav": "audio/wav",
-    ".webm": "video/webm",
+    ".weba": "audio/webm",
+    ".3gp": "video/3gpp",
+    ".avi": "video/x-msvideo",
+    ".mkv": "video/x-matroska",
+    ".mpeg": "video/mpeg",
     ".mp4": "video/mp4",
+    ".ogv": "video/ogg",
+    ".webm": "video/webm",
     ".mov": "video/quicktime",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
+    ".zip": "application/zip",
+    ".gz": "application/gzip",
+    ".tar": "application/x-tar",
+    ".7z": "application/x-7z-compressed",
+    ".rar": "application/vnd.rar",
+    ".doc": "application/msword",
+    ".docx":
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx":
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx":
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   };
   return mimeTypes[extension] ?? null;
 }
@@ -148,7 +182,7 @@ export async function GET(req: Request, context: RouteContext) {
 
     const previewMimeType = getPreviewMimeType(filePath);
     const buffer = await sandbox.readFileBuffer(fullPath);
-    const isBinary = buffer.includes(0);
+    const isBinary = Boolean(previewMimeType) || buffer.includes(0);
 
     if (isBinary) {
       const kind = getPreviewKind(previewMimeType);
