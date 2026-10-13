@@ -2,26 +2,24 @@ import { SITE_URL } from "@/lib/site";
 
 const content = `# Entry Agents (also known as Entry)
 
-> Entry Agents is a cloud platform for autonomous AI agents that build software in private Workspaces, with or without a connected GitHub repository. Git delivery is optional.
+> Entry Agents is an AI coding workspace for people who want to build software from an idea, uploaded files, or an optional GitHub repository. Git delivery is optional.
 
 ## Full context
 
-Entry Agents, also known as Entry, is a cloud platform for autonomous software-building agents. A session provisions a private cloud Workspace with filesystem, outbound network and runtime access; the agent researches, edits files, runs shell commands, builds applications and tests results. Sessions start blank, from uploaded files, or from a connected GitHub repository, and delivery through Git (branches, commits, pull requests) is optional.
+Entry Agents, also known as Entry, helps you build software by describing what you want in plain language. Start with a blank Workspace, uploaded files, or an optional GitHub repository. The agent can research, edit files, run commands, build applications, test results, and explain its work. Git branches, commits, and pull requests are optional ways to deliver the result.
 
 Key facts:
 
 - Every session runs in an isolated sandbox no other session can reach; sandboxes hibernate when inactive and restore with filesystem state intact.
-- Two built-in subagents, explorer (read-only research) and executor (implementation), can work in parallel within a session.
-- Agent loops run as durable, resumable workflows that survive restarts and retry on failure.
-- Model usage is credit-based: $1 of credit is $1 of usage, with no separate sandbox or Workspace fee, and free models cost nothing to run. Per-token prices and context windows for every supported model are published at ${SITE_URL}/model.
+- Model usage is credit-based. There is no separate Workspace or sandbox fee. Current model prices and context windows are published at ${SITE_URL}/model.
 - Sign-in uses Vercel, Google or GitHub OAuth; expired sandbox filesystems are discarded, while committed work persists in Git.
 
-The extended version of this file, covering the full session lifecycle, model routing and pricing semantics, is at ${SITE_URL}/llms-full.txt.
+The extended version of this file, including the beginner navigation guide and pricing explanation, is at ${SITE_URL}/llms-full.txt.
 
 ## Public pages
 
 - [Entry Agents](${SITE_URL}/): Product overview and sign-in.
-- [Beginner guide](${SITE_URL}/guide): A plain-language guide to starting a Workspace, prompting an agent, GitHub, credits, and common questions.
+- [Beginner guide](${SITE_URL}/guide): A complete beginner guide for starting without a project, navigating the UI, prompting the agent, reviewing work, GitHub, and credits.
 - [AI coding agent](${SITE_URL}/ai-coding-agent): How Entry Agents builds software with or without a repository.
 - [Pricing](${SITE_URL}/pricing): Credit-based plans for Entry Agents.
 - [Models](${SITE_URL}/model): Supported model prices and context windows.
