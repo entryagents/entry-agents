@@ -29,6 +29,12 @@ export function LandingFooter() {
                 AI coding agent
               </Link>
               <Link
+                href="/guide"
+                className="font-sans text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+              >
+                Beginner guide
+              </Link>
+              <Link
                 href="/pricing"
                 className="font-sans text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
               >

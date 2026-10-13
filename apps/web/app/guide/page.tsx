@@ -202,8 +202,9 @@ export default function GuidePage() {
               Credits are for model usage
             </h2>
             <p className="mt-3 leading-relaxed text-(--l-fg-2)">
-              Entry uses credits for model tokens through Entry Gateway. There
-              is no separate Workspace or sandbox charge. See the live{" "}
+              Entry uses credits for the AI work it performs. There is no
+              separate Workspace or sandbox charge. Entry Gateway is the
+              internal service that routes requests to the available models. See the live{" "}
               <Link className="underline" href="/pricing">
                 pricing
               </Link>{" "}
