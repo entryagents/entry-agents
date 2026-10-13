@@ -173,6 +173,20 @@ export async function GET(req: Request, context: RouteContext) {
       );
     }
 
+    const requestUrl = new URL(req.url);
+    if (requestUrl.searchParams.get("download") === "1") {
+      const downloadBuffer = await sandbox.readFileBuffer(fullPath);
+      const fileName = posix.basename(filePath).replaceAll('"', "");
+      return new Response(new Uint8Array(downloadBuffer), {
+        headers: {
+          "Cache-Control": "no-store",
+          "Content-Type":
+            getPreviewMimeType(filePath) ?? "application/octet-stream",
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+        },
+      });
+    }
+
     if (stats.size > MAX_FILE_PREVIEW_BYTES) {
       return Response.json(
         { error: "File is too large to preview" },

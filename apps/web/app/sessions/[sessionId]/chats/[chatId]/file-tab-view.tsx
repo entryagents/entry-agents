@@ -1,7 +1,7 @@
 "use client";
 
 import { File as DiffsFile } from "@pierre/diffs/react";
-import { FileText, Loader2, RefreshCw } from "lucide-react";
+import { Download, FileText, Loader2, RefreshCw } from "lucide-react";
 import { useMemo } from "react";
 import useSWR from "swr";
 import type { WorkspaceFileContentResponse } from "@/app/api/sessions/[sessionId]/files/content/route";
@@ -67,6 +67,7 @@ export function FileTabView() {
   const binaryPreview = data?.contentBase64
     ? `data:${data.mimeType ?? "application/octet-stream"};base64,${data.contentBase64}`
     : null;
+  const downloadUrl = requestUrl ? `${requestUrl}&download=1` : null;
   const fileOptions = shouldWrapFileContent(focusedFilePath)
     ? { ...defaultFileOptions, overflow: "wrap" as const }
     : defaultFileOptions;
@@ -85,6 +86,27 @@ export function FileTabView() {
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {downloadUrl && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 px-0"
+                >
+                  <a
+                    href={downloadUrl}
+                    download={fileName}
+                    aria-label={`Download ${fileName}`}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Download</TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

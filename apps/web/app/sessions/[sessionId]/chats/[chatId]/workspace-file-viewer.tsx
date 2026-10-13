@@ -5,6 +5,7 @@ import {
   Check,
   CodeXml,
   Copy,
+  Download,
   FileText,
   Loader2,
   RefreshCw,
@@ -229,6 +230,7 @@ function ViewerBody({
   onRefresh,
   onAddToPrompt,
   response,
+  downloadUrl,
 }: {
   editorBusy?: boolean;
   editorDisabledReason?: string | null;
@@ -240,6 +242,7 @@ function ViewerBody({
   onRefresh: () => void;
   onAddToPrompt?: (selectedText: string, comment: string) => void;
   response: WorkspaceFileContentResponse | undefined;
+  downloadUrl: string;
 }) {
   const [viewerMode, setViewerMode] = useState<ViewerMode>(() =>
     getDefaultViewerMode(filePath),
@@ -268,6 +271,22 @@ function ViewerBody({
           <CopyButton text={filePath} title="Copy file path" />
         </div>
         <div className="flex items-center gap-1">
+          <Button
+            asChild
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 shrink-0 gap-1.5 px-2 text-xs"
+            title={`Download ${filePath}`}
+          >
+            <a
+              href={downloadUrl}
+              download={filePath.split("/").pop() ?? "download"}
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Download</span>
+            </a>
+          </Button>
           {supportsPrettyView && (
             <ViewModeToggle mode={viewerMode} onModeChange={setViewerMode} />
           )}
@@ -416,6 +435,8 @@ export function WorkspaceFileViewer({
     return `/api/sessions/${sessionId}/files/content?${params.toString()}`;
   }, [filePath, open, sessionId]);
 
+  const downloadUrl = requestUrl ? `${requestUrl}&download=1` : "";
+
   const { data, error, isLoading, isValidating, mutate } =
     useSWR<WorkspaceFileContentResponse>(requestUrl, fetcherNoStore, {
       revalidateOnFocus: false,
@@ -452,6 +473,7 @@ export function WorkspaceFileViewer({
       }}
       onAddToPrompt={handleAddToPrompt}
       response={data}
+      downloadUrl={downloadUrl}
     />
   );
 
