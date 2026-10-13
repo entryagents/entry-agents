@@ -71,6 +71,9 @@ export function LandingFooter() {
               <span className="font-sans text-sm text-(--l-fg-2)">
                 Workspace
               </span>
+              <span className="font-sans text-sm text-(--l-fg-2)">
+                Entry Gateway
+              </span>
               <a
                 href="https://useworkflow.dev/"
                 target="_blank"
