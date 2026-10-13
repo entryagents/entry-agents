@@ -187,6 +187,11 @@ EXAMPLES:
             return {
               success: true,
               path: toDisplayPath(absolutePath, workingDirectory),
+              kind: "image" as const,
+              // Keep a non-empty textual marker for renderers that do not
+              // understand file-data parts yet. The actual pixels are still
+              // delivered through toModelOutput and the image renderer.
+              content: `[Image preview attached: ${imageMediaType}, ${buffer.byteLength} bytes]`,
               image: {
                 mediaType: imageMediaType,
                 data: buffer.toString("base64"),
