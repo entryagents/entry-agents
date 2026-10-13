@@ -67,6 +67,19 @@ export function FileTabView() {
   const binaryPreview = data?.contentBase64
     ? `data:${data.mimeType ?? "application/octet-stream"};base64,${data.contentBase64}`
     : null;
+  const binaryKind =
+    data?.kind ??
+    (data?.mimeType?.startsWith("image/")
+      ? "image"
+      : data?.mimeType === "application/pdf"
+        ? "pdf"
+        : data?.mimeType?.startsWith("audio/")
+          ? "audio"
+          : data?.mimeType?.startsWith("video/")
+            ? "video"
+            : binaryPreview
+              ? "binary"
+              : undefined);
   const downloadUrl = requestUrl ? `${requestUrl}&download=1` : null;
   const fileOptions = shouldWrapFileContent(focusedFilePath)
     ? { ...defaultFileOptions, overflow: "wrap" as const }
@@ -144,7 +157,7 @@ export function FileTabView() {
 
         {!isLoading && !errorMessage && data && (
           <div>
-            {data.kind === "image" && binaryPreview ? (
+            {binaryKind === "image" && binaryPreview ? (
               <div className="flex min-h-full items-center justify-center p-6">
                 <img
                   src={binaryPreview}
@@ -152,13 +165,13 @@ export function FileTabView() {
                   className="max-h-[calc(100vh-12rem)] max-w-full rounded-md object-contain shadow-sm"
                 />
               </div>
-            ) : data.kind === "pdf" && binaryPreview ? (
+            ) : binaryKind === "pdf" && binaryPreview ? (
               <iframe
                 title={fileName}
                 src={binaryPreview}
                 className="h-[calc(100vh-9rem)] min-h-[32rem] w-full border-0"
               />
-            ) : data.kind === "audio" && binaryPreview ? (
+            ) : binaryKind === "audio" && binaryPreview ? (
               <div className="flex justify-center p-8">
                 <audio
                   controls
@@ -166,7 +179,7 @@ export function FileTabView() {
                   className="w-full max-w-xl"
                 />
               </div>
-            ) : data.kind === "video" && binaryPreview ? (
+            ) : binaryKind === "video" && binaryPreview ? (
               <div className="flex justify-center p-6">
                 <video
                   controls
@@ -174,7 +187,7 @@ export function FileTabView() {
                   className="max-h-[calc(100vh-12rem)] max-w-full rounded-md"
                 />
               </div>
-            ) : data.kind === "binary" && binaryPreview ? (
+            ) : binaryKind === "binary" && binaryPreview ? (
               <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">
                 <FileText className="h-8 w-8 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
