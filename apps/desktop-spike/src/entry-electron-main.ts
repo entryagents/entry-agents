@@ -13,6 +13,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "node:path";
 import { EntryAgentHandler } from "./entry-agent.handler.ts";
 import { signInDesktop } from "./desktop-auth.ts";
+import { PrimeRuntimeAdapter } from "./prime-runtime-adapter.ts";
 
 // Desktop session transport (from sign-in; in this spike, from env of the
 // LAUNCHER — which is the user's own shell, not the packaged app).
@@ -23,6 +24,8 @@ const WEB_BASE_URL =
   process.env.ENTRY_WEB_BASE_URL ?? "https://entry-agents.dev";
 const MODEL_ID = process.env.ENTRY_DESKTOP_MODEL ?? "mimo-v2.6-flash:free";
 let entryHandler: EntryAgentHandler | null = null;
+let primeRuntime: PrimeRuntimeAdapter | null = null;
+let primeSessionId: string | null = null;
 
 /* oxlint-disable-next-line unicorn/prefer-module -- dual CJS/ESM bundle: __dirname is feature-detected for the CJS build */
 /* oxlint-disable-next-line unicorn/prefer-module -- dual CJS/ESM bundle: __dirname is feature-detected for the CJS build */
@@ -79,6 +82,42 @@ app.whenReady().then(async () => {
   );
   entryHandler.register();
 
+  // Prime is optional during migration. When the packaged binary is present,
+  // the desktop process owns its lifecycle and establishes the daemon session
+  // without exposing Entry credentials to the Prime process.
+  const primeBinary = process.env.ENTRY_PRIME_BINARY;
+  if (primeBinary) {
+    primeRuntime = new PrimeRuntimeAdapter({
+      binaryPath: primeBinary,
+      projectRoot: process.env.ENTRY_E2E_PROJECT_ROOT ?? process.cwd(),
+      socketPath:
+        process.env.ENTRY_PRIME_SOCKET ??
+        join(app.getPath("userData"), "prime-agent.sock"),
+    });
+    await primeRuntime.start();
+    const created = await primeRuntime.createSession();
+    if (!created.success)
+      throw new Error(
+        `Prime session creation failed: ${JSON.stringify(created.error)}`,
+      );
+    const data = created.data as
+      | { sessionId?: string; activeSessionId?: string }
+      | undefined;
+    primeSessionId = data?.activeSessionId ?? data?.sessionId ?? null;
+  }
+
+  ipcMain.handle("entry:prime-status", () => ({
+    running: primeRuntime?.running ?? false,
+    sessionId: primeSessionId,
+  }));
+  ipcMain.handle("entry:prime-prompt", async (_event, message: unknown) => {
+    if (!primeRuntime || !primeSessionId)
+      throw new Error("Prime runtime is not available");
+    if (typeof message !== "string" || !message.trim())
+      throw new Error("Prompt must be non-empty");
+    return primeRuntime.prompt(primeSessionId, message);
+  });
+
   // Renderer-facing surface a renderer may query — project selection stays
   // renderer-driven, but every privileged operation goes through main.
   ipcMain.handle("entry:pick-project", async () => {
@@ -96,5 +135,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  entryHandler?.disposeAll().finally(() => app.quit());
+  Promise.all([entryHandler?.disposeAll(), primeRuntime?.stop()]).finally(() =>
+    app.quit(),
+  );
 });
