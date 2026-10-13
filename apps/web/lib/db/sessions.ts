@@ -1,5 +1,4 @@
-import type { SandboxState } from "@open-agents/sandbox";
-import { isKnownSandboxType } from "@open-agents/sandbox/registry.js";
+import { isKnownSandboxType, type SandboxState } from "@entry-agents/sandbox";
 import {
   and,
   desc,
