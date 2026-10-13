@@ -167,6 +167,12 @@ importers:
         specifier: ^4.19.2
         version: 4.22.4
     devDependencies:
+      '@entry-agents/tsconfig':
+        specifier: workspace:*
+        version: link:../../packages/tsconfig
+      '@types/node':
+        specifier: ^22
+        version: 22.19.19
       electron:
         specifier: ^41.10.6
         version: 41.10.7
