@@ -83,10 +83,9 @@ export class PrimeRuntimeAdapter {
     socket.write(`${JSON.stringify(envelope)}\n`);
     return new Promise((resolve, reject) => {
       let buffer = "";
-      const finish = (fn: (value: PrimeDaemonResponse | Error) => void) => {
+      const cleanup = () => {
         socket.removeAllListeners();
         socket.end();
-        fn;
       };
       socket.on("data", (chunk) => {
         buffer += String(chunk);
@@ -101,12 +100,16 @@ export class PrimeRuntimeAdapter {
             continue;
           }
           if (value.type === "response" && "id" in value && value.id === id) {
-            finish(resolve)(value as PrimeDaemonResponse);
+            cleanup();
+            resolve(value as PrimeDaemonResponse);
             return;
           }
         }
       });
-      socket.once("error", (error) => finish(reject)(error));
+      socket.once("error", (error) => {
+        cleanup();
+        reject(error);
+      });
       socket.setTimeout(30_000, () =>
         finish(reject)(
           new Error("Timed out waiting for Prime daemon response"),
