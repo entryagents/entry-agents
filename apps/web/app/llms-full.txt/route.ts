@@ -49,6 +49,7 @@ Usage is credit-based for model usage. Entry Agents does not charge a separate s
 ## Public pages
 
 - [Entry Agents](${SITE_URL}/): Product overview and sign-in.
+- [Beginner guide](${SITE_URL}/guide): A plain-language guide to starting a Workspace, prompting an agent, GitHub, credits, and common questions.
 - [AI coding agent](${SITE_URL}/ai-coding-agent): How the platform builds software with or without a repository.
 - [Pricing](${SITE_URL}/pricing): Credit-based plans.
 - [Models](${SITE_URL}/model): Supported models, prices and context windows.

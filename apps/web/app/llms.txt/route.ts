@@ -21,6 +21,7 @@ The extended version of this file, covering the full session lifecycle, model ro
 ## Public pages
 
 - [Entry Agents](${SITE_URL}/): Product overview and sign-in.
+- [Beginner guide](${SITE_URL}/guide): A plain-language guide to starting a Workspace, prompting an agent, GitHub, credits, and common questions.
 - [AI coding agent](${SITE_URL}/ai-coding-agent): How Entry Agents builds software with or without a repository.
 - [Pricing](${SITE_URL}/pricing): Credit-based plans for Entry Agents.
 - [Models](${SITE_URL}/model): Supported model prices and context windows.
