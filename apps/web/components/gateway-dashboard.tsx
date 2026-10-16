@@ -24,7 +24,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -514,32 +513,9 @@ function DailyHistoryTable({ rows }: { rows: DailyMetricsRow[] }) {
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-const STORAGE_KEY = "entry-gateway-dashboard-connection";
-
-function loadSavedConnection(): { url: string; key: string } | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (typeof parsed?.url === "string") {
-      return {
-        url: parsed.url,
-        key: typeof parsed.key === "string" ? parsed.key : "",
-      };
-    }
-  } catch {
-    // ignore corrupt storage
-  }
-  return null;
-}
-
 export function GatewayDashboard() {
-  const [gatewayUrl, setGatewayUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
-  const [restoring, setRestoring] = useState(true);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -565,19 +541,21 @@ export function GatewayDashboard() {
     return map;
   }, [routes]);
 
-  const fetchData = useCallback(async (url: string, key: string) => {
-    const headers: Record<string, string> = {};
-    if (key) headers["Authorization"] = `Bearer ${key}`;
-
+  const fetchData = useCallback(async () => {
     try {
+      // The proxy resolves the gateway URL and attaches the right
+      // credential per endpoint server-side (OIDC / metrics key /
+      // inference key) -- the browser never needs a URL or a key here.
       const [healthRes, metricsRes, modelsRes, routesRes] = await Promise.all([
-        fetch(`${url}/health`, { headers }),
-        // The inference key no longer has metrics access on the gateway;
-        // the proxy attaches the OIDC-verified dashboard credential.
+        fetch("/api/settings/gateway-metrics?path=/health", {
+          cache: "no-store",
+        }),
         fetch("/api/settings/gateway-metrics?path=/metrics", {
           cache: "no-store",
         }),
-        fetch(`${url}/v1/models`, { headers }),
+        fetch("/api/settings/gateway-metrics?path=/v1/models", {
+          cache: "no-store",
+        }),
         fetch("/api/settings/gateway-metrics?path=/v1/debug/routes", {
           cache: "no-store",
         }),
@@ -610,39 +588,21 @@ export function GatewayDashboard() {
     }
   }, []);
 
-  const handleConnect = async (opts?: {
-    url?: string;
-    key?: string;
-    persist?: boolean;
-  }) => {
-    const url = (opts?.url ?? gatewayUrl).trim().replace(/\/+$/, "");
-    const key = (opts?.key ?? apiKey).trim();
-    if (!url) return;
+  const handleConnect = useCallback(async () => {
     setConnecting(true);
     setError(null);
-    await fetchData(url, key);
+    await fetchData();
     setConnecting(false);
     setConnected(true);
 
-    if (opts?.persist !== false && typeof window !== "undefined") {
-      try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ url, key }));
-      } catch {
-        // storage full/unavailable -- not worth failing the connection over
-      }
-    }
-
     // Auto-refresh every 5 seconds
     if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(() => fetchData(url, key), 5000);
-  };
+    intervalRef.current = setInterval(() => void fetchData(), 5000);
+  }, [fetchData]);
 
-  const handleRefresh = async () => {
-    if (gatewayUrl.trim()) {
-      const url = gatewayUrl.trim().replace(/\/+$/, "");
-      await fetchData(url, apiKey.trim());
-    }
-  };
+  const handleRefresh = useCallback(() => {
+    void fetchData();
+  }, [fetchData]);
 
   useEffect(() => {
     return () => {
@@ -650,47 +610,12 @@ export function GatewayDashboard() {
     };
   }, []);
 
-  // On first mount: reconnect with whatever this browser already had
-  // saved (so the dashboard stops asking for credentials on every visit),
-  // otherwise fall back to the admin-only server default (GATEWAY_BASE_URL
-  // / GATEWAY_API_KEY), otherwise just show the empty connect form.
+  // On first mount: auto-connect through the server proxy. It resolves the
+  // gateway URL and the per-endpoint credentials server-side, so the admin
+  // never enters a URL or key anywhere on this page.
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const saved = loadSavedConnection();
-      if (saved?.url) {
-        setGatewayUrl(saved.url);
-        setApiKey(saved.key);
-        if (!cancelled)
-          await handleConnect({
-            url: saved.url,
-            key: saved.key,
-            persist: false,
-          });
-        if (!cancelled) setRestoring(false);
-        return;
-      }
-
-      try {
-        const res = await fetch("/api/settings/gateway-defaults");
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled && data?.baseUrl) {
-            setGatewayUrl(data.baseUrl);
-            setApiKey(data.apiKey || "");
-            await handleConnect({ url: data.baseUrl, key: data.apiKey || "" });
-          }
-        }
-      } catch {
-        // no server default available -- fine, user can enter manually
-      }
-      if (!cancelled) setRestoring(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    void handleConnect();
+  }, [handleConnect]);
 
   // The real /metrics response nests everything under `global`
   // (requests/latency/tokens/spend/statusBreakdown), plus separate
@@ -712,59 +637,37 @@ export function GatewayDashboard() {
       {/* ─── Connection Bar ─── */}
       <Card className="overflow-hidden">
         <CardContent className="pt-0">
-          <div className="flex flex-col gap-4 py-6 lg:flex-row lg:items-end">
-            <div className="flex-1 space-y-2">
-              <label
-                htmlFor="gateway-url-input"
-                className="text-xs font-medium text-muted-foreground"
-              >
-                Gateway URL
-              </label>
-              <Input
-                id="gateway-url-input"
-                type="url"
-                placeholder="https://your-gateway.example.com"
-                value={gatewayUrl}
-                onChange={(e) => setGatewayUrl(e.target.value)}
-                className="font-mono text-sm"
-              />
-            </div>
-            <div className="flex-1 space-y-2">
-              <label
-                htmlFor="gateway-api-key-input"
-                className="text-xs font-medium text-muted-foreground"
-              >
-                Admin API Key
-              </label>
-              <Input
-                id="gateway-api-key-input"
-                type="password"
-                placeholder="gw_live_..."
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                className="font-mono text-sm"
-              />
+          <div className="flex items-center justify-between gap-3 py-6">
+            {/* The gateway URL and credentials resolve server-side; the admin
+                never enters them. */}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">entry-gateway</span>
+              <span>·</span>
+              <span>
+                health, metrics, routes, and models refresh every 5 seconds
+              </span>
             </div>
             <div className="flex gap-2">
               <Button
-                onClick={() => handleConnect()}
-                disabled={connecting || !gatewayUrl.trim()}
+                onClick={() => handleRefresh()}
+                disabled={connecting}
                 className="bg-[#ff8a3d] text-black hover:bg-[#ff8a3d]/90"
               >
                 {connecting ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Zap className="size-4" />
-                )}
-                {connected ? "Reconnect" : "Connect"}
-              </Button>
-              {connected && (
-                <Button onClick={handleRefresh} variant="outline" size="icon">
                   <RefreshCw className="size-4" />
-                </Button>
-              )}
+                )}
+                Refresh
+              </Button>
             </div>
           </div>
+
+          {!connected && (
+            <div className="mb-4 text-sm text-muted-foreground">
+              Connecting to the gateway…
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3">
@@ -795,18 +698,6 @@ export function GatewayDashboard() {
           )}
         </CardContent>
       </Card>
-
-      {!connected && !connecting && !restoring && (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-20 text-center">
-          <Server className="size-12 text-muted-foreground/40" />
-          <p className="mt-4 text-lg font-medium text-muted-foreground">
-            Enter your gateway URL to connect
-          </p>
-          <p className="mt-1 text-sm text-muted-foreground/60">
-            Polls health, metrics, routes, and models every 5 seconds
-          </p>
-        </div>
-      )}
 
       {connected && health && (
         <>
