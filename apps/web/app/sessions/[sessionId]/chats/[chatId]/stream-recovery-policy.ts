@@ -131,10 +131,12 @@ export function isChatStreamingProbeResponse(
 // - "continue": the dead turn left real partial work (completed tool
 //   calls, data parts, or real text that isn't just the friendly error
 //   notice) -- send CONTINUE_AFTER_ERROR_PROMPT so the model picks up
-//   where it stopped. Safe for BOTH strategies: continuing never
-//   repeats completed work, so auto-recovery may self-heal a dead turn
-//   without the user asking (e.g. a mobile network blip while the tab
-//   was backgrounded).
+//   where it stopped. HARD/MANUAL ONLY (2026-10-13, owner: an
+//   automatically injected synthetic user message reads as a fake
+//   chat bubble and confused both the history and the model -- it
+//   "automatically sent and told the AI to continue"). Soft recovery
+//   never continues: it leaves the error visible for the user to tap
+//   Retry.
 // - "regenerate": nothing worth keeping (turn died before any output,
 //   or the last assistant message is just the persisted error notice) --
 //   drop the dead turn and re-run it. MANUAL ONLY: a full re-run spends
@@ -211,7 +213,11 @@ export function getDeadTurnRetryAction(
   });
 
   if (hasRealPartialWork) {
-    return "continue";
+    // HARD (manual Retry, user asked for it) continues from the partial
+    // work. SOFT (automatic recovery) never fires a synthetic continue
+    // prompt into the conversation on its own -- it keeps the error
+    // visible so the user decides.
+    return strategy === "hard" ? "continue" : "none";
   }
   return strategy === "hard" ? "regenerate" : "none";
 }

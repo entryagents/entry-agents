@@ -96,8 +96,13 @@ const CATEGORY_MESSAGES: Record<ChatErrorCategory, string> = {
     "The model connected but returned an empty response. Send the message again, or switch to a different model if it repeats.",
   workspace:
     "The sandbox workspace could not be initialized. Entry is switching to a writable workspace path and retrying the session. Resend this message in a moment.",
+  // The residual category: an error signature Entry doesn't recognize.
+  // Deliberately specific (there is no such thing as a generic "something
+  // went wrong" worth showing a user): it names what failed, points at the
+  // Retry control and the persisted run error detail, and stops. The raw
+  // cause is logged server-side, never echoed into the chat.
   unknown:
-    "Something went wrong while generating a response. Please try again -- if this keeps happening, try switching models.",
+    "The last turn failed with an error Entry doesn't recognize. Use the Retry button -- if it keeps failing, switch models or start a new chat. The run's saved error detail can pinpoint the cause.",
 };
 
 /** Classifies a raw error (or a raw error-message string pulled back out
@@ -279,6 +284,13 @@ export function classifyChatError(error: unknown): ChatErrorCategory {
       "bad gateway",
       "service unavailable",
       "internal server error",
+      // Gateway circuit-breaker rejections (status 0 = no upstream response).
+      "circuit",
+      // Provider overload shapes seen from entry-gateway and vendors.
+      "overloaded",
+      "overloaded_error",
+      "temporarily at capacity",
+      "no healthy upstream",
     ])
   ) {
     return "provider_unavailable";
@@ -308,6 +320,16 @@ export function toFriendlyChatErrorText(
 
   const category = classifyChatError(error);
   const base = CATEGORY_MESSAGES[category];
+
+  // Diagnostics breadcrumb for the residual "unknown" category only: the
+  // signal goes to the console (the same user's own surface) and never into
+  // the chat text, per the boundary above.
+  if (category === "unknown") {
+    console.error(
+      "[chat-error] unclassified error left as `unknown`:",
+      extractErrorSignal(error).slice(0, 300),
+    );
+  }
 
   // Never append the repeat-failure nudge to an exhausted usage window.
   // "This looks like a repeating issue... retrying probably won't help"

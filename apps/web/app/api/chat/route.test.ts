@@ -659,13 +659,11 @@ describe("/api/chat route", () => {
     );
   });
 
-  // RELIABILITY REGRESSION TEST (2026-10-11): a transient run-lookup
-  // failure used to be treated as "run not found", clearing the
-  // activeStreamId of a run that may still be alive and streaming. The
-  // orphaned run kept burning tokens while the next submit started a
-  // SECOND workflow for the same chat -- a duplicated response and
-  // duplicated billing. Only a definitive not-found/expired may clear.
-  test("does not clear a live run's slot when the run lookup fails transiently", async () => {
+  // RELIABILITY TEST (updated 2026-10-12): a transient run-lookup failure
+  // must never surface the old 503 "verify" message bricking submissions;
+  // after bounded retries it fails open (loudly logged, CAS-guarded clear)
+  // so a fresh run can start, matching the billing-lock staleness fallback.
+  test("fails open when the run lookup keeps failing transiently", async () => {
     if (!chatRecord) throw new Error("chatRecord must be set");
     chatRecord.activeStreamId = "wrun_live-999";
     getRunShouldThrow = true;
@@ -675,11 +673,17 @@ describe("/api/chat route", () => {
 
     const response = await POST(createValidRequest());
 
-    expect(response.status).toBe(503);
-    expect(response.headers.get("retry-after")).toBe("1");
-    expect(startCalls).toHaveLength(0);
-    expect(compareAndSetChatActiveStreamIdSpy).not.toHaveBeenCalled();
-    expect(claimChatActiveStreamIdSpy).not.toHaveBeenCalled();
+    expect(response.ok).toBe(true);
+    expect(response.headers.get("x-workflow-run-id")).toBe("wrun_test-123");
+    expect(startCalls).toHaveLength(1);
+
+    const compareAndSetCalls = compareAndSetChatActiveStreamIdSpy.mock
+      .calls as unknown[][];
+    expect(compareAndSetCalls).toEqual([["chat-1", "wrun_live-999", null]]);
+    expect(claimChatActiveStreamIdSpy).toHaveBeenCalledWith(
+      "chat-1",
+      "wrun_test-123",
+    );
   });
 
   test("clears the stream id and starts fresh only when the run is definitively gone", async () => {

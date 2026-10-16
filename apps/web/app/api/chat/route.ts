@@ -17,7 +17,7 @@ import {
   updateChat,
 } from "@/lib/db/sessions";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
-import { isDefinitelyGoneRunError } from "@/lib/workflow-run-recovery";
+import { verifyRunState } from "@/lib/workflow-run-recovery";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
   requireAuthenticatedUser,
@@ -94,19 +94,6 @@ export async function POST(req: Request) {
       return Response.json(
         { error: "Another workflow is already running for this chat" },
         { status: 409 },
-      );
-    }
-
-    if (existingStreamResolution.action === "unknown") {
-      // The active run's state could not be determined. Do NOT start a
-      // second workflow for this chat on a maybe: the run may be alive.
-      // A retryable status lets the client re-attempt shortly.
-      return Response.json(
-        {
-          error:
-            "Temporarily unable to verify this chat's active run. Please retry.",
-        },
-        { status: 503, headers: { "Retry-After": "1" } },
       );
     }
   }
@@ -195,13 +182,7 @@ type ExistingActiveStreamResolution =
     }
   | {
       action: "conflict";
-    }
-  | {
-      /** Could not determine the run's state (transient failure). */
-      action: "unknown";
     };
-
-const ACTIVE_STREAM_RECONCILIATION_MAX_ATTEMPTS = 3;
 
 async function reconcileExistingActiveStream(
   chatId: string,
@@ -210,37 +191,23 @@ async function reconcileExistingActiveStream(
   const { getRun } = await import("workflow/api");
   let currentStreamId: string | null = activeStreamId;
 
-  for (
-    let attempt = 1;
-    currentStreamId && attempt <= ACTIVE_STREAM_RECONCILIATION_MAX_ATTEMPTS;
-    attempt++
-  ) {
-    try {
-      const existingRun = getRun(currentStreamId);
-      const status = await existingRun.status;
-      if (status === "running" || status === "pending") {
-        return {
-          action: "resume",
-          runId: currentStreamId,
-          stream: createCancelableReadableStream(
-            existingRun.getReadable<WebAgentUIMessageChunk>(),
-          ),
-        };
-      }
-    } catch (error) {
-      // Only a definitive "this run does not exist" (or has aged out of
-      // retention) proves the stored id is stale. A transient failure --
-      // network blip, throttling, a world error -- says nothing about the
-      // run, which may be alive and streaming: clearing its slot would
-      // orphan a live workflow and let a second one start for this chat,
-      // duplicating the response and the billing. Report "unknown" and let
-      // the caller retry instead.
-      if (!isDefinitelyGoneRunError(error)) {
-        return { action: "unknown" };
-      }
-      // Definitively gone: fall through and try to clear the stale id.
+  while (currentStreamId) {
+    const outcome = await verifyRunState(currentStreamId);
+
+    if (outcome === "alive") {
+      return {
+        action: "resume",
+        runId: currentStreamId,
+        stream: createCancelableReadableStream(
+          getRun(currentStreamId).getReadable<WebAgentUIMessageChunk>(),
+        ),
+      };
     }
 
+    // "gone" clears the stale id; "unknown" after bounded retries fails
+    // open too (matches the billing-turn staleness fallback: a crashed or
+    // orphaned run must never permanently brick a chat). The CAS guards
+    // against stomping a slot another request re-claimed meanwhile.
     const cleared = await compareAndSetChatActiveStreamId(
       chatId,
       currentStreamId,
@@ -254,7 +221,7 @@ async function reconcileExistingActiveStream(
     currentStreamId = latestChat?.activeStreamId ?? null;
   }
 
-  return currentStreamId ? { action: "conflict" } : { action: "ready" };
+  return { action: "ready" };
 }
 
 /**

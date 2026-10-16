@@ -7,7 +7,7 @@ import {
 import type { WebAgentUIMessage } from "@/app/types";
 import { updateChatActiveStreamId } from "@/lib/db/sessions";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
-import { isDefinitelyGoneRunError } from "@/lib/workflow-run-recovery";
+import { verifyRunState } from "@/lib/workflow-run-recovery";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
@@ -72,21 +72,24 @@ export async function GET(request: Request, context: RouteContext) {
 
   const runId = chat.activeStreamId;
 
+  const outcome = await verifyRunState(runId);
+
+  // "gone" covers both terminal runs and definitive not-found/expired:
+  // the workflow is done — clear the stale activeStreamId. A reconnecting
+  // client hydrates the persisted messages instead of a resumed stream.
+  if (outcome === "gone") {
+    await updateChatActiveStreamId(chatId, null);
+    return new Response(null, { status: 204 });
+  }
+  // "unknown" (the probe itself kept failing transiently) hands back 204
+  // WITHOUT clearing: the client's dead-turn recovery can regenerate, and
+  // that new submit reconciles the stored id with fresh platform calls.
+  if (outcome === "unknown") {
+    return new Response(null, { status: 204 });
+  }
+
   try {
-    const run = getRun(runId);
-    const status = await run.status;
-
-    if (
-      status === "completed" ||
-      status === "cancelled" ||
-      status === "failed"
-    ) {
-      // Workflow is done — clear the stale activeStreamId.
-      await updateChatActiveStreamId(chatId, null);
-      return new Response(null, { status: 204 });
-    }
-
-    const readable = run.getReadable<WebAgentUIMessageChunk>({
+    const readable = getRun(runId).getReadable<WebAgentUIMessageChunk>({
       startIndex: parsedStartIndex.startIndex,
     });
     const tailIndex = await readable.getTailIndex();
@@ -99,19 +102,10 @@ export async function GET(request: Request, context: RouteContext) {
       },
     });
   } catch (error) {
-    // Only a definitive "run does not exist / aged out" proves the stored
-    // id is stale. A transient failure (network, throttling, world error)
-    // must be retryable: answering 204 here tells the client the stream is
-    // gone for good, so a reconnecting client gives up on a run that is
-    // very much alive.
-    if (!isDefinitelyGoneRunError(error)) {
-      return new Response(null, {
-        status: 503,
-        headers: { "Retry-After": "1" },
-      });
-    }
-
-    await updateChatActiveStreamId(chatId, null);
+    // The verify step above already filtered out an alive run; a lookup
+    // hiccup here is momentary, so hand back 204 (no state cleared) and let
+    // the client's recovevery loop retry rather than dropping the id.
+    console.error("[chat-stream] readable open failed:", error);
     return new Response(null, { status: 204 });
   }
 }

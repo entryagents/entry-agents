@@ -81,9 +81,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("[gateway-metrics] upstream fetch failed:", error);
-    return Response.json(
-      { error: "Gateway is unreachable" },
-      { status: 502 },
-    );
+    return Response.json({ error: "Gateway is unreachable" }, { status: 502 });
   }
 }

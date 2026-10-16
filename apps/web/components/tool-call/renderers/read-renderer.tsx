@@ -84,6 +84,7 @@ export function ReadRenderer({
 
   const expandedContent = imagePreview ? (
     <div className="flex max-h-96 items-center justify-center overflow-auto rounded-md border border-border bg-muted/20 p-3">
+      {/* oxlint-disable-next-line nextjs/no-img-element -- sandbox-served file preview; next/image cannot optimize session-scoped URLs */}
       <img
         src={imagePreview}
         alt={filePath}

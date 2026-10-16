@@ -43,7 +43,7 @@ export interface AdminUserProfile {
  */
 export async function getAdminUserProfile(
   userId: string,
-  modelCostCatalog: AvailableModel[],
+  _modelCostCatalog: AvailableModel[],
 ): Promise<AdminUserProfile | null> {
   const [userRow] = await db
     .select({
@@ -158,7 +158,7 @@ export async function getAdminUserUsageTrend(
       inputTokens: usageEvents.inputTokens,
       cachedInputTokens: usageEvents.cachedInputTokens,
       outputTokens: usageEvents.outputTokens,
-        costUsd: usageEvents.costUsd,
+      costUsd: usageEvents.costUsd,
     })
     .from(usageEvents)
     .where(
@@ -215,7 +215,7 @@ export interface AdminUserModelRow {
  */
 export async function getAdminUserModelBreakdown(
   userId: string,
-  modelCostCatalog: AvailableModel[],
+  _modelCostCatalog: AvailableModel[],
 ): Promise<AdminUserModelRow[]> {
   const rows = await db
     .select({
@@ -224,7 +224,7 @@ export async function getAdminUserModelBreakdown(
       inputTokens: usageEvents.inputTokens,
       cachedInputTokens: usageEvents.cachedInputTokens,
       outputTokens: usageEvents.outputTokens,
-        costUsd: usageEvents.costUsd,
+      costUsd: usageEvents.costUsd,
     })
     .from(usageEvents)
     .where(eq(usageEvents.userId, userId));
@@ -294,7 +294,7 @@ export async function getAdminUserModelCallLog(
       inputTokens: usageEvents.inputTokens,
       cachedInputTokens: usageEvents.cachedInputTokens,
       outputTokens: usageEvents.outputTokens,
-        costUsd: usageEvents.costUsd,
+      costUsd: usageEvents.costUsd,
       createdAt: usageEvents.createdAt,
     })
     .from(usageEvents)
