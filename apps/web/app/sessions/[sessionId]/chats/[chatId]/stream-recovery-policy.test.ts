@@ -425,8 +425,17 @@ describe("getDeadTurnRetryAction (soft strategy / auto recovery)", () => {
     },
   ];
 
-  test("self-heals by continuing a dead turn with partial work", () => {
-    expect(getDeadTurnRetryAction(partialWorkMessages, "soft")).toBe(
+  // OWNER 2026-10-13: automatic recovery never injects the canned
+  // "continue" prompt into the conversation anymore -- it read as a fake
+  // user message telling the AI "just carry the task forward". Soft
+  // recovery leaves the error visible; only the manual Retry (hard)
+  // continues a turn with partial work.
+  test("soft recovery leaves a dead turn with partial work untouched", () => {
+    expect(getDeadTurnRetryAction(partialWorkMessages, "soft")).toBe("none");
+  });
+
+  test("manual retry still continues a dead turn with partial work", () => {
+    expect(getDeadTurnRetryAction(partialWorkMessages, "hard")).toBe(
       "continue",
     );
   });

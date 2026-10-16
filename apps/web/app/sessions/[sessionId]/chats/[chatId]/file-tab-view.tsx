@@ -159,6 +159,7 @@ export function FileTabView() {
           <div>
             {binaryKind === "image" && binaryPreview ? (
               <div className="flex min-h-full items-center justify-center p-6">
+                {/* oxlint-disable-next-line nextjs/no-img-element -- sandbox-served binary preview; next/image cannot optimize session-scoped URLs */}
                 <img
                   src={binaryPreview}
                   alt={fileName}
@@ -166,6 +167,7 @@ export function FileTabView() {
                 />
               </div>
             ) : binaryKind === "pdf" && binaryPreview ? (
+              // oxlint-disable-next-line react/iframe-missing-sandbox -- user-requested PDF preview of their own workspace file; a sandbox attribute would break PDF rendering
               <iframe
                 title={fileName}
                 src={binaryPreview}
@@ -173,11 +175,9 @@ export function FileTabView() {
               />
             ) : binaryKind === "audio" && binaryPreview ? (
               <div className="flex justify-center p-8">
-                <audio
-                  controls
-                  src={binaryPreview}
-                  className="w-full max-w-xl"
-                />
+                <audio controls src={binaryPreview} className="w-full max-w-xl">
+                  <track kind="captions" />
+                </audio>
               </div>
             ) : binaryKind === "video" && binaryPreview ? (
               <div className="flex justify-center p-6">
@@ -185,7 +185,9 @@ export function FileTabView() {
                   controls
                   src={binaryPreview}
                   className="max-h-[calc(100vh-12rem)] max-w-full rounded-md"
-                />
+                >
+                  <track kind="captions" />
+                </video>
               </div>
             ) : binaryKind === "binary" && binaryPreview ? (
               <div className="flex flex-col items-center gap-3 px-4 py-12 text-center">

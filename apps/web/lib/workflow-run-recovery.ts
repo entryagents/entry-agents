@@ -1,3 +1,5 @@
+import { getRun } from "workflow/api";
+
 /**
  * Classify failures thrown while looking up a Workflow SDK run.
  *
@@ -48,4 +50,54 @@ export function isDefinitelyGoneRunError(error: unknown): boolean {
 
   const code = readErrorField(error, "code");
   return typeof code === "string" && DEFINITELY_GONE_RUN_ERROR_NAMES.has(code);
+}
+
+/**
+ * Bounded run-state verification used by the reconnect/reconcile routes.
+ *
+ * Returns:
+ * - "alive": the run is pending/running (must not be cleared).
+ * - "gone": the run definitively does not exist, has aged out of
+ *   retention, or reached a terminal state (safe to clear).
+ * - "unknown": the lookup itself kept failing transiently. Callers pick
+ *   their own failure mode here: the submit route fails open (a
+ *   permanently unreachable run must never brick the chat), the stream
+ *   probe returns 204 without clearing (the client's own recovery decides).
+ */
+export type RunStateOutcome = "alive" | "gone" | "unknown";
+
+const VERIFY_ATTEMPTS = 3;
+const VERIFY_RETRY_DELAYS_MS = [0, 150, 400];
+
+export async function verifyRunState(runId: string): Promise<RunStateOutcome> {
+  let lastError: unknown = undefined;
+
+  for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt++) {
+    const delay = VERIFY_RETRY_DELAYS_MS[attempt] ?? 0;
+    if (delay > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+
+    try {
+      const status = await getRun(runId).status;
+
+      if (status === "pending" || status === "running") {
+        return "alive";
+      }
+
+      // completed | failed | cancelled: terminal -- the stored id is done.
+      return "gone";
+    } catch (error) {
+      if (isDefinitelyGoneRunError(error)) {
+        return "gone";
+      }
+      lastError = error;
+    }
+  }
+
+  console.error(
+    `[workflow-run-recovery] run state for ${runId} stayed unverifiable after ${VERIFY_ATTEMPTS} attempts:`,
+    lastError instanceof Error ? lastError.message : lastError,
+  );
+  return "unknown";
 }

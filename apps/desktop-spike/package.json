@@ -17,8 +17,6 @@
     "@entry-agents/tsconfig": "workspace:*",
     "@types/node": "^22",
     "electron": "^41.10.6",
-    "xvfb": "^0.4.0",
-    "@entry-agents/tsconfig": "workspace:*",
-    "@types/node": "^22"
+    "xvfb": "^0.4.0"
   }
 }

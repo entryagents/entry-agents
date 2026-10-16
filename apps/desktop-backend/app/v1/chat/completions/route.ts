@@ -96,12 +96,12 @@ export async function POST(req: NextRequest) {
   const ct = upstream.headers.get("content-type");
   if (ct) headers.set("content-type", ct);
 
-  const body = upstream.body;
-  if (!body || !modelId) {
-    return new Response(body, { status: upstream.status, headers });
+  const upstreamBody = upstream.body;
+  if (!upstreamBody || !modelId) {
+    return new Response(upstreamBody, { status: upstream.status, headers });
   }
 
-  const [forClient, forBilling] = body.tee();
+  const [forClient, forBilling] = upstreamBody.tee();
   void (async () => {
     try {
       const text = await new Response(forBilling).text();

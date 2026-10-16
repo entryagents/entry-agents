@@ -28,6 +28,7 @@ let sessionRecord: {
 
 let workflowRunStatus: string = "running";
 let getRunShouldThrow = false;
+let getRunErrorName = "Error";
 let lastStartIndex: number | undefined;
 
 const spies = {
@@ -68,7 +69,10 @@ function createWorkflowReadableStream(startIndex?: number) {
 
 mock.module("workflow/api", () => ({
   getRun: () => {
-    if (getRunShouldThrow) throw new Error("Run not found");
+    if (getRunShouldThrow)
+      throw Object.assign(new Error("Run not found"), {
+        name: getRunErrorName,
+      });
     return {
       status: Promise.resolve(workflowRunStatus),
       getReadable: (options?: { startIndex?: number }) => {
@@ -246,8 +250,24 @@ describe("GET /api/chat/[chatId]/stream", () => {
     expect(spies.updateChatActiveStreamId).toHaveBeenCalledWith("chat-1", null);
   });
 
-  test("clears stale ID and returns 204 when workflow run not found", async () => {
+  // RELIABILITY REGRESSION TEST (2026-10-12): a transient probe failure
+  // must NOT clear the activeStreamId (the run may be alive and streaming),
+  // and must not surface the old 503 verify message. It answers 204: the
+  // client's dead-turn recovery regenerates, and that new submit reconciles
+  // the stored id with fresh platform calls.
+  test("returns 204 without clearing when the run probe keeps failing", async () => {
     getRunShouldThrow = true;
+    getRunErrorName = "WorkflowWorldError";
+    const { GET } = await routeModulePromise;
+
+    const response = await GET(createStreamRequest(), routeContext);
+    expect(response.status).toBe(204);
+    expect(spies.updateChatActiveStreamId).not.toHaveBeenCalled();
+  });
+
+  test("clears stale ID when the run is definitively not found", async () => {
+    getRunShouldThrow = true;
+    getRunErrorName = "WorkflowRunNotFoundError";
     const { GET } = await routeModulePromise;
 
     const response = await GET(createStreamRequest(), routeContext);
