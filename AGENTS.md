@@ -20,7 +20,7 @@ Key env vars: `BETTER_AUTH_SECRET` (session signing), `NEXT_PUBLIC_VERCEL_APP_CL
 
 Agents run in sandboxes provisioned by a provider **registry plugin** (`packages/sandbox`): each provider owns its adapter (`<provider>/connect.ts`, `state.ts`), registers itself in `registry.ts` + `registry-types.ts`, and declares what it can do via `SandboxCapabilities`. Nothing in the agent, workflows, or UI branches on a provider name — behaviour is read off capabilities.
 
-Registered providers: **modal** (default) and **local** (dev/test only). Vercel and Boat were removed; `isKnownSandboxType()` returns false for them, so a stale session row fails closed and re-provisions instead of erroring forever.
+Registered providers: **boxd** (default), **modal**, and **local** (dev/test only). Vercel and Boat were removed; `isKnownSandboxType()` returns false for them, so a stale session row fails closed and re-provisions instead of erroring forever.
 
 Modal specifics that are easy to get wrong:
 
