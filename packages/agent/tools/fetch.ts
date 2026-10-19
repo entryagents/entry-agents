@@ -230,14 +230,18 @@ export function isAllowedWebUrl(value: string): boolean {
   return !isPrivateHost(parsed.hostname);
 }
 
-async function resolvesToPrivateHost(params: {
+async function resolveAndValidateHostAddresses(params: {
   hostname: string;
   sandbox: Awaited<ReturnType<typeof getSandbox>>;
   workingDirectory: string;
   abortSignal?: AbortSignal;
-}): Promise<boolean> {
+}): Promise<{ isSafe: boolean; resolvedIps: string[] }> {
   if (isPrivateHost(params.hostname)) {
-    return true;
+    return { isSafe: false, resolvedIps: [] };
+  }
+
+  if (parseIpv4Address(params.hostname) || parseIpv6Address(params.hostname)) {
+    return { isSafe: true, resolvedIps: [params.hostname] };
   }
 
   const result = await params.sandbox.exec(
@@ -248,14 +252,19 @@ async function resolvesToPrivateHost(params: {
   );
 
   if (!result.success) {
-    return true;
+    return { isSafe: false, resolvedIps: [] };
   }
 
-  return result.stdout
+  const addresses = result.stdout
     .split("\n")
     .map((address) => address.trim())
-    .filter(Boolean)
-    .some(isPrivateHost);
+    .filter(Boolean);
+
+  if (addresses.length === 0 || addresses.some(isPrivateHost)) {
+    return { isSafe: false, resolvedIps: [] };
+  }
+
+  return { isSafe: true, resolvedIps: addresses };
 }
 
 const fetchInputSchema = z.object({
@@ -332,14 +341,14 @@ EXAMPLES:
     const workingDirectory = sandbox.workingDirectory;
 
     const parsedUrl = new URL(url);
-    if (
-      await resolvesToPrivateHost({
-        hostname: parsedUrl.hostname,
-        sandbox,
-        workingDirectory,
-        abortSignal,
-      })
-    ) {
+    const { isSafe, resolvedIps } = await resolveAndValidateHostAddresses({
+      hostname: parsedUrl.hostname,
+      sandbox,
+      workingDirectory,
+      abortSignal,
+    });
+
+    if (!isSafe || resolvedIps.length === 0) {
       return {
         success: false,
         error: "Fetch failed: URL resolves to a private or internal host",
@@ -358,6 +367,8 @@ EXAMPLES:
     const bodyFileName = buildWebFetchBodyFileName(url);
     const bodyFilePath = `${WEB_FETCH_BODY_DIR}/${bodyFileName}`;
 
+    const port =
+      parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80");
     const args: string[] = [
       "curl",
       "-sS",
@@ -365,6 +376,16 @@ EXAMPLES:
       shellEscape("=http,https"),
       "--proto-redir",
       shellEscape("=http,https"),
+    ];
+
+    for (const ip of resolvedIps) {
+      args.push(
+        "--resolve",
+        shellEscape(`${parsedUrl.hostname}:${port}:${ip}`),
+      );
+    }
+
+    args.push(
       "-X",
       method,
       "--max-time",
@@ -373,7 +394,7 @@ EXAMPLES:
       shellEscape(bodyFilePath),
       "-w",
       shellEscape("%{http_code}"),
-    ];
+    );
 
     if (headers) {
       for (const [key, value] of Object.entries(headers)) {
