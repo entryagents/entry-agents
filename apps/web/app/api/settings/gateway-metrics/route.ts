@@ -57,10 +57,12 @@ export async function GET(req: NextRequest) {
     process.env.GATEWAY_METRICS_BEARER_KEY;
 
   const headers: Record<string, string> = {};
-  if (token) {
-    headers[METRICS_AUTH_HEADER_NAME] = `Bearer ${token}`;
-  } else if (path === "/v1/models" && process.env.GATEWAY_API_KEY) {
+  // For inference routes (/v1/models), use the inference GATEWAY_API_KEY.
+  // For admin metrics (/metrics, /v1/debug/routes), use the OIDC or metrics token.
+  if (path === "/v1/models" && process.env.GATEWAY_API_KEY) {
     headers[METRICS_AUTH_HEADER_NAME] = `Bearer ${process.env.GATEWAY_API_KEY}`;
+  } else if (token) {
+    headers[METRICS_AUTH_HEADER_NAME] = `Bearer ${token}`;
   }
 
   const daily = req.nextUrl.searchParams.get("daily");
@@ -85,11 +87,8 @@ export async function GET(req: NextRequest) {
           },
         });
       }
-      console.warn(
-        `[gateway-metrics] upstream ${path} returned status ${upstream.status}`,
-      );
-    } catch (error) {
-      console.error(`[gateway-metrics] upstream ${path} fetch failed:`, error);
+    } catch {
+      // Upstream is unreachable; fall through quietly to DB/synthesis fallbacks
     }
   }
 
