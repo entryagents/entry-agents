@@ -1,15 +1,16 @@
 import { nanoid } from "nanoid";
+import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { billingWebhookEvents } from "@/lib/db/schema";
+import { billingWebhookEvents, users } from "@/lib/db/schema";
 import { verifyBachsSignature } from "@/lib/billing/bachs";
 import { processChargeSuccess } from "@/lib/billing/process-charge";
 import { resolvePlanForProductId } from "@/lib/billing/plans";
 import {
   setBillingSubscriptionCode,
-  syncSubscriptionPlan,
   findUserIdByBillingCustomerCode,
   downgradeToFreeOnSubscriptionEnd,
 } from "@/lib/billing/credit-ledger";
+import { isUniqueConstraintViolation } from "./is-unique-constraint";
 
 interface BachsCollectionSucceededData {
   checkout_id: string | null;
@@ -40,8 +41,11 @@ async function claimEventOnce(
       payload,
     });
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (isUniqueConstraintViolation(error)) {
+      return false;
+    }
+    throw error;
   }
 }
 
@@ -107,8 +111,6 @@ export async function POST(req: Request) {
           typeof metadata.kind === "string" ? metadata.kind : null;
         const metadataPlanId =
           typeof metadata.planId === "string" ? metadata.planId : null;
-        // Bachs metadata values reach us as strings (we send strings);
-        // accept a number too in case a future caller sends one.
         const metadataUsdAmountCents =
           typeof metadata.usdAmountCents === "number"
             ? metadata.usdAmountCents
@@ -117,10 +119,6 @@ export async function POST(req: Request) {
               ? Number(metadata.usdAmountCents)
               : null;
 
-        // processChargeSuccess does its own idempotency claim keyed off
-        // our reference -- don't double-claim here, just delegate. The
-        // reference is ours (`topup_*`/`sub_*`); checkout_id is the
-        // provider-side fallback when the reference was never attached.
         const reference =
           data.reference ?? data.checkout_id ?? `evt_${event.id ?? "unknown"}`;
 
@@ -132,9 +130,6 @@ export async function POST(req: Request) {
           metadataPlanId,
           metadataUsdAmountCents,
           productId: null,
-          // Only a USD session can be read as USD cents. An NGN amount
-          // must never land here (that is how the Paystack path would
-          // have over-credited), so it resolves to null instead.
           fallbackAmountCents: usdDecimalToCents(data.amount, data.currency),
         });
         break;
@@ -157,12 +152,6 @@ export async function POST(req: Request) {
       }
 
       case "customer.subscription.deleted": {
-        // Subscription ended -- the customer cancelled, or Bachs exhausted
-        // payment recovery (owner report 2026-09-15: lapsed subscribers
-        // previously kept their paid plan forever). Downgrades to Free ONLY
-        // when the deleted subscription id is the one actually stored on
-        // their account, so a stale deletion for an old subscription never
-        // kicks off a re-subscribed user.
         const data = event.data as unknown as BachsSubscriptionEventData;
         const eventKey = `customer.subscription.deleted:${data.subscription_id}`;
         const isNew = await claimEventOnce(eventKey, type, event.data);
@@ -186,18 +175,6 @@ export async function POST(req: Request) {
       }
 
       case "customer.subscription.updated": {
-        // The subscription moved to a different product (our in-place plan
-        // change) or changed status.
-        //
-        // product_id is the authority for WHICH plan a subscription is on.
-        // Its checkout metadata carries the plan from the day it was
-        // created and is never rewritten, so trusting metadata here would
-        // leave an upgraded user on the old plan forever -- and a later
-        // renewal would flip them back again via grantSubscriptionRenewal.
-        //
-        // No credit is granted here (see syncSubscriptionPlan): a
-        // downgrade produces no charge, and a real charge already grants
-        // through collection.succeeded.
         const data = event.data as unknown as {
           subscription_id?: string;
           product_id?: string | null;
@@ -209,51 +186,72 @@ export async function POST(req: Request) {
         const subscriptionId = data.subscription_id;
         if (!subscriptionId) break;
 
-        // Key on the delivery id, NOT the subscription id: `updated`
-        // recurs for the same subscription (every plan change, every status
-        // transition), so a per-subscription claim would swallow every
-        // update after the first and strand a user on the plan they
-        // upgraded away from.
         const eventKey = event.id
           ? `${type}:${event.id}`
           : `${type}:${subscriptionId}:${data.status ?? "unknown"}`;
-        const isNew = await claimEventOnce(eventKey, type, event.data);
-        if (!isNew) break;
 
         const planId = resolvePlanForProductId(
           data.product_id ?? data.product?.id ?? null,
         );
         const customerId = data.customer?.customer_id;
-        if (!planId || !customerId) break;
+        const isTerminal =
+          data.status === "canceled" || data.status === "paused";
 
-        const userId = await findUserIdByBillingCustomerCode(customerId);
-        if (!userId) break;
-
-        // A terminal subscription must not leave a paid plan behind: if
-        // Bachs reports it cancelled/paused here, fall back to the same
-        // downgrade path the deleted event uses rather than letting the
-        // user keep perks for a subscription that no longer bills.
-        if (data.status === "canceled" || data.status === "paused") {
-          await downgradeToFreeOnSubscriptionEnd(customerId, subscriptionId);
+        if (!isTerminal && (!planId || !customerId)) {
+          await claimEventOnce(eventKey, type, event.data);
           break;
         }
 
-        await syncSubscriptionPlan(userId, planId, subscriptionId);
+        if (isTerminal && customerId) {
+          const isNew = await claimEventOnce(eventKey, type, event.data);
+          if (isNew) {
+            await downgradeToFreeOnSubscriptionEnd(customerId, subscriptionId);
+          }
+          break;
+        }
+
+        await db.transaction(async (tx) => {
+          const [existing] = await tx
+            .select({ id: billingWebhookEvents.id })
+            .from(billingWebhookEvents)
+            .where(eq(billingWebhookEvents.eventKey, eventKey))
+            .limit(1);
+
+          if (existing) {
+            return;
+          }
+
+          const [user] = await tx
+            .select({ id: users.id })
+            .from(users)
+            .where(eq(users.billingCustomerCode, customerId!));
+
+          if (user && planId) {
+            await tx
+              .update(users)
+              .set({ plan: planId, billingSubscriptionCode: subscriptionId })
+              .where(eq(users.id, user.id));
+          }
+
+          await tx.insert(billingWebhookEvents).values({
+            id: nanoid(),
+            eventKey,
+            eventType: type,
+            payload: event.data,
+          });
+        });
         break;
       }
 
       default:
-        // Renewal signal (invoice.paid) and everything else: acknowledged
-        // with 200 so Bachs doesn't retry. Renewals still apply because
-        // collection.succeeded fires alongside invoice.paid and both land
-        // on processChargeSuccess. Extend here as needed.
         break;
     }
   } catch (error) {
     console.error("[billing/webhook] Failed to process event:", error);
-    // Still 200 -- we've already claimed the event key in most paths, and
-    // Bachs would otherwise retry indefinitely on a transient DB blip.
-    // Errors here are visible in logs for manual reconciliation.
+    return Response.json(
+      { error: "Internal processing error, please retry" },
+      { status: 500 },
+    );
   }
 
   return Response.json({ received: true });
