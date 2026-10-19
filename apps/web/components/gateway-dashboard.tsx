@@ -4,18 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
-  CheckCircle2,
-  CircuitBoard,
   Clock,
   DollarSign,
   Loader2,
   RefreshCw,
-  Server,
   TrendingUp,
-  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -38,8 +33,6 @@ interface HealthResponse {
   circuitBreakers: Record<string, string>;
   activeRequests: number;
   activeStreams: number;
-  // version/gitCommit aren't in the real /health payload today, but keep
-  // them optional in case they're added later -- avoids re-breaking this.
   version?: string;
   gitCommit?: string | null;
 }
@@ -50,6 +43,7 @@ interface LatencyStats {
   p99: number;
   min: number;
   max: number;
+  avg?: number;
   count: number;
 }
 
@@ -65,12 +59,11 @@ interface MetricsBucket {
     output: number;
     cacheRead: number;
     cacheWrite: number;
-    reasoning: number;
+    reasoning?: number;
     total: number;
+    cacheHitRate?: number;
   };
   estimatedSpend: number;
-  // Added 2026-10 (and only present per-model): what the cached
-  // tokens WOULD have cost at the full input rate minus the cache-read rate.
   estimatedCacheSavingsUsd?: number;
   latency: LatencyStats;
   ttft: LatencyStats;
@@ -81,12 +74,9 @@ interface CircuitBreakerDetail {
   state: string;
   failures: number;
   openedAt: number;
+  identity?: string;
 }
 
-// Per-day history rows returned by the gateway's /metrics since
-// 2026-09-10 (gw_metrics_daily -- WAT/Africa-Lagos-day rollups with
-// unbounded retention). Null when the gateway is older than that, running on its
-// in-memory fallback without any recorded days, or the DB read failed.
 interface DailyMetricsRow {
   day: string; // "YYYY-MM-DD" in Nigeria local time (12am WAT rollover)
   scope: string; // global | provider | model
@@ -102,7 +92,7 @@ interface DailyMetricsRow {
     output: number;
     cacheRead: number;
     cacheWrite: number;
-    reasoning: number;
+    reasoning?: number;
   };
   estimatedSpend: number;
 }
@@ -119,17 +109,17 @@ interface MetricsResponse {
   modelCount: number;
   providerCount: number;
   daily?: DailyMetricsRow[] | null;
-  // The gateway reports whether metrics are persisted to Postgres or held
-  // in-memory on a single instance -- the daily history is unbounded only
-  // in the postgres case.
   metricsBackend?: string;
-  definitions?: Record<string, string>;
+  definitions?: {
+    upstreamTimeoutMs?: string;
+    [key: string]: string | undefined;
+  };
 }
 
 interface ModelInfo {
   id: string;
-  object: string;
-  name: string;
+  object?: string;
+  name?: string;
   owned_by: string;
   protocols: string[];
 }
@@ -138,395 +128,234 @@ interface RouteInfo {
   id: string;
   protocol: string;
   provider?: string;
-  upstreamBaseURL: string;
-  upstreamModel: string;
+  upstreamBaseURL?: string;
+  upstreamModel?: string;
   upstreamApiKeyEnv?: string;
   priority: number;
   enabled: boolean;
-  source: string;
+  source?: string;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatNumber(n: number): string {
+  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
+  return String(Math.round(n));
 }
 
 function formatLatency(ms: number): string {
+  if (ms == null || Number.isNaN(ms)) return "—";
   if (ms < 1) return `${(ms * 1000).toFixed(0)}μs`;
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-function cnStatus(status: string): string {
-  if (!status) return "";
-  if (status === "closed") return "text-emerald-400";
-  if (status === "half_open") return "text-amber-400";
-  if (status === "open") return "text-red-400";
-  return "text-muted-foreground";
+function formatMoney(n: number): string {
+  if (n == null || Number.isNaN(n)) return "$0.00";
+  if (n < 0.01 && n > 0) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
 }
 
-// ─── Stat Card ──────────────────────────────────────────────────────────────
-
-function StatCard({
-  label,
-  value,
-  sublabel,
-  icon: Icon,
-  accent,
-}: {
-  label: string;
-  value: string;
-  sublabel?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  accent?: boolean;
-}) {
-  return (
-    <div className="relative overflow-hidden rounded-xl border bg-card p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <p
-            className={cn(
-              "mt-2 text-2xl font-semibold tracking-tight",
-              accent ? "text-[#ff8a3d]" : "text-foreground",
-            )}
-          >
-            {value}
-          </p>
-          {sublabel && (
-            <p className="mt-0.5 text-xs text-muted-foreground">{sublabel}</p>
-          )}
-        </div>
-        <div
-          className={cn(
-            "flex size-10 shrink-0 items-center justify-center rounded-lg border",
-            accent ? "border-[#ff8a3d]/20 bg-[#ff8a3d]/5" : "border-border",
-          )}
-        >
-          <Icon
-            className={cn(
-              "size-4",
-              accent ? "text-[#ff8a3d]" : "text-muted-foreground",
-            )}
-          />
-        </div>
-      </div>
-    </div>
-  );
+function worstBreakerState(states: string[]): string {
+  if (states.includes("open")) return "open";
+  if (states.includes("half_open")) return "half_open";
+  if (states.includes("closed")) return "closed";
+  return "closed";
 }
 
-// ─── Latency Chart ───────────────────────────────────────────────────────────
-
-function LatencyChart({ histogram }: { histogram?: LatencyStats }) {
-  if (!histogram || !histogram.count) {
-    return (
-      <div className="flex h-24 items-center justify-center text-sm text-muted-foreground">
-        No latency data yet
-      </div>
-    );
-  }
-
-  const segments = [
-    { label: "p50", value: histogram.p50 || 0, color: "#ff8a3d" },
-    { label: "p95", value: histogram.p95 || 0, color: "#e07c2a" },
-    { label: "p99", value: histogram.p99 || 0, color: "#c46d24" },
-  ];
-  const max = Math.max(...segments.map((s) => s.value), 1);
-
-  return (
-    <div className="space-y-3">
-      {segments.map((seg) => (
-        <div key={seg.label} className="flex items-center gap-3">
-          <span className="w-10 shrink-0 text-xs font-medium text-muted-foreground">
-            {seg.label}
-          </span>
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
-            <div
-              className="h-full rounded-full transition-all duration-500"
-              style={{
-                width: `${(seg.value / max) * 100}%`,
-                backgroundColor: seg.color,
-              }}
-            />
-          </div>
-          <span className="w-16 shrink-0 text-right text-xs font-medium text-foreground">
-            {formatLatency(seg.value)}
-          </span>
-        </div>
-      ))}
-      <div className="flex items-center gap-4 border-t pt-3 text-xs text-muted-foreground">
-        <span>min: {formatLatency(histogram.min || 0)}</span>
-        <span>max: {formatLatency(histogram.max || 0)}</span>
-        <span>count: {histogram.count}</span>
-      </div>
-    </div>
-  );
-}
-
-// ─── Request Status Breakdown ────────────────────────────────────────────────
-
-function StatusBreakdown({
-  breakdown,
-}: {
-  breakdown?: Record<string, number>;
-}) {
-  if (!breakdown || Object.keys(breakdown).length === 0) {
-    return (
-      <div className="text-sm text-muted-foreground">No request data yet</div>
-    );
-  }
-
-  const entries = Object.entries(breakdown)
-    .map(([status, count]) => ({ status: Number(status), count }))
-    .sort((a, b) => b.count - a.count);
-
-  const total = entries.reduce((sum, e) => sum + e.count, 0);
-
-  return (
-    <div className="space-y-2">
-      {entries.map((entry) => {
-        const pct = total ? (entry.count / total) * 100 : 0;
-        const is2xx = entry.status >= 200 && entry.status < 300;
-        const is4xx = entry.status >= 400 && entry.status < 500;
-        const is5xx = entry.status >= 500;
-
-        return (
-          <div key={entry.status} className="flex items-center gap-3">
-            <span
-              className={cn(
-                "w-10 shrink-0 font-mono text-xs font-medium",
-                is2xx && "text-emerald-400",
-                is4xx && "text-amber-400",
-                is5xx && "text-red-400",
-              )}
-            >
-              {entry.status}
-            </span>
-            <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
-              <div
-                className={cn(
-                  "h-full rounded-full",
-                  is2xx && "bg-emerald-500/70",
-                  is4xx && "bg-amber-500/70",
-                  is5xx && "bg-red-500/70",
-                )}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <span className="w-10 shrink-0 text-right text-xs font-medium text-foreground">
-              {entry.count}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Usage Breakdown Table (shared by per-provider and per-model) ───────────
-
-function UsageBreakdownTable({
-  buckets,
-  nameHeader,
-  circuitBreakers,
-  cbKeyPrefix,
-  providerModels,
-}: {
-  buckets: Record<string, MetricsBucket>;
-  nameHeader: string;
-  circuitBreakers?: Record<string, CircuitBreakerDetail>;
-  cbKeyPrefix?: boolean;
-  // Breakers are per-model since the gateway's 2026-09 hardening pass
-  // (keys like "model:<id>:<id>"), so a provider row's health is the worst
-  // state across that provider's models (mapped from the live routes).
-  providerModels?: Map<string, Set<string>>;
-}) {
-  const names = Object.keys(buckets);
-  if (names.length === 0) {
-    return <div className="text-sm text-muted-foreground">No data yet</div>;
-  }
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>{nameHeader}</TableHead>
-          <TableHead className="text-right">Requests</TableHead>
-          <TableHead className="text-right">2xx</TableHead>
-          <TableHead className="text-right">4xx</TableHead>
-          <TableHead className="text-right">5xx</TableHead>
-          <TableHead className="text-right">Tokens In</TableHead>
-          <TableHead className="text-right">Tokens Out</TableHead>
-          <TableHead className="text-right">Spend</TableHead>
-          <TableHead className="text-right">Cache Saved</TableHead>
-          <TableHead className="text-right">p50</TableHead>
-          <TableHead className="text-right">Errors</TableHead>
-          {cbKeyPrefix && <TableHead>Health</TableHead>}
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {names.map((name) => {
-          const b = buckets[name];
-          let cbState: string | undefined;
-          if (cbKeyPrefix && circuitBreakers) {
-            const models = providerModels?.get(name);
-            const cbKey = Object.keys(circuitBreakers).find(
-              (k) =>
-                (k.startsWith("model:") && models?.has(k.split(":")[1])) ||
-                // legacy pre-hardening keys ("provider:model")
-                k.startsWith(`${name}:`),
-            );
-            cbState = cbKey ? circuitBreakers[cbKey].state : "closed";
-          }
-          return (
-            <TableRow key={name}>
-              <TableCell className="font-mono text-xs">{name}</TableCell>
-              <TableCell className="text-right font-mono text-xs">
-                {formatNumber(b.requests || 0)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-xs text-emerald-400">
-                {formatNumber(b.requests2xx || 0)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-xs text-amber-400">
-                {formatNumber(b.requests4xx || 0)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-xs text-red-400">
-                {formatNumber(b.requests5xx || 0)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-xs">
-                {formatNumber(b.tokens?.input || 0)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-xs">
-                {formatNumber(b.tokens?.output || 0)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-xs text-[#ff8a3d]">
-                ${(b.estimatedSpend || 0).toFixed(4)}
-              </TableCell>
-              <TableCell className="text-right font-mono text-xs text-emerald-300">
-                {(b.estimatedCacheSavingsUsd || 0) > 0
-                  ? `$${(b.estimatedCacheSavingsUsd || 0).toFixed(4)}`
-                  : "—"}
-              </TableCell>
-              <TableCell className="text-right font-mono text-xs">
-                {b.latency?.count ? formatLatency(b.latency.p50) : "—"}
-              </TableCell>
-              <TableCell className="text-right font-mono text-xs">
-                {formatNumber(b.upstreamErrors || 0)}
-              </TableCell>
-              {cbKeyPrefix && (
-                <TableCell>
-                  <span
-                    className={cn("font-mono text-xs", cnStatus(cbState || ""))}
-                  >
-                    {cbState || "—"}
-                  </span>
-                </TableCell>
-              )}
-            </TableRow>
-          );
-        })}
-      </TableBody>
-    </Table>
-  );
-}
-
-// ─── Daily History ────────────────────────────────────────────────────────────
-
-// Last 14 days of global traffic, each day starting at 12am Nigeria
-// time (WAT -- the gateway rolls daily rows at the Lagos-day boundary)
-// (the gateway's gw_metrics_daily rows with scope="global" already
-// aggregate every provider+model, so summing scopes here would
-// double/triple count). Renders newest day first, with a
-// proportional inline bar so the trend is visible at a glance. Retention on
-// the gateway side is unbounded; this view just shows the recent window.
-const DAILY_WINDOW_DAYS = 14;
-
-function DailyHistoryTable({ rows }: { rows: DailyMetricsRow[] }) {
-  const recent = rows
-    .filter((r) => r.scope === "global")
-    .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0))
-    .slice(-DAILY_WINDOW_DAYS)
-    .toReversed(); // newest first
-  if (recent.length === 0) {
-    return (
-      <p className="px-1 py-6 text-center text-sm text-muted-foreground">
-        No history recorded yet — days appear here as requests flow. Retention
-        is unbounded; nothing is ever trimmed.
-      </p>
-    );
-  }
-  const maxReq = Math.max(...recent.map((r) => r.requests || 0), 1);
-
-  return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Day (WAT)</TableHead>
-          <TableHead className="text-right">Requests</TableHead>
-          <TableHead className="text-right">2xx</TableHead>
-          <TableHead className="text-right">4xx</TableHead>
-          <TableHead className="text-right">5xx</TableHead>
-          <TableHead className="text-right">Errors</TableHead>
-          <TableHead className="text-right">Spend</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {recent.map((r) => (
-          <TableRow key={r.day}>
-            <TableCell className="font-mono text-xs">{r.day}</TableCell>
-            <TableCell className="text-right font-mono text-xs">
-              <span className="inline-flex items-center justify-end gap-2">
-                <span
-                  className="inline-block h-2 min-w-1 rounded-sm bg-[#ff8a3d]/70"
-                  style={{
-                    width: `${Math.max((r.requests / maxReq) * 48, r.requests > 0 ? 3 : 0)}px`,
-                  }}
-                  title={`${r.requests} requests`}
-                />
-                {formatNumber(r.requests || 0)}
-              </span>
-            </TableCell>
-            <TableCell className="text-right font-mono text-xs text-emerald-400">
-              {formatNumber(r.requests2xx || 0)}
-            </TableCell>
-            <TableCell className="text-right font-mono text-xs text-amber-400">
-              {formatNumber(r.requests4xx || 0)}
-            </TableCell>
-            <TableCell className="text-right font-mono text-xs text-red-400">
-              {formatNumber(r.requests5xx || 0)}
-            </TableCell>
-            <TableCell className="text-right font-mono text-xs">
-              {formatNumber(r.upstreamErrors || 0)}
-            </TableCell>
-            <TableCell className="text-right font-mono text-xs text-[#ff8a3d]">
-              ${(r.estimatedSpend || 0).toFixed(4)}
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  );
-}
-
-// ─── Main Component ──────────────────────────────────────────────────────────
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export function GatewayDashboard() {
-  const [connected, setConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [routes, setRoutes] = useState<RouteInfo[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [status, setStatus] = useState<
+    | "disconnected"
+    | "connecting"
+    | "connected"
+    | "reconnecting"
+    | "stale"
+    | "error"
+  >("connecting");
+  const [statusText, setStatusText] = useState("Connecting…");
+  const [staleMessage, setStaleMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [lastGoodTime, setLastGoodTime] = useState<Date | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // provider name -> set of its model ids, from the live routes list. Used
-  // to map per-model circuit-breaker keys ("model:<id>:<id>") back onto
-  // provider rows for the Health column.
+  const consecutiveFailuresRef = useRef(0);
+  const fetchInFlightRef = useRef(false);
+  const lastGoodUpdateRef = useRef<number>(0);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const fetchData = useCallback(async () => {
+    if (fetchInFlightRef.current) return;
+    fetchInFlightRef.current = true;
+    setIsRefreshing(true);
+
+    try {
+      const results = await Promise.allSettled([
+        fetch("/api/settings/gateway-metrics?path=/health", {
+          cache: "no-store",
+        }),
+        fetch("/api/settings/gateway-metrics?path=/metrics&daily=global", {
+          cache: "no-store",
+        }),
+        fetch("/api/settings/gateway-metrics?path=/v1/models", {
+          cache: "no-store",
+        }),
+        fetch("/api/settings/gateway-metrics?path=/v1/debug/routes", {
+          cache: "no-store",
+        }),
+      ]);
+
+      const [healthRes, metricsRes, modelsRes, routesRes] = results;
+
+      let healthData: HealthResponse | null = null;
+      let metricsData: MetricsResponse | null = null;
+      let modelsData: { data: ModelInfo[] } | null = null;
+      let routesData: { routes: RouteInfo[] } | null = null;
+
+      const failedEndpoints: string[] = [];
+
+      if (healthRes.status === "fulfilled" && healthRes.value.ok) {
+        healthData = await healthRes.value.json();
+      } else {
+        failedEndpoints.push("health");
+      }
+
+      if (metricsRes.status === "fulfilled" && metricsRes.value.ok) {
+        metricsData = await metricsRes.value.json();
+      } else {
+        failedEndpoints.push("metrics");
+      }
+
+      if (modelsRes.status === "fulfilled" && modelsRes.value.ok) {
+        modelsData = await modelsRes.value.json();
+      } else {
+        failedEndpoints.push("models");
+      }
+
+      if (routesRes.status === "fulfilled" && routesRes.value.ok) {
+        routesData = await routesRes.value.json();
+      } else {
+        failedEndpoints.push("routes");
+      }
+
+      if (failedEndpoints.length === 4) {
+        consecutiveFailuresRef.current += 1;
+        if (lastGoodUpdateRef.current > 0) {
+          setStatus(
+            consecutiveFailuresRef.current >= 3 ? "error" : "reconnecting",
+          );
+          setStatusText(
+            consecutiveFailuresRef.current >= 3
+              ? "Disconnected — retrying"
+              : "Reconnecting…",
+          );
+          setStaleMessage(
+            `Connection issue — showing data from ${new Date(
+              lastGoodUpdateRef.current,
+            ).toLocaleTimeString()}. Retrying…`,
+          );
+        } else {
+          setStatus("error");
+          setStatusText("Error");
+          setErrorMessage(
+            "All gateway endpoints failed to respond. Check GATEWAY_BASE_URL and authentication credentials.",
+          );
+        }
+        return;
+      }
+
+      // At least some endpoints succeeded
+      if (healthData) setHealth(healthData);
+      if (metricsData) setMetrics(metricsData);
+      if (modelsData?.data) setModels(modelsData.data);
+      if (routesData?.routes) setRoutes(routesData.routes);
+
+      consecutiveFailuresRef.current = 0;
+      lastGoodUpdateRef.current = Date.now();
+      setLastGoodTime(new Date());
+      setStatus("connected");
+      setStatusText("Connected");
+      setErrorMessage(null);
+
+      if (failedEndpoints.length > 0) {
+        setStaleMessage(
+          `Partial update: [${failedEndpoints.join(", ")}] failed — other sections show live data from ${new Date(
+            lastGoodUpdateRef.current,
+          ).toLocaleTimeString()}.`,
+        );
+      } else {
+        setStaleMessage(null);
+      }
+    } catch (err) {
+      consecutiveFailuresRef.current += 1;
+      const msg = err instanceof Error ? err.message : "Network error";
+      if (lastGoodUpdateRef.current > 0) {
+        setStatus("reconnecting");
+        setStatusText("Reconnecting…");
+        setStaleMessage(
+          `Connection interrupted (${msg}). Showing last good data.`,
+        );
+      } else {
+        setStatus("error");
+        setStatusText("Error");
+        setErrorMessage(msg);
+      }
+    } finally {
+      fetchInFlightRef.current = false;
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchData();
+
+    // Auto-refresh every 5 seconds
+    intervalRef.current = setInterval(() => {
+      void fetchData();
+    }, 5000);
+
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [fetchData]);
+
+  // Staleness watch: if no successful snapshot for 15s, mark stale
+  useEffect(() => {
+    const checkStale = setInterval(() => {
+      if (
+        lastGoodUpdateRef.current > 0 &&
+        Date.now() - lastGoodUpdateRef.current > 15000
+      ) {
+        setStatus("stale");
+        setStatusText("Stale — retrying");
+      }
+    }, 3000);
+
+    return () => clearInterval(checkStale);
+  }, []);
+
+  const g = metrics?.global;
+  const requests = g?.requests || 0;
+  const upstreamErrors = g?.upstreamErrors || 0;
+  const tokensTotal = g?.tokens?.total || 0;
+  const cacheRead = g?.tokens?.cacheRead || 0;
+  const cacheWrite = g?.tokens?.cacheWrite || 0;
+  const estimatedSpend = g?.estimatedSpend || 0;
+  const activeRequests = metrics?.activeRequests ?? health?.activeRequests ?? 0;
+  const activeStreams = metrics?.activeStreams ?? 0;
+  const latency = g?.latency;
+  const statusBreakdown = g?.statusBreakdown || {};
+
+  const errorRate = requests > 0 ? (upstreamErrors / requests) * 100 : 0;
+
+  // Provider -> Models map for mapping circuit breaker states
   const providerModels = useMemo(() => {
     const map = new Map<string, Set<string>>();
     for (const r of routes) {
@@ -541,448 +370,947 @@ export function GatewayDashboard() {
     return map;
   }, [routes]);
 
-  const fetchData = useCallback(async () => {
-    try {
-      // The proxy resolves the gateway URL and attaches the right
-      // credential per endpoint server-side (OIDC / metrics key /
-      // inference key) -- the browser never needs a URL or a key here.
-      const [healthRes, metricsRes, modelsRes, routesRes] = await Promise.all([
-        fetch("/api/settings/gateway-metrics?path=/health", {
-          cache: "no-store",
-        }),
-        fetch("/api/settings/gateway-metrics?path=/metrics", {
-          cache: "no-store",
-        }),
-        fetch("/api/settings/gateway-metrics?path=/v1/models", {
-          cache: "no-store",
-        }),
-        fetch("/api/settings/gateway-metrics?path=/v1/debug/routes", {
-          cache: "no-store",
-        }),
-      ]);
-
-      if (!healthRes.ok) {
-        throw new Error(`Gateway returned ${healthRes.status}`);
-      }
-
-      const healthData = await healthRes.json();
-      const metricsData = metricsRes.ok ? await metricsRes.json() : null;
-      const modelsData = modelsRes.ok ? await modelsRes.json() : null;
-      const routesData = routesRes.ok ? await routesRes.json() : null;
-
-      setHealth(healthData);
-      setMetrics(metricsData);
-      setModels(modelsData?.data || []);
-      setRoutes(routesData?.routes || []);
-      setError(null);
-      setLastRefresh(new Date());
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to connect to gateway";
-      setError(message);
-      setConnected(false);
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+  // Unified circuit breaker states
+  const cbStates = useMemo(() => {
+    const states: Record<
+      string,
+      { state: string; failures?: number; openedAt?: number; identity?: string }
+    > = {};
+    if (metrics?.circuitBreakers) {
+      for (const [k, v] of Object.entries(metrics.circuitBreakers)) {
+        states[k] = typeof v === "string" ? { state: v } : v;
       }
     }
-  }, []);
+    if (health?.circuitBreakers) {
+      for (const [k, v] of Object.entries(health.circuitBreakers)) {
+        if (!states[k]) states[k] = { state: v };
+      }
+    }
+    return states;
+  }, [metrics?.circuitBreakers, health?.circuitBreakers]);
 
-  const handleConnect = useCallback(async () => {
-    setConnecting(true);
-    setError(null);
-    await fetchData();
-    setConnecting(false);
-    setConnected(true);
+  // Cache hit rate rows
+  const cacheRows = useMemo(() => {
+    const byModelCache = metrics?.byModel || {};
+    return Object.keys(byModelCache)
+      .map((name) => {
+        const t = byModelCache[name].tokens || {
+          input: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+        };
+        const input = t.input || 0;
+        const read = t.cacheRead || 0;
+        const write = t.cacheWrite || 0;
+        const denom = input + read + write;
+        const pct =
+          typeof t.cacheHitRate === "number"
+            ? t.cacheHitRate * 100
+            : denom > 0
+              ? (read / denom) * 100
+              : 0;
+        return { name, input, cacheRead: read, denom, pct };
+      })
+      .filter((r) => r.denom > 0)
+      .sort((a, b) => b.pct - a.pct || b.denom - a.denom);
+  }, [metrics?.byModel]);
 
-    // Auto-refresh every 5 seconds
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(() => void fetchData(), 5000);
-  }, [fetchData]);
+  const totalCacheDenom = useMemo(
+    () => cacheRows.reduce((acc, r) => acc + r.denom, 0),
+    [cacheRows],
+  );
+  const totalCacheRead = useMemo(
+    () => cacheRows.reduce((acc, r) => acc + r.cacheRead, 0),
+    [cacheRows],
+  );
+  const avgCachePct =
+    totalCacheDenom > 0 ? (totalCacheRead / totalCacheDenom) * 100 : 0;
 
-  const handleRefresh = useCallback(() => {
-    void fetchData();
-  }, [fetchData]);
+  // Daily rows (Africa/Lagos / WAT timezone)
+  const dailyRows = useMemo(() => {
+    if (!Array.isArray(metrics?.daily)) return [];
+    return metrics.daily
+      .filter((r) => r.scope === "global")
+      .sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0))
+      .slice(-14)
+      .toReversed();
+  }, [metrics?.daily]);
 
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
+  const maxDailyRequests = useMemo(() => {
+    return Math.max(...dailyRows.map((r) => r.requests || 0), 1);
+  }, [dailyRows]);
 
-  // On first mount: auto-connect through the server proxy. It resolves the
-  // gateway URL and the per-endpoint credentials server-side, so the admin
-  // never enters a URL or key anywhere on this page.
-  useEffect(() => {
-    void handleConnect();
-  }, [handleConnect]);
-
-  // The real /metrics response nests everything under `global`
-  // (requests/latency/tokens/spend/statusBreakdown), plus separate
-  // `byProvider` and `byModel` breakdowns -- there is no flat
-  // counters/gauges/histograms shape. Reading the wrong keys is why this
-  // dashboard used to show 0 for everything despite real traffic.
-  const g = metrics?.global;
-  const latencyStats = g?.latency;
-  const requestTotal = g?.requests || 0;
-  const tokensTotal = g?.tokens?.total || 0;
-  const spendTotal = g?.estimatedSpend || 0;
-  const upstreamErrors = g?.upstreamErrors || 0;
-  const activeRequests = metrics?.activeRequests ?? health?.activeRequests ?? 0;
-  const activeStreams = metrics?.activeStreams ?? 0;
-  const statusBreakdown = g?.statusBreakdown || {};
+  // Stat cards definitions
+  const statCards = [
+    {
+      label: "Upstream Attempts",
+      value: formatNumber(requests),
+      sublabel: `${activeRequests} in-flight now · ${activeStreams} streams`,
+      icon: Activity,
+      accent: false,
+      isError: false,
+    },
+    {
+      label: "Avg Latency",
+      value: latency ? formatLatency(latency.avg ?? latency.p50) : "—",
+      sublabel: latency
+        ? `p50 ${formatLatency(latency.p50)} · p95 ${formatLatency(latency.p95)}`
+        : "no records yet",
+      icon: Clock,
+      accent: false,
+      isError: false,
+    },
+    {
+      label: "Upstream Errors",
+      value: formatNumber(upstreamErrors),
+      sublabel:
+        requests > 0
+          ? `${errorRate.toFixed(1)}% of attempts`
+          : "no attempts yet",
+      icon: AlertTriangle,
+      accent: upstreamErrors > 0,
+      isError: upstreamErrors > 0,
+    },
+    {
+      label: "Total Tokens",
+      value: formatNumber(tokensTotal),
+      sublabel: `${formatNumber(cacheRead)} cache-read · ${formatNumber(cacheWrite)} cache-write`,
+      icon: TrendingUp,
+      accent: false,
+      isError: false,
+    },
+    {
+      label: "Est. Spend",
+      value: formatMoney(estimatedSpend),
+      sublabel: "estimated · all-time",
+      icon: DollarSign,
+      accent: true,
+      isError: false,
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      {/* ─── Connection Bar ─── */}
-      <Card className="overflow-hidden">
-        <CardContent className="pt-0">
-          <div className="flex items-center justify-between gap-3 py-6">
-            {/* The gateway URL and credentials resolve server-side; the admin
-                never enters them. */}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">entry-gateway</span>
-              <span>·</span>
-              <span>
-                health, metrics, routes, and models refresh every 5 seconds
-              </span>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={() => handleRefresh()}
-                disabled={connecting}
-                className="bg-[#ff8a3d] text-black hover:bg-[#ff8a3d]/90"
-              >
-                {connecting ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="size-4" />
-                )}
-                Refresh
-              </Button>
-            </div>
-          </div>
+      <style>{`
+        @keyframes cacheSheen {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        .animate-cache-sheen {
+          background-size: 200% 100%;
+          animation: cacheSheen 2.6s ease-in-out infinite;
+        }
+      `}</style>
 
-          {!connected && (
-            <div className="mb-4 text-sm text-muted-foreground">
-              Connecting to the gateway…
+      {/* ─── Header ─── */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight">
+            Gateway Admin
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Real-time monitoring — per-provider and aggregate metrics
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {isRefreshing && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin text-[#ff8a3d]" />
+              <span>Updating…</span>
             </div>
           )}
 
-          {error && (
-            <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3">
-              <AlertTriangle className="size-4 shrink-0 text-red-400" />
-              <p className="text-sm text-red-400">{error}</p>
-            </div>
+          {lastGoodTime && !isRefreshing && (
+            <span className="font-mono text-xs text-muted-foreground">
+              Updated {lastGoodTime.toLocaleTimeString()}
+            </span>
           )}
 
-          {connected && health && (
-            <div className="flex items-center gap-3 border-t pt-4 text-sm">
-              <div className="flex items-center gap-2">
-                <span className="size-2 rounded-full bg-emerald-400" />
-                <span className="font-medium text-emerald-400">Connected</span>
-              </div>
-              <span className="text-muted-foreground">·</span>
-              {health.version && (
-                <>
-                  <span className="text-muted-foreground">
-                    v{health.version}
-                  </span>
-                  <span className="text-muted-foreground">·</span>
-                </>
+          <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium">
+            <span
+              className={cn(
+                "size-2 rounded-full",
+                status === "connected" && "animate-pulse bg-emerald-400",
+                (status === "reconnecting" || status === "stale") &&
+                  "bg-amber-400",
+                status === "error" && "bg-red-400",
+                status === "disconnected" && "bg-muted-foreground",
               )}
-              <span className="font-mono text-xs text-muted-foreground">
-                {lastRefresh ? lastRefresh.toLocaleTimeString() : "—"}
-              </span>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {connected && health && (
-        <>
-          {/* ─── Stat Cards ─── */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              label="Total Requests"
-              value={formatNumber(requestTotal)}
-              sublabel={`${activeRequests} active`}
-              icon={Activity}
             />
-            <StatCard
-              label="Avg Latency"
-              value={
-                latencyStats?.count ? formatLatency(latencyStats.p50 || 0) : "—"
-              }
-              sublabel={
-                latencyStats?.count
-                  ? `p95: ${formatLatency(latencyStats.p95 || 0)}`
-                  : undefined
-              }
-              icon={Clock}
-            />
-            <StatCard
-              label="Total Tokens"
-              value={formatNumber(tokensTotal)}
-              sublabel={`${activeStreams} active streams`}
-              icon={TrendingUp}
-            />
-            <StatCard
-              label="Est. Spend"
-              value={`$${spendTotal.toFixed(4)}`}
-              sublabel={`${upstreamErrors} upstream errors`}
-              icon={DollarSign}
-              accent
-            />
+            <span>{statusText}</span>
           </div>
 
-          {/* ─── Latency + Status ─── */}
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Clock className="size-4 text-[#ff8a3d]" />
-                  Latency Distribution
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <LatencyChart histogram={latencyStats} />
-              </CardContent>
-            </Card>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchData()}
+            disabled={isRefreshing}
+            className="gap-1.5 border-border text-xs hover:border-[#ff8a3d]/50 hover:text-[#ff8a3d]"
+          >
+            <RefreshCw
+              className={cn(
+                "size-3.5",
+                isRefreshing && "animate-spin text-[#ff8a3d]",
+              )}
+            />
+            Refresh
+          </Button>
+        </div>
+      </div>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Activity className="size-4 text-[#ff8a3d]" />
-                  Request Status
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <StatusBreakdown breakdown={statusBreakdown} />
-              </CardContent>
-            </Card>
-          </div>
+      {/* ─── Banners ─── */}
+      {staleMessage && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2.5 text-xs text-amber-400">
+          <span>⏳</span>
+          <span>{staleMessage}</span>
+        </div>
+      )}
 
-          {/* ─── Circuit Breakers ─── */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CircuitBoard className="size-4 text-[#ff8a3d]" />
-                Circuit Breakers
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {Object.keys(health.circuitBreakers || {}).length === 0 ? (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <CheckCircle2 className="size-4 text-emerald-400" />
-                  No circuit breakers tripped
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-                  {Object.entries(health.circuitBreakers).map(
-                    ([name, state]) => (
-                      <div
-                        key={name}
-                        className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2"
-                      >
-                        <span className="truncate font-mono text-xs text-muted-foreground">
-                          {name}
-                        </span>
-                        <span
-                          className={cn(
-                            "font-mono text-xs font-medium",
-                            cnStatus(state),
-                          )}
-                        >
-                          {state}
-                        </span>
-                      </div>
-                    ),
+      {errorMessage && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3 text-xs text-red-400">
+          <AlertTriangle className="size-4 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {/* ─── Stat Grid ─── */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {statCards.map((c) => (
+          <div
+            key={c.label}
+            className={cn(
+              "relative overflow-hidden rounded-xl border bg-card p-5 transition-all",
+              c.accent && "border-[#ff8a3d]/30",
+              c.isError && "border-red-500/30",
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {c.label}
+                </p>
+                <p
+                  className={cn(
+                    "mt-2 text-2xl font-semibold tracking-tight",
+                    c.accent && "text-[#ff8a3d]",
+                    c.isError && "text-red-400",
                   )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                >
+                  {c.value}
+                </p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {c.sublabel}
+                </p>
+              </div>
 
-          {/* ─── Per-Model Usage ─── */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <TrendingUp className="size-4 text-[#ff8a3d]" />
-                Model Usage
-                <span className="ml-auto rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
-                  {metrics?.modelCount ??
-                    Object.keys(metrics?.byModel || {}).length}{" "}
-                  model
-                  {(metrics?.modelCount ??
-                    Object.keys(metrics?.byModel || {}).length) !== 1
-                    ? "s"
-                    : ""}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto pt-0">
-              <UsageBreakdownTable
-                buckets={metrics?.byModel || {}}
-                nameHeader="Model"
-              />
-            </CardContent>
-          </Card>
+              <div
+                className={cn(
+                  "flex size-9 shrink-0 items-center justify-center rounded-lg border",
+                  c.accent
+                    ? "border-[#ff8a3d]/20 bg-[#ff8a3d]/10 text-[#ff8a3d]"
+                    : c.isError
+                      ? "border-red-500/20 bg-red-500/10 text-red-400"
+                      : "border-border bg-muted/30 text-muted-foreground",
+                )}
+              >
+                <c.icon className="size-4" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
 
-          {/* ─── Per-Provider Usage ─── */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Server className="size-4 text-[#ff8a3d]" />
-                Provider Usage
-                <span className="ml-auto rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
-                  {metrics?.providerCount ??
-                    Object.keys(metrics?.byProvider || {}).length}{" "}
-                  provider
-                  {(metrics?.providerCount ??
-                    Object.keys(metrics?.byProvider || {}).length) !== 1
-                    ? "s"
-                    : ""}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-x-auto pt-0">
-              <UsageBreakdownTable
-                buckets={metrics?.byProvider || {}}
-                nameHeader="Provider"
-                circuitBreakers={metrics?.circuitBreakers}
-                cbKeyPrefix
-                providerModels={providerModels}
-              />
-            </CardContent>
-          </Card>
+      {/* ─── Two Column: Latency Distribution & Request Status ─── */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {/* Latency Distribution */}
+        <div className="flex flex-col rounded-xl border bg-card">
+          <div className="flex items-center gap-2 border-b border-border px-5 py-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <span className="text-[#ff8a3d]">⏱</span>
+              Latency Distribution
+            </h3>
+          </div>
 
-          {/* ─── Daily History ─── */}
-          {Array.isArray(metrics?.daily) && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Clock className="size-4 text-[#ff8a3d]" />
-                  Daily History
-                  <span className="ml-auto rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
-                    last {DAILY_WINDOW_DAYS} days · Nigeria time · unbounded
-                    retention
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="overflow-x-auto pt-0">
-                <DailyHistoryTable rows={metrics.daily} />
-              </CardContent>
-            </Card>
-          )}
-
-          {/* ─── Routes Table ─── */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Server className="size-4 text-[#ff8a3d]" />
-                Model Routes
-                <span className="ml-auto rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
-                  {routes.length} route{routes.length !== 1 ? "s" : ""}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {routes.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  No routes configured
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>ID</TableHead>
-                      <TableHead>Protocol</TableHead>
-                      <TableHead>Provider</TableHead>
-                      <TableHead>Priority</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {routes.map((route) => (
-                      <TableRow key={route.id}>
-                        <TableCell className="font-mono text-xs">
-                          {route.id}
-                        </TableCell>
-                        <TableCell>
-                          <span className="rounded-md border border-[#ff8a3d]/20 bg-[#ff8a3d]/5 px-1.5 py-0.5 font-mono text-xs text-[#ff8a3d]">
-                            {route.protocol}
-                          </span>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {route.provider || "—"}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs">
-                          {route.priority}
-                        </TableCell>
-                        <TableCell>
-                          {route.enabled ? (
-                            <span className="flex items-center gap-1.5 text-xs text-emerald-400">
-                              <span className="size-1.5 rounded-full bg-emerald-400" />
-                              Enabled
-                            </span>
-                          ) : (
-                            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                              <span className="size-1.5 rounded-full bg-muted-foreground" />
-                              Disabled
-                            </span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ─── Models Grid ─── */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Zap className="size-4 text-[#ff8a3d]" />
-                Available Models
-                <span className="ml-auto rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
-                  {models.length} model{models.length !== 1 ? "s" : ""}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-0">
-              {models.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  No models available
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                  {models.map((model) => (
-                    <div
-                      key={model.id}
-                      className="flex items-center justify-between rounded-lg border bg-muted/30 px-3 py-2.5"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate font-mono text-sm font-medium text-foreground">
-                          {model.id}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {model.protocols?.join(", ") || "openai-chat"}
-                        </p>
+          <div className="flex-1 space-y-3 p-5">
+            {!latency || latency.count === 0 ? (
+              <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">
+                No latency records yet
+              </div>
+            ) : (
+              <>
+                {[
+                  { label: "avg", val: latency.avg ?? latency.p50 },
+                  { label: "p50", val: latency.p50 },
+                  { label: "p95", val: latency.p95 },
+                  { label: "p99", val: latency.p99 },
+                ].map((row) => {
+                  const maxLat = Math.max(
+                    latency.p50,
+                    latency.p95,
+                    latency.p99,
+                    latency.avg || 0,
+                    1,
+                  );
+                  const pct = Math.min((row.val / maxLat) * 100, 100);
+                  return (
+                    <div key={row.label} className="flex items-center gap-3">
+                      <span className="w-10 shrink-0 font-mono text-xs text-muted-foreground">
+                        {row.label}
+                      </span>
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-[#ff8a3d] transition-all duration-500"
+                          style={{ width: `${Math.max(pct, 2)}%` }}
+                        />
                       </div>
-                      <span className="ml-2 shrink-0 rounded-md border border-border px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
-                        {model.owned_by || "gateway"}
+                      <span className="w-16 shrink-0 text-right font-mono text-xs font-medium text-foreground">
+                        {formatLatency(row.val)}
                       </span>
                     </div>
-                  ))}
+                  );
+                })}
+
+                <div className="mt-4 flex items-center gap-4 border-t border-border pt-3 text-xs text-muted-foreground">
+                  <span>min: {formatLatency(latency.min || 0)}</span>
+                  <span>max: {formatLatency(latency.max || 0)}</span>
+                  <span>count: {formatNumber(latency.count || 0)}</span>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </>
+              </>
+            )}
+          </div>
+
+          <div className="border-t border-border px-5 py-3 text-[11.5px] leading-relaxed text-muted-foreground">
+            Percentiles (nearest-rank) and mean over the most recent 500
+            recorded upstream attempts, all-time. TTFT = time to first streamed
+            byte. A p95/p99 clustered at the upstream timeout ceiling means that
+            share of attempts is hitting the hard timeout, not that every
+            request is slow.
+          </div>
+        </div>
+
+        {/* Request Status */}
+        <div className="flex flex-col rounded-xl border bg-card">
+          <div className="flex items-center gap-2 border-b border-border px-5 py-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <span className="text-[#ff8a3d]">📡</span>
+              Request Status
+            </h3>
+          </div>
+
+          <div className="flex-1 space-y-2 p-5">
+            {Object.keys(statusBreakdown).length === 0 ? (
+              <div className="flex h-32 items-center justify-center text-xs text-muted-foreground">
+                No status breakdown yet
+              </div>
+            ) : (
+              (() => {
+                const entries = Object.entries(statusBreakdown)
+                  .map(([code, count]) => ({ code: Number(code), count }))
+                  .sort((a, b) => b.count - a.count);
+                const total = entries.reduce((s, e) => s + e.count, 0) || 1;
+
+                return entries.map((entry) => {
+                  const pct = (entry.count / total) * 100;
+                  const is2xx = entry.code >= 200 && entry.code < 300;
+                  const is4xx = entry.code >= 400 && entry.code < 500;
+                  const is5xx = entry.code >= 500;
+
+                  return (
+                    <div key={entry.code} className="flex items-center gap-3">
+                      <span className="w-12 shrink-0 font-mono text-xs text-muted-foreground">
+                        POST
+                      </span>
+                      <span
+                        className={cn(
+                          "w-10 shrink-0 font-mono text-xs font-semibold",
+                          is2xx && "text-emerald-400",
+                          is4xx && "text-amber-400",
+                          is5xx && "text-red-400",
+                          !is2xx && !is4xx && !is5xx && "text-muted-foreground",
+                        )}
+                      >
+                        {entry.code === 0 ? "0 (fail)" : entry.code}
+                      </span>
+                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all duration-500",
+                            is2xx && "bg-emerald-500/80",
+                            is4xx && "bg-amber-500/80",
+                            is5xx && "bg-red-500/80",
+                            !is2xx &&
+                              !is4xx &&
+                              !is5xx &&
+                              "bg-muted-foreground/60",
+                          )}
+                          style={{ width: `${Math.max(pct, 2)}%` }}
+                        />
+                      </div>
+                      <span className="w-12 shrink-0 text-right font-mono text-xs font-medium text-foreground">
+                        {entry.count}
+                      </span>
+                      <span className="w-12 shrink-0 text-right font-mono text-[11px] text-muted-foreground">
+                        {pct.toFixed(0)}%
+                      </span>
+                    </div>
+                  );
+                });
+              })()
+            )}
+          </div>
+
+          <div className="border-t border-border px-5 py-3 text-[11.5px] leading-relaxed text-muted-foreground">
+            Counts upstream attempts (a request retried on a fallback route
+            counts once per attempt). Status 0 = the attempt produced no
+            upstream response: client disconnect, timeout, circuit-open
+            rejection, or gateway config error. All proxied traffic is POST.
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Per-Provider Breakdown Table ─── */}
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <span className="text-[#ff8a3d]">🔌</span>
+            Per-Provider Breakdown
+          </h3>
+          <span className="rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            {metrics?.providers?.length ||
+              Object.keys(metrics?.byProvider || {}).length}{" "}
+            providers
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          {Object.keys(metrics?.byProvider || {}).length === 0 ? (
+            <div className="p-5 text-center text-xs text-muted-foreground">
+              No provider data yet
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="text-xs font-medium text-muted-foreground">
+                    Provider
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                    Attempts
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                    2xx
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                    4xx
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                    5xx
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                    Tokens In
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                    Tokens Out
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                    Spend
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                    p50
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                    Upstream Err
+                  </TableHead>
+                  <TableHead className="text-xs font-medium text-muted-foreground">
+                    Breaker / Health
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Object.keys(metrics?.byProvider || {}).map((name) => {
+                  const p = metrics!.byProvider[name];
+                  const provModels =
+                    providerModels.get(name) || new Set<string>();
+
+                  const matchingKeys = Object.keys(cbStates).filter(
+                    (k) =>
+                      (k.startsWith("model:") &&
+                        provModels.has(k.slice("model:".length))) ||
+                      k.startsWith(`${name}:`),
+                  );
+
+                  const worst = worstBreakerState(
+                    matchingKeys.map((k) => cbStates[k]?.state || "closed"),
+                  );
+                  const isStaleOpen =
+                    worst === "open" &&
+                    matchingKeys.some((k) => {
+                      const openedAt = cbStates[k]?.openedAt || 0;
+                      return openedAt > 0 && Date.now() - openedAt > 30000;
+                    });
+
+                  const attempts = p.requests || 0;
+                  const errors = p.upstreamErrors || 0;
+                  const errPct = attempts > 0 ? (errors / attempts) * 100 : 0;
+
+                  return (
+                    <TableRow
+                      key={name}
+                      className="border-border hover:bg-muted/40"
+                    >
+                      <TableCell className="text-xs font-medium text-foreground">
+                        {name}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {formatNumber(attempts)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-emerald-400">
+                        {formatNumber(p.requests2xx || 0)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-amber-400">
+                        {formatNumber(p.requests4xx || 0)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-red-400">
+                        {formatNumber(p.requests5xx || 0)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {formatNumber(p.tokens?.input || 0)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {formatNumber(p.tokens?.output || 0)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs text-[#ff8a3d]">
+                        {formatMoney(p.estimatedSpend || 0)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-xs">
+                        {p.latency?.count ? formatLatency(p.latency.p50) : "—"}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          "text-right font-mono text-xs",
+                          errPct >= 5 && "font-semibold text-red-400",
+                        )}
+                      >
+                        {formatNumber(errors)}
+                        {attempts > 0 && (
+                          <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                            ({errPct.toFixed(1)}%)
+                          </span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={cn(
+                              "size-2 rounded-full",
+                              worst === "open" && "bg-red-400",
+                              worst === "half_open" && "bg-amber-400",
+                              worst === "closed" && "bg-emerald-400",
+                            )}
+                          />
+                          <span
+                            className={cn(
+                              "font-mono text-xs capitalize",
+                              worst === "open" && "text-red-400",
+                              worst === "half_open" && "text-amber-400",
+                              worst === "closed" && "text-emerald-400",
+                            )}
+                          >
+                            {worst}
+                          </span>
+                          {isStaleOpen && (
+                            <span className="text-[11px] text-muted-foreground">
+                              (cooldown elapsed)
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Daily History (Nigeria Time / WAT) ─── */}
+      {Array.isArray(metrics?.daily) && (
+        <div className="overflow-hidden rounded-xl border bg-card">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <span className="text-[#ff8a3d]">📅</span>
+              Daily History (Nigeria time)
+            </h3>
+            <span className="rounded-md border border-border px-2 py-0.5 text-xs text-muted-foreground">
+              {dailyRows.length} day{dailyRows.length !== 1 ? "s" : ""} ·
+              unbounded retention
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            {dailyRows.length === 0 ? (
+              <div className="p-5 text-center text-xs text-muted-foreground">
+                No history recorded yet — days appear here as requests flow.
+                Retention is unbounded.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="text-xs font-medium text-muted-foreground">
+                      Day (WAT)
+                    </TableHead>
+                    <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                      Requests
+                    </TableHead>
+                    <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                      2xx
+                    </TableHead>
+                    <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                      4xx
+                    </TableHead>
+                    <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                      5xx
+                    </TableHead>
+                    <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                      Errors
+                    </TableHead>
+                    <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                      Spend
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dailyRows.map((r) => {
+                    const reqWidth = Math.max(
+                      (r.requests / maxDailyRequests) * 44,
+                      r.requests > 0 ? 3 : 0,
+                    );
+                    return (
+                      <TableRow
+                        key={r.day}
+                        className="border-border hover:bg-muted/40"
+                      >
+                        <TableCell className="font-mono text-xs text-foreground">
+                          {r.day}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs">
+                          <span className="inline-flex items-center justify-end gap-2">
+                            <span
+                              className="inline-block h-1.5 rounded-sm bg-[#ff8a3d]/70"
+                              style={{ width: `${reqWidth}px` }}
+                            />
+                            {formatNumber(r.requests || 0)}
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs text-emerald-400">
+                          {formatNumber(r.requests2xx || 0)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs text-amber-400">
+                          {formatNumber(r.requests4xx || 0)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs text-red-400">
+                          {formatNumber(r.requests5xx || 0)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs">
+                          {formatNumber(r.upstreamErrors || 0)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-xs text-[#ff8a3d]">
+                          {formatMoney(r.estimatedSpend || 0)}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </div>
       )}
+
+      {/* ─── Cache Hit Rate by Model ─── */}
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <span className="text-[#ff8a3d]">💎</span>
+            Cache Hit Rate by Model
+          </h3>
+          <span className="rounded-md border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground">
+            {avgCachePct.toFixed(1)}% avg
+          </span>
+        </div>
+
+        <div className="space-y-3.5 p-5">
+          {cacheRows.length === 0 ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">
+              No request traffic with cache data yet
+            </div>
+          ) : (
+            <>
+              {cacheRows.map((r) => {
+                const gradient =
+                  r.pct >= 60
+                    ? "linear-gradient(90deg, #ff8a3d, #10b981)"
+                    : r.pct > 0
+                      ? "linear-gradient(90deg, #9ca3af, #ff8a3d)"
+                      : "var(--muted)";
+
+                const colorClass =
+                  r.pct >= 60
+                    ? "text-emerald-400"
+                    : r.pct >= 25
+                      ? "text-[#ff8a3d]"
+                      : r.pct > 0
+                        ? "text-amber-400"
+                        : "text-muted-foreground";
+
+                return (
+                  <div key={r.name} className="flex items-center gap-3.5">
+                    <span
+                      className="w-44 shrink-0 truncate font-mono text-xs font-medium text-foreground"
+                      title={r.name}
+                    >
+                      {r.name}
+                    </span>
+                    <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="animate-cache-sheen relative h-full rounded-full transition-all duration-500 after:absolute after:inset-0 after:bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.22),transparent)]"
+                        style={{
+                          width: `${Math.max(r.pct, r.pct > 0 ? 2 : 0)}%`,
+                          background: gradient,
+                        }}
+                      />
+                    </div>
+                    <span
+                      className={cn(
+                        "w-36 shrink-0 text-right font-mono text-xs font-semibold",
+                        colorClass,
+                      )}
+                    >
+                      {r.pct.toFixed(1)}%
+                      <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                        {formatNumber(r.cacheRead)}/{formatNumber(r.denom)}
+                      </span>
+                    </span>
+                  </div>
+                );
+              })}
+
+              <div className="mt-4 flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
+                <span>
+                  {cacheRows.length} model{cacheRows.length !== 1 ? "s" : ""}{" "}
+                  with traffic
+                </span>
+                <span>
+                  {formatNumber(totalCacheRead)} /{" "}
+                  {formatNumber(totalCacheDenom)} prompt tokens served from
+                  cache
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Circuit Breakers ─── */}
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <span className="text-[#ff8a3d]">⚡</span>
+            Circuit Breakers
+          </h3>
+          <span className="rounded-md border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground">
+            {Object.keys(cbStates).length} breakers
+          </span>
+        </div>
+
+        <div className="p-5">
+          {Object.keys(cbStates).length === 0 ? (
+            <div className="flex items-center gap-2 text-xs text-emerald-400">
+              <span>✓</span>
+              <span>
+                No circuit breakers recorded (all circuits closed / healthy)
+              </span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+              {Object.entries(cbStates).map(([key, cb]) => {
+                const state = cb?.state || "closed";
+                const staleOpen =
+                  state === "open" &&
+                  cb?.openedAt &&
+                  Date.now() - cb.openedAt > 30000;
+                const legacy = cb?.identity === "legacy" ? " · legacy key" : "";
+
+                return (
+                  <div
+                    key={key}
+                    className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs"
+                    title={
+                      staleOpen
+                        ? "Cooldown elapsed — the breaker probes again on the next request."
+                        : `Failures: ${cb?.failures ?? 0}`
+                    }
+                  >
+                    <span className="mr-2 truncate font-mono text-muted-foreground">
+                      {key}
+                      {legacy}
+                    </span>
+                    <span
+                      className={cn(
+                        "shrink-0 font-mono font-medium",
+                        state === "closed" && "text-emerald-400",
+                        state === "half_open" && "text-amber-400",
+                        state === "open" && "text-red-400",
+                      )}
+                    >
+                      {state}
+                      {staleOpen && " *"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-border px-5 py-3 text-[11.5px] leading-relaxed text-muted-foreground">
+          * cooldown elapsed — the breaker probes again on the next request.
+          Rows for models no longer configured persist until they next see
+          traffic; they cannot trip or recover while unused.
+        </div>
+      </div>
+
+      {/* ─── Model Routes ─── */}
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <span className="text-[#ff8a3d]">🛤</span>
+            Model Routes
+          </h3>
+          <span className="rounded-md border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground">
+            {routes.length} route{routes.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+
+        <div className="overflow-x-auto">
+          {routes.length === 0 ? (
+            <div className="p-5 text-center text-xs text-muted-foreground">
+              No routes configured
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="text-xs font-medium text-muted-foreground">
+                    ID
+                  </TableHead>
+                  <TableHead className="text-xs font-medium text-muted-foreground">
+                    Protocol
+                  </TableHead>
+                  <TableHead className="text-xs font-medium text-muted-foreground">
+                    Provider
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-medium text-muted-foreground">
+                    Priority
+                  </TableHead>
+                  <TableHead className="text-xs font-medium text-muted-foreground">
+                    Status
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {routes.map((route) => (
+                  <TableRow
+                    key={route.id}
+                    className="border-border hover:bg-muted/40"
+                  >
+                    <TableCell className="font-mono text-xs font-medium text-foreground">
+                      {route.id}
+                    </TableCell>
+                    <TableCell>
+                      <span className="inline-block rounded border border-[#ff8a3d]/20 bg-[#ff8a3d]/10 px-2 py-0.5 font-mono text-[11px] text-[#ff8a3d]">
+                        {route.protocol}
+                      </span>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {route.provider || "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-mono text-xs">
+                      {route.priority ?? "—"}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "size-2 rounded-full",
+                            route.enabled
+                              ? "bg-emerald-400"
+                              : "bg-muted-foreground",
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            route.enabled
+                              ? "font-medium text-foreground"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {route.enabled ? "Enabled" : "Disabled"}
+                        </span>
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Available Models ─── */}
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex items-center justify-between border-b border-border px-5 py-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <span className="text-[#ff8a3d]">✦</span>
+            Available Models
+          </h3>
+          <span className="rounded-md border border-border px-2 py-0.5 font-mono text-xs text-muted-foreground">
+            {models.length} model{models.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+
+        <div className="p-5">
+          {models.length === 0 ? (
+            <div className="py-4 text-center text-xs text-muted-foreground">
+              No models available
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+              {models.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3.5 py-2.5 text-xs"
+                >
+                  <div className="min-w-0 pr-2">
+                    <p className="truncate font-mono font-medium text-foreground">
+                      {m.id}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      {m.protocols?.join(", ") || "openai-chat"}
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded border border-border px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                    {m.owned_by || "gateway"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
