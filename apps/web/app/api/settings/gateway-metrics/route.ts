@@ -12,7 +12,7 @@ import { getSessionFromReq } from "@/lib/session/server";
  * Vercel runtime, so the browser cannot present it: this route attaches
  * the platform token server-side.
  *
- * Admin-gated to match /api/settings/gateway-defaults, which feeds this
+ * Admin-gated server proxy for gateway metrics
  * page its base URL and inference key.
  */
 
