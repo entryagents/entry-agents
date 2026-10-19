@@ -27,9 +27,13 @@ async function runTestsIndividually(files: string[]): Promise<void> {
     console.log(`\nRunning ${file}`);
 
     const exitCode = await new Promise<number | null>((resolve, reject) => {
-      const childProcess = spawn("bun", ["test", file], {
-        stdio: "inherit",
-      });
+      const childProcess = spawn(
+        process.env.BUN_PATH || "bun",
+        ["test", file],
+        {
+          stdio: "inherit",
+        },
+      );
 
       childProcess.on("error", reject);
       childProcess.on("close", resolve);
