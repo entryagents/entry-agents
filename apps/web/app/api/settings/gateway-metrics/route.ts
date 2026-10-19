@@ -9,8 +9,8 @@ import { getSessionFromReq } from "@/lib/session/server";
  * /metrics or /v1/debug/routes -- those are verified with a Vercel OIDC
  * token bound to this dashboard project (or a static METRICS_BEARER_KEY
  * fallback for self-hosted deployments). An OIDC token only exists in the
- * Vercel runtime, so the browser cannot present it: this route attaches
- * the platform token server-side.
+ * Vercel runtime (injected into x-vercel-oidc-token header), so the browser
+ * cannot present it: this route attaches the platform token server-side.
  *
  * Admin-gated server proxy for gateway metrics
  * page its base URL and inference key.
@@ -44,29 +44,45 @@ export async function GET(req: NextRequest) {
     return Response.json({ error: "Unknown metrics path" }, { status: 400 });
   }
 
-  const baseUrl = (process.env.GATEWAY_BASE_URL || "").replace(/\/+$/, "");
-  if (!baseUrl) {
+  const rawBaseUrl = process.env.GATEWAY_BASE_URL || "";
+  if (!rawBaseUrl) {
     return Response.json(
       { error: "GATEWAY_BASE_URL is not configured" },
       { status: 503 },
     );
   }
 
-  // Priority: the platform OIDC token (bound to this dashboard project and
-  // environment, auto-rotated by Vercel), then the static metrics key so
-  // self-hosted deployments without OIDC keep working.
+  // Strip trailing slashes and /v1 suffix since paths already start with /health, /metrics, or /v1/*
+  const baseUrl = rawBaseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
+
+  // Priority: Vercel runtime OIDC token from the request header, then
+  // environment VERCEL_OIDC_TOKEN, then static metrics key.
   const token =
-    process.env.VERCEL_OIDC_TOKEN || process.env.GATEWAY_METRICS_BEARER_KEY;
-  if (!token) {
+    req.headers.get("x-vercel-oidc-token") ||
+    process.env.VERCEL_OIDC_TOKEN ||
+    process.env.GATEWAY_METRICS_BEARER_KEY;
+
+  if (
+    path !== "/health" &&
+    !token &&
+    !(path === "/v1/models" && process.env.GATEWAY_API_KEY)
+  ) {
     return Response.json(MISSING_TOKEN_BODY, { status: 503 });
   }
 
   const daily = req.nextUrl.searchParams.get("daily");
   const suffix = daily ? `?daily=${encodeURIComponent(daily)}` : "";
 
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers[METRICS_AUTH_HEADER_NAME] = `Bearer ${token}`;
+  } else if (path === "/v1/models" && process.env.GATEWAY_API_KEY) {
+    headers[METRICS_AUTH_HEADER_NAME] = `Bearer ${process.env.GATEWAY_API_KEY}`;
+  }
+
   try {
     const upstream = await fetch(`${baseUrl}${path}${suffix}`, {
-      headers: { [METRICS_AUTH_HEADER_NAME]: `Bearer ${token}` },
+      headers,
       cache: "no-store",
     });
 
