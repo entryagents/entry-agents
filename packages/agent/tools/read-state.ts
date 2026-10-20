@@ -42,11 +42,25 @@ export function currentFileHash(raw: string): string {
   return hashFileContent(normalizeFileContent(raw));
 }
 
+export function normalizeGatePath(p: string): string {
+  let normalized = p.replaceAll("\\", "/").trim();
+  while (normalized.startsWith("./")) {
+    normalized = normalized.slice(2);
+  }
+  return normalized;
+}
+
 function foldStateFromToolOutput(output: unknown, state: ReadFileState): void {
   if (typeof output !== "object" || output === null) {
     return;
   }
-  const candidate = output as Record<string, unknown>;
+  let candidate = output as Record<string, unknown>;
+  if (candidate.type === "json" && typeof candidate.value === "object" && candidate.value !== null) {
+    candidate = candidate.value as Record<string, unknown>;
+  } else if (candidate.result && typeof candidate.result === "object" && candidate.result !== null) {
+    candidate = candidate.result as Record<string, unknown>;
+  }
+
   if (candidate.success !== true) {
     return;
   }
@@ -59,6 +73,7 @@ function foldStateFromToolOutput(output: unknown, state: ReadFileState): void {
     return;
   }
   state.set(filePath, contentHash);
+  state.set(normalizeGatePath(filePath), contentHash);
 }
 
 const READ_EVIDENCE_TOOL_NAME = "read";
@@ -97,7 +112,7 @@ export function rebuildReadFileState(
       if (String(candidate.toolName) !== READ_EVIDENCE_TOOL_NAME) {
         continue;
       }
-      foldStateFromToolOutput(candidate.output, store);
+      foldStateFromToolOutput(candidate.output ?? candidate.result, store);
     }
   }
   return store;
@@ -119,7 +134,8 @@ export function checkReadGate(
   currentHash: string,
   action: "edit" | "write",
 ): ReadGateResult {
-  const seenHash = state.get(displayPath);
+  const normalized = normalizeGatePath(displayPath);
+  const seenHash = state.get(displayPath) ?? state.get(normalized);
   if (seenHash === undefined) {
     return {
       ok: false,
