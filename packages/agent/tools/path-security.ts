@@ -15,9 +15,26 @@ export function resolveWorkspacePath(
     ? path.resolve(filePath)
     : path.resolve(workingDirectory, filePath);
 
-  return isPathWithinDirectory(absolutePath, workingDirectory)
-    ? absolutePath
-    : null;
+  if (isPathWithinDirectory(absolutePath, workingDirectory)) {
+    return absolutePath;
+  }
+
+  // Safe ephemeral scratch/artifact paths in the sandbox VM (screenshots, browser tests, /tmp)
+  const normalized = absolutePath.replaceAll("\\", "/");
+  const allowedPrefixes = [
+    "/tmp/",
+    "/home/boxd/.agent-browser/",
+    "/home/user/.agent-browser/",
+  ];
+  if (
+    allowedPrefixes.some(
+      (p) => normalized.startsWith(p) || normalized === p.slice(0, -1),
+    )
+  ) {
+    return absolutePath;
+  }
+
+  return null;
 }
 
 export async function resolveSandboxRealPath(params: {

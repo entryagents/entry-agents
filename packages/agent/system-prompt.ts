@@ -439,7 +439,7 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
   if (options.cwd) {
     parts.push(
-      "\n# Environment\n\nWorking directory: . (workspace root)\nUse workspace-relative paths for all file operations.",
+      `\n# Environment\n\nWorking directory: . (workspace root: \`${options.cwd}\`)\nAbsolute path: \`${options.cwd}\`\nUse workspace-relative paths for all file operations. Framework scaffolding (such as create-next-app or next dev) may auto-generate guidance files like AGENTS.md; treat them as standard project instructions.`,
     );
     if (options.environmentDetails) {
       parts.push(`\n${options.environmentDetails}`);

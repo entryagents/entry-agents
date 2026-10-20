@@ -55,9 +55,17 @@ function foldStateFromToolOutput(output: unknown, state: ReadFileState): void {
     return;
   }
   let candidate = output as Record<string, unknown>;
-  if (candidate.type === "json" && typeof candidate.value === "object" && candidate.value !== null) {
+  if (
+    candidate.type === "json" &&
+    typeof candidate.value === "object" &&
+    candidate.value !== null
+  ) {
     candidate = candidate.value as Record<string, unknown>;
-  } else if (candidate.result && typeof candidate.result === "object" && candidate.result !== null) {
+  } else if (
+    candidate.result &&
+    typeof candidate.result === "object" &&
+    candidate.result !== null
+  ) {
     candidate = candidate.result as Record<string, unknown>;
   }
 

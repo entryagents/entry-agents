@@ -149,12 +149,30 @@ export class BoxdSandbox implements Sandbox {
     this.assertRunning();
     if (options?.signal?.aborted) throw new Error("Command aborted");
     const result = await this.client.machines.exec(this.machineId, {
-      command,
+      command: ["bash", "-c", command],
       cwd,
       timeout: timeoutMs,
       env: this.commandEnv(),
     });
     return mapExec(result);
+  }
+
+  async execDetached(
+    command: string,
+    cwd: string,
+  ): Promise<{ commandId: string }> {
+    this.assertRunning();
+    const commandId = `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const logPath = `/tmp/${commandId}.log`;
+    const wrapped = `nohup bash -c ${JSON.stringify(command)} > ${logPath} 2>&1 & echo $!`;
+    const res = await this.client.machines.exec(this.machineId, {
+      command: ["bash", "-c", wrapped],
+      cwd,
+      timeout: 10000,
+      env: this.commandEnv(),
+    });
+    const pid = res.stdout.trim();
+    return { commandId: pid || commandId };
   }
 
   async setGitHubAuthToken(token?: string): Promise<void> {
