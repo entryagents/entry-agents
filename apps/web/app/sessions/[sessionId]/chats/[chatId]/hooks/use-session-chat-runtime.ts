@@ -288,6 +288,26 @@ export function useSessionChatRuntime({
             chatInstance.status !== "submitted";
 
           if (resumeAttachedToNothing) {
+            // Reconcile with latest server snapshot if turn completed while client was away
+            try {
+              const res = await fetch(`/api/sessions/${sessionId}/chats/${chatId}`, {
+                cache: "no-store",
+              });
+              if (res.ok) {
+                const data = (await res.json()) as {
+                  messages?: WebAgentUIMessage[];
+                  isStreaming?: boolean;
+                };
+                if (data?.messages && !data.isStreaming) {
+                  chat.setMessages(data.messages);
+                  clearChatWorkspaceStatus(chatId);
+                  return;
+                }
+              }
+            } catch {
+              // Ignore network failure during hydration attempt
+            }
+
             // The turn is dead server-side. ONE shared, strategy-aware
             // decision for both the manual Retry button and auto
             // recovery (2026-09-13, owner: "improve the whole retry

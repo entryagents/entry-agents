@@ -2394,11 +2394,20 @@ export async function runAgentWorkflow(options: Options) {
     };
     sandboxState = runtime?.sandboxState;
 
+    const turnStartedAt = Date.now();
+    const MAX_WORKFLOW_TURN_DURATION_MS = 30 * 60 * 1000; // 30 minutes max turn duration
+
     for (
       let step = 0;
       options.maxSteps === undefined || step < options.maxSteps;
       step++
     ) {
+      if (Date.now() - turnStartedAt > MAX_WORKFLOW_TURN_DURATION_MS) {
+        console.warn(
+          `[chat-workflow] Turn exceeded maximum duration (${MAX_WORKFLOW_TURN_DURATION_MS}ms) for chat ${options.chatId}`,
+        );
+        break;
+      }
       let result: Awaited<ReturnType<typeof runAgentStep>>;
 
       // Refresh permission mode fresh for this specific step -- see
