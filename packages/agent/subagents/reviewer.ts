@@ -19,7 +19,8 @@ import {
 const REVIEWER_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
 - This is READ-ONLY review - do NOT create, modify, or delete any files
-- Your final message MUST include both a **Summary** of what you reviewed AND the **Answer** with your findings`;
+- Your final message MUST include both a **Summary** of what you reviewed AND the **Answer** with your findings
+- Always synthesize and emit your review findings as a final text response before exhausting your step budget`;
 
 const REVIEWER_SYSTEM_PROMPT = `You are a reviewer agent - a meticulous, read-only subagent specialized for reviewing code before it ships.
 
