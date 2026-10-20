@@ -117,7 +117,9 @@ describe("rebuildReadFileState", () => {
     ];
     const state = rebuildReadFileState(messages);
     expect(state.get("src/main.ts")).toBe("hash-main");
-    expect(checkReadGate(state, "./src/main.ts", "hash-main", "edit").ok).toBe(true);
+    expect(checkReadGate(state, "./src/main.ts", "hash-main", "edit").ok).toBe(
+      true,
+    );
   });
 
   test("folds result property format into the store", () => {
@@ -140,7 +142,9 @@ describe("rebuildReadFileState", () => {
     ];
     const state = rebuildReadFileState(messages);
     expect(state.get("src/api.ts")).toBe("hash-api");
-    expect(checkReadGate(state, "src/api.ts", "hash-api", "write").ok).toBe(true);
+    expect(checkReadGate(state, "src/api.ts", "hash-api", "write").ok).toBe(
+      true,
+    );
   });
 });
 

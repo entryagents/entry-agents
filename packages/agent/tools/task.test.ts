@@ -8,12 +8,18 @@ describe("taskTool.toModelOutput", () => {
       {
         role: "assistant",
         content: [
-          { type: "text", text: "**Summary**: All 7 files reviewed.\n\n**Answer**: Clean." },
+          {
+            type: "text",
+            text: "**Summary**: All 7 files reviewed.\n\n**Answer**: Clean.",
+          },
         ],
       } as never,
     ];
-    const out = (taskTool as unknown as { toModelOutput: (arg: unknown) => { type: string; value: string } })
-      .toModelOutput({ output: { final: messages } });
+    const out = (
+      taskTool as unknown as {
+        toModelOutput: (arg: unknown) => { type: string; value: string };
+      }
+    ).toModelOutput({ output: { final: messages } });
     expect(out.value).toContain("All 7 files reviewed");
     expect(out.value).toContain("Clean");
   });
@@ -33,8 +39,11 @@ describe("taskTool.toModelOutput", () => {
         ],
       } as never,
     ];
-    const out = (taskTool as unknown as { toModelOutput: (arg: unknown) => { type: string; value: string } })
-      .toModelOutput({ output: { final: messages } });
+    const out = (
+      taskTool as unknown as {
+        toModelOutput: (arg: unknown) => { type: string; value: string };
+      }
+    ).toModelOutput({ output: { final: messages } });
     expect(out.value).toBe("Preliminary findings: 1 bug in solver.ts");
   });
 
@@ -48,16 +57,24 @@ describe("taskTool.toModelOutput", () => {
         ],
       } as never,
     ];
-    const out = (taskTool as unknown as { toModelOutput: (arg: unknown) => { type: string; value: string } })
-      .toModelOutput({ output: { final: messages } });
-    expect(out.value).toContain("Subagent completed without emitting a final text summary");
+    const out = (
+      taskTool as unknown as {
+        toModelOutput: (arg: unknown) => { type: string; value: string };
+      }
+    ).toModelOutput({ output: { final: messages } });
+    expect(out.value).toContain(
+      "Subagent completed without emitting a final text summary",
+    );
     expect(out.value).toContain("2 tool calls executed");
     expect(out.value).not.toBe("Task completed.");
   });
 
   test("handles empty messages gracefully", () => {
-    const out = (taskTool as unknown as { toModelOutput: (arg: unknown) => { type: string; value: string } })
-      .toModelOutput({ output: { final: [] } });
+    const out = (
+      taskTool as unknown as {
+        toModelOutput: (arg: unknown) => { type: string; value: string };
+      }
+    ).toModelOutput({ output: { final: [] } });
     expect(out.value).toContain("without producing messages");
   });
 });
