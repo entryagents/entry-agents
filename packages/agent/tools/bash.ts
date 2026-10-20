@@ -64,6 +64,30 @@ export function commandNeedsApproval(command: string): boolean {
   return SENSITIVE_FILE_PATTERNS.some((pattern) => pattern.test(lowerCommand));
 }
 
+/**
+ * Sanitize command outputs (stdout / stderr) to prevent context dumping.
+ * - Truncates long inline data: URLs (e.g. data:text/javascript;base64,... from failed module imports).
+ * - Truncates massive unbroken base64/hex token dumps (>256 characters) that flood LLM context.
+ */
+export function sanitizeCommandOutput(text: string): string {
+  if (!text) return text;
+
+  let sanitized = text.replace(
+    /data:([^;,]+)?;base64,([A-Za-z0-9+/=]{80,})/g,
+    (_match, mime, data) => {
+      const mimeStr = mime ? `${mime};` : "";
+      return `data:${mimeStr}base64,${data.slice(0, 32)}...[truncated ${data.length - 32} base64 chars]`;
+    },
+  );
+
+  sanitized = sanitized.replace(
+    /([A-Za-z0-9+/=]{256,})/g,
+    (match) => `${match.slice(0, 48)}...[truncated ${match.length - 48} chars]`,
+  );
+
+  return sanitized;
+}
+
 export const bashTool = (options?: ToolOptions) =>
   tool({
     needsApproval: async (args, { experimental_context }) => {
@@ -213,8 +237,8 @@ EXAMPLES:
           return {
             success: retryResult.success,
             exitCode: retryResult.exitCode,
-            stdout: retryResult.stdout,
-            stderr: retryResult.stderr,
+            stdout: sanitizeCommandOutput(retryResult.stdout),
+            stderr: sanitizeCommandOutput(retryResult.stderr),
             ...(retryResult.truncated && { truncated: true }),
             migration: {
               sandboxMigrated: true,
@@ -228,8 +252,8 @@ EXAMPLES:
       return {
         success: result.success,
         exitCode: result.exitCode,
-        stdout: result.stdout,
-        stderr: result.stderr,
+        stdout: sanitizeCommandOutput(result.stdout),
+        stderr: sanitizeCommandOutput(result.stderr),
         ...(result.truncated && { truncated: true }),
         ...(migrationNotice ? { migration: migrationNotice } : {}),
       };
