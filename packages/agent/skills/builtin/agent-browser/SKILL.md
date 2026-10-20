@@ -5,11 +5,12 @@ allowed-tools: Bash(agent-browser:*)
 ---
 ## First-time setup (run once per sandbox session)
 
-`agent-browser` is not preinstalled in this sandbox. Before your first command in a session, check and install it:
+`agent-browser` is pre-installed in standard sandboxes. You can immediately run `agent-browser` commands.
+Only if `command -v agent-browser` fails in a custom environment, install it once:
 
 ```bash
 command -v agent-browser >/dev/null 2>&1 || {
-  npm install -g agent-browser --silent
+  npm install -g agent-browser --silent --no-audit
   agent-browser install --with-deps
 }
 ```
@@ -75,8 +76,12 @@ agent-browser fill @e2 "text"     # Clear and type
 agent-browser type @e2 "text"     # Type without clearing
 agent-browser press Enter         # Press key (alias: key)
 agent-browser press Control+a     # Key combination
-agent-browser keydown Shift       # Hold key down
+agent-browser press Shift+r       # Modifier combo (e.g. Shift+R uppercase or action)
+agent-browser keydown Shift       # Hold key down (same single process only)
 agent-browser keyup Shift         # Release key
+
+> [!IMPORTANT]
+> **Stateless CLI modifier keys**: Each `agent-browser` CLI invocation runs independently. Calling `agent-browser keydown Shift` and then a separate `agent-browser press r` does not keep Shift held across processes. Always use composite key combos (e.g. `agent-browser press Shift+r`) or synthetic events via `agent-browser eval \"window.dispatchEvent(new KeyboardEvent('keydown', { key: 'R', shiftKey: true, bubbles: true }))\"`.
 agent-browser hover @e1           # Hover
 agent-browser check @e1           # Check checkbox
 agent-browser uncheck @e1         # Uncheck checkbox
@@ -113,8 +118,12 @@ agent-browser is checked @e1      # Check if checked
 ### Screenshots & PDF
 
 ```bash
-agent-browser screenshot          # Save to a temporary directory
-agent-browser screenshot path.png # Save to a specific path
+agent-browser screenshot ./screenshot.png # Save to an explicit path (recommended)
+agent-browser screenshot /tmp/shot.png    # Save to /tmp
+agent-browser screenshot                  # Default temporary directory (avoid: requires extra discovery)
+
+> [!TIP]
+> **Always provide an explicit path** when taking screenshots (e.g. `agent-browser screenshot ./ui.png` or `agent-browser screenshot /tmp/ui.png`). Omitting the path saves to an internal directory (`~/.agent-browser/tmp/...`), making file retrieval cumbersome.
 agent-browser screenshot --full   # Full page
 agent-browser pdf output.pdf      # Save as PDF
 ```

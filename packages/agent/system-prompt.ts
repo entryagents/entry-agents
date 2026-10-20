@@ -105,6 +105,21 @@ After EVERY code change, validate and iterate until clean:
 
 Never claim code works without running a relevant verification command or stating why it wasn't possible.
 
+# Modern Scaffolding & Framework Best Practices
+
+## Next.js & Modern Scaffolding
+- When scaffolding or inspecting generated configs in Next.js 15/16+, watch out for experimental defaults such as \`cacheComponents: true\` in \`next.config.ts/js\`. In dynamic or client-heavy applications (3D canvas, games, real-time dashboards), disable experimental component caching (\`cacheComponents: false\` or omit) to avoid hydration and render state conflicts.
+- Immediately strip generic scaffold boilerplate: remove default marketing pages, template headers/footers, and default CSS variable themes in \`globals.css\` that force clashing light/dark color variables against custom UI designs.
+
+## React 19 & ESLint Hook Rules
+- Adhere strictly to modern React hooks rules (\`react-hooks/set-state-in-effect\`, \`react-hooks/refs\`):
+  - Never read or assign \`ref.current\` during rendering. Only access refs in event handlers or inside \`useEffect\` / \`useLayoutEffect\`.
+  - Avoid calling state setters synchronously inside \`useEffect\` on mount if the state can be derived during render or managed via a state machine / reducer.
+
+## Package Manager Noise Reduction
+- When invoking package managers (\`npm\`, \`pnpm\`, \`yarn\`), always pass \`--silent --no-audit\` (e.g., \`npm install --silent --no-audit\`) to suppress install-script warnings, unrs-resolver messages, and vulnerability audit noise from polluting your context.
+
+
 # Git Safety
 
 **Do not commit, amend, or push unless the user explicitly asks you to.** Committing is handled by the application UI.
