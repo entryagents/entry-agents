@@ -127,13 +127,27 @@ async function clearLifecycleRunIdIfOwned(
   await updateSession(sessionId, { lifecycleRunId: null });
 }
 
+const MAX_LIFECYCLE_ITERATIONS = 60;
+const MAX_LIFECYCLE_RUN_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours
+
 export async function sandboxLifecycleWorkflow(
   sessionId: string,
   reason: SandboxLifecycleReason,
   runId: string,
 ) {
   "use workflow";
+  const startedAtMs = Date.now();
+  let iteration = 0;
+
   while (true) {
+    iteration++;
+    if (
+      iteration > MAX_LIFECYCLE_ITERATIONS ||
+      Date.now() - startedAtMs > MAX_LIFECYCLE_RUN_DURATION_MS
+    ) {
+      await clearLifecycleRunIdIfOwned(sessionId, runId);
+      return { skipped: true, reason: "max-lifecycle-duration-reached" };
+    }
     const decision = await computeLifecycleWakeDecision(sessionId, runId);
     if (!decision.shouldContinue || decision.wakeAtMs === undefined) {
       await clearLifecycleRunIdIfOwned(sessionId, runId);
@@ -186,6 +200,11 @@ export async function sandboxLifecycleWorkflow(
         evaluation.reason === "active-workflow" ||
         evaluation.reason === "snapshot-already-in-progress")
     ) {
+      // If skipped because a chat is actively streaming, sleep 30s instead
+      // of 5s to avoid tight loop workflow invocations
+      if (evaluation.reason === "active-workflow") {
+        await sleep(new Date(Date.now() + 30_000));
+      }
       continue;
     }
 

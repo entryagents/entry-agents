@@ -127,6 +127,7 @@ export class ModalCloudSandbox implements Sandbox {
    * environmentDetails, so the raw access token never reaches the model.
    */
   private brokeredGitHubToken?: string;
+  private brokeredVercelToken?: string;
 
   private constructor(params: {
     client: ModalClient;
@@ -171,6 +172,9 @@ export class ModalCloudSandbox implements Sandbox {
       ...this.env,
       ...(this.brokeredGitHubToken
         ? { GITHUB_TOKEN: this.brokeredGitHubToken }
+        : {}),
+      ...(this.brokeredVercelToken
+        ? { VERCEL_TOKEN: this.brokeredVercelToken }
         : {}),
       GIT_CONFIG_COUNT: "1",
       GIT_CONFIG_KEY_0: "safe.directory",
@@ -653,6 +657,11 @@ export class ModalCloudSandbox implements Sandbox {
 
   setGitHubAuthToken(token?: string): Promise<void> {
     this.brokeredGitHubToken = token;
+    return Promise.resolve();
+  }
+
+  setVercelAuthToken(token?: string): Promise<void> {
+    this.brokeredVercelToken = token;
     return Promise.resolve();
   }
 

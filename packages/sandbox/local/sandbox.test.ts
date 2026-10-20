@@ -68,6 +68,35 @@ describe("LocalSandbox", () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
+  test("brokered credentials inject into exec and clear cleanly", async () => {
+    const root = await makeTmpDir();
+    const sandbox = new LocalSandbox(root);
+
+    await sandbox.setVercelAuthToken("vcp_test_token_123");
+    await sandbox.setGitHubAuthToken("gho_test_token_456");
+
+    const result = await sandbox.exec(
+      'echo "$VERCEL_TOKEN $GITHUB_TOKEN"',
+      root,
+      5000,
+    );
+    expect(result.success).toBe(true);
+    expect(result.stdout.trim()).toBe("vcp_test_token_123 gho_test_token_456");
+
+    await sandbox.setVercelAuthToken(undefined);
+    await sandbox.setGitHubAuthToken(undefined);
+
+    const clearedResult = await sandbox.exec(
+      'echo "$VERCEL_TOKEN $GITHUB_TOKEN"',
+      root,
+      5000,
+    );
+    expect(clearedResult.success).toBe(true);
+    expect(clearedResult.stdout.trim()).toBe("");
+
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
   test("stat/access reflect real filesystem state", async () => {
     const root = await makeTmpDir();
     const sandbox = new LocalSandbox(root);

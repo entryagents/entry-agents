@@ -211,7 +211,30 @@ export function getLifecycleDueAtMs(source: LifecycleTimingSource): number {
 
 async function hasActiveStreamForSession(sessionId: string): Promise<boolean> {
   const chatsInSession = await getChatsBySessionId(sessionId);
-  return chatsInSession.some((chat) => chat.activeStreamId !== null);
+  const activeChats = chatsInSession.filter(
+    (chat) => chat.activeStreamId !== null,
+  );
+  if (activeChats.length === 0) {
+    return false;
+  }
+
+  const { verifyRunState } = await import("@/lib/workflow-run-recovery");
+  const { compareAndSetChatActiveStreamId } = await import("@/lib/db/sessions");
+
+  let anyAlive = false;
+  for (const chat of activeChats) {
+    if (!chat.activeStreamId) continue;
+    const outcome = await verifyRunState(chat.activeStreamId);
+    if (outcome === "alive") {
+      anyAlive = true;
+    } else if (outcome === "gone") {
+      await compareAndSetChatActiveStreamId(chat.id, chat.activeStreamId, null);
+    } else {
+      anyAlive = true;
+    }
+  }
+
+  return anyAlive;
 }
 
 async function restoreActiveLifecycleState(

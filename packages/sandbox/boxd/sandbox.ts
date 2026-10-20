@@ -44,6 +44,7 @@ export class BoxdSandbox implements Sandbox {
   readonly host?: string;
   readonly expiresAt?: number;
   private githubToken?: string;
+  private vercelToken?: string;
   private stopped = false;
 
   constructor(
@@ -61,9 +62,14 @@ export class BoxdSandbox implements Sandbox {
   }
 
   private commandEnv(): Record<string, string> | undefined {
-    return this.githubToken
-      ? { ...this.env, GITHUB_TOKEN: this.githubToken }
-      : this.env;
+    let env = this.env;
+    if (this.githubToken) {
+      env = { ...env, GITHUB_TOKEN: this.githubToken };
+    }
+    if (this.vercelToken) {
+      env = { ...env, VERCEL_TOKEN: this.vercelToken };
+    }
+    return env;
   }
 
   async readFile(path: string, _encoding: "utf-8"): Promise<string> {
@@ -177,6 +183,10 @@ export class BoxdSandbox implements Sandbox {
 
   async setGitHubAuthToken(token?: string): Promise<void> {
     this.githubToken = token;
+  }
+
+  async setVercelAuthToken(token?: string): Promise<void> {
+    this.vercelToken = token;
   }
 
   async destroy(): Promise<void> {

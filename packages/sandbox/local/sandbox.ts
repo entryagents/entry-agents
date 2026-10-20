@@ -106,6 +106,8 @@ export class LocalSandbox implements Sandbox {
 
   /** Monotonic counter for opaque command ids. */
   private commandSeq = 0;
+  private githubToken?: string;
+  private vercelToken?: string;
 
   constructor(rootDir: string, options?: LocalSandboxConnectOptions) {
     this.workingDirectory = rootDir;
@@ -249,7 +251,7 @@ export class LocalSandbox implements Sandbox {
     return new Promise((resolve) => {
       const child = spawn("bash", ["-c", command], {
         cwd: resolvedCwd,
-        env: { ...process.env, ...this.env },
+        env: { ...process.env, ...this.env, ...(this.githubToken ? { GITHUB_TOKEN: this.githubToken } : {}), ...(this.vercelToken ? { VERCEL_TOKEN: this.vercelToken } : {}) },
       });
 
       let stdout = "";
@@ -353,7 +355,7 @@ export class LocalSandbox implements Sandbox {
 
     const child = spawn("bash", ["-c", command], {
       cwd: resolvedCwd,
-      env: { ...process.env, ...this.env },
+      env: { ...process.env, ...this.env, ...(this.githubToken ? { GITHUB_TOKEN: this.githubToken } : {}), ...(this.vercelToken ? { VERCEL_TOKEN: this.vercelToken } : {}) },
       detached: true,
       stdio: "ignore",
     });
@@ -443,7 +445,15 @@ export class LocalSandbox implements Sandbox {
     }
   }
 
-  // deliberately no setGitHubAuthToken/setVercelAuthToken/domain/snapshot --
+  async setGitHubAuthToken(token?: string): Promise<void> {
+    this.githubToken = token;
+  }
+
+  async setVercelAuthToken(token?: string): Promise<void> {
+    this.vercelToken = token;
+  }
+
+  // deliberately no domain/snapshot --
   // optional on the interface, and none of the benchmark tasks or local dev
   // use cases need them. Callers get a clear "not a function" error if a tool
   // ever calls one of these against a LocalSandbox, which is the right failure

@@ -92,6 +92,11 @@ export function useStreamRecovery({
 
         const serverChat = payload.chats.find((chat) => chat.id === chatId);
         if (!serverChat?.isStreaming) {
+          // If the client thinks the chat is in flight, but server says it is not streaming
+          // (finished while phone was off / tab backgrounded), trigger soft retry to hydrate
+          if (isChatInFlight) {
+            retryChatStream({ auto: true, strategy: "soft" });
+          }
           return;
         }
 
