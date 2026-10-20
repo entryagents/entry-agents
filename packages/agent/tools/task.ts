@@ -259,29 +259,49 @@ IMPORTANT:
     };
   },
   toModelOutput: ({ output: { final: messages } }) => {
-    if (!messages) {
-      return { type: "text", value: "Task completed." };
+    if (!messages || messages.length === 0) {
+      return {
+        type: "text",
+        value: "Subagent completed without producing messages.",
+      };
     }
 
-    const lastAssistantMessage = messages.findLast(
-      (p) => p.role === "assistant",
-    );
-    const content = lastAssistantMessage?.content;
-
-    if (!content) {
-      return { type: "text", value: "Task completed." };
+    // 1. Search assistant messages backwards for any substantive text content
+    const assistantMessages = messages.filter((p) => p.role === "assistant");
+    for (let i = assistantMessages.length - 1; i >= 0; i--) {
+      const msg = assistantMessages[i];
+      const content = msg?.content;
+      if (typeof content === "string" && content.trim().length > 0) {
+        return { type: "text", value: content };
+      }
+      if (Array.isArray(content)) {
+        const textParts = content
+          .filter((p): p is { type: "text"; text: string } => p.type === "text")
+          .map((p) => p.text)
+          .filter((t) => t.trim().length > 0);
+        if (textParts.length > 0) {
+          return { type: "text", value: textParts.join("\n\n") };
+        }
+      }
     }
 
-    if (typeof content === "string") {
-      return { type: "text", value: content };
-    }
+    // 2. If no text was produced, count executed tool calls to give meaningful diagnostics
+    const totalToolCalls = messages.reduce((acc, m) => {
+      const content = (m as { content?: unknown }).content;
+      if (Array.isArray(content)) {
+        return (
+          acc +
+          content.filter((p) => (p as { type?: unknown }).type === "tool-call")
+            .length
+        );
+      }
+      return acc;
+    }, 0);
 
-    const lastTextPart = content.findLast((p) => p.type === "text");
-    if (!lastTextPart) {
-      return { type: "text", value: "Task completed." };
-    }
-
-    return { type: "text", value: lastTextPart.text };
+    return {
+      type: "text",
+      value: `Subagent completed without emitting a final text summary (${totalToolCalls} tool call${totalToolCalls === 1 ? "" : "s"} executed). Check the affected files directly to verify the outcome.`,
+    };
   },
 });
 
