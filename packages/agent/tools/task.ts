@@ -149,25 +149,33 @@ IMPORTANT:
     let budgetStopped = false;
     let budgetStopReason: "window" | "credit" | undefined;
 
-    const result = await subagent.stream({
-      prompt:
-        "Complete this task and provide a summary of what you accomplished.",
-      options: {
-        task,
-        instructions,
-        sandbox: sandboxContext.sandbox,
-        model,
-        ...(billingGuard
-          ? (() => {
-              const plan = billingGuard.planSubagent(subagentModelId);
-              return plan.maxOutputTokens
-                ? { maxOutputTokens: plan.maxOutputTokens }
-                : {};
-            })()
-          : {}),
-      },
-      abortSignal: localAbort.signal,
-    });
+    const userPrompt = `Task: ${task}\n\nInstructions:\n${instructions}\n\nPlease complete this task thoroughly. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`;
+
+    let streamError: string | undefined;
+    let result: Awaited<ReturnType<typeof subagent.stream>> | undefined;
+
+    try {
+      result = await subagent.stream({
+        prompt: userPrompt,
+        options: {
+          task,
+          instructions,
+          sandbox: sandboxContext.sandbox,
+          model,
+          ...(billingGuard
+            ? (() => {
+                const plan = billingGuard.planSubagent(subagentModelId);
+                return plan.maxOutputTokens
+                  ? { maxOutputTokens: plan.maxOutputTokens }
+                  : {};
+              })()
+            : {}),
+        },
+        abortSignal: localAbort.signal,
+      });
+    } catch (err) {
+      streamError = err instanceof Error ? err.message : String(err);
+    }
 
     let pending: TaskPendingToolCall | undefined;
     let usage: LanguageModelUsage | undefined;
@@ -175,58 +183,109 @@ IMPORTANT:
     // Emit an initial state so UIs can show elapsed time from a stable timestamp.
     yield { toolCallCount, startedAt, modelId: subagentModelId };
 
-    for await (const part of result.fullStream) {
-      if (part.type === "tool-call") {
-        toolCallCount += 1;
-        pending = { name: part.toolName, input: part.input };
-        yield {
-          pending,
-          toolCallCount,
-          usage,
-          startedAt,
-          modelId: subagentModelId,
-        };
-      }
+    if (streamError || !result) {
+      const errorMsg: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: `[Subagent error: ${streamError ?? "Failed to initialize subagent stream"}]`,
+        },
+      ];
+      yield {
+        final: errorMsg,
+        toolCallCount,
+        startedAt,
+        modelId: subagentModelId,
+      };
+      return;
+    }
 
-      if (part.type === "finish-step") {
-        usage = sumLanguageModelUsage(usage, part.usage);
-        // Real-time budget accounting: the host decrements its shared
-        // window/balance counters with this step's real usage and tells
-        // us whether any budget just tripped. Stopping here bounds the
-        // subagent's overshoot to one step instead of the whole task.
-        if (billingGuard) {
-          const plan = billingGuard.noteSubagentStepUsage(
-            subagentModelId,
-            part.usage,
-          );
-          if (plan.stop) {
-            budgetStopped = true;
-            budgetStopReason = plan.reason;
-            localAbort.abort();
-          }
+    try {
+      for await (const part of result.fullStream) {
+        if (part.type === "error") {
+          streamError =
+            part.error instanceof Error
+              ? part.error.message
+              : String(part.error);
         }
-        // Keep the last observed tool call in interim updates so task UIs don't
-        // flicker back to an initializing state between subagent steps.
-        yield {
-          pending,
-          toolCallCount,
-          usage,
-          startedAt,
-          modelId: subagentModelId,
-        };
+
+        if (part.type === "tool-call") {
+          toolCallCount += 1;
+          pending = { name: part.toolName, input: part.input };
+          yield {
+            pending,
+            toolCallCount,
+            usage,
+            startedAt,
+            modelId: subagentModelId,
+          };
+        }
+
+        if (part.type === "finish-step") {
+          usage = sumLanguageModelUsage(usage, part.usage);
+          if (billingGuard) {
+            const plan = billingGuard.noteSubagentStepUsage(
+              subagentModelId,
+              part.usage,
+            );
+            if (plan.stop) {
+              budgetStopped = true;
+              budgetStopReason = plan.reason;
+              localAbort.abort();
+            }
+          }
+          yield {
+            pending,
+            toolCallCount,
+            usage,
+            startedAt,
+            modelId: subagentModelId,
+          };
+        }
       }
+    } catch (err) {
+      streamError = err instanceof Error ? err.message : String(err);
     }
 
     abortSignal?.removeEventListener("abort", forwardParentAbort);
 
-    const response = await result.response;
-    const finalUsage = usage ?? (await result.usage);
+    let response: Awaited<typeof result.response> | undefined;
+    try {
+      response = await result.response;
+    } catch (err) {
+      if (!streamError) {
+        streamError = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    let finalUsage = usage;
+    if (!finalUsage && result) {
+      try {
+        finalUsage = await result.usage;
+      } catch {
+        finalUsage = undefined;
+      }
+    }
+    const baseMessages = response?.messages ?? [];
+
+    if (streamError) {
+      const messagesWithError: ModelMessage[] = [
+        ...baseMessages,
+        {
+          role: "assistant",
+          content: `[Subagent error: ${streamError}]`,
+        },
+      ];
+      yield {
+        final: messagesWithError,
+        toolCallCount,
+        usage: finalUsage,
+        startedAt,
+        modelId: subagentModelId,
+      };
+      return;
+    }
 
     if (budgetStopped) {
-      // The subagent was cut short by the user's window/balance
-      // budget. Its partial work still flows back to the parent (the
-      // parent loop itself will hit the same budget gate on its next
-      // step), but say so instead of pretending the task completed.
       const reasonText =
         budgetStopReason === "window"
           ? "usage window"
@@ -234,7 +293,7 @@ IMPORTANT:
             ? "credit balance"
             : "usage limit";
       const truncated: ModelMessage[] = [
-        ...response.messages,
+        ...baseMessages,
         {
           role: "assistant",
           content: `[Budget limit reached: this subagent was stopped by the user's ${reasonText}. The work above is partial -- the remaining steps were not run.]`,
@@ -251,7 +310,7 @@ IMPORTANT:
     }
 
     yield {
-      final: response.messages,
+      final: baseMessages,
       toolCallCount,
       usage: finalUsage,
       startedAt,
@@ -266,41 +325,116 @@ IMPORTANT:
       };
     }
 
-    // 1. Search assistant messages backwards for any substantive text content
-    const assistantMessages = messages.filter((p) => p.role === "assistant");
-    for (let i = assistantMessages.length - 1; i >= 0; i--) {
-      const msg = assistantMessages[i];
-      const content = msg?.content;
-      if (typeof content === "string" && content.trim().length > 0) {
-        return { type: "text", value: content };
-      }
+    // Extract all executed tool calls for diagnostics
+    const executedActions: string[] = [];
+    for (const m of messages) {
+      const content = (m as { content?: unknown }).content;
       if (Array.isArray(content)) {
-        const textParts = content
-          .filter((p): p is { type: "text"; text: string } => p.type === "text")
-          .map((p) => p.text)
-          .filter((t) => t.trim().length > 0);
-        if (textParts.length > 0) {
-          return { type: "text", value: textParts.join("\n\n") };
+        for (const part of content) {
+          const p = part as {
+            type?: string;
+            toolName?: string;
+            args?: unknown;
+            input?: unknown;
+          };
+          if (p.type === "tool-call") {
+            const input = (p.input ?? p.args) as
+              | Record<string, unknown>
+              | undefined;
+            const target =
+              input?.path ??
+              input?.command ??
+              input?.pattern ??
+              input?.query ??
+              "";
+            const targetStr = target
+              ? `: \`${String(target).slice(0, 80)}\``
+              : "";
+            executedActions.push(`- \`${p.toolName}\`${targetStr}`);
+          }
         }
       }
     }
 
-    // 2. If no text was produced, count executed tool calls to give meaningful diagnostics
-    const totalToolCalls = messages.reduce((acc, m) => {
-      const content = (m as { content?: unknown }).content;
-      if (Array.isArray(content)) {
-        return (
-          acc +
-          content.filter((p) => (p as { type?: unknown }).type === "tool-call")
-            .length
-        );
+    // 1. Check for explicit error messages or budget abort notices
+    const errorNotice = messages.findLast((m) => {
+      const c = (m as { content?: unknown }).content;
+      return (
+        typeof c === "string" &&
+        (c.startsWith("[Budget limit reached:") ||
+          c.startsWith("[Subagent error:"))
+      );
+    });
+    if (errorNotice && typeof errorNotice.content === "string") {
+      return { type: "text", value: errorNotice.content };
+    }
+
+    // 2. Search assistant messages backwards for substantive text content
+    const assistantMessages = messages.filter((p) => p.role === "assistant");
+
+    // First pass: search backwards for an assistant message with structured **Summary** or **Answer**
+    let substantiveText: string | undefined;
+    for (let i = assistantMessages.length - 1; i >= 0; i--) {
+      const msg = assistantMessages[i];
+      const content = msg?.content;
+      if (typeof content === "string") {
+        if (content.includes("**Summary**") || content.includes("**Answer**")) {
+          substantiveText = content;
+          break;
+        }
+      } else if (Array.isArray(content)) {
+        const textParts = content
+          .filter((p): p is { type: "text"; text: string } => p.type === "text")
+          .map((p) => p.text)
+          .filter((t) => t.trim().length > 0);
+        const combined = textParts.join("\n\n");
+        if (
+          combined.includes("**Summary**") ||
+          combined.includes("**Answer**")
+        ) {
+          substantiveText = combined;
+          break;
+        }
       }
-      return acc;
-    }, 0);
+    }
+
+    // Second pass: fallback to the last non-empty assistant text
+    if (!substantiveText) {
+      for (let i = assistantMessages.length - 1; i >= 0; i--) {
+        const msg = assistantMessages[i];
+        const content = msg?.content;
+        if (typeof content === "string" && content.trim().length > 0) {
+          substantiveText = content;
+          break;
+        }
+        if (Array.isArray(content)) {
+          const textParts = content
+            .filter(
+              (p): p is { type: "text"; text: string } => p.type === "text",
+            )
+            .map((p) => p.text)
+            .filter((t) => t.trim().length > 0);
+          if (textParts.length > 0) {
+            substantiveText = textParts.join("\n\n");
+            break;
+          }
+        }
+      }
+    }
+
+    if (substantiveText) {
+      return { type: "text", value: substantiveText };
+    }
+
+    // 3. If no text was produced, return reconstructed actions and clear diagnostics
+    const actionDetails =
+      executedActions.length > 0
+        ? `\n\nExecuted actions:\n${executedActions.slice(-15).join("\n")}`
+        : "";
 
     return {
       type: "text",
-      value: `Subagent completed without emitting a final text summary (${totalToolCalls} tool call${totalToolCalls === 1 ? "" : "s"} executed). Check the affected files directly to verify the outcome.`,
+      value: `Subagent completed without emitting a final text summary (${executedActions.length} tool call${executedActions.length === 1 ? "" : "s"} executed).${actionDetails}\n\nCheck the affected files directly to verify the outcome.`,
     };
   },
 });

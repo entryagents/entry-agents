@@ -25,10 +25,12 @@ export const SUBAGENT_COMPLETE_TASK_RULES = `### ALWAYS COMPLETE THE TASK
  * Each subagent appends its own example after this block.
  */
 export const SUBAGENT_RESPONSE_FORMAT = `### FINAL RESPONSE FORMAT (MANDATORY)
-Your final message MUST contain exactly two sections:
+Your final message MUST be a comprehensive text response containing exactly two sections:
 
-1. **Summary**: A brief (2-4 sentences) description of what you actually did
-2. **Answer**: The direct answer to the original task/question`;
+1. **Summary**: A brief (2-4 sentences) description of what you actually investigated, created, or modified
+2. **Answer**: The direct, comprehensive answer to the task with concrete details, code locations, files changed, and test/verification outcomes.
+
+CRITICAL: Do NOT finish your task on a tool call. After completing all tool actions, always emit your final text response containing the Summary and Answer.`;
 
 /** Validation rules for subagents that modify files. */
 export const SUBAGENT_VALIDATE_RULES = `### VALIDATE YOUR CHANGES
@@ -51,4 +53,5 @@ Use workspace-relative paths for all file operations.`;
 export const SUBAGENT_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
 - Complete the task fully before returning
-- Your final message MUST include both a **Summary** of what you did AND the **Answer** to the task`;
+- Your final message MUST be a comprehensive text response including both **Summary** of what you did AND the **Answer** with exact details, modified files, and verification results
+- CRITICAL: Never terminate your execution on a tool call without a text message. Always synthesize and emit your final text summary before finishing or exhausting your step budget.`;

@@ -19,7 +19,8 @@ import {
 const EXPLORER_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
 - This is READ-ONLY - do NOT create, modify, or delete any files
-- Your final message MUST include both a **Summary** of what you searched AND the **Answer** to the task`;
+- Your final message MUST be a comprehensive text response including both **Summary** of what you explored AND the **Answer** to the task with findings and exact file:line references
+- CRITICAL: Never terminate your execution on a tool call without a text message. Always synthesize and emit your final exploration findings in text before finishing or exhausting your step budget.`;
 
 const EXPLORER_SYSTEM_PROMPT = `You are an explorer agent - a fast, read-only subagent specialized for exploring codebases.
 
