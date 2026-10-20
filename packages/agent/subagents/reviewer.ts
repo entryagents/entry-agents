@@ -1,5 +1,5 @@
 import type { LanguageModel } from "ai";
-import { addCacheControl } from "../context-management/cache-control";
+import { addCacheControl, maybeCompactMessages } from "../context-management";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { createInertPlaceholderModel, sharedProvider } from "../models";
 import { defaultModelLabel } from "../default-model";
@@ -109,6 +109,22 @@ export const reviewerSubagent = new ToolLoopAgent({
   },
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
+  prepareStep: ({ messages, model, experimental_context }) => {
+    const context = (experimental_context ?? {}) as {
+      contextWindow?: number;
+    };
+    return {
+      messages: addCacheControl({
+        messages: maybeCompactMessages({
+          messages,
+          model,
+          contextWindowOverride: context.contextWindow,
+        }),
+        model,
+      }),
+      experimental_context: context,
+    };
+  },
   prepareCall: ({ options, ...settings }) => {
     if (!options) {
       throw new Error("Reviewer subagent requires task call options.");

@@ -1,5 +1,5 @@
 import type { LanguageModel } from "ai";
-import { addCacheControl } from "../context-management/cache-control";
+import { addCacheControl, maybeCompactMessages } from "../context-management";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { createInertPlaceholderModel, sharedProvider } from "../models";
 import { z } from "zod";
@@ -130,7 +130,11 @@ export const designSubagent = new ToolLoopAgent({
 
     return {
       messages: addCacheControl({
-        messages,
+        messages: maybeCompactMessages({
+          messages,
+          model,
+          contextWindowOverride: (context as { contextWindow?: number }).contextWindow,
+        }),
         model,
       }),
       experimental_context: {

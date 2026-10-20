@@ -179,6 +179,8 @@ IMPORTANT:
 
     let pending: TaskPendingToolCall | undefined;
     let usage: LanguageModelUsage | undefined;
+    let consecutiveRepeatedCalls = 0;
+    let lastCallSignature = "";
 
     // Emit an initial state so UIs can show elapsed time from a stable timestamp.
     yield { toolCallCount, startedAt, modelId: subagentModelId };
@@ -211,6 +213,23 @@ IMPORTANT:
         if (part.type === "tool-call") {
           toolCallCount += 1;
           pending = { name: part.toolName, input: part.input };
+
+          try {
+            const signature = `${part.toolName}:${JSON.stringify(part.input)}`;
+            if (signature === lastCallSignature) {
+              consecutiveRepeatedCalls += 1;
+              if (consecutiveRepeatedCalls >= 3) {
+                streamError = `Repetitive tool call loop detected: \`${part.toolName}\` was invoked 3 consecutive times with identical input without progress.`;
+                localAbort.abort();
+              }
+            } else {
+              consecutiveRepeatedCalls = 1;
+              lastCallSignature = signature;
+            }
+          } catch {
+            // Ignore serialization errors
+          }
+
           yield {
             pending,
             toolCallCount,
@@ -366,7 +385,11 @@ IMPORTANT:
       );
     });
     if (errorNotice && typeof errorNotice.content === "string") {
-      return { type: "text", value: errorNotice.content };
+      const executed =
+        executedActions.length > 0
+          ? `\n\nPartial actions completed before failure (${executedActions.length}):\n${executedActions.slice(-10).join("\n")}`
+          : "";
+      return { type: "text", value: `${errorNotice.content}${executed}` };
     }
 
     // 2. Search assistant messages backwards for substantive text content
