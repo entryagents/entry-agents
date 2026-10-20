@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { wrapExternalFileContent } from "./content-boundary";
-import { ensureReadFileState } from "./read-state";
+import { ensureReadFileState, normalizeGatePath } from "./read-state";
 import {
   checkUnchangedRead,
   type SelectedLines as SelectedLinesResult,
@@ -231,6 +231,7 @@ EXAMPLES:
           (experimental_context ?? {}) as { readFileState?: unknown },
         );
         readState.set(displayPath, contentHash);
+        readState.set(normalizeGatePath(displayPath), contentHash);
 
         // Empty-file note with recovery (Command Code): an empty read
         // is a success, not an error — the model shouldn't retry.

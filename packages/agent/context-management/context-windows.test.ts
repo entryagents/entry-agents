@@ -36,8 +36,8 @@ describe("getContextWindowForModel", () => {
     expect(getContextWindowForModel("qwen3.8-flash")).toBe(256_000);
   });
 
-  test("deepseek-v4-flash keeps its conservative 128k value", () => {
-    expect(getContextWindowForModel("deepseek-v4-flash")).toBe(128_000);
+  test("deepseek-v4-pro keeps its conservative 128k value", () => {
+    expect(getContextWindowForModel("deepseek-v4-pro")).toBe(128_000);
   });
 
   test("unrecognized claude ids fall back to the safe 200k family floor", () => {

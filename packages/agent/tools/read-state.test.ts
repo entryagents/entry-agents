@@ -94,6 +94,54 @@ describe("rebuildReadFileState", () => {
     expect(state.has("old.txt")).toBe(false);
     expect(state.get("new.txt")).toBe("h-new");
   });
+  test("folds toModelOutput wrapped json into the store", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "read",
+            output: {
+              type: "json",
+              value: {
+                success: true,
+                path: "src/main.ts",
+                contentHash: "hash-main",
+              },
+            },
+          } as never,
+        ],
+      } as never,
+    ];
+    const state = rebuildReadFileState(messages);
+    expect(state.get("src/main.ts")).toBe("hash-main");
+    expect(checkReadGate(state, "./src/main.ts", "hash-main", "edit").ok).toBe(true);
+  });
+
+  test("folds result property format into the store", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-2",
+            toolName: "read",
+            result: {
+              success: true,
+              path: "src/api.ts",
+              contentHash: "hash-api",
+            },
+          } as never,
+        ],
+      } as never,
+    ];
+    const state = rebuildReadFileState(messages);
+    expect(state.get("src/api.ts")).toBe("hash-api");
+    expect(checkReadGate(state, "src/api.ts", "hash-api", "write").ok).toBe(true);
+  });
 });
 
 describe("ensureReadFileState", () => {
