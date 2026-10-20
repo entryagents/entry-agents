@@ -132,7 +132,8 @@ describe("taskTool.toModelOutput", () => {
       } as never,
       {
         role: "assistant",
-        content: "[Subagent error: Repetitive tool call loop detected: `read` was invoked 3 consecutive times with identical input without progress.]",
+        content:
+          "[Subagent error: Repetitive tool call loop detected: `read` was invoked 3 consecutive times with identical input without progress.]",
       } as never,
     ];
     const out = (
@@ -140,8 +141,12 @@ describe("taskTool.toModelOutput", () => {
         toModelOutput: (arg: unknown) => { type: string; value: string };
       }
     ).toModelOutput({ output: { final: messages } });
-    expect(out.value).toContain("[Subagent error: Repetitive tool call loop detected");
-    expect(out.value).toContain("Partial actions completed before failure (1):");
+    expect(out.value).toContain(
+      "[Subagent error: Repetitive tool call loop detected",
+    );
+    expect(out.value).toContain(
+      "Partial actions completed before failure (1):",
+    );
     expect(out.value).toContain("src/broken.ts");
   });
 

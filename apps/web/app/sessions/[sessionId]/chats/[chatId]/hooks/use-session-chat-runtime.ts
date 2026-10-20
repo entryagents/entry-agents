@@ -290,9 +290,12 @@ export function useSessionChatRuntime({
           if (resumeAttachedToNothing) {
             // Reconcile with latest server snapshot if turn completed while client was away
             try {
-              const res = await fetch(`/api/sessions/${sessionId}/chats/${chatId}`, {
-                cache: "no-store",
-              });
+              const res = await fetch(
+                `/api/sessions/${sessionId}/chats/${chatId}`,
+                {
+                  cache: "no-store",
+                },
+              );
               if (res.ok) {
                 const data = (await res.json()) as {
                   messages?: WebAgentUIMessage[];

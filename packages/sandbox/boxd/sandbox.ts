@@ -26,13 +26,30 @@ function asDirent(entry: DirEntry): Dirent {
   } as Dirent;
 }
 
+const MAX_BOXD_OUTPUT_CHARS = 200_000;
+
+function truncateBoxdOutput(text: string): {
+  text: string;
+  truncated: boolean;
+} {
+  if (!text || text.length <= MAX_BOXD_OUTPUT_CHARS) {
+    return { text: text ?? "", truncated: false };
+  }
+  return {
+    text: text.slice(0, MAX_BOXD_OUTPUT_CHARS),
+    truncated: true,
+  };
+}
+
 function mapExec(result: BoxdExecResult): ExecResult {
+  const stdoutRes = truncateBoxdOutput(result.stdout);
+  const stderrRes = truncateBoxdOutput(result.stderr);
   return {
     success: result.success,
     exitCode: result.exitCode ?? null,
-    stdout: result.stdout,
-    stderr: result.stderr,
-    truncated: false,
+    stdout: stdoutRes.text,
+    stderr: stderrRes.text,
+    truncated: stdoutRes.truncated || stderrRes.truncated,
   };
 }
 

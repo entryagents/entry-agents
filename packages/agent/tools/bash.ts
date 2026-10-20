@@ -69,6 +69,10 @@ export function commandNeedsApproval(command: string): boolean {
  * - Truncates long inline data: URLs (e.g. data:text/javascript;base64,... from failed module imports).
  * - Truncates massive unbroken base64/hex token dumps (>256 characters) that flood LLM context.
  */
+const MAX_COMMAND_OUTPUT_CHARS = 32_000; // ~8,000 tokens
+const HEAD_KEEP_CHARS = 8_000;
+const TAIL_KEEP_CHARS = 16_000;
+
 export function sanitizeCommandOutput(text: string): string {
   if (!text) return text;
 
@@ -84,6 +88,14 @@ export function sanitizeCommandOutput(text: string): string {
     /([A-Za-z0-9+/=]{256,})/g,
     (match) => `${match.slice(0, 48)}...[truncated ${match.length - 48} chars]`,
   );
+
+  if (sanitized.length > MAX_COMMAND_OUTPUT_CHARS) {
+    const head = sanitized.slice(0, HEAD_KEEP_CHARS);
+    const tail = sanitized.slice(-TAIL_KEEP_CHARS);
+    const truncatedCount =
+      sanitized.length - (HEAD_KEEP_CHARS + TAIL_KEEP_CHARS);
+    sanitized = `${head}\n\n... [${truncatedCount} characters of intermediate output truncated to conserve context. Tail output with errors/status shown below] ...\n\n${tail}`;
+  }
 
   return sanitized;
 }

@@ -278,8 +278,23 @@ function compactToolResultPart(
   part: JsonRecord,
   compactedToolNotice: string,
 ): JsonRecord {
+  const { result: _result, content, ...rest } = part;
   return {
-    ...part,
+    ...rest,
+    result: {
+      compacted: true,
+      message: compactedToolNotice,
+    },
+    ...(content !== undefined
+      ? {
+          content: [
+            {
+              type: "text",
+              text: compactedToolNotice,
+            },
+          ],
+        }
+      : {}),
     output: {
       type: "text",
       value: compactedToolNotice,
@@ -311,20 +326,28 @@ function isCompactedToolResultPart(
   part: JsonRecord,
   compactedToolNotice: string,
 ): boolean {
-  const output = part.output;
-  if (!output || typeof output !== "object") {
-    return false;
+  if (
+    part.output &&
+    typeof part.output === "object" &&
+    (part.output as { type?: unknown; value?: unknown }).type === "text" &&
+    (part.output as { type?: unknown; value?: unknown }).value ===
+      compactedToolNotice
+  ) {
+    return true;
   }
 
-  const normalizedOutput = output as {
-    type?: unknown;
-    value?: unknown;
-  };
+  if (
+    part.result &&
+    typeof part.result === "object" &&
+    (part.result as { compacted?: unknown; message?: unknown }).compacted ===
+      true &&
+    (part.result as { compacted?: unknown; message?: unknown }).message ===
+      compactedToolNotice
+  ) {
+    return true;
+  }
 
-  return (
-    normalizedOutput.type === "text" &&
-    normalizedOutput.value === compactedToolNotice
-  );
+  return false;
 }
 
 function isToolCallPart(

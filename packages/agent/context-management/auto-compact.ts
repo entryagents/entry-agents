@@ -26,6 +26,14 @@ import { emitCompactionEvent } from "./compaction-telemetry";
 export const AUTO_COMPACT_THRESHOLD = 0.95;
 
 /**
+ * Early compaction token ceiling for long-running turns.
+ * Even on large context window models (256k+), allowing old unedited
+ * tool results from 15 steps ago to accumulate past 48k tokens wastes
+ * massive input tokens on every turn.
+ */
+export const EARLY_COMPACTION_TOKEN_CEILING = 48_000;
+
+/**
  * Fixed token buffer for everything that fills the context window but
  * never appears in `messages` -- and so was previously invisible to this
  * threshold check entirely. Found 2026-08-16 investigating a report of
@@ -122,7 +130,12 @@ export function maybeCompactMessages({
   const estimatedTokens =
     estimateMessagesTokens(messages) + SYSTEM_AND_TOOLS_OVERHEAD_TOKENS;
 
-  if (estimatedTokens < contextWindow * AUTO_COMPACT_THRESHOLD) {
+  const thresholdTokens = Math.min(
+    contextWindow * AUTO_COMPACT_THRESHOLD,
+    EARLY_COMPACTION_TOKEN_CEILING,
+  );
+
+  if (estimatedTokens < thresholdTokens) {
     return messages;
   }
 
