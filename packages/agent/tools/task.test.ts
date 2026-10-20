@@ -3,7 +3,7 @@ import type { ModelMessage } from "ai";
 import { taskTool } from "./task";
 
 describe("taskTool.toModelOutput", () => {
-  test("returns text from last assistant message", () => {
+  test("returns text from last assistant message with summary and answer", () => {
     const messages: ModelMessage[] = [
       {
         role: "assistant",
@@ -24,17 +24,21 @@ describe("taskTool.toModelOutput", () => {
     expect(out.value).toContain("Clean");
   });
 
-  test("recovers earlier assistant text when last message has only tool calls", () => {
+  test("prioritizes message with Summary and Answer over intermediate thought", () => {
     const messages: ModelMessage[] = [
       {
         role: "assistant",
         content: [
-          { type: "text", text: "Preliminary findings: 1 bug in solver.ts" },
+          {
+            type: "text",
+            text: "**Summary**: Completed implementation.\n\n**Answer**: Added 3 files.",
+          },
         ],
       } as never,
       {
         role: "assistant",
         content: [
+          { type: "text", text: "Running quick check now..." },
           { type: "tool-call", toolCallId: "c1", toolName: "read", args: {} },
         ],
       } as never,
@@ -44,16 +48,27 @@ describe("taskTool.toModelOutput", () => {
         toModelOutput: (arg: unknown) => { type: string; value: string };
       }
     ).toModelOutput({ output: { final: messages } });
-    expect(out.value).toBe("Preliminary findings: 1 bug in solver.ts");
+    expect(out.value).toContain("**Summary**: Completed implementation.");
+    expect(out.value).toContain("**Answer**: Added 3 files.");
   });
 
-  test("provides informative diagnostics when no text was produced at all", () => {
+  test("reconstructs executed actions when no text was produced at all", () => {
     const messages: ModelMessage[] = [
       {
         role: "assistant",
         content: [
-          { type: "tool-call", toolCallId: "c1", toolName: "read", args: {} },
-          { type: "tool-call", toolCallId: "c2", toolName: "grep", args: {} },
+          {
+            type: "tool-call",
+            toolCallId: "c1",
+            toolName: "read",
+            input: { path: "src/solver.ts" },
+          },
+          {
+            type: "tool-call",
+            toolCallId: "c2",
+            toolName: "grep",
+            input: { query: "cube" },
+          },
         ],
       } as never,
     ];
@@ -66,7 +81,40 @@ describe("taskTool.toModelOutput", () => {
       "Subagent completed without emitting a final text summary",
     );
     expect(out.value).toContain("2 tool calls executed");
-    expect(out.value).not.toBe("Task completed.");
+    expect(out.value).toContain("Executed actions:");
+    expect(out.value).toContain("src/solver.ts");
+    expect(out.value).toContain("cube");
+  });
+
+  test("surfaces error notices explicitly", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: "[Subagent error: Gateway rate limit exceeded]",
+      } as never,
+    ];
+    const out = (
+      taskTool as unknown as {
+        toModelOutput: (arg: unknown) => { type: string; value: string };
+      }
+    ).toModelOutput({ output: { final: messages } });
+    expect(out.value).toBe("[Subagent error: Gateway rate limit exceeded]");
+  });
+
+  test("surfaces budget limit notices explicitly", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content:
+          "[Budget limit reached: this subagent was stopped by the user's usage window. The work above is partial -- the remaining steps were not run.]",
+      } as never,
+    ];
+    const out = (
+      taskTool as unknown as {
+        toModelOutput: (arg: unknown) => { type: string; value: string };
+      }
+    ).toModelOutput({ output: { final: messages } });
+    expect(out.value).toContain("[Budget limit reached");
   });
 
   test("handles empty messages gracefully", () => {

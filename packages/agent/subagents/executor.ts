@@ -8,7 +8,11 @@ import { bashTool } from "../tools/bash";
 import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
-import { createReadFileState } from "../tools/read-state";
+import {
+  createReadFileState,
+  rebuildReadFileState,
+  type ReadFileState,
+} from "../tools/read-state";
 import { editFileTool, writeFileTool } from "../tools/write";
 import type { SandboxExecutionContext } from "../types";
 import {
@@ -84,6 +88,28 @@ export const executorSubagent = new ToolLoopAgent({
   },
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
+  prepareStep: ({ messages, model, experimental_context }) => {
+    const context = (experimental_context ?? {}) as {
+      readFileState?: unknown;
+    };
+    let readFileState: ReadFileState | undefined =
+      context.readFileState instanceof Map ? context.readFileState : undefined;
+    if (!readFileState) {
+      readFileState = createReadFileState();
+    }
+    rebuildReadFileState(messages, readFileState);
+
+    return {
+      messages: addCacheControl({
+        messages,
+        model,
+      }),
+      experimental_context: {
+        ...context,
+        readFileState,
+      },
+    };
+  },
   prepareCall: ({ options, ...settings }) => {
     if (!options) {
       throw new Error("Executor subagent requires task call options.");
