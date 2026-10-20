@@ -117,6 +117,34 @@ describe("taskTool.toModelOutput", () => {
     expect(out.value).toContain("[Budget limit reached");
   });
 
+  test("surfaces error notices with partial executed actions when available", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "c1",
+            toolName: "read",
+            input: { path: "src/broken.ts" },
+          },
+        ],
+      } as never,
+      {
+        role: "assistant",
+        content: "[Subagent error: Repetitive tool call loop detected: `read` was invoked 3 consecutive times with identical input without progress.]",
+      } as never,
+    ];
+    const out = (
+      taskTool as unknown as {
+        toModelOutput: (arg: unknown) => { type: string; value: string };
+      }
+    ).toModelOutput({ output: { final: messages } });
+    expect(out.value).toContain("[Subagent error: Repetitive tool call loop detected");
+    expect(out.value).toContain("Partial actions completed before failure (1):");
+    expect(out.value).toContain("src/broken.ts");
+  });
+
   test("handles empty messages gracefully", () => {
     const out = (
       taskTool as unknown as {
