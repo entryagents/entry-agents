@@ -196,15 +196,21 @@ export async function sandboxLifecycleWorkflow(
 
     if (
       evaluation.action === "skipped" &&
+      evaluation.reason === "active-workflow"
+    ) {
+      // The session has an active stream in flight right now.
+      // Instead of sleep-polling and burning Vercel Hobby plan execution invocations,
+      // exit cleanly and clear the lease. The chat workflow kicks a fresh lifecycle
+      // run as soon as the turn finishes.
+      await clearLifecycleRunIdIfOwned(sessionId, runId);
+      return { skipped: true, reason: "active-workflow-deferred" };
+    }
+
+    if (
+      evaluation.action === "skipped" &&
       (evaluation.reason === "not-due-yet" ||
-        evaluation.reason === "active-workflow" ||
         evaluation.reason === "snapshot-already-in-progress")
     ) {
-      // If skipped because a chat is actively streaming, sleep 30s instead
-      // of 5s to avoid tight loop workflow invocations
-      if (evaluation.reason === "active-workflow") {
-        await sleep(new Date(Date.now() + 30_000));
-      }
       continue;
     }
 

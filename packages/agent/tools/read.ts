@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { tool } from "ai";
 import { z } from "zod";
 import { wrapExternalFileContent } from "./content-boundary";
@@ -60,7 +61,7 @@ function imageMediaTypeForPath(path: string): string | undefined {
 }
 
 /** 4 MB of raw bytes ~= 5.3 MB once base64-encoded into the tool result. */
-const MAX_IMAGE_RESULT_BYTES = 4 * 1024 * 1024;
+const MAX_IMAGE_RESULT_BYTES = 2 * 1024 * 1024;
 
 export const readFileTool = () =>
   tool({
@@ -180,17 +181,27 @@ EXAMPLES:
         const imageMediaType = imageMediaTypeForPath(absolutePath);
         if (imageMediaType) {
           const buffer = await sandbox.readFileBuffer(absolutePath);
-          // A 4 MB ceiling keeps base64 (~1.33x) inside what a single tool
-          // result can reasonably carry; larger files fall through to the
-          // text path rather than risking an oversized payload.
+          const contentHash = createHash("sha256").update(buffer).digest("hex");
+          const dedupKey = `${workingDirectory}:${absolutePath}:image`;
+          if (checkUnchangedRead(dedupKey, contentHash)) {
+            return {
+              success: true,
+              path: toDisplayPath(absolutePath, workingDirectory),
+              kind: "image" as const,
+              unchanged: true,
+              contentHash,
+              content:
+                "Image unchanged since your previous read — same pixels, same resolution. Read again if you need to re-inspect.",
+            };
+          }
+          recordRead(dedupKey, contentHash);
+
           if (buffer.byteLength <= MAX_IMAGE_RESULT_BYTES) {
             return {
               success: true,
               path: toDisplayPath(absolutePath, workingDirectory),
               kind: "image" as const,
-              // Keep a non-empty textual marker for renderers that do not
-              // understand file-data parts yet. The actual pixels are still
-              // delivered through toModelOutput and the image renderer.
+              contentHash,
               content: `[Image preview attached: ${imageMediaType}, ${buffer.byteLength} bytes]`,
               image: {
                 mediaType: imageMediaType,
@@ -351,12 +362,19 @@ EXAMPLES:
     // part instead, so a vision-capable model actually sees the image.
     // Every other read keeps the JSON shape it has today.
     toModelOutput: ({ output }) => {
-      const image = (
-        output as {
-          image?: { mediaType: string; data: string; sizeBytes: number };
-          path?: string;
-        }
-      ).image;
+      const out = output as {
+        image?: { mediaType: string; data: string; sizeBytes: number };
+        path?: string;
+        unchanged?: boolean;
+        content?: string;
+      };
+      if (out.unchanged) {
+        return {
+          type: "text",
+          value: out.content ?? "Image unchanged since your previous read.",
+        };
+      }
+      const image = out.image;
       if (!image) {
         return { type: "json", value: output as never };
       }
@@ -365,7 +383,7 @@ EXAMPLES:
         value: [
           {
             type: "text",
-            text: `Read image ${(output as { path?: string }).path ?? ""} (${image.mediaType}, ${Math.round(image.sizeBytes / 1024)} KB). The pixels are attached below — look at them directly; do not try to decode the file with bash or strings.`,
+            text: `Read image ${out.path ?? ""} (${image.mediaType}, ${Math.round(image.sizeBytes / 1024)} KB). The pixels are attached below — look at them directly; do not try to decode the file with bash or strings.`,
           },
           { type: "file-data", data: image.data, mediaType: image.mediaType },
         ],

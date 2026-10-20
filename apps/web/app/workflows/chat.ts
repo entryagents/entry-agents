@@ -2396,6 +2396,9 @@ export async function runAgentWorkflow(options: Options) {
 
     const turnStartedAt = Date.now();
     const MAX_WORKFLOW_TURN_DURATION_MS = 30 * 60 * 1000; // 30 minutes max turn duration
+    let lastConsecutiveToolSignature: string | undefined;
+    let consecutiveIdenticalToolCount = 0;
+    const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
 
     for (
       let step = 0;
@@ -2548,6 +2551,50 @@ export async function runAgentWorkflow(options: Options) {
 
       if (!shouldContinue) {
         break;
+      }
+
+      // Loop breaker (cost & token optimization): detect consecutive identical tool
+      // calls across steps (e.g. model calling identical failing commands repeatedly
+      // without changing args). Short-circuits runaway loops to preserve model tokens.
+      const stepToolCallSignatures: string[] = [];
+      for (const msg of result.responseMessages) {
+        if (msg.role === "assistant" && Array.isArray(msg.content)) {
+          for (const part of msg.content) {
+            if (
+              part &&
+              typeof part === "object" &&
+              (part as { type?: string }).type === "tool-call"
+            ) {
+              const tc = part as { toolName?: string; args?: unknown };
+              try {
+                stepToolCallSignatures.push(
+                  `${tc.toolName ?? "unknown"}:${JSON.stringify(tc.args ?? {})}`,
+                );
+              } catch {
+                stepToolCallSignatures.push(`${tc.toolName ?? "unknown"}`);
+              }
+            }
+          }
+        }
+      }
+
+      if (stepToolCallSignatures.length > 0) {
+        const currentSignature = stepToolCallSignatures.join(";");
+        if (currentSignature === lastConsecutiveToolSignature) {
+          consecutiveIdenticalToolCount++;
+          if (
+            consecutiveIdenticalToolCount >=
+            MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS
+          ) {
+            console.warn(
+              `[chat-workflow] Consecutive identical tool call loop detected (${consecutiveIdenticalToolCount}x: ${currentSignature}) for chat ${options.chatId}. Breaking loop to prevent runaway token spend.`,
+            );
+            break;
+          }
+        } else {
+          lastConsecutiveToolSignature = currentSignature;
+          consecutiveIdenticalToolCount = 1;
+        }
       }
 
       if (options.maxSteps !== undefined && step + 1 >= options.maxSteps) {

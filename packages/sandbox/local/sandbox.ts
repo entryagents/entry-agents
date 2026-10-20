@@ -251,7 +251,12 @@ export class LocalSandbox implements Sandbox {
     return new Promise((resolve) => {
       const child = spawn("bash", ["-c", command], {
         cwd: resolvedCwd,
-        env: { ...process.env, ...this.env, ...(this.githubToken ? { GITHUB_TOKEN: this.githubToken } : {}), ...(this.vercelToken ? { VERCEL_TOKEN: this.vercelToken } : {}) },
+        env: {
+          ...process.env,
+          ...this.env,
+          ...(this.githubToken ? { GITHUB_TOKEN: this.githubToken } : {}),
+          ...(this.vercelToken ? { VERCEL_TOKEN: this.vercelToken } : {}),
+        },
       });
 
       let stdout = "";
@@ -355,7 +360,12 @@ export class LocalSandbox implements Sandbox {
 
     const child = spawn("bash", ["-c", command], {
       cwd: resolvedCwd,
-      env: { ...process.env, ...this.env, ...(this.githubToken ? { GITHUB_TOKEN: this.githubToken } : {}), ...(this.vercelToken ? { VERCEL_TOKEN: this.vercelToken } : {}) },
+      env: {
+        ...process.env,
+        ...this.env,
+        ...(this.githubToken ? { GITHUB_TOKEN: this.githubToken } : {}),
+        ...(this.vercelToken ? { VERCEL_TOKEN: this.vercelToken } : {}),
+      },
       detached: true,
       stdio: "ignore",
     });
