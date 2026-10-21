@@ -372,6 +372,9 @@ EXAMPLES:
     const args: string[] = [
       "curl",
       "-sS",
+      "-L",
+      "--max-redirs",
+      "5",
       "--proto",
       shellEscape("=http,https"),
       "--proto-redir",

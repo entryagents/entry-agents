@@ -22,6 +22,12 @@ const grepInputSchema = z.object({
     .boolean()
     .optional()
     .describe("Case-sensitive search. Default: true"),
+  include_hidden: z
+    .boolean()
+    .optional()
+    .describe(
+      "Whether to search inside dot-directories and hidden files (e.g. .open-harness, .github). Default: false",
+    ),
 });
 
 export const grepTool = () =>
@@ -57,7 +63,13 @@ EXAMPLES:
 - Find all references to a function (case-insensitive): pattern: "handleRequest", path: "src", caseSensitive: false`,
     inputSchema: grepInputSchema,
     execute: async (
-      { pattern, path: searchPath, glob, caseSensitive = true },
+      {
+        pattern,
+        path: searchPath,
+        glob,
+        caseSensitive = true,
+        include_hidden = false,
+      },
       { experimental_context, abortSignal },
     ) => {
       const sandbox = await getSandbox(experimental_context, "grep");
@@ -74,10 +86,10 @@ EXAMPLES:
         const args: string[] = ["grep", "-rn"];
         if (!caseSensitive) args.push("-i");
 
-        args.push(
-          `--exclude-dir=${shellEscape(".*")}`,
-          `--exclude-dir=${shellEscape("node_modules")}`,
-        );
+        if (!include_hidden) {
+          args.push(`--exclude-dir=${shellEscape(".*")}`);
+        }
+        args.push(`--exclude-dir=${shellEscape("node_modules")}`);
 
         if (glob) {
           args.push(`--include=${shellEscape(glob)}`);

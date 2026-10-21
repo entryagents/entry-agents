@@ -311,6 +311,10 @@ export function useSessionChatRuntime({
               // Ignore network failure during hydration attempt
             }
 
+            if (userStoppedRef.current) {
+              return;
+            }
+
             // The turn is dead server-side. ONE shared, strategy-aware
             // decision for both the manual Retry button and auto
             // recovery (2026-09-13, owner: "improve the whole retry

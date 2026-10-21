@@ -20,6 +20,14 @@ const bashInputSchema = z.object({
     .describe(
       "Use this whenever you want to run a persistent server in the background (e.g., npm run dev, next dev). The command starts and returns immediately without waiting for it to finish.",
     ),
+  timeout_ms: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "Optional execution timeout in milliseconds for long-running build, test, or deploy tasks (up to 600,000ms / 10 min). Defaults to 120,000ms (2 min).",
+    ),
 });
 
 type BashInput = z.infer<typeof bashInputSchema>;
@@ -161,10 +169,8 @@ EXAMPLES:
 - List files in src: command: "ls -la", cwd: "src"
 - Start a dev server: command: "npm run dev", detached: true`,
     inputSchema: bashInputSchema,
-    execute: async (
-      { command, cwd, detached },
-      { experimental_context, abortSignal },
-    ) => {
+    execute: async (input, { experimental_context, abortSignal }) => {
+      const { command, cwd, detached } = input;
       const { sandbox, commandGate } =
         await getSandboxForCommand(experimental_context);
       const workingDirectory = sandbox.workingDirectory;
@@ -221,12 +227,26 @@ EXAMPLES:
       }
 
       // Configurable per-tool timeout (upstream #798):
-      // TOOL_TIMEOUT_BASH_MS overrides the 120s default.
-      const timeoutMs = getToolTimeoutMs("bash", DEFAULT_TIMEOUT_MS);
+      // Supports per-call timeout_ms (up to 10 min) for build/deploy tasks.
+      const defaultTimeout = getToolTimeoutMs("bash", DEFAULT_TIMEOUT_MS);
+      const requestedTimeout = input.timeout_ms;
+      const MAX_TIMEOUT_MS = 600_000;
+      const timeoutMs =
+        typeof requestedTimeout === "number" && requestedTimeout > 0
+          ? Math.min(requestedTimeout, MAX_TIMEOUT_MS)
+          : defaultTimeout;
 
-      const result = await sandbox.exec(command, workingDir, timeoutMs, {
-        signal: abortSignal,
-      });
+      // Source session-scoped environment file if it exists so secrets and env vars persist across calls
+      const effectiveCommand = `if [ -f "$HOME/.entry_session_env" ]; then set -a; . "$HOME/.entry_session_env"; set +a; fi; ${command}`;
+
+      const result = await sandbox.exec(
+        effectiveCommand,
+        workingDir,
+        timeoutMs,
+        {
+          signal: abortSignal,
+        },
+      );
 
       // The sandbox-migration safety net force-kills whatever command is
       // running right before it moves the workspace to a fresh sandbox

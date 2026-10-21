@@ -28,7 +28,7 @@ const readInputSchema = z.object({
   filePath: z
     .string()
     .describe(
-      "Workspace-relative path to the file to read (e.g., src/index.ts)",
+      "Workspace-relative or /tmp path to the file to read (supports text files and visual images: .png, .jpg, .jpeg, .webp, .gif, .bmp, .avif)",
     ),
   offset: z
     .number()
@@ -109,6 +109,7 @@ export const readFileTool = () =>
 USAGE:
 - Use workspace-relative paths (e.g., "src/index.ts")
 - Paths are resolved from the workspace root
+- Reads both text files and visual images (.png, .jpg, .webp, .gif, .bmp, .avif). When reading an image file (e.g. screenshots from agent-browser), the actual visual pixels are attached directly to your vision context so you can see and visually verify UI layouts and styles.
 - By default reads up to 2000 lines starting from line 1
 - Use offset and limit for long files (both are line-based, 1-indexed)
 - Negative offset reads the tail: offset=-50 is the last 50 lines
