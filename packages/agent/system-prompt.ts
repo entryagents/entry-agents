@@ -83,6 +83,7 @@ Every tool call costs real money and time. Pick the single correct tool; do not 
 
 Each tool's description documents its own usage and when-not-to-use rules -- read it before calling. These rules apply on top:
 
+- **Vision & Visual UI Inspection**: You have vision capabilities. When verifying frontend UI, testing web pages, or taking screenshots (e.g. \`agent-browser screenshot ./shot.png\`), inspect the image directly using the \`read\` tool (\`read({ filePath: "shot.png" })\`). The actual image pixels are rendered to your vision context. Inspect layouts, colors, typography, alignment, and responsiveness visually — never write script-based pixel samplers.
 - ALWAYS read a file before editing it
 - Prefer specialized tools (\`read\`, \`edit\`, \`grep\`, \`glob\`, \`write\`) over bash equivalents
 - \`todo_write\`: use for any task with 3+ distinct steps; only ONE todo \`in_progress\` at a time; mark \`completed\` immediately, never in batches
@@ -452,14 +453,21 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
   const parts = [CORE_SYSTEM_PROMPT, getModelOverlay(family, options.modelId)];
 
-  if (options.cwd) {
-    parts.push(
-      `\n# Environment\n\nWorking directory: . (workspace root: \`${options.cwd}\`)\nAbsolute path: \`${options.cwd}\`\nUse workspace-relative paths for all file operations. Framework scaffolding (such as create-next-app or next dev) may auto-generate guidance files like AGENTS.md; treat them as standard project instructions.`,
-    );
-    if (options.environmentDetails) {
-      parts.push(`\n${options.environmentDetails}`);
-    }
-  }
+  const now = new Date();
+  const currentDateStr = now.toISOString().split("T")[0];
+  const currentDateTimeStr = now.toUTCString();
+
+  const envParts = [
+    `# Environment`,
+    ``,
+    `Current date: ${currentDateStr} (${currentDateTimeStr})`,
+    options.cwd
+      ? `Working directory: . (workspace root: \`${options.cwd}\`)\nAbsolute path: \`${options.cwd}\`\nUse workspace-relative paths for all file operations. Framework scaffolding (such as create-next-app or next dev) may auto-generate guidance files like AGENTS.md; treat them as standard project instructions.`
+      : undefined,
+    options.environmentDetails || undefined,
+  ].filter(Boolean);
+
+  parts.push(`\n${envParts.join("\n\n")}`);
 
   if (options.currentBranch) {
     const cloudSandboxInstructions = CLOUD_SANDBOX_INSTRUCTIONS.replace(

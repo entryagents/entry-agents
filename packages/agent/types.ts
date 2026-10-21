@@ -94,6 +94,20 @@ export interface SandboxControlContext {
   reconnect: () => Promise<Record<string, unknown>>;
   snapshot: () => Promise<Record<string, unknown>>;
   delete: () => Promise<Record<string, unknown>>;
+  serve?: (options?: { port?: number }) => Promise<Record<string, unknown>>;
+  stop_serve?: (options?: {
+    port?: number;
+  }) => Promise<Record<string, unknown>>;
+  ps?: () => Promise<Record<string, unknown>>;
+  kill_process?: (options?: {
+    processNameOrPid?: string;
+    port?: number;
+  }) => Promise<Record<string, unknown>>;
+  env_get?: (options?: { key?: string }) => Promise<Record<string, unknown>>;
+  env_set?: (options: {
+    key: string;
+    value: string;
+  }) => Promise<Record<string, unknown>>;
 }
 
 export type SandboxControlToolResult = Record<string, unknown> &

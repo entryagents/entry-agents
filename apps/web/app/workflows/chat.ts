@@ -2543,6 +2543,28 @@ export async function runAgentWorkflow(options: Options) {
         break;
       }
 
+      if (wasAborted || result.stepWasAborted) {
+        console.warn(
+          `[chat-workflow] Step was aborted for chat ${options.chatId}. Stopping workflow execution immediately.`,
+        );
+        wasAborted = true;
+        break;
+      }
+
+      try {
+        const currentRun = getRun(workflowRunId);
+        const currentStatus = await currentRun.status;
+        if (currentStatus === "cancelled") {
+          console.warn(
+            `[chat-workflow] Workflow run ${workflowRunId} was cancelled for chat ${options.chatId}. Stopping loop.`,
+          );
+          wasAborted = true;
+          break;
+        }
+      } catch {
+        // Ignore status read failure
+      }
+
       const shouldContinue =
         result.finishReason === "tool-calls" &&
         !shouldPauseForToolInteraction(

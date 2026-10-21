@@ -14,6 +14,12 @@ function contextWith(overrides: {
   delete?: () => Promise<Record<string, unknown>>;
   reconnect?: () => Promise<Record<string, unknown>>;
   snapshot?: () => Promise<Record<string, unknown>>;
+  serve?: () => Promise<Record<string, unknown>>;
+  stop_serve?: () => Promise<Record<string, unknown>>;
+  ps?: () => Promise<Record<string, unknown>>;
+  kill_process?: () => Promise<Record<string, unknown>>;
+  env_get?: () => Promise<Record<string, unknown>>;
+  env_set?: () => Promise<Record<string, unknown>>;
 }) {
   return {
     sandbox: {
@@ -27,6 +33,12 @@ function contextWith(overrides: {
       reconnect: overrides.reconnect ?? (async () => ({ reconnected: true })),
       snapshot: overrides.snapshot ?? (async () => ({ snapshotId: "snap-1" })),
       delete: overrides.delete ?? (async () => ({ deleted: true })),
+      serve: overrides.serve ?? (async () => ({ running: true, port: 3000 })),
+      stop_serve: overrides.stop_serve ?? (async () => ({ stopped: true })),
+      ps: overrides.ps ?? (async () => ({ processes: "node 123" })),
+      kill_process: overrides.kill_process ?? (async () => ({ killed: true })),
+      env_get: overrides.env_get ?? (async () => ({ env: "FOO=BAR" })),
+      env_set: overrides.env_set ?? (async () => ({ set: true })),
     },
   };
 }
@@ -124,5 +136,25 @@ describe("sandboxControlTool", () => {
     expect((result as { error: string }).error).toContain(
       "Workspace lifecycle control isn't available",
     );
+  });
+  test("extended actions route to their host callbacks or fallbacks", async () => {
+    const context = contextWith({});
+    const serveRes = await sandboxControlTool().execute?.(
+      { action: "serve", port: 3000 },
+      executionOptions(context),
+    );
+    expect(serveRes).toMatchObject({ success: true, action: "serve" });
+
+    const psRes = await sandboxControlTool().execute?.(
+      { action: "ps" },
+      executionOptions(context),
+    );
+    expect(psRes).toMatchObject({ success: true, action: "ps" });
+
+    const envRes = await sandboxControlTool().execute?.(
+      { action: "env_set", envKey: "TEST_SECRET", envValue: "secret123" },
+      executionOptions(context),
+    );
+    expect(envRes).toMatchObject({ success: true, action: "env_set" });
   });
 });

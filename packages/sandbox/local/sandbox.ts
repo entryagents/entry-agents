@@ -251,6 +251,7 @@ export class LocalSandbox implements Sandbox {
     return new Promise((resolve) => {
       const child = spawn("bash", ["-c", command], {
         cwd: resolvedCwd,
+        detached: true,
         env: {
           ...process.env,
           ...this.env,
@@ -280,8 +281,24 @@ export class LocalSandbox implements Sandbox {
         resolve(result);
       };
 
+      const killProcessTree = () => {
+        if (child.pid) {
+          try {
+            process.kill(-child.pid, "SIGKILL");
+            return;
+          } catch {
+            // Fall back to direct kill
+          }
+        }
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          /* ignore */
+        }
+      };
+
       const timer = setTimeout(() => {
-        child.kill("SIGKILL");
+        killProcessTree();
         settle({
           success: false,
           exitCode: null,
@@ -292,7 +309,7 @@ export class LocalSandbox implements Sandbox {
       }, timeoutMs);
 
       options?.signal?.addEventListener("abort", () => {
-        child.kill("SIGKILL");
+        killProcessTree();
         settle({
           success: false,
           exitCode: null,

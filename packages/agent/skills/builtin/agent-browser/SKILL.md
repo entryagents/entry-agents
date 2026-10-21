@@ -123,6 +123,9 @@ agent-browser screenshot /tmp/shot.png    # Save to /tmp
 agent-browser screenshot                  # Default temporary directory (avoid: requires extra discovery)
 
 > [!TIP]
+> **View Screenshots Directly with Vision**: Once you have taken a screenshot, immediately view the visual rendering using the `read` tool: `read({ filePath: "./screenshot.png" })`. The image pixels are attached directly to your vision context so you can visually verify layouts, styles, fonts, and responsiveness without writing pixel-sampling scripts.
+
+> [!TIP]
 > **Always provide an explicit path** when taking screenshots (e.g. `agent-browser screenshot ./ui.png` or `agent-browser screenshot /tmp/ui.png`). Omitting the path saves to an internal directory (`~/.agent-browser/tmp/...`), making file retrieval cumbersome.
 agent-browser screenshot --full   # Full page
 agent-browser pdf output.pdf      # Save as PDF
@@ -157,7 +160,11 @@ agent-browser wait --fn "window.ready"     # Wait for JS condition (or -f)
 agent-browser mouse move 100 200      # Move mouse
 agent-browser mouse down left         # Press button
 agent-browser mouse up left           # Release button
-agent-browser mouse wheel 100         # Scroll wheel
+agent-browser mouse wheel 100         # Scroll wheel (vertical delta)
+agent-browser scroll down 300         # Scroll down by pixels
+agent-browser scroll up 300           # Scroll up by pixels
+agent-browser eval "window.scrollBy(0, 400)" # Reliable JS scroll fallback
+agent-browser eval "window.scrollTo(0, document.body.scrollHeight)" # Scroll to bottom
 ```
 
 ### Semantic locators (alternative to refs)
