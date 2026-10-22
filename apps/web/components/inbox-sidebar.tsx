@@ -10,18 +10,25 @@ import {
   GitMerge,
   GitPullRequest,
   Loader2,
+  LogOut,
   Monitor,
+  Moon,
   Pencil,
   Plus,
   Search,
   Settings,
+  SmilePlus,
+  Sun,
   X,
 } from "lucide-react";
+import { useTheme } from "@/app/providers";
 import { EntryMark } from "@/components/entry-mark";
 import {
+  DesktopBalanceBox,
   DesktopCodexBillingStatus,
   SidebarBalancePill,
   SidebarPlanBadge,
+  useBillingMe,
 } from "@/components/sidebar-billing-widget";
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
@@ -53,6 +60,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useSession } from "@/hooks/use-session";
 import type { SessionWithUnread } from "@/hooks/use-sessions";
+import { signOut } from "@/lib/auth/actions";
 import type { Session as AuthSession } from "@/lib/session/types";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 
@@ -542,30 +550,30 @@ const SessionRow = memo(function SessionRow({
   const sessionButton = (
     <button
       type="button"
-      className={`group relative flex w-full items-start gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,opacity] cursor-pointer ${
+      className={`group relative flex w-full items-start gap-1.5 rounded-lg px-1.5 py-1.5 text-left outline-none transition-[background-color,opacity] cursor-pointer ${
         isActive
           ? "bg-sidebar-active text-foreground"
           : "hover:bg-muted/50"
-      } ${isPending ? "opacity-80" : "opacity-100"} ${actionButtons ? "pr-12" : ""}`}
+      } ${isPending ? "opacity-80" : "opacity-100"} ${actionButtons ? "pr-11" : ""}`}
       onClick={() => onSessionClick(session)}
       onFocus={() => onSessionPrefetch(session)}
       aria-busy={isPending}
     >
-      <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+      <span className="flex h-[18px] w-4 shrink-0 items-center justify-center">
         {getSessionStatusIcon(session)}
       </span>
       <span className="min-w-0 flex-1 text-left">
         <p
-          className={`truncate text-[13px] leading-5 ${
+          className={`truncate text-xs leading-[18px] ${
             isActive || session.hasUnread
               ? "font-semibold text-foreground"
-              : "font-normal text-foreground/80 group-hover:text-foreground"
+              : "font-normal text-foreground/85 group-hover:text-foreground"
           }`}
         >
           {session.title}
         </p>
         {showDesktopSubMeta ? (
-          <span className="mt-0.5 flex items-center gap-1.5 overflow-hidden text-[11px] leading-4 text-muted-foreground/75">
+          <span className="mt-0.5 flex items-center gap-1 overflow-hidden text-[10px] leading-3.5 text-muted-foreground/75">
             {session.prNumber ? (
               <span
                 className={`shrink-0 font-mono text-[10px] font-medium ${
@@ -580,7 +588,7 @@ const SessionRow = memo(function SessionRow({
               </span>
             ) : null}
             {session.branch ? (
-              <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70">
+              <span className="min-w-0 truncate font-mono text-[10px] text-muted-foreground/70">
                 {session.branch}
               </span>
             ) : null}
@@ -814,6 +822,15 @@ export function InboxSidebar({
   }, [archivedCount, fetchArchivedSessionsPage, showArchived]);
 
   const [desktopSearchQuery, setDesktopSearchQuery] = useState("");
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const { theme, setTheme } = useTheme();
+  const { data: billingData } = useBillingMe();
+  const creditDisplay = billingData
+    ? (billingData.creditBalanceCents / 100).toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    : "0.00";
   const activeSessions = sessions;
   const displayedSessions = showArchived ? archivedSessions : activeSessions;
   const showLoadingSkeleton =
@@ -1293,17 +1310,17 @@ export function InboxSidebar({
 
         </>
       ) : (
-        <div className="flex h-full min-h-0 flex-col bg-sidebar p-2.5 select-none">
+        <div className="flex h-full min-h-0 flex-col bg-sidebar p-2 select-none">
           {/* Authentic Header: Real EntryMark Logo + Active/Archive Switcher + New Button */}
-          <div className="mb-1.5 flex items-center justify-between px-1.5 py-1">
-            <div className="flex items-center gap-2.5">
+          <div className="mb-1.5 flex items-center justify-between px-1 py-0.5">
+            <div className="flex items-center gap-2">
               <EntryMark className="h-4 w-4 shrink-0 text-foreground" />
 
               <div className="flex items-center gap-0.5 rounded-lg border border-border/60 bg-background/40 p-0.5">
                 <button
                   type="button"
                   onClick={() => setShowArchived(false)}
-                  className={`rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer ${
+                  className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
                     !showArchived
                       ? "bg-sidebar-active text-foreground shadow-2xs"
                       : "text-muted-foreground hover:text-foreground"
@@ -1311,7 +1328,7 @@ export function InboxSidebar({
                 >
                   Active
                   {activeSessions.length > 0 ? (
-                    <span className="ml-1.5 font-mono text-[11px] text-muted-foreground">
+                    <span className="ml-1 font-mono text-[10px] text-muted-foreground">
                       {activeSessions.length}
                     </span>
                   ) : null}
@@ -1319,7 +1336,7 @@ export function InboxSidebar({
                 <button
                   type="button"
                   onClick={() => setShowArchived(true)}
-                  className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer ${
+                  className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
                     showArchived
                       ? "bg-sidebar-active text-foreground shadow-2xs"
                       : "text-muted-foreground hover:text-foreground"
@@ -1328,7 +1345,7 @@ export function InboxSidebar({
                   <Archive className="h-3 w-3" />
                   <span>Archive</span>
                   {archivedCount > 0 ? (
-                    <span className="ml-1 font-mono text-[11px] text-muted-foreground">
+                    <span className="ml-0.5 font-mono text-[10px] text-muted-foreground">
                       {archivedCount}
                     </span>
                   ) : null}
@@ -1349,8 +1366,8 @@ export function InboxSidebar({
           </div>
 
           {/* Borderless Filter Input */}
-          <div className="mb-2 flex items-center rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/40 focus-within:bg-muted/50">
-            <Search className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground/75" />
+          <div className="mb-1.5 flex items-center rounded-lg px-2 py-1 transition-colors hover:bg-muted/40 focus-within:bg-muted/50">
+            <Search className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/75" />
             <input
               type="text"
               value={desktopSearchQuery}
@@ -1373,16 +1390,16 @@ export function InboxSidebar({
           {/* Unified Smooth Repository & Session Branch Tree */}
           <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
             {showLoadingSkeleton ? (
-              <div className="space-y-1 p-1.5">
+              <div className="space-y-1 p-1">
                 {Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="space-y-1.5 rounded-lg px-2.5 py-2">
+                  <div key={index} className="space-y-1.5 rounded-lg px-2 py-2">
                     <div className="h-3.5 w-3/4 animate-pulse rounded bg-muted" />
                     <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
                   </div>
                 ))}
               </div>
             ) : filteredDisplayedSessions.length === 0 ? (
-              <div className="px-4 py-12 text-center text-xs text-muted-foreground">
+              <div className="px-3 py-12 text-center text-xs text-muted-foreground">
                 {desktopSearchQuery
                   ? "No matching sessions"
                   : showArchived
@@ -1403,7 +1420,7 @@ export function InboxSidebar({
               </div>
             ) : (
               <>
-                <div className="space-y-3 p-1">
+                <div className="space-y-2.5 p-0.5">
                   {groupedSessions.map((group) => {
                     const isCollapsed = collapsedGroupIds[group.id] ?? false;
                     const groupHasActiveSession = group.id === activeGroupId;
@@ -1419,9 +1436,9 @@ export function InboxSidebar({
                     );
 
                     return (
-                      <section key={group.id} className="space-y-1">
+                      <section key={group.id} className="space-y-0.5">
                         <div
-                          className={`group/repo flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors ${
+                          className={`group/repo flex w-full items-center gap-1 rounded-lg px-1.5 py-1 text-left transition-colors ${
                             groupHasActiveSession
                               ? "text-foreground"
                               : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
@@ -1432,7 +1449,7 @@ export function InboxSidebar({
                             onClick={() => handleToggleRepoGroup(group.id)}
                             aria-controls={groupContentId}
                             aria-expanded={!isCollapsed}
-                            className="flex min-w-0 flex-1 items-center gap-2 cursor-pointer"
+                            className="flex min-w-0 flex-1 items-center gap-1.5 cursor-pointer"
                           >
                             <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground/80">
                               {group.id === "repo:unscoped" ? (
@@ -1523,7 +1540,7 @@ export function InboxSidebar({
                           }`}
                         >
                           <div className="overflow-hidden">
-                            <div className="ml-3.5 space-y-0.5 border-l border-border/50 pl-1.5">
+                            <div className="ml-2.5 space-y-0.5 border-l border-border/50 pl-1.5">
                               {group.sessions.map((sessionItem) => (
                                 <SessionRow
                                   key={sessionItem.id}
@@ -1572,44 +1589,193 @@ export function InboxSidebar({
             )}
           </div>
 
-          {/* Bespoke Plan & Credit Telemetry Deck + User Profile Row */}
+          {/* GOAT-only Usage Windows Telemetry + Clickable User Profile Popover & Balance Box */}
           {sidebarUser ? (
-            <div className="mt-2 space-y-2 border-t border-border/60 pt-2.5">
+            <div className="mt-1.5 space-y-2 border-t border-border/60 pt-2">
               <DesktopCodexBillingStatus />
-              <div className="flex items-center justify-between gap-2 rounded-lg px-1.5 py-1">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Avatar className="h-7 w-7 shrink-0">
-                    {sidebarUser.avatar ? (
-                      <AvatarImage
-                        src={sidebarUser.avatar}
-                        alt={sidebarUser.username}
-                      />
-                    ) : null}
-                    <AvatarFallback className="text-xs">
-                      {getAvatarFallback(sidebarUser.username)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold leading-none text-foreground">
-                      {sidebarUser.username}
-                    </p>
-                    {sidebarUser.email ? (
-                      <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
-                        {sidebarUser.email}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
-                  onClick={() => router.push("/settings")}
-                  aria-label="Open settings"
+              <div className="flex items-center gap-1.5">
+                <Popover
+                  open={profileMenuOpen}
+                  onOpenChange={setProfileMenuOpen}
                 >
-                  <Settings className="h-4 w-4" />
-                </Button>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 text-left transition-colors cursor-pointer ${
+                        profileMenuOpen
+                          ? "bg-muted text-foreground"
+                          : "hover:bg-muted/60 text-foreground"
+                      }`}
+                      aria-label="Open profile menu"
+                    >
+                      <Avatar className="h-6 w-6 shrink-0 border border-border/60">
+                        {sidebarUser.avatar ? (
+                          <AvatarImage
+                            src={sidebarUser.avatar}
+                            alt={sidebarUser.username}
+                          />
+                        ) : null}
+                        <AvatarFallback className="bg-background text-[10px]">
+                          <EntryMark className="h-3 w-3 text-foreground" />
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none text-foreground">
+                        {sidebarUser.username}
+                      </span>
+                    </button>
+                  </PopoverTrigger>
+
+                  <PopoverContent
+                    side="top"
+                    align="start"
+                    sideOffset={8}
+                    className="w-[244px] overflow-hidden rounded-2xl border border-border bg-popover p-0 text-popover-foreground shadow-xl"
+                  >
+                    {/* User Identity Header */}
+                    <div className="flex items-center justify-between gap-2.5 px-3.5 py-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-semibold leading-tight text-foreground">
+                          {sidebarUser.username}
+                        </p>
+                        {sidebarUser.email ? (
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {sidebarUser.email}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Avatar className="h-7 w-7 shrink-0 border border-border/60">
+                        {sidebarUser.avatar ? (
+                          <AvatarImage
+                            src={sidebarUser.avatar}
+                            alt={sidebarUser.username}
+                          />
+                        ) : null}
+                        <AvatarFallback className="bg-background text-xs">
+                          <EntryMark className="h-3.5 w-3.5 text-foreground" />
+                        </AvatarFallback>
+                      </Avatar>
+                    </div>
+
+                    <div className="border-t border-border py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          router.push("/settings");
+                        }}
+                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      >
+                        <span>Settings</span>
+                        <Settings className="h-4 w-4 text-muted-foreground" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          router.push("/billing/plans");
+                        }}
+                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      >
+                        <span>Plan</span>
+                        <SidebarPlanBadge showIcon />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          router.push("/settings/usage");
+                        }}
+                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      >
+                        <span>Credit</span>
+                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                          {creditDisplay}
+                        </span>
+                      </button>
+                    </div>
+
+                    <div className="border-t border-border py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          window.open(
+                            "https://github.com/entryagents/entry-agents/issues/new",
+                            "_blank",
+                            "noopener,noreferrer",
+                          );
+                        }}
+                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      >
+                        <span>Feedback</span>
+                        <SmilePlus className="h-4 w-4 text-muted-foreground" />
+                      </button>
+
+                      <div className="flex items-center justify-between px-3.5 py-1.5 text-[13px] text-foreground">
+                        <span>Theme</span>
+                        <div className="flex items-center gap-0.5 rounded-full border border-border bg-background/60 p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setTheme("system")}
+                            aria-label="System theme"
+                            title="System theme"
+                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
+                              theme === "system"
+                                ? "border border-border bg-muted text-foreground shadow-2xs"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <Monitor className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTheme("light")}
+                            aria-label="Light theme"
+                            title="Light theme"
+                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
+                              theme === "light"
+                                ? "border border-border bg-muted text-foreground shadow-2xs"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <Sun className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTheme("dark")}
+                            aria-label="Dark theme"
+                            title="Dark theme"
+                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
+                              theme === "dark"
+                                ? "border border-border bg-muted text-foreground shadow-2xs"
+                                : "text-muted-foreground hover:text-foreground"
+                            }`}
+                          >
+                            <Moon className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border py-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          void signOut();
+                        }}
+                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      >
+                        <span>Sign Out</span>
+                        <LogOut className="h-4 w-4 text-muted-foreground" />
+                      </button>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                <DesktopBalanceBox />
               </div>
             </div>
           ) : null}
