@@ -15,9 +15,9 @@ import {
   Plus,
   Search,
   Settings,
-  SquarePen,
   X,
 } from "lucide-react";
+import { EntryMark } from "@/components/entry-mark";
 import {
   DesktopCodexBillingStatus,
   SidebarBalancePill,
@@ -353,49 +353,6 @@ function getRepoGroupContentId(groupId: string): string {
   return `repo-group-panel-${groupId.replace(/[^a-z0-9-]+/gi, "-")}`;
 }
 
-type SessionTimeBucket = {
-  id: string;
-  label: string;
-  sessions: SessionWithUnread[];
-};
-
-function groupSessionsByTimeBucket(
-  sessions: SessionWithUnread[],
-): SessionTimeBucket[] {
-  const now = Date.now();
-  const oneDayMs = 24 * 60 * 60 * 1000;
-  const twoDaysMs = 2 * oneDayMs;
-  const sevenDaysMs = 7 * oneDayMs;
-
-  const today: SessionWithUnread[] = [];
-  const yesterday: SessionWithUnread[] = [];
-  const previous7Days: SessionWithUnread[] = [];
-  const older: SessionWithUnread[] = [];
-
-  for (const s of sessions) {
-    const rawDate = s.lastActivityAt ?? s.createdAt;
-    const timestamp = rawDate ? new Date(rawDate).getTime() : now;
-    const ageMs = Math.max(0, now - (Number.isNaN(timestamp) ? now : timestamp));
-
-    if (ageMs < oneDayMs) {
-      today.push(s);
-    } else if (ageMs < twoDaysMs) {
-      yesterday.push(s);
-    } else if (ageMs < sevenDaysMs) {
-      previous7Days.push(s);
-    } else {
-      older.push(s);
-    }
-  }
-
-  const buckets: SessionTimeBucket[] = [];
-  if (today.length > 0) buckets.push({ id: "today", label: "Today", sessions: today });
-  if (yesterday.length > 0) buckets.push({ id: "yesterday", label: "Yesterday", sessions: yesterday });
-  if (previous7Days.length > 0) buckets.push({ id: "prev7d", label: "Previous 7 Days", sessions: previous7Days });
-  if (older.length > 0) buckets.push({ id: "older", label: "Older", sessions: older });
-  return buckets;
-}
-
 type SessionRowProps = {
   session: SessionWithUnread;
   isActive: boolean;
@@ -579,11 +536,16 @@ const SessionRow = memo(function SessionRow({
     </span>
   ) : null;
 
+  const showDesktopSubMeta =
+    !isMobile && Boolean(session.branch || session.prNumber);
+
   const sessionButton = (
     <button
       type="button"
-      className={`group relative flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,opacity] cursor-pointer ${
-        isActive ? "bg-sidebar-active" : "hover:bg-muted/50"
+      className={`group relative flex w-full items-start gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,opacity] cursor-pointer ${
+        isActive
+          ? "bg-sidebar-active text-foreground"
+          : "hover:bg-muted/50"
       } ${isPending ? "opacity-80" : "opacity-100"} ${actionButtons ? "pr-12" : ""}`}
       onClick={() => onSessionClick(session)}
       onFocus={() => onSessionPrefetch(session)}
@@ -595,16 +557,38 @@ const SessionRow = memo(function SessionRow({
       <span className="min-w-0 flex-1 text-left">
         <p
           className={`truncate text-[13px] leading-5 ${
-            session.hasUnread && !isActive
+            isActive || session.hasUnread
               ? "font-semibold text-foreground"
-              : "font-normal text-foreground/75"
+              : "font-normal text-foreground/80 group-hover:text-foreground"
           }`}
         >
           {session.title}
         </p>
+        {showDesktopSubMeta ? (
+          <span className="mt-0.5 flex items-center gap-1.5 overflow-hidden text-[11px] leading-4 text-muted-foreground/75">
+            {session.prNumber ? (
+              <span
+                className={`shrink-0 font-mono text-[10px] font-medium ${
+                  session.prStatus === "merged"
+                    ? "text-purple-400"
+                    : session.prStatus === "open"
+                      ? "text-emerald-400"
+                      : "text-red-400"
+                }`}
+              >
+                #{session.prNumber}
+              </span>
+            ) : null}
+            {session.branch ? (
+              <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground/70">
+                {session.branch}
+              </span>
+            ) : null}
+          </span>
+        ) : null}
       </span>
       {actionButtons ? null : hasDiff ? (
-        <span className="flex shrink-0 items-center justify-end gap-0.5">
+        <span className="mt-0.5 flex shrink-0 items-center justify-end gap-0.5">
           <DiffStats
             added={session.linesAdded}
             removed={session.linesRemoved}
@@ -830,49 +814,32 @@ export function InboxSidebar({
   }, [archivedCount, fetchArchivedSessionsPage, showArchived]);
 
   const [desktopSearchQuery, setDesktopSearchQuery] = useState("");
-  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<string | null>(null);
-  const [environmentsCollapsed, setEnvironmentsCollapsed] = useState(false);
-
   const activeSessions = sessions;
   const displayedSessions = showArchived ? archivedSessions : activeSessions;
   const showLoadingSkeleton =
     (!showArchived && sessionsLoading && sessions.length === 0) ||
     (showArchived && archivedSessionsLoading && archivedSessions.length === 0);
   const sidebarUser = session?.user ?? initialUser;
-  const groupedSessions = useMemo(
-    () => groupSessionsByRepo(displayedSessions),
-    [displayedSessions],
-  );
-
-  const desktopEnvironments = useMemo(
-    () => groupedSessions.filter((group) => group.id !== "repo:unscoped"),
-    [groupedSessions],
-  );
-
-  const desktopFilteredSessions = useMemo(() => {
-    const query = desktopSearchQuery.trim().toLowerCase();
-    return displayedSessions.filter((item) => {
-      if (selectedEnvironmentId && getRepoGroupId(item) !== selectedEnvironmentId) {
-        return false;
-      }
-      if (!query) {
-        return true;
-      }
-      const repoLabel = getRepoGroupLabel(item).toLowerCase();
-      const branchLabel = (item.branch ?? "").toLowerCase();
-      const prLabel = item.prNumber ? `pr #${item.prNumber}` : "";
+  const filteredDisplayedSessions = useMemo(() => {
+    if (isMobile || !desktopSearchQuery.trim()) {
+      return displayedSessions;
+    }
+    const q = desktopSearchQuery.trim().toLowerCase();
+    return displayedSessions.filter((s) => {
+      const repoLabel = getRepoGroupLabel(s).toLowerCase();
+      const branchLabel = (s.branch ?? "").toLowerCase();
+      const prLabel = s.prNumber ? `#${s.prNumber}` : "";
       return (
-        item.title.toLowerCase().includes(query) ||
-        repoLabel.includes(query) ||
-        branchLabel.includes(query) ||
-        prLabel.includes(query)
+        s.title.toLowerCase().includes(q) ||
+        repoLabel.includes(q) ||
+        branchLabel.includes(q) ||
+        prLabel.includes(q)
       );
     });
-  }, [desktopSearchQuery, displayedSessions, selectedEnvironmentId]);
-
-  const desktopTimeBuckets = useMemo(
-    () => groupSessionsByTimeBucket(desktopFilteredSessions),
-    [desktopFilteredSessions],
+  }, [desktopSearchQuery, displayedSessions, isMobile]);
+  const groupedSessions = useMemo(
+    () => groupSessionsByRepo(filteredDisplayedSessions),
+    [filteredDisplayedSessions],
   );
   const activeGroupId = useMemo(
     () =>
@@ -1327,230 +1294,100 @@ export function InboxSidebar({
         </>
       ) : (
         <div className="flex h-full min-h-0 flex-col bg-sidebar p-2.5 select-none">
-          {/* OpenAI Codex Minimalist Brand + Archive Toggle Row */}
-          <div className="mb-1 flex items-center justify-between px-2 py-1.5">
-            <div className="flex items-center gap-2">
-              <div className="flex h-5 w-5 items-center justify-center rounded-md bg-foreground text-background text-[11px] font-black tracking-tighter">
-                E
-              </div>
-              <span className="text-xs font-semibold tracking-tight text-foreground">
-                Entry Codex
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowArchived((prev) => !prev)}
-              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors ${
-                showArchived
-                  ? "bg-amber-500/15 text-amber-400"
-                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-              }`}
-            >
-              <Archive className="h-3 w-3" />
-              <span>{showArchived ? "Archived" : "Archive"}</span>
-              {archivedCount > 0 ? (
-                <span className="font-mono text-[11px] opacity-75">
-                  {archivedCount}
-                </span>
-              ) : null}
-            </button>
-          </div>
+          {/* Authentic Header: Real EntryMark Logo + Active/Archive Switcher + New Button */}
+          <div className="mb-1.5 flex items-center justify-between px-1.5 py-1">
+            <div className="flex items-center gap-2.5">
+              <EntryMark className="h-4 w-4 shrink-0 text-foreground" />
 
-          {/* Pure OpenAI Codex Borderless Ghost Action List */}
-          <div className="mb-3 space-y-0.5">
-            <button
-              type="button"
-              onClick={onOpenNewSession}
-              className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/50 cursor-pointer"
-            >
-              <span className="flex items-center gap-2.5">
-                <SquarePen className="h-4 w-4 text-muted-foreground" />
-                <span>New task</span>
-              </span>
-              <kbd className="font-mono text-[11px] text-muted-foreground/70">
-                ?K
-              </kbd>
-            </button>
-
-            <div className="relative flex items-center rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/50 focus-within:bg-muted/50">
-              <Search className="mr-2.5 h-4 w-4 shrink-0 text-muted-foreground" />
-              <input
-                type="text"
-                value={desktopSearchQuery}
-                onChange={(e) => setDesktopSearchQuery(e.target.value)}
-                placeholder="Search tasks..."
-                className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground focus:outline-none"
-              />
-              {desktopSearchQuery ? (
+              <div className="flex items-center gap-0.5 rounded-lg border border-border/60 bg-background/40 p-0.5">
                 <button
                   type="button"
-                  onClick={() => setDesktopSearchQuery("")}
-                  className="ml-1 rounded p-0.5 text-muted-foreground hover:text-foreground"
-                  aria-label="Clear search"
+                  onClick={() => setShowArchived(false)}
+                  className={`rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer ${
+                    !showArchived
+                      ? "bg-sidebar-active text-foreground shadow-2xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
                 >
-                  <X className="h-3 w-3" />
+                  Active
+                  {activeSessions.length > 0 ? (
+                    <span className="ml-1.5 font-mono text-[11px] text-muted-foreground">
+                      {activeSessions.length}
+                    </span>
+                  ) : null}
                 </button>
-              ) : null}
+                <button
+                  type="button"
+                  onClick={() => setShowArchived(true)}
+                  className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium transition-colors cursor-pointer ${
+                    showArchived
+                      ? "bg-sidebar-active text-foreground shadow-2xs"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <Archive className="h-3 w-3" />
+                  <span>Archive</span>
+                  {archivedCount > 0 ? (
+                    <span className="ml-1 font-mono text-[11px] text-muted-foreground">
+                      {archivedCount}
+                    </span>
+                  ) : null}
+                </button>
+              </div>
             </div>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onOpenNewSession}
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              aria-label="New session"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
 
-          {/* Scrollable OpenAI Codex Environments & Chronological Tasks */}
-          <div className="min-h-0 flex-1 overflow-y-auto pr-0.5 space-y-5">
-            {/* ENVIRONMENTS SECTION */}
-            {desktopEnvironments.length > 0 ? (
-              <section className="space-y-1">
-                <div className="flex items-center justify-between px-2 py-1">
-                  <button
-                    type="button"
-                    onClick={() => setEnvironmentsCollapsed((prev) => !prev)}
-                    className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/80 transition-colors hover:text-foreground"
-                  >
-                    <span>Environments</span>
-                    <ChevronDown
-                      className={`h-3 w-3 transition-transform duration-200 ${
-                        environmentsCollapsed ? "-rotate-90" : "rotate-0"
-                      }`}
-                    />
-                  </button>
-                  {selectedEnvironmentId ? (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedEnvironmentId(null)}
-                      className="text-[11px] font-medium text-emerald-400 hover:underline"
-                    >
-                      Clear
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={onOpenNewSession}
-                      className="rounded p-0.5 text-muted-foreground/70 transition-colors hover:text-foreground"
-                      aria-label="New environment task"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {!environmentsCollapsed ? (
-                  <div className="space-y-0.5">
-                    {desktopEnvironments.map((group) => {
-                      const isSelected = selectedEnvironmentId === group.id;
-                      const groupRepoOwner =
-                        group.sessions[0]?.repoOwner?.trim() ?? "";
-                      const groupRepoName =
-                        group.sessions[0]?.repoName?.trim() ?? "";
-                      const hasRepo = Boolean(groupRepoOwner && groupRepoName);
-                      const hasLiveTask = group.sessions.some(
-                        (s) => s.hasStreaming,
-                      );
-
-                      return (
-                        <div
-                          key={group.id}
-                          className={`group/env flex items-center justify-between rounded-lg px-2 py-1.5 transition-colors ${
-                            isSelected
-                              ? "bg-sidebar-active text-foreground"
-                              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setSelectedEnvironmentId((prev) =>
-                                prev === group.id ? null : group.id,
-                              )
-                            }
-                            className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer"
-                          >
-                            <span
-                              className={`h-2 w-2 shrink-0 rounded-full ${
-                                hasLiveTask
-                                  ? "bg-emerald-400 animate-pulse"
-                                  : "bg-emerald-500/80"
-                              }`}
-                            />
-                            <span className="truncate font-mono text-xs">
-                              {group.label}
-                            </span>
-                          </button>
-
-                          <div className="flex shrink-0 items-center gap-1">
-                            <span className="font-mono text-[11px] text-muted-foreground/70 group-hover/env:hidden">
-                              {group.sessions.length}
-                            </span>
-                            {hasRepo ? (
-                              <span className="hidden items-center gap-0.5 group-hover/env:flex">
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleOpenBranchPicker(
-                                          groupRepoOwner,
-                                          groupRepoName,
-                                        );
-                                      }}
-                                      className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:text-foreground"
-                                      aria-label={`Create session from branch for ${group.label}`}
-                                    >
-                                      <GitBranch className="h-3 w-3" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" sideOffset={4}>
-                                    Create from branch
-                                  </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleCreateForRepo(
-                                          groupRepoOwner,
-                                          groupRepoName,
-                                        );
-                                      }}
-                                      className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:text-foreground"
-                                      aria-label={`Create session for ${group.label}`}
-                                    >
-                                      <Plus className="h-3 w-3" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" sideOffset={4}>
-                                    Create session
-                                  </TooltipContent>
-                                </Tooltip>
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : null}
-              </section>
+          {/* Borderless Filter Input */}
+          <div className="mb-2 flex items-center rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/40 focus-within:bg-muted/50">
+            <Search className="mr-2 h-3.5 w-3.5 shrink-0 text-muted-foreground/75" />
+            <input
+              type="text"
+              value={desktopSearchQuery}
+              onChange={(e) => setDesktopSearchQuery(e.target.value)}
+              placeholder="Filter sessions..."
+              className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
+            />
+            {desktopSearchQuery ? (
+              <button
+                type="button"
+                onClick={() => setDesktopSearchQuery("")}
+                className="ml-1 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                aria-label="Clear filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
             ) : null}
+          </div>
 
-            {/* TASKS CHRONOLOGICAL STREAM (TODAY / YESTERDAY / PREVIOUS 7 DAYS / OLDER) */}
+          {/* Unified Smooth Repository & Session Branch Tree */}
+          <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
             {showLoadingSkeleton ? (
-              <div className="space-y-1 px-1">
+              <div className="space-y-1 p-1.5">
                 {Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="space-y-1.5 rounded-lg px-2 py-2">
+                  <div key={index} className="space-y-1.5 rounded-lg px-2.5 py-2">
                     <div className="h-3.5 w-3/4 animate-pulse rounded bg-muted" />
                     <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
                   </div>
                 ))}
               </div>
-            ) : desktopFilteredSessions.length === 0 ? (
-              <div className="px-3 py-10 text-center text-xs text-muted-foreground">
-                {desktopSearchQuery || selectedEnvironmentId
-                  ? "No matching tasks"
+            ) : filteredDisplayedSessions.length === 0 ? (
+              <div className="px-4 py-12 text-center text-xs text-muted-foreground">
+                {desktopSearchQuery
+                  ? "No matching sessions"
                   : showArchived
-                    ? (archivedSessionsError ?? "No archived tasks")
-                    : "No tasks yet"}
+                    ? (archivedSessionsError ?? "No archived sessions")
+                    : "No sessions yet"}
                 {showArchived && archivedSessionsError ? (
                   <div className="mt-3">
                     <Button
@@ -1565,29 +1402,148 @@ export function InboxSidebar({
                 ) : null}
               </div>
             ) : (
-              <div className="space-y-4">
-                {desktopTimeBuckets.map((bucket) => (
-                  <section key={bucket.id} className="space-y-0.5">
-                    <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/75">
-                      {bucket.label}
-                    </div>
-                    <div className="space-y-0.5">
-                      {bucket.sessions.map((sessionItem) => (
-                        <SessionRow
-                          key={sessionItem.id}
-                          session={sessionItem}
-                          isActive={sessionItem.id === activeSessionId}
-                          isPending={sessionItem.id === pendingSessionId}
-                          onSessionClick={handleSessionClick}
-                          onSessionPrefetch={handleSessionPrefetch}
-                          onRenameSession={onRenameSession}
-                          onArchiveSession={handleArchiveSession}
-                          onUnarchiveSession={handleUnarchiveSession}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                ))}
+              <>
+                <div className="space-y-3 p-1">
+                  {groupedSessions.map((group) => {
+                    const isCollapsed = collapsedGroupIds[group.id] ?? false;
+                    const groupHasActiveSession = group.id === activeGroupId;
+                    const groupContentId = getRepoGroupContentId(group.id);
+
+                    const groupRepoOwner =
+                      group.sessions[0]?.repoOwner?.trim() ?? "";
+                    const groupRepoName =
+                      group.sessions[0]?.repoName?.trim() ?? "";
+                    const hasRepo = Boolean(groupRepoOwner && groupRepoName);
+                    const groupHasStreaming = group.sessions.some(
+                      (s) => s.hasStreaming,
+                    );
+
+                    return (
+                      <section key={group.id} className="space-y-1">
+                        <div
+                          className={`group/repo flex w-full items-center gap-1.5 rounded-lg px-2 py-1 text-left transition-colors ${
+                            groupHasActiveSession
+                              ? "text-foreground"
+                              : "text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleToggleRepoGroup(group.id)}
+                            aria-controls={groupContentId}
+                            aria-expanded={!isCollapsed}
+                            className="flex min-w-0 flex-1 items-center gap-2 cursor-pointer"
+                          >
+                            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground/80">
+                              {group.id === "repo:unscoped" ? (
+                                <MessageSquare className="h-3.5 w-3.5 group-hover/repo:hidden" />
+                              ) : (
+                                <span
+                                  className={`h-2 w-2 rounded-full group-hover/repo:hidden ${
+                                    groupHasStreaming
+                                      ? "bg-emerald-400 animate-pulse"
+                                      : "bg-emerald-500/75"
+                                  }`}
+                                />
+                              )}
+                              <ChevronDown
+                                className={`hidden h-3.5 w-3.5 text-muted-foreground/70 transition-transform duration-200 group-hover/repo:block ${
+                                  isCollapsed ? "-rotate-90" : "rotate-0"
+                                }`}
+                              />
+                            </span>
+                            <span
+                              className={`min-w-0 truncate text-xs font-medium ${
+                                hasRepo ? "font-mono" : ""
+                              }`}
+                            >
+                              {group.label}
+                            </span>
+                            <span className="rounded bg-muted/60 px-1.5 py-0.2 font-mono text-[10px] tabular-nums text-muted-foreground">
+                              {group.sessions.length}
+                            </span>
+                          </button>
+
+                          {hasRepo ? (
+                            <span className="hidden shrink-0 items-center gap-0.5 group-hover/repo:flex">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenBranchPicker(
+                                        groupRepoOwner,
+                                        groupRepoName,
+                                      );
+                                    }}
+                                    className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:text-foreground"
+                                    aria-label={`Create session from branch for ${group.label}`}
+                                  >
+                                    <GitBranch className="h-3 w-3" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" sideOffset={4}>
+                                  Create from branch
+                                </TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCreateForRepo(
+                                        groupRepoOwner,
+                                        groupRepoName,
+                                      );
+                                    }}
+                                    className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground/70 transition-colors hover:text-foreground"
+                                    aria-label={`Create session for ${group.label}`}
+                                  >
+                                    <Plus className="h-3 w-3" />
+                                  </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top" sideOffset={4}>
+                                  Create session
+                                </TooltipContent>
+                              </Tooltip>
+                            </span>
+                          ) : null}
+                        </div>
+
+                        <div
+                          id={groupContentId}
+                          aria-hidden={isCollapsed}
+                          inert={isCollapsed}
+                          className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${
+                            isCollapsed
+                              ? "grid-rows-[0fr] opacity-0 pointer-events-none"
+                              : "grid-rows-[1fr] opacity-100"
+                          }`}
+                        >
+                          <div className="overflow-hidden">
+                            <div className="ml-3.5 space-y-0.5 border-l border-border/50 pl-1.5">
+                              {group.sessions.map((sessionItem) => (
+                                <SessionRow
+                                  key={sessionItem.id}
+                                  session={sessionItem}
+                                  isActive={sessionItem.id === activeSessionId}
+                                  isPending={sessionItem.id === pendingSessionId}
+                                  onSessionClick={handleSessionClick}
+                                  onSessionPrefetch={handleSessionPrefetch}
+                                  onRenameSession={onRenameSession}
+                                  onArchiveSession={handleArchiveSession}
+                                  onUnarchiveSession={handleUnarchiveSession}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
 
                 {showArchived &&
                 (hasMoreArchivedSessions || archivedSessionsError) ? (
@@ -1612,11 +1568,11 @@ export function InboxSidebar({
                     </Button>
                   </div>
                 ) : null}
-              </div>
+              </>
             )}
           </div>
 
-          {/* Redesigned Desktop Codex Plan & Balance Telemetry + Profile Footer */}
+          {/* Bespoke Plan & Credit Telemetry Deck + User Profile Row */}
           {sidebarUser ? (
             <div className="mt-2 space-y-2 border-t border-border/60 pt-2.5">
               <DesktopCodexBillingStatus />
@@ -1652,7 +1608,7 @@ export function InboxSidebar({
                   onClick={() => router.push("/settings")}
                   aria-label="Open settings"
                 >
-                  <Settings className="h-3.5 w-3.5" />
+                  <Settings className="h-4 w-4" />
                 </Button>
               </div>
             </div>
