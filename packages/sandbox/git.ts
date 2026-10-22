@@ -548,3 +548,24 @@ export async function withTemporaryGitHubAuth<T>(
     await sandbox.setGitHubAuthToken(undefined);
   }
 }
+
+export async function withTemporaryVercelAuth<T>(
+  sandbox: Sandbox,
+  token: string | undefined,
+  operation: () => Promise<T>,
+): Promise<T> {
+  if (!token) {
+    return operation();
+  }
+
+  if (!sandbox.setVercelAuthToken) {
+    throw new Error("Sandbox does not support temporary Vercel auth");
+  }
+
+  await sandbox.setVercelAuthToken(token);
+  try {
+    return await operation();
+  } finally {
+    await sandbox.setVercelAuthToken(undefined);
+  }
+}

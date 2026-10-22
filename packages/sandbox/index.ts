@@ -79,6 +79,7 @@ export {
   syncToRemote,
   syncToRemotePreservingChanges,
   withTemporaryGitHubAuth,
+  withTemporaryVercelAuth,
   type FileChange,
   type FileChangeStatus,
   type FileWithContent,
