@@ -242,6 +242,110 @@ type WorkflowAgentOptions = Omit<
   sandboxControl?: SerializableSandboxControlContext;
 };
 
+/**
+ * Context Management & Vision Token Optimization:
+ * Across multi-step agent turns, prior tool execution results (specifically
+ * visual screenshots or image reads) accumulate in modelMessages as large
+ * base64 payloads. Without compaction, every subsequent step re-transmits all
+ * previous images in full base64, multiplying vision token expenditure by 5x-10x.
+ *
+ * This function preserves full fidelity (file-data base64) for the most recent
+ * visual image read, and compacts older historical images in the turn history
+ * to a lightweight token placeholder. If the model ever needs to inspect an
+ * older image again, it can re-read it via the `read` tool.
+ */
+function compactImageVisionContext(messages: ModelMessage[]): ModelMessage[] {
+  let latestMsgIdx = -1;
+  let latestPartIdx = -1;
+  let latestSubIdx = -1;
+
+  for (let m = messages.length - 1; m >= 0; m--) {
+    const msg = messages[m];
+    if (msg?.role === "tool" && Array.isArray(msg.content)) {
+      for (let p = msg.content.length - 1; p >= 0; p--) {
+        const part = msg.content[p];
+        const partObj = part as unknown as {
+          type?: string;
+          content?: unknown[];
+        };
+        if (
+          partObj &&
+          typeof partObj === "object" &&
+          partObj.type === "tool-result" &&
+          Array.isArray(partObj.content)
+        ) {
+          const contentList = partObj.content;
+          for (let s = contentList.length - 1; s >= 0; s--) {
+            const sub = contentList[s] as unknown as { type?: string };
+            if (sub && typeof sub === "object" && sub.type === "file-data") {
+              latestMsgIdx = m;
+              latestPartIdx = p;
+              latestSubIdx = s;
+              break;
+            }
+          }
+        }
+        if (latestMsgIdx !== -1) break;
+      }
+    }
+    if (latestMsgIdx !== -1) break;
+  }
+
+  if (latestMsgIdx === -1) {
+    return messages;
+  }
+
+  return messages.map((msg, mIdx) => {
+    if (msg.role !== "tool" || !Array.isArray(msg.content)) {
+      return msg;
+    }
+
+    let mutatedMsg = false;
+    const newContent = msg.content.map((part, pIdx) => {
+      const partObj = part as unknown as { type?: string; content?: unknown[] };
+      if (
+        partObj &&
+        typeof partObj === "object" &&
+        partObj.type === "tool-result" &&
+        Array.isArray(partObj.content)
+      ) {
+        let mutatedPart = false;
+        const toolContent = partObj.content;
+        const compacted = toolContent.map((sub, sIdx) => {
+          const subObj = sub as unknown as { type?: string };
+          if (
+            subObj &&
+            typeof subObj === "object" &&
+            subObj.type === "file-data"
+          ) {
+            if (
+              mIdx === latestMsgIdx &&
+              pIdx === latestPartIdx &&
+              sIdx === latestSubIdx
+            ) {
+              return sub;
+            }
+            mutatedPart = true;
+            return {
+              type: "text" as const,
+              text: "[Image visual pixels previously inspected by model — omitted from turn history to optimize vision context. If re-inspection is needed, re-read the file with the read tool]",
+            };
+          }
+          return sub;
+        });
+
+        if (mutatedPart) {
+          mutatedMsg = true;
+          return { ...part, content: compacted };
+        }
+      }
+      return part;
+    });
+
+    return mutatedMsg ? { ...msg, content: newContent } : msg;
+  });
+}
+
 const shouldPauseForToolInteraction = (parts: WebAgentUIMessage["parts"]) =>
   parts.some(
     (part) =>
@@ -1735,7 +1839,8 @@ async function performAgentVercelCli(params: {
 }): Promise<VercelCliToolResult> {
   "use step";
 
-  const { connectSandbox } = await import("@entry-agents/sandbox");
+  const { connectSandbox, withTemporaryVercelAuth } =
+    await import("@entry-agents/sandbox");
   const { getUserVercelToken } = await import("@/lib/vercel/token");
   const { getVercelProjectLinkByRepo } =
     await import("@/lib/db/vercel-project-links");
@@ -1782,16 +1887,16 @@ async function performAgentVercelCli(params: {
   const scopeFlag = projectLink?.teamSlug
     ? ` --scope=${shellEscapeForVercelEnv(projectLink.teamSlug)}`
     : "";
-  const command = `${ENSURE_VERCEL_CLI_INSTALLED}; VERCEL_TOKEN=${shellEscapeForVercelEnv(VERCEL_CLI_PLACEHOLDER_TOKEN)} vercel ${params.args}${scopeFlag}`;
+  // Brokered VERCEL_TOKEN is injected directly by withTemporaryVercelAuth into
+  // the execution environment. We omit any dummy inline placeholder so the CLI
+  // receives the real scoped token during this command only.
+  const command = `${ENSURE_VERCEL_CLI_INSTALLED}; vercel ${params.args}${scopeFlag}`;
 
-  await sandbox.setVercelAuthToken(token);
   try {
-    const result = await sandbox.exec(command, params.workingDirectory, 120000);
+    const result = await withTemporaryVercelAuth(sandbox, token, () =>
+      sandbox.exec(command, params.workingDirectory, 120000),
+    );
 
-    // Defense in depth only -- the real token should never reach the
-    // sandbox process or its output at all (see comment above), but this
-    // still guards against it accidentally echoing the placeholder or
-    // any stray env dump.
     const redact = (text: string) =>
       text
         ? text
@@ -1807,15 +1912,12 @@ async function performAgentVercelCli(params: {
       stdout: redact(result.stdout),
       stderr: redact(result.stderr),
     };
-  } finally {
-    await sandbox
-      .setVercelAuthToken(undefined)
-      .catch((error) =>
-        console.warn(
-          "[performAgentVercelCli] failed to clear Vercel CLI credential broker:",
-          error,
-        ),
-      );
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Vercel CLI command failed",
+    };
   }
 }
 
@@ -2395,7 +2497,11 @@ export async function runAgentWorkflow(options: Options) {
     sandboxState = runtime?.sandboxState;
 
     const turnStartedAt = Date.now();
-    const MAX_WORKFLOW_TURN_DURATION_MS = 30 * 60 * 1000; // 30 minutes max turn duration
+    const { isHobbyResourceProfile } =
+      await import("@/lib/deployment/resource-profile");
+    const MAX_WORKFLOW_TURN_DURATION_MS = isHobbyResourceProfile()
+      ? 15 * 60 * 1000 // 15 min max for Hobby plan
+      : 30 * 60 * 1000;
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
@@ -3521,7 +3627,7 @@ const runAgentStep = async (
         }),
       async () => {
         const stream = await webAgent.stream({
-          messages,
+          messages: compactImageVisionContext(messages),
           options: spendCap.maxOutputTokens
             ? { ...fullAgentOptions, maxOutputTokens: spendCap.maxOutputTokens }
             : fullAgentOptions,

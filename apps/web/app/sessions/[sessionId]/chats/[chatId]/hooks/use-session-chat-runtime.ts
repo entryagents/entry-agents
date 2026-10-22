@@ -357,7 +357,7 @@ export function useSessionChatRuntime({
         }
       })();
     },
-    [chat, chatId, chatInstance],
+    [chat, chatId, chatInstance, sessionId],
   );
 
   // Reset the user-stopped flag when a new message is sent so that

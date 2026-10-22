@@ -10,6 +10,7 @@ import type {
 } from "@/lib/sandbox/lifecycle";
 import type { SandboxMigrationResult } from "@/lib/sandbox/migration";
 import { canOperateOnSandbox } from "@/lib/sandbox/utils";
+import { isHobbyResourceProfile } from "@/lib/deployment/resource-profile";
 // Dependency-free (registry-types.ts has no imports), so it is safe to
 // import statically here just like canOperateOnSandbox -- see the note below.
 import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
@@ -127,8 +128,11 @@ async function clearLifecycleRunIdIfOwned(
   await updateSession(sessionId, { lifecycleRunId: null });
 }
 
-const MAX_LIFECYCLE_ITERATIONS = 60;
-const MAX_LIFECYCLE_RUN_DURATION_MS = 6 * 60 * 60 * 1000; // 6 hours
+const isHobby = isHobbyResourceProfile();
+const MAX_LIFECYCLE_ITERATIONS = isHobby ? 12 : 60;
+const MAX_LIFECYCLE_RUN_DURATION_MS = isHobby
+  ? 2 * 60 * 60 * 1000
+  : 6 * 60 * 60 * 1000; // 2 hrs Hobby, 6 hrs standard
 
 export async function sandboxLifecycleWorkflow(
   sessionId: string,
