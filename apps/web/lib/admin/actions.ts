@@ -475,7 +475,7 @@ export async function setAdminTitleModel(
 /**
  * Most recently created accounts for the admin Users tab. Admin-only.
  */
-export async function getAdminSignups(limit = 12): Promise<AdminSignupRow[]> {
+export async function getAdminSignups(limit?: number): Promise<AdminSignupRow[]> {
   await requireAdmin();
   return getAdminRecentSignups(limit);
 }

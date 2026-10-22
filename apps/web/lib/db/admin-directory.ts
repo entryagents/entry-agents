@@ -57,9 +57,9 @@ async function attachConnectionFlags(
  * -- one page-size query plus a batched connections join.
  */
 export async function getAdminRecentSignups(
-  limit = 12,
+  limit?: number,
 ): Promise<AdminSignupRow[]> {
-  const baseRows = await db
+  const query = db
     .select({
       id: users.id,
       username: users.username,
@@ -72,8 +72,12 @@ export async function getAdminRecentSignups(
       plan: users.plan,
     })
     .from(users)
-    .orderBy(desc(users.createdAt))
-    .limit(limit);
+    .orderBy(desc(users.createdAt));
+
+  const baseRows =
+    typeof limit === "number" && limit > 0
+      ? await query.limit(limit)
+      : await query;
 
   const flags = await attachConnectionFlags(baseRows);
 

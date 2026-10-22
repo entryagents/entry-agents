@@ -104,15 +104,14 @@ export function SidebarBalancePill() {
 
 /**
  * Rounded-rectangle balance badge rendered on the right side of the desktop
- * profile footer row (e.g. "$5" or "$184.20"), matching the compact footer design.
+ * profile footer row (e.g. "$5" or "$20"). Hidden for "goat" plan users since
+ * their balance and usage windows are displayed in DesktopCodexBillingStatus.
  */
 export function DesktopBalanceBox() {
   const { data, isLoading } = useBillingMe();
 
-  if (isLoading || !data) {
-    return (
-      <div className="h-9 w-12 shrink-0 animate-pulse rounded-xl border border-border/50 bg-muted/60" />
-    );
+  if (isLoading || !data || data.plan === "goat") {
+    return null;
   }
 
   return (
@@ -154,7 +153,7 @@ export function SidebarPlanBadge({ showIcon = false }: { showIcon?: boolean }) {
 /**
  * Improved Method 1 Rolling Usage Windows Telemetry for the Desktop Sidebar.
  * Exclusively rendered when the user is on the "goat" (flagship Entry) plan.
- * Does not render a redundant plan badge (plan is shown inside the profile menu).
+ * Does not render a redundant plan badge or blinking indicator dot.
  */
 export function DesktopCodexBillingStatus() {
   const { data, isLoading } = useBillingMe();
@@ -182,15 +181,9 @@ export function DesktopCodexBillingStatus() {
       )}
     >
       <div className="flex items-center justify-between gap-1.5 px-0.5">
-        <div className="flex items-center gap-1.5">
-          <span className="relative flex h-1.5 w-1.5 shrink-0">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-          </span>
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Usage Windows
-          </span>
-        </div>
+        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          Usage Windows
+        </span>
 
         <div className="flex items-baseline gap-1 font-mono text-[11px] tabular-nums">
           <span className="font-semibold text-foreground">
