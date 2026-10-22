@@ -6,28 +6,24 @@ import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 import { formatUsdCents } from "@/lib/format-usd";
 
-interface WindowUsage {
+export interface UsageWindowMetric {
   usedCents: number;
   limitCents: number;
 }
 
-interface BillingMeResponse {
+export interface BillingMeResponse {
   plan: string;
   planName: string;
   creditBalanceCents: number;
   creditGrantCents: number;
   usageWindows?: {
-    fiveHour: WindowUsage;
-    weekly: WindowUsage;
-    monthly: WindowUsage;
+    fiveHour: UsageWindowMetric;
+    weekly: UsageWindowMetric;
+    monthly: UsageWindowMetric;
   } | null;
 }
 
-/**
- * Per-plan visual identity, shared by the balance pill, the plan
- * badge below, and the bespoke desktop telemetry deck.
- */
-const PLAN_STYLES: Record<
+export const PLAN_STYLES: Record<
   string,
   {
     badge: string;
@@ -47,7 +43,7 @@ const PLAN_STYLES: Record<
   },
   goat: {
     badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-    card: "border-emerald-500/20 bg-gradient-to-b from-emerald-500/[0.06] to-transparent",
+    card: "border-emerald-500/20 bg-gradient-to-b from-emerald-500/[0.06] via-background/60 to-background/30",
     segmentActive: "bg-emerald-400",
   },
   pro: {
@@ -63,16 +59,32 @@ const PLAN_STYLES: Record<
   },
 };
 
+export function useBillingMe() {
+  return useSWR<BillingMeResponse>("/api/billing/me", fetcher, {
+    refreshInterval: 60_000,
+  });
+}
+
+export function formatCompactUsdCents(cents: number): string {
+  if (!Number.isFinite(cents)) {
+    return "$0";
+  }
+  const dollars = cents / 100;
+  if (cents % 100 === 0) {
+    return `$${dollars.toLocaleString("en-US", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    })}`;
+  }
+  return formatUsdCents(cents);
+}
+
 /**
  * Compact credit-balance pill shown in the mobile sidebar's profile footer,
  * next to the settings gear button.
  */
 export function SidebarBalancePill() {
-  const { data, isLoading } = useSWR<BillingMeResponse>(
-    "/api/billing/me",
-    fetcher,
-    { refreshInterval: 60_000 },
-  );
+  const { data, isLoading } = useBillingMe();
 
   if (isLoading || !data) {
     return (
@@ -91,15 +103,34 @@ export function SidebarBalancePill() {
 }
 
 /**
- * Small plan-name tag rendered right next to the username in the
- * mobile profile footer row.
+ * Rounded-rectangle balance badge rendered on the right side of the desktop
+ * profile footer row (e.g. "$5" or "$184.20"), matching the compact footer design.
  */
-export function SidebarPlanBadge() {
-  const { data, isLoading } = useSWR<BillingMeResponse>(
-    "/api/billing/me",
-    fetcher,
-    { refreshInterval: 60_000 },
+export function DesktopBalanceBox() {
+  const { data, isLoading } = useBillingMe();
+
+  if (isLoading || !data) {
+    return (
+      <div className="h-9 w-12 shrink-0 animate-pulse rounded-xl border border-border/50 bg-muted/60" />
+    );
+  }
+
+  return (
+    <div
+      title={`Credit balance: ${formatUsdCents(data.creditBalanceCents)}`}
+      className="flex h-9 min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-border bg-background/80 px-2.5 font-mono text-xs font-semibold tabular-nums text-foreground shadow-2xs"
+    >
+      {formatCompactUsdCents(data.creditBalanceCents)}
+    </div>
   );
+}
+
+/**
+ * Small plan-name tag rendered in the mobile profile footer row or inside
+ * the desktop profile popover menu.
+ */
+export function SidebarPlanBadge({ showIcon = false }: { showIcon?: boolean }) {
+  const { data, isLoading } = useBillingMe();
 
   if (isLoading || !data) {
     return null;
@@ -110,143 +141,125 @@ export function SidebarPlanBadge() {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        "inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
         style.badge,
       )}
     >
-      {data.planName}
+      {showIcon ? <EntryMark className="h-2.5 w-2.5 shrink-0" /> : null}
+      <span>{data.planName}</span>
     </span>
   );
 }
 
-const TOTAL_LED_SEGMENTS = 20;
-
 /**
- * Bespoke Desktop Telemetry Deck for Plan & Credit Balance.
- * - Uses the official EntryMark SVG inside the plan badge.
- * - Displays read-only credit balance vs. plan grant in crisp tabular numerals.
- * - For the flagship Entry plan (which returns rolling usageWindows from /api/billing/me),
- *   renders a 3-column live micro-gauge for the 5h, 7d, and 30d rolling windows.
- * - For all other plans (Free, Plus, Pro, Max), renders a 20-segment precision LED
- *   credit pool meter.
+ * Improved Method 1 Rolling Usage Windows Telemetry for the Desktop Sidebar.
+ * Exclusively rendered when the user is on the "goat" (flagship Entry) plan.
+ * Does not render a redundant plan badge (plan is shown inside the profile menu).
  */
 export function DesktopCodexBillingStatus() {
-  const { data, isLoading } = useSWR<BillingMeResponse>(
-    "/api/billing/me",
-    fetcher,
-    { refreshInterval: 60_000 },
-  );
+  const { data, isLoading } = useBillingMe();
 
-  if (isLoading || !data) {
-    return (
-      <div className="space-y-2 rounded-xl border border-border/50 bg-background/40 p-2.5">
-        <div className="flex items-center justify-between">
-          <div className="h-4 w-16 animate-pulse rounded bg-muted" />
-          <div className="h-4 w-20 animate-pulse rounded bg-muted" />
-        </div>
-        <div className="h-2 w-full animate-pulse rounded bg-muted" />
-      </div>
-    );
+  if (isLoading || !data || data.plan !== "goat") {
+    return null;
   }
 
-  const style = PLAN_STYLES[data.plan] ?? PLAN_STYLES.free;
-  const grantCents = data.creditGrantCents > 0 ? data.creditGrantCents : 0;
-  const ratio =
-    grantCents > 0
-      ? Math.min(1, Math.max(0, data.creditBalanceCents / grantCents))
-      : 0;
-  const activeSegments = Math.round(ratio * TOTAL_LED_SEGMENTS);
-  const windows = data.usageWindows ?? null;
+  const grantCents = data.creditGrantCents > 0 ? data.creditGrantCents : 20000;
+  const windows = data.usageWindows ?? {
+    fiveHour: { usedCents: 0, limitCents: 2000 },
+    weekly: { usedCents: 0, limitCents: 8000 },
+    monthly: {
+      usedCents: Math.max(0, grantCents - data.creditBalanceCents),
+      limitCents: grantCents,
+    },
+  };
 
   return (
     <div
-      title="Current plan and available credit balance"
+      title="Rolling usage windows and available credit balance"
       className={cn(
-        "space-y-2 rounded-xl border p-2.5 transition-colors",
-        style.card,
+        "space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors",
+        PLAN_STYLES.goat.card,
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span
-          className={cn(
-            "inline-flex shrink-0 items-center gap-1.5 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-            style.badge,
-          )}
-        >
-          <EntryMark className="h-2.5 w-2.5 shrink-0" />
-          <span>{data.planName}</span>
-        </span>
+      <div className="flex items-center justify-between gap-1.5 px-0.5">
+        <div className="flex items-center gap-1.5">
+          <span className="relative flex h-1.5 w-1.5 shrink-0">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          </span>
+          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Usage Windows
+          </span>
+        </div>
 
-        <div className="flex items-baseline gap-1 font-mono text-xs tabular-nums">
+        <div className="flex items-baseline gap-1 font-mono text-[11px] tabular-nums">
           <span className="font-semibold text-foreground">
             {formatUsdCents(data.creditBalanceCents)}
           </span>
           {grantCents > 0 ? (
-            <span className="text-[10px] text-muted-foreground">
-              / {formatUsdCents(grantCents)}
+            <span className="text-[10px] text-muted-foreground/75">
+              / {formatCompactUsdCents(grantCents)}
             </span>
           ) : null}
         </div>
       </div>
 
-      {windows ? (
-        <div className="grid grid-cols-3 gap-1.5 pt-0.5">
-          {(
-            [
-              { label: "5h", win: windows.fiveHour },
-              { label: "7d", win: windows.weekly },
-              { label: "30d", win: windows.monthly },
-            ] as const
-          ).map(({ label, win }) => {
-            const pct = Math.min(
-              100,
-              Math.round((win.usedCents / Math.max(1, win.limitCents)) * 100),
-            );
-            const isFull = win.usedCents >= win.limitCents;
-            return (
-              <div
-                key={label}
-                title={`Rolling ${label}: ${formatUsdCents(win.usedCents)} of ${formatUsdCents(win.limitCents)}`}
-                className="rounded-lg border border-border/60 bg-background/60 px-2 py-1"
-              >
-                <div className="flex items-center justify-between font-mono text-[10px]">
-                  <span className="text-muted-foreground">{label}</span>
-                  <span
-                    className={
-                      isFull
-                        ? "font-semibold text-red-400"
-                        : "text-foreground/85"
-                    }
-                  >
-                    {pct}%
-                  </span>
-                </div>
-                <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-muted">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all duration-300",
-                      isFull ? "bg-red-500" : style.segmentActive,
-                    )}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
+      <div className="grid grid-cols-3 gap-1">
+        {(
+          [
+            { label: "5h", win: windows.fiveHour },
+            { label: "7d", win: windows.weekly },
+            { label: "30d", win: windows.monthly },
+          ] as const
+        ).map(({ label, win }) => {
+          const pct = Math.min(
+            100,
+            Math.round((win.usedCents / Math.max(1, win.limitCents)) * 100),
+          );
+          const isFull = win.usedCents >= win.limitCents;
+          const isWarn = !isFull && pct >= 75;
+          return (
+            <div
+              key={label}
+              title={`Rolling ${label}: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)}`}
+              className="rounded-lg border border-border/60 bg-background/75 px-1.5 py-1"
+            >
+              <div className="flex items-center justify-between font-mono text-[10px] leading-none">
+                <span className="text-muted-foreground">{label}</span>
+                <span
+                  className={cn(
+                    "tabular-nums",
+                    isFull
+                      ? "font-semibold text-red-400"
+                      : isWarn
+                        ? "font-medium text-amber-400"
+                        : "text-foreground/90",
+                  )}
+                >
+                  {pct}%
+                </span>
               </div>
-            );
-          })}
-        </div>
-      ) : grantCents > 0 ? (
-        <div className="flex items-center gap-0.5 pt-0.5">
-          {Array.from({ length: TOTAL_LED_SEGMENTS }).map((_, idx) => (
-            <span
-              key={idx}
-              className={cn(
-                "h-1.5 flex-1 rounded-[1px] transition-colors",
-                idx < activeSegments ? style.segmentActive : "bg-muted/70",
-              )}
-            />
-          ))}
-        </div>
-      ) : null}
+              <div className="my-1 h-1 w-full overflow-hidden rounded-full bg-muted">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all duration-300",
+                    isFull
+                      ? "bg-red-500"
+                      : isWarn
+                        ? "bg-amber-400"
+                        : "bg-emerald-400",
+                  )}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <div className="truncate font-mono text-[9px] leading-none tabular-nums text-muted-foreground/75">
+                {formatCompactUsdCents(win.usedCents)}/
+                {formatCompactUsdCents(win.limitCents)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

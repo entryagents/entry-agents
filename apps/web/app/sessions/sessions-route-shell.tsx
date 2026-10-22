@@ -253,7 +253,7 @@ export function SessionsRouteShell({
         className="h-dvh overflow-hidden"
         style={
           {
-            "--sidebar-width": "20rem",
+            "--sidebar-width": "16.5rem",
           } as CSSProperties
         }
       >
