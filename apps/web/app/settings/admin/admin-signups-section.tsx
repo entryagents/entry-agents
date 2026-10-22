@@ -24,8 +24,6 @@ import { getAdminSignups } from "@/lib/admin/actions";
 import { getPlanDefinition } from "@/lib/billing/plans";
 import type { AdminSignupRow } from "@/lib/db/admin-directory";
 
-const SIGNUP_LIMIT = 12;
-
 function formatDate(date: Date): string {
   return new Date(date).toLocaleDateString("en-US", {
     month: "short",
@@ -62,7 +60,7 @@ export function AdminSignupsSection() {
   useEffect(() => {
     let cancelled = false;
 
-    getAdminSignups(SIGNUP_LIMIT)
+    getAdminSignups()
       .then((rows) => {
         if (!cancelled) setData(rows);
       })
@@ -78,9 +76,11 @@ export function AdminSignupsSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Recent signups</CardTitle>
+        <CardTitle>All users</CardTitle>
         <CardDescription>
-          The {SIGNUP_LIMIT} most recently created accounts.
+          {data
+            ? `All ${data.length} registered accounts, ordered by newest first.`
+            : "All registered accounts, ordered by newest first."}
         </CardDescription>
       </CardHeader>
       <CardContent>
