@@ -2500,8 +2500,8 @@ export async function runAgentWorkflow(options: Options) {
     const { isHobbyResourceProfile } =
       await import("@/lib/deployment/resource-profile");
     const MAX_WORKFLOW_TURN_DURATION_MS = isHobbyResourceProfile()
-      ? 15 * 60 * 1000 // 15 min max for Hobby plan
-      : 30 * 60 * 1000;
+      ? 60 * 60 * 1000 // 1 hour max for Hobby plan
+      : 60 * 60 * 1000; // 1 hour max standard
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;

@@ -129,7 +129,7 @@ export async function POST(req: Request) {
       requestUrl: req.url,
       authSession: session ?? null,
       assistantId: generateId(),
-      maxSteps: isHobbyResourceProfile() ? 25 : 500,
+      maxSteps: isHobbyResourceProfile() ? 50 : 500,
     },
   ]);
 
