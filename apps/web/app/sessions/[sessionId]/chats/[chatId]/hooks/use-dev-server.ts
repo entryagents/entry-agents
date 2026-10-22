@@ -1,7 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import type { DevServerLaunchResponse } from "@/app/api/sessions/[sessionId]/dev-server/route";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  DevServerLaunchResponse,
+  DevServerStatusResponse,
+} from "@/app/api/sessions/[sessionId]/dev-server/route";
 
 export type DevServerLaunchState =
   | { status: "idle" }
@@ -33,6 +36,14 @@ function getErrorMessage(body: unknown, fallback: string): string {
   return body.error;
 }
 
+function normalizeUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
 function parseLaunchResponse(body: unknown): DevServerLaunchResponse | null {
   if (!isRecord(body)) {
     return null;
@@ -43,7 +54,8 @@ function parseLaunchResponse(body: unknown): DevServerLaunchResponse | null {
     typeof packagePath !== "string" ||
     typeof port !== "number" ||
     !Number.isFinite(port) ||
-    typeof url !== "string"
+    typeof url !== "string" ||
+    url.trim().length === 0
   ) {
     return null;
   }
@@ -51,44 +63,95 @@ function parseLaunchResponse(body: unknown): DevServerLaunchResponse | null {
   return {
     packagePath,
     port,
-    url,
+    url: normalizeUrl(url),
   };
 }
 
 export function useDevServer({
   sessionId,
   canRun,
-  ensureSandboxReady,
+  ensureSandboxReady: _ensureSandboxReady,
 }: {
   sessionId: string;
   canRun: boolean;
   ensureSandboxReady?: EnsureSandboxReady;
 }): DevServerControls {
   const [state, setState] = useState<DevServerLaunchState>({ status: "idle" });
+  const stoppedManuallyRef = useRef(false);
 
   useEffect(() => {
+    stoppedManuallyRef.current = false;
     setState({ status: "idle" });
   }, [sessionId]);
 
   useEffect(() => {
     if (!canRun) {
-      setState({ status: "idle" });
+      return;
     }
-  }, [canRun]);
+
+    let cancelled = false;
+
+    async function syncAndKeepAlive() {
+      if (cancelled || stoppedManuallyRef.current) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/sessions/${sessionId}/dev-server`, {
+          cache: "no-store",
+        });
+        if (!response.ok || cancelled || stoppedManuallyRef.current) {
+          return;
+        }
+
+        const body = (await response.json()) as DevServerStatusResponse;
+        if (cancelled || stoppedManuallyRef.current) {
+          return;
+        }
+
+        if (
+          body.running &&
+          typeof body.packagePath === "string" &&
+          typeof body.port === "number" &&
+          typeof body.url === "string"
+        ) {
+          setState({
+            status: "ready",
+            info: {
+              packagePath: body.packagePath,
+              port: body.port,
+              url: normalizeUrl(body.url),
+            },
+          });
+        }
+      } catch {
+        // Silent background check; explicit user clicks still surface errors.
+      }
+    }
+
+    void syncAndKeepAlive();
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void syncAndKeepAlive();
+      }
+    }, 15_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [canRun, sessionId]);
 
   const openDevServerUrl = useCallback((url: string) => {
-    window.open(url, "_blank", "noopener,noreferrer");
+    window.open(normalizeUrl(url), "_blank", "noopener,noreferrer");
   }, []);
 
   const handlePrimaryAction = useCallback(async () => {
     if (state.status === "ready") {
-      const sandboxReady = await ensureSandboxReady?.();
-      if (sandboxReady === false) {
-        setState({ status: "error", message: "Failed to start sandbox" });
-        return;
-      }
-
       openDevServerUrl(state.info.url);
+      void fetch(`/api/sessions/${sessionId}/dev-server`, {
+        cache: "no-store",
+      }).catch(() => undefined);
       return;
     }
 
@@ -96,14 +159,10 @@ export function useDevServer({
       return;
     }
 
+    stoppedManuallyRef.current = false;
     setState({ status: "starting" });
 
     try {
-      const sandboxReady = await ensureSandboxReady?.();
-      if (sandboxReady === false) {
-        throw new Error("Failed to start sandbox");
-      }
-
       const response = await fetch(`/api/sessions/${sessionId}/dev-server`, {
         method: "POST",
       });
@@ -122,6 +181,7 @@ export function useDevServer({
         status: "ready",
         info: launchResponse,
       });
+      openDevServerUrl(launchResponse.url);
     } catch (error) {
       console.error("Failed to launch dev server:", error);
       setState({
@@ -132,13 +192,14 @@ export function useDevServer({
             : "Failed to launch dev server",
       });
     }
-  }, [ensureSandboxReady, openDevServerUrl, sessionId, state]);
+  }, [openDevServerUrl, sessionId, state]);
 
   const handleStopAction = useCallback(async () => {
     if (state.status !== "ready") {
       return;
     }
 
+    stoppedManuallyRef.current = true;
     setState({ status: "stopping", info: state.info });
 
     try {

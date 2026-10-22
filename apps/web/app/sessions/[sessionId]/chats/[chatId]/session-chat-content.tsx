@@ -3222,13 +3222,7 @@ export function SessionChatContent({
     isSandboxActive,
     reconnectionStatus,
   ]);
-  const canRunDevServer =
-    !isArchived &&
-    isSandboxActive &&
-    !isCreatingSandbox &&
-    !isRestoringSnapshot &&
-    !isReconnectingSandbox &&
-    !isHibernatingUi;
+  const canRunDevServer = !isArchived;
   const canUseSandboxActions = !isArchived;
   const canUseCodeEditor = codeEditorDisabledReason === null;
   const ensureSandboxReadyForAction =

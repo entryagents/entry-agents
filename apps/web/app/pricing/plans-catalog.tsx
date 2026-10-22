@@ -70,10 +70,20 @@ function EntryWindowsCard({
       </div>
       <div className="mt-3 flex flex-col gap-3">
         {rows.map((row) => {
-          const pct = Math.min(
-            100,
-            Math.round((row.usedCents / Math.max(1, row.limitCents)) * 100),
-          );
+          const pct =
+            row.usedCents >= row.limitCents
+              ? 100
+              : row.usedCents > 0
+                ? Math.max(
+                    1,
+                    Math.min(
+                      99,
+                      Math.floor(
+                        (row.usedCents / Math.max(1, row.limitCents)) * 100,
+                      ),
+                    ),
+                  )
+                : 0;
           const full = row.usedCents >= row.limitCents;
           return (
             <div key={row.key}>

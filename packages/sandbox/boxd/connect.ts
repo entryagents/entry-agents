@@ -169,10 +169,58 @@ export async function connectBoxd(
   }
 
   await client.machines.waitUntilReady(machine.id);
+  await client.machines
+    .setBotProtection(machine.id, false)
+    .catch(() => undefined);
+
+  const targetPorts = Array.from(
+    new Set(
+      options?.ports && options.ports.length > 0
+        ? options.ports
+        : [3000, 5173, 4321, 8000, 8888],
+    ),
+  );
+  const proxyPorts = new Set<number>();
+  try {
+    const existingProxies = await client.machines.proxies.list(machine.id);
+    const byName = new Map(
+      existingProxies
+        .filter(
+          (proxy): proxy is typeof proxy & { name: string } =>
+            typeof proxy.name === "string" && proxy.name.length > 0,
+        )
+        .map((proxy) => [proxy.name, proxy]),
+    );
+    await Promise.all(
+      targetPorts.map(async (port) => {
+        const routeName = `p${port}`;
+        const existing = byName.get(routeName);
+        if (!existing) {
+          await client.machines.proxies.create(machine.id, routeName, port);
+        } else if (existing.port !== port) {
+          await client.machines.proxies.setPort(machine.id, port, {
+            name: routeName,
+          });
+        }
+        proxyPorts.add(port);
+      }),
+    );
+  } catch {
+    // Named proxies are best-effort; BoxdSandbox.domain falls back to the machine's default HTTPS route.
+  }
+
   await client.machines.exec(machine.id, {
     command: ["mkdir", "-p", BOXD_WORKING_DIRECTORY],
   });
-  const sandbox = new BoxdSandbox(client, machine.id, machine.name, options);
+  const baseDomain = machine.access?.domain || "boxd.sh";
+  const sandbox = new BoxdSandbox(
+    client,
+    machine.id,
+    machine.name,
+    options,
+    baseDomain,
+    proxyPorts,
+  );
   await sandbox.setGitHubAuthToken(options?.githubToken);
   try {
     await bootstrapWorkspace(sandbox, state, options);

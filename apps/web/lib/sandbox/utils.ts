@@ -59,7 +59,11 @@ export function getResumableSandboxName(state: unknown): string | null {
     return null;
   }
 
-  const typedState = state as { type?: unknown; machineId?: unknown };
+  const typedState = state as {
+    type?: unknown;
+    machineId?: unknown;
+    sandboxId?: unknown;
+  };
 
   // Boxd machines retain their workspace across suspend/hibernate, so the
   // machine id is the durable reconnect handle.
@@ -70,7 +74,10 @@ export function getResumableSandboxName(state: unknown): string | null {
   // Modal's resumable handle is the Volume, not the sandbox: a sandbox id
   // is only ever a handle on a live container, while the volume holds the
   // workspace across container lifetimes.
-  return getModalVolumeName(state);
+  return (
+    getModalVolumeName(state) ??
+    (hasNonEmptyString(typedState.sandboxId) ? typedState.sandboxId : null)
+  );
 }
 
 /** Modal's durable workspace volume name, when the state is Modal's. */
@@ -256,7 +263,20 @@ export function clearSandboxResumeState(
 ): SandboxState | null {
   if (!state) return null;
 
+  if (state.type === "modal" || state.type === "boxd") {
+    return clearSandboxState(state);
+  }
+
   return { type: state.type } as SandboxState;
+}
+
+export function normalizeSandboxPreviewUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return trimmed;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
 }
 
 /**

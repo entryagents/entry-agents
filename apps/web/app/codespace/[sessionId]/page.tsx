@@ -36,9 +36,17 @@ function getErrorMessage(body: unknown, fallback: string): string {
   return body.error;
 }
 
+function normalizeEditorUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
 async function waitForEditorReady(
   sessionId: string,
-  attempts = 10,
+  attempts = 40,
 ): Promise<CodeEditorStatusResponse | null> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const response = await fetch(`/api/sessions/${sessionId}/code-editor`, {
@@ -46,9 +54,14 @@ async function waitForEditorReady(
     });
     if (response.ok) {
       const body = (await response.json()) as CodeEditorStatusResponse;
-      if (body.running && body.url) return body;
+      if (body.running && body.url) {
+        return {
+          ...body,
+          url: normalizeEditorUrl(body.url),
+        };
+      }
     }
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((resolve) => setTimeout(resolve, 350));
   }
   return null;
 }
@@ -72,7 +85,7 @@ export default function CodespacePage() {
         if (statusBody.running && statusBody.url) {
           setState({
             status: "ready",
-            url: statusBody.url,
+            url: normalizeEditorUrl(statusBody.url),
             port: statusBody.port,
           });
           return;

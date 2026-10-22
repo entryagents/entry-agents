@@ -9,6 +9,7 @@ import {
   isSandboxActive,
   isSandboxState,
   isSandboxUnavailableError,
+  normalizeSandboxPreviewUrl,
 } from "@/lib/sandbox/utils";
 
 type RouteContext = {
@@ -184,7 +185,7 @@ async function isPortInUse(
   port: number,
 ): Promise<boolean> {
   const result = await sandbox.exec(
-    `curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:${port}/healthz 2>/dev/null || curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:${port}/ 2>/dev/null`,
+    `curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:${port}/healthz 2>/dev/null || curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:${port}/ 2>/dev/null || (bash -c "exec 3<>/dev/tcp/127.0.0.1/${port}" 2>/dev/null && echo 200)`,
     "/tmp",
     10_000,
   );
@@ -298,7 +299,10 @@ export async function GET(_req: Request, context: RouteContext) {
     return Response.json(
       {
         running,
-        url: running && sandbox.domain ? sandbox.domain(port) : null,
+        url:
+          running && sandbox.domain
+            ? normalizeSandboxPreviewUrl(sandbox.domain(port))
+            : null,
         port,
       } satisfies CodeEditorStatusResponse,
       {
@@ -365,7 +369,7 @@ export async function POST(req: Request, context: RouteContext) {
       if (await isCodeServerRunning(sandbox)) {
         return Response.json(
           {
-            url: sandbox.domain(port),
+            url: normalizeSandboxPreviewUrl(sandbox.domain(port)),
             port,
           } satisfies CodeEditorLaunchResponse,
           {
@@ -384,15 +388,20 @@ export async function POST(req: Request, context: RouteContext) {
         );
       }
 
-      // Launch code-server in detached mode
+      // Launch code-server in detached mode, auto-installing code-server if missing in minimal base images.
       const launchCommand = [
         `printf '%s' "$$" > ${shellQuote(CODE_SERVER_PIDFILE)}`,
+        `export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"`,
+        `if ! command -v code-server >/dev/null 2>&1; then (command -v curl >/dev/null 2>&1 || (apt-get update -qq && apt-get install -y -qq curl ca-certificates >/dev/null 2>&1) || (apk add --no-cache curl ca-certificates >/dev/null 2>&1) || true); (curl -fsSL https://code-server.dev/install.sh | sh -s -- --method=standalone >/dev/null 2>&1 || curl -fsSL https://code-server.dev/install.sh | sh >/dev/null 2>&1); export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"; fi`,
         `exec code-server --port ${port} --auth none --bind-addr 0.0.0.0:${port} --disable-telemetry ${shellQuote(workingDirectory)}`,
       ].join(" && ");
 
       try {
         await sandbox.execDetached(launchCommand, workingDirectory);
-        if (!(await waitForCodeServer(sandbox))) {
+        const ready =
+          (await waitForCodeServer(sandbox)) ||
+          (await isCodeServerRunning(sandbox));
+        if (!ready) {
           throw new Error(
             "Code editor did not become ready on its Workspace port",
           );
@@ -409,7 +418,10 @@ export async function POST(req: Request, context: RouteContext) {
       }
 
       return Response.json(
-        { url: sandbox.domain(port), port } satisfies CodeEditorLaunchResponse,
+        {
+          url: normalizeSandboxPreviewUrl(sandbox.domain(port)),
+          port,
+        } satisfies CodeEditorLaunchResponse,
         {
           headers: {
             "Cache-Control": "no-store",

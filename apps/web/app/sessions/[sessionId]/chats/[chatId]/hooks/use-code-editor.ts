@@ -179,44 +179,16 @@ export function useCodeEditor({
     }, [ensureSandboxReady, sessionId, state]);
 
   const handleOpen = useCallback(async () => {
-    if (state.status === "ready") {
-      const sandboxReady = await ensureSandboxReady?.();
-      if (sandboxReady === false) {
-        setState({ status: "error", message: "Failed to start sandbox" });
-        return;
-      }
-
-      openEditorPage();
-      return;
-    }
-
-    const info = await ensureRunning();
-    if (info) {
-      openEditorPage();
-    }
-  }, [ensureRunning, ensureSandboxReady, openEditorPage, state]);
+    // Navigate directly to /codespace/[sessionId] which wakes/provisions the
+    // Workspace and starts code-server with full progress and retry UI.
+    openEditorPage();
+  }, [openEditorPage]);
 
   const handleOpenFile = useCallback(
     async (_filePath: string) => {
-      if (state.status === "ready") {
-        const sandboxReady = await ensureSandboxReady?.();
-        if (sandboxReady === false) {
-          setState({ status: "error", message: "Failed to start sandbox" });
-          return;
-        }
-
-        openEditorPage();
-        return;
-      }
-
-      const info = await ensureRunning();
-      if (info) {
-        // Open the codespace page; file-specific deep linking can be added
-        // to the codespace route later via query parameters.
-        openEditorPage();
-      }
+      openEditorPage();
     },
-    [ensureRunning, ensureSandboxReady, openEditorPage, state],
+    [openEditorPage],
   );
 
   const handleStop = useCallback(async () => {
