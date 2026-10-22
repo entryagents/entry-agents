@@ -303,7 +303,7 @@ describe("/api/sessions/[sessionId]/dev-server", () => {
     expect(connectSandboxMock).toHaveBeenCalledWith(
       currentSessionRecord.sandboxState,
       {
-        ports: [3000, 5173, 4321, 8000],
+        ports: [3000, 5173, 4321, 8000, 8888],
         resume: true,
         createIfMissing: true,
       },

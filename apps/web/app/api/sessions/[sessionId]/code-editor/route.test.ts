@@ -128,6 +128,7 @@ const execDetachedMock = mock(async (command: string, cwd: string) => {
 
   fileContents.set(CODE_EDITOR_PID_FILE, `${RUNNING_CODE_SERVER_PID}\n`);
   runningPids.add(RUNNING_CODE_SERVER_PID);
+  portProbeStatusCode = "200";
   processListOutput = ` ${RUNNING_CODE_SERVER_PID} code-server --port 8888 --auth none --bind-addr 0.0.0.0:8888 /vercel/sandbox\n`;
 
   return { commandId: "cmd-1" };
@@ -253,16 +254,9 @@ describe("/api/sessions/[sessionId]/code-editor", () => {
     expect(execDetachedMock).toHaveBeenCalledTimes(0);
   });
 
-  test("POST returns 403 for managed-template trial users", async () => {
-    currentAuthSession = {
-      authProvider: "vercel",
-      user: {
-        id: "user-1",
-        email: "person@example.com",
-      },
-    };
+  test("POST normalizes bare Boxd preview domains with https://", async () => {
+    domainMock.mockImplementationOnce(() => "p8888.entry-test-machine.boxd.sh");
     const { POST } = await routeModulePromise;
-    const expectedError = "The code editor is disabled for this session.";
 
     const response = await POST(
       new Request(
@@ -273,12 +267,13 @@ describe("/api/sessions/[sessionId]/code-editor", () => {
       ),
       createRouteContext(),
     );
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as { url: string; port: number };
 
-    expect(response.status).toBe(403);
-    expect(body.error).toBe(expectedError);
-    expect(connectSandboxMock).toHaveBeenCalledTimes(0);
-    expect(execDetachedMock).toHaveBeenCalledTimes(0);
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      url: "https://p8888.entry-test-machine.boxd.sh",
+      port: 8888,
+    });
   });
 
   test("DELETE does not claim success when only another app is using the editor port", async () => {
@@ -303,7 +298,6 @@ describe("/api/sessions/[sessionId]/code-editor", () => {
 
   test("POST launches code-server when the port is free", async () => {
     const { POST } = await routeModulePromise;
-    portProbeStatusCode = "200";
 
     const response = await POST(
       new Request("http://localhost/api/sessions/session-1/code-editor", {

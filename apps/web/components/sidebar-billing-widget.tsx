@@ -155,6 +155,13 @@ export function SidebarPlanBadge({ showIcon = false }: { showIcon?: boolean }) {
  * Exclusively rendered when the user is on the "goat" (flagship Entry) plan.
  * Does not render a redundant plan badge or blinking indicator dot.
  */
+function getUsageWindowPercent(usedCents: number, limitCents: number): number {
+  if (limitCents <= 0) return 0;
+  if (usedCents >= limitCents) return 100;
+  if (usedCents <= 0) return 0;
+  return Math.max(1, Math.min(99, Math.floor((usedCents / limitCents) * 100)));
+}
+
 export function DesktopCodexBillingStatus() {
   const { data, isLoading } = useBillingMe();
 
@@ -162,19 +169,28 @@ export function DesktopCodexBillingStatus() {
     return null;
   }
 
-  const grantCents = data.creditGrantCents > 0 ? data.creditGrantCents : 20000;
+  const grantCents = data.creditGrantCents > 0 ? data.creditGrantCents : 5000;
   const windows = data.usageWindows ?? {
-    fiveHour: { usedCents: 0, limitCents: 2000 },
-    weekly: { usedCents: 0, limitCents: 8000 },
+    fiveHour: { usedCents: 0, limitCents: 1000 },
+    weekly: { usedCents: 0, limitCents: 2500 },
     monthly: {
       usedCents: Math.max(0, grantCents - data.creditBalanceCents),
       limitCents: grantCents,
     },
   };
 
+  const monthlyRemainingCents = Math.max(
+    0,
+    windows.monthly.limitCents - windows.monthly.usedCents,
+  );
+  const effectiveRemainingCents =
+    data.creditBalanceCents >= 0
+      ? Math.min(data.creditBalanceCents, monthlyRemainingCents)
+      : 0;
+
   return (
     <div
-      title="Rolling usage windows and available credit balance"
+      title="Rolling usage windows and remaining window allowance"
       className={cn(
         "space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors",
         PLAN_STYLES.goat.card,
@@ -187,13 +203,9 @@ export function DesktopCodexBillingStatus() {
 
         <div className="flex items-baseline gap-1 font-mono text-[11px] tabular-nums">
           <span className="font-semibold text-foreground">
-            {formatUsdCents(data.creditBalanceCents)}
+            {formatUsdCents(effectiveRemainingCents)}
           </span>
-          {grantCents > 0 ? (
-            <span className="text-[10px] text-muted-foreground/75">
-              / {formatCompactUsdCents(grantCents)}
-            </span>
-          ) : null}
+          <span className="text-[10px] text-muted-foreground/75">left</span>
         </div>
       </div>
 
@@ -205,16 +217,13 @@ export function DesktopCodexBillingStatus() {
             { label: "30d", win: windows.monthly },
           ] as const
         ).map(({ label, win }) => {
-          const pct = Math.min(
-            100,
-            Math.round((win.usedCents / Math.max(1, win.limitCents)) * 100),
-          );
+          const pct = getUsageWindowPercent(win.usedCents, win.limitCents);
           const isFull = win.usedCents >= win.limitCents;
           const isWarn = !isFull && pct >= 75;
           return (
             <div
               key={label}
-              title={`Rolling ${label}: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)}`}
+              title={`Rolling ${label}: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`}
               className="rounded-lg border border-border/60 bg-background/75 px-1.5 py-1"
             >
               <div className="flex items-center justify-between font-mono text-[10px] leading-none">

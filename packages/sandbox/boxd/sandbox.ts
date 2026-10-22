@@ -69,6 +69,8 @@ export class BoxdSandbox implements Sandbox {
     private readonly machineId: string,
     private readonly machineName: string,
     options?: ConnectOptions,
+    private readonly baseDomain = "boxd.sh",
+    private readonly proxyPorts: ReadonlySet<number> = new Set(),
   ) {
     this.hooks = options?.hooks;
     this.env = options?.env;
@@ -221,8 +223,32 @@ export class BoxdSandbox implements Sandbox {
     this.stopped = true;
   }
 
-  domain(_port: number): string {
-    return `${this.machineName}.boxd.sh`;
+  async killCommand(cmdId: string): Promise<void> {
+    if (this.stopped || !/^[1-9][0-9]*$/.test(cmdId.trim())) {
+      return;
+    }
+    const pid = cmdId.trim();
+    await this.client.machines
+      .exec(this.machineId, {
+        command: [
+          "bash",
+          "-c",
+          `kill -TERM -${pid} ${pid} 2>/dev/null || true`,
+        ],
+        cwd: BOXD_WORKING_DIRECTORY,
+        timeout: 5_000,
+      })
+      .catch(() => undefined);
+  }
+
+  domain(port: number): string {
+    if (this.proxyPorts.has(port)) {
+      return `https://p${port}.${this.machineName}.${this.baseDomain}`;
+    }
+    void this.client.machines.proxies
+      .setPort(this.machineId, port)
+      .catch(() => undefined);
+    return `https://${this.machineName}.${this.baseDomain}`;
   }
 
   getState(): { type: "boxd"; machineId: string; machineName: string } {

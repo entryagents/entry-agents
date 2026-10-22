@@ -81,7 +81,11 @@ import {
   sanitizeSelectedModelIdForSession,
   sanitizeUserPreferencesForSession,
 } from "@/lib/model-access";
-import { APP_DEFAULT_MODEL_ID, type AvailableModel } from "@/lib/models";
+import {
+  APP_DEFAULT_MODEL_ID,
+  type AvailableModel,
+  estimateModelUsageCost,
+} from "@/lib/models";
 import type { Session as AuthSession } from "@/lib/session/types";
 import type {
   WorkflowRunStatus,
@@ -720,18 +724,31 @@ async function resolveChatModelRuntime(params: {
       };
     }
   } else {
-    // Admins are never blocked on BALANCE, but their usage is still
-    // billed (see runAgentStep) -- fetch their balance too so it stays
-    // accurate, just without any gating decision riding on it. Usage
-    // WINDOWS still apply (owner request 2026-09-15: "yes normal") --
-    // an admin on the Entry plan is treated like a normal subscriber
-    // for windows; only the balance gate stays admin-exempt.
-    const { getUserBillingState } = await import("@/lib/billing/credit-ledger");
+    const { enforcePlanExpiry, claimUserBillingTurn } =
+      await import("@/lib/billing/credit-ledger");
     const { getPlanDefinition } = await import("@/lib/billing/plans");
-    const billingState = await getUserBillingState(params.userId);
+    const claimedTurn = await claimUserBillingTurn(
+      params.userId,
+      params.workflowRunId,
+    );
+    if (!claimedTurn) {
+      return {
+        blockedNotice:
+          "You already have another chat generating a response -- wait for it to finish, then try again.",
+      };
+    }
+    const billingState = await enforcePlanExpiry(params.userId);
+    const plan = getPlanDefinition(billingState?.plan);
+    planUsageWindows = plan.usageWindows ?? null;
     startingBalanceCents = billingState?.creditBalanceCents ?? 0;
-    planUsageWindows =
-      getPlanDefinition(billingState?.plan).usageWindows ?? null;
+    if (startingBalanceCents <= 0) {
+      return {
+        blockedNotice:
+          plan.modelAccess === "luna-only"
+            ? "Free tier ended, upgrade your account to use Entry"
+            : "You're out of credit -- add more to keep chatting.",
+      };
+    }
   }
 
   // Entry Windows (2026-09-15, shared gate): rolling 5-hour / weekly /
@@ -833,7 +850,7 @@ async function resolveChatModelRuntime(params: {
     autoCreatePrEnabled,
     startingBalanceCents,
     windowBudgetCents,
-    enforceCreditBlock: !isAdminUser,
+    enforceCreditBlock: true,
     guidedFrontendWorkflowEnabled:
       preferences?.guidedFrontendWorkflowEnabled ?? false,
   });
@@ -3626,6 +3643,47 @@ const runAgentStep = async (
           sessionId,
         }),
       async () => {
+        const stepModelCost = modelCostCatalog.find(
+          (m) => m.id === modelId,
+        )?.cost;
+        const lastInputTokensForEst =
+          lastStepBreakdown?.usage?.inputTokens ?? 0;
+        const lastCachedForEst = Math.min(
+          lastStepBreakdown?.usage?.inputTokenDetails?.cacheReadTokens ??
+            lastStepBreakdown?.usage?.cachedInputTokens ??
+            0,
+          lastInputTokensForEst,
+        );
+        const cachedRatioForEst =
+          lastInputTokensForEst > 0
+            ? Math.min(1, lastCachedForEst / lastInputTokensForEst)
+            : 0;
+        const estCachedTokens = Math.floor(
+          Math.max(0, estimatedInputTokens) * cachedRatioForEst,
+        );
+        const estInputCostUsd = stepModelCost
+          ? (estimateModelUsageCost(
+              {
+                inputTokens: estimatedInputTokens,
+                cachedInputTokens: estCachedTokens,
+                outputTokens: 0,
+              },
+              stepModelCost,
+            ) ?? 0)
+          : (estimatedInputTokens * 2) / 1_000_000;
+        const estMillionOutputCostUsd = stepModelCost
+          ? (estimateModelUsageCost(
+              {
+                inputTokens: 0,
+                cachedInputTokens: 0,
+                outputTokens: 1_000_000,
+              },
+              stepModelCost,
+            ) ?? 6)
+          : 6;
+        let liveStreamedChars = 0;
+        let midStreamDebited = false;
+
         const stream = await webAgent.stream({
           messages: compactImageVisionContext(messages),
           options: spendCap.maxOutputTokens
@@ -3645,6 +3703,80 @@ const runAgentStep = async (
           // failures below.
           onError: toFriendlyChatErrorText,
           messageMetadata: ({ part: streamPart }) => {
+            if (
+              !midStreamDebited &&
+              (streamPart.type === "text-delta" ||
+                streamPart.type === "reasoning-delta" ||
+                streamPart.type === "tool-input-delta" ||
+                streamPart.type === "tool-call")
+            ) {
+              const partRecord = streamPart as Record<string, unknown>;
+              const chunkText =
+                typeof partRecord.text === "string"
+                  ? partRecord.text
+                  : typeof partRecord.textDelta === "string"
+                    ? partRecord.textDelta
+                    : typeof partRecord.delta === "string"
+                      ? partRecord.delta
+                      : streamPart.type === "tool-call"
+                        ? JSON.stringify(
+                            partRecord.input ?? partRecord.args ?? "",
+                          )
+                        : "";
+              liveStreamedChars += chunkText.length;
+              const liveOutputTokens = Math.ceil(liveStreamedChars / 3.8);
+              const liveStepCostUsd =
+                estInputCostUsd +
+                (liveOutputTokens / 1_000_000) * estMillionOutputCostUsd;
+              const liveStepCostCents = Math.max(
+                1,
+                Math.ceil(liveStepCostUsd * 100),
+              );
+
+              const wouldExhaustWindow =
+                remainingWindowBudgetCents !== null &&
+                !windowExhausted &&
+                remainingWindowBudgetCents - liveStepCostCents <= 0;
+              const wouldExhaustCredit =
+                enforceCreditBlock &&
+                !creditExhausted &&
+                remainingBalanceCents - liveStepCostCents <= 0;
+
+              if (wouldExhaustWindow || wouldExhaustCredit) {
+                midStreamDebited = true;
+                lastStepCost = liveStepCostUsd;
+                totalMessageCost = (totalMessageCost ?? 0) + liveStepCostUsd;
+                pendingDebits.push(
+                  recordBillableUsage(userId, liveStepCostUsd, {
+                    billingReference: `${workflowRunId}:main-step:${stepNumber}`,
+                    modelId,
+                    description: `Usage: ${modelId}`,
+                  }).then(() => undefined),
+                );
+                if (enforceCreditBlock) {
+                  remainingBalanceCents -= liveStepCostCents;
+                  if (remainingBalanceCents <= 0) {
+                    creditExhausted = true;
+                  }
+                }
+                if (remainingWindowBudgetCents !== null) {
+                  remainingWindowBudgetCents -= liveStepCostCents;
+                  if (remainingWindowBudgetCents <= 0) {
+                    windowExhausted = true;
+                  }
+                }
+                abortController.abort();
+                return {
+                  selectedModelId,
+                  modelId,
+                  lastStepCost,
+                  totalMessageCost,
+                  ...(creditExhausted ? { creditExhausted: true } : {}),
+                  ...(windowExhausted ? { windowExhausted: true } : {}),
+                } satisfies WebAgentMessageMetadata;
+              }
+            }
+
             if (streamPart.type === "finish-step") {
               lastStepUsage = streamPart.usage;
               if (streamPart.usage) {
@@ -3652,13 +3784,20 @@ const runAgentStep = async (
                   ? addLanguageModelUsage(totalMessageUsage, streamPart.usage)
                   : streamPart.usage;
               }
-              const stepCost = estimateStepCost(
+              const rawStepCost = estimateStepCost(
                 streamPart.providerMetadata,
                 modelId,
                 streamPart.usage,
                 modelCostCatalog,
               );
-              if (stepCost !== undefined) {
+              const stepCost =
+                rawStepCost ??
+                (streamPart.usage
+                  ? ((streamPart.usage.inputTokens ?? 0) * 2 +
+                      (streamPart.usage.outputTokens ?? 0) * 6) /
+                    1_000_000
+                  : undefined);
+              if (stepCost !== undefined && !midStreamDebited) {
                 lastStepCost = stepCost;
                 totalMessageCost = (totalMessageCost ?? 0) + stepCost;
 
@@ -3678,20 +3817,10 @@ const runAgentStep = async (
                   remainingBalanceCents -= stepCostCents;
                   if (remainingBalanceCents <= 0 && !creditExhausted) {
                     creditExhausted = true;
-                    // Stop the model mid-turn the instant the balance is
-                    // spent -- the outer step loop (runAgentWorkflow) also
-                    // checks `creditExhausted` on the returned result so it
-                    // never starts another (now-unaffordable) step.
                     abortController.abort();
                   }
                 }
 
-                // Entry-plan rolling usage windows: a SEPARATE in-memory
-                // counter, decremented for windowed users regardless of
-                // admin (owner request 2026-09-15) -- admins are exempt
-                // from the balance block above but NOT from windows.
-                // Aborting here marks windowExhausted so the client says
-                // "window refills continuously", never "top up".
                 if (remainingWindowBudgetCents !== null && !windowExhausted) {
                   remainingWindowBudgetCents -= stepCostCents;
                   if (remainingWindowBudgetCents <= 0) {
@@ -3700,12 +3829,6 @@ const runAgentStep = async (
                   }
                 }
 
-                // Per-turn cost circuit-breaker: independent of the
-                // account-balance check above, never let one turn spend
-                // past MAX_TURN_SPEND_CENTS. totalMessageCost already
-                // accumulates across every step of this turn (see its
-                // declaration above), including steps from earlier calls
-                // to runAgentStep for this same message.
                 if (
                   !turnSpendCapped &&
                   Math.round((totalMessageCost ?? 0) * 100) >=
@@ -3732,6 +3855,9 @@ const runAgentStep = async (
                 lastStepFinishReason: streamPart.finishReason,
                 lastStepRawFinishReason: streamPart.rawFinishReason,
                 stepFinishReasons,
+                ...(creditExhausted ? { creditExhausted: true } : {}),
+                ...(windowExhausted ? { windowExhausted: true } : {}),
+                ...(turnSpendCapped ? { turnSpendCapped: true } : {}),
               } satisfies WebAgentMessageMetadata;
             }
             return undefined;
@@ -4058,10 +4184,6 @@ function startStopMonitor(
       }
 
       if (!isAdminUser) {
-        // Dynamic import: getFreeTierGateStatus touches the drizzle db
-        // client, which must not be statically imported into this
-        // "use workflow" module -- see the matching comment in
-        // resolveChatModelRuntime.
         const { getFreeTierGateStatus } =
           await import("@/lib/db/platform-settings");
         const gate = await getFreeTierGateStatus().catch(() => ({
@@ -4072,6 +4194,28 @@ function startStopMonitor(
           abortController.abort();
           return;
         }
+      }
+
+      try {
+        const { getUserBillingState, getUsageWindowTotals } =
+          await import("@/lib/billing/credit-ledger");
+        const { getPlanDefinition, findExceededUsageWindow } =
+          await import("@/lib/billing/plans");
+        const liveBilling = await getUserBillingState(userId);
+        if (liveBilling && liveBilling.creditBalanceCents <= 0) {
+          abortController.abort();
+          return;
+        }
+        const liveWindows = getPlanDefinition(liveBilling?.plan).usageWindows;
+        if (liveWindows) {
+          const liveTotals = await getUsageWindowTotals(userId);
+          if (findExceededUsageWindow(liveTotals, liveWindows) !== null) {
+            abortController.abort();
+            return;
+          }
+        }
+      } catch {
+        // Ignore transient DB poll errors inside stop monitor
       }
 
       await delay(150);

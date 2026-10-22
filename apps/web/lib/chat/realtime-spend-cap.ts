@@ -97,6 +97,9 @@ export function computeAffordableOutputTokens(
   budgetCents: number,
   cost: AvailableModelCost | undefined,
 ): { stop: boolean; maxOutputTokens?: number } {
+  if (budgetCents <= 0) {
+    return { stop: true };
+  }
   if (!cost) {
     return { stop: false };
   }
@@ -209,6 +212,10 @@ export function computeRealtimeSpendCap(input: {
   }
 
   const binding = budgets.reduce((a, b) => (b.cents < a.cents ? b : a));
+
+  if (binding.cents <= 0) {
+    return { blockReason: binding.reason };
+  }
 
   if (!cost) {
     // Unknown pricing: can't pre-compute affordability. Keep the old

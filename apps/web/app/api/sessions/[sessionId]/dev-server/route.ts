@@ -14,6 +14,7 @@ import {
   clearUnavailableSandboxState,
   isSandboxActive,
   isSandboxUnavailableError,
+  normalizeSandboxPreviewUrl,
 } from "@/lib/sandbox/utils";
 
 type RouteContext = {
@@ -684,6 +685,13 @@ function getDevServerStateFilePath(workingDirectory: string): string {
   return path.posix.join(workingDirectory, DEV_SERVER_STATE_FILENAME);
 }
 
+export type DevServerStatusResponse = {
+  running: boolean;
+  packagePath: string | null;
+  port: number | null;
+  url: string | null;
+};
+
 function buildDevServerResponse(
   sandbox: ConnectedSandbox,
   target: Pick<ResolvedDevServerTarget, "packagePath" | "port">,
@@ -695,7 +703,7 @@ function buildDevServerResponse(
   return {
     packagePath: target.packagePath,
     port: target.port,
-    url: sandbox.domain(target.port),
+    url: normalizeSandboxPreviewUrl(sandbox.domain(target.port)),
   };
 }
 
@@ -1080,6 +1088,97 @@ export async function relaunchDevServerAfterMigration(
       error,
     );
     return null;
+  }
+}
+
+export async function GET(req: Request, context: RouteContext) {
+  const authResult = await requireAuthenticatedUser();
+  if (!authResult.ok) {
+    return authResult.response;
+  }
+
+  const { sessionId } = await context.params;
+  const reqUrl = new URL(req.url);
+  const autoStart = reqUrl.searchParams.get("autoStart") !== "false";
+
+  try {
+    const sandboxResult = await connectDevServerSandboxForSession(
+      sessionId,
+      authResult.userId,
+    );
+    if (!sandboxResult.ok) {
+      return sandboxResult.response;
+    }
+
+    const { sandbox } = sandboxResult;
+
+    const persistedTarget = await readPersistedDevServerTarget(sandbox);
+    if (persistedTarget) {
+      const existingPersistedPid = await getRunningDevServerPid({
+        sandbox,
+        packageDirAbs: persistedTarget.packageDirAbs,
+        port: persistedTarget.port,
+      });
+      if (existingPersistedPid) {
+        const info = buildDevServerResponse(sandbox, persistedTarget);
+        return Response.json({
+          running: true,
+          ...info,
+        } satisfies DevServerStatusResponse);
+      }
+
+      await clearPersistedDevServerTarget(sandbox);
+    }
+
+    const target = await resolveDevServerTarget(sandbox);
+    if (!target) {
+      return Response.json({
+        running: false,
+        packagePath: null,
+        port: null,
+        url: null,
+      } satisfies DevServerStatusResponse);
+    }
+
+    const existingPid = await getRunningDevServerPid({
+      sandbox,
+      packageDirAbs: target.packageDirAbs,
+      port: target.port,
+    });
+    if (existingPid) {
+      await writePersistedDevServerTarget(sandbox, target);
+      const info = buildDevServerResponse(sandbox, target);
+      return Response.json({
+        running: true,
+        ...info,
+      } satisfies DevServerStatusResponse);
+    }
+
+    if (autoStart && sandbox.execDetached) {
+      const launched = await launchDevServerAtTarget(sandbox, target);
+      return Response.json({
+        running: true,
+        ...launched,
+      } satisfies DevServerStatusResponse);
+    }
+
+    return Response.json({
+      running: false,
+      packagePath: target.packagePath,
+      port: target.port,
+      url: null,
+    } satisfies DevServerStatusResponse);
+  } catch (error) {
+    console.error("Failed to check/start dev server:", error);
+    return Response.json(
+      {
+        running: false,
+        packagePath: null,
+        port: null,
+        url: null,
+      } satisfies DevServerStatusResponse,
+      { status: 200 },
+    );
   }
 }
 
