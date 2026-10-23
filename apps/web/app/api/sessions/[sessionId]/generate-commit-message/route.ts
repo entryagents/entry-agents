@@ -60,29 +60,21 @@ export async function POST(
 
   const result = await generateText({
     model: gateway(APP_DEFAULT_MODEL_ID),
-    prompt: `Generate a professional git commit message for these changes adhering to conventional commit format (e.g., "feat: ...", "fix: ...", "refactor: ...").
-Format your output as:
-Line 1: Concise commit subject line (max 72 chars)
-Line 2: Blank line
-Line 3+: Bulleted summary of key changes made (1-4 concise bullets)
+    prompt: `Generate a concise git commit message for these changes. Use conventional commit format (e.g., "feat:", "fix:", "refactor:"). One line only, max 72 characters.
 
 Session context: ${dbSession.title}
 
 Diff:
-${diff.slice(0, 10000)}
+${diff.slice(0, 8000)}
 
-Respond ONLY with the formatted commit message. Do not wrap in markdown quotes or code blocks.`,
+Respond with ONLY the commit message, nothing else.`,
   });
 
-  const raw = result.text
-    .trim()
-    .replace(/^```[a-z]*\n?/i, "")
-    .replace(/\n?```$/i, "");
-  const lines = raw.split("\n");
-  const title =
-    lines[0]?.trim().slice(0, 72) || "chore: update repository changes";
-  const body = lines.slice(1).join("\n").trim();
-  const message = body ? `${title}\n\n${body}` : title;
+  const generated = result.text.trim().split("\n")[0]?.trim();
+  const message =
+    generated && generated.length > 0
+      ? generated.slice(0, 72)
+      : "chore: update repository changes";
 
-  return Response.json({ message, title, body });
+  return Response.json({ message });
 }

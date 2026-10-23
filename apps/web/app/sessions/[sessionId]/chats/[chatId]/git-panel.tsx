@@ -75,7 +75,6 @@ import type { SessionGitStatus } from "@/hooks/use-session-git-status";
 import { useSessionFiles } from "@/hooks/use-session-files";
 import { useGitHubConnectionStatus } from "@/hooks/use-github-connection-status";
 import { useGitPanel } from "./git-panel-context";
-import { DesktopCommitCockpit } from "./desktop-commit-cockpit";
 import { FileTree } from "./file-tree";
 import { useSessionChatWorkspaceContext } from "./session-chat-context";
 
@@ -2045,24 +2044,189 @@ export function GitPanel(props: GitPanelProps) {
 
         {gitPanelTab === "diff" && (
           <div className="flex min-h-0 flex-1 flex-col">
-            <DesktopCommitCockpit
-              session={session}
-              hasSandbox={hasSandbox}
-              hasRepo={hasRepo}
-              gitStatus={gitStatus}
-              refreshGitStatus={refreshGitStatus}
-              diffFiles={diffFiles}
-              refreshDiff={refreshDiff}
-              onCommitted={onCommitted}
-              onGitMessage={onGitMessage}
-              isAgentWorking={isAgentWorking}
-              baseBranch={baseBranch}
-              connectionStatus={connectionStatus}
-              reconnectRequired={reconnectRequired}
-              onOpenCreatePr={() => setGitPanelTab("pr")}
-              hasExistingPr={hasExistingPr}
-              existingPrUrl={existingPrUrl}
-            />
+            {/* Fixed commit area */}
+            <div className="shrink-0 p-3 pb-0">
+              {hasRepo && (
+                <div className="mb-2">
+                  <InlineCommitPanel
+                    session={session}
+                    hasSandbox={hasSandbox}
+                    gitStatus={gitStatus}
+                    refreshGitStatus={refreshGitStatus}
+                    onCommitted={onCommitted}
+                    onGitMessage={onGitMessage}
+                    isAgentWorking={isAgentWorking}
+                    baseBranch={baseBranch}
+                    connectionStatus={connectionStatus}
+                    reconnectRequired={reconnectRequired}
+                  />
+                </div>
+              )}
+
+              {/* Separator */}
+              {hasRepo && diffFiles && diffFiles.length > 0 && (
+                <div className="mb-2 border-t border-border" />
+              )}
+
+              {/* Scope toggle */}
+              {diffFiles && diffFiles.length > 0 && (
+                <div className="mb-2 flex items-center justify-between gap-2 px-1">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        diffScopeManuallySetRef.current = true;
+                        setDiffScope("branch");
+                      }}
+                      className={cn(
+                        "rounded px-2 py-0.5 text-[10px] font-medium transition-colors",
+                        diffScope === "branch"
+                          ? "bg-secondary text-secondary-foreground"
+                          : "text-muted-foreground hover:bg-muted/50",
+                      )}
+                    >
+                      All Changes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        diffScopeManuallySetRef.current = true;
+                        setDiffScope("uncommitted");
+                      }}
+                      className={cn(
+                        "rounded px-2 py-0.5 text-[10px] font-medium transition-colors",
+                        diffScope === "uncommitted"
+                          ? "bg-secondary text-secondary-foreground"
+                          : "text-muted-foreground hover:bg-muted/50",
+                      )}
+                    >
+                      Uncommitted
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {hasUncommittedGitChanges ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setDiscardTarget(null);
+                          setDiscardError(null);
+                          setDiscardDialogOpen(true);
+                        }}
+                        disabled={
+                          !hasSandbox || isDiscardingChanges || isAgentWorking
+                        }
+                        className="h-6 w-6 shrink-0 px-0 text-muted-foreground hover:text-destructive"
+                        title="Discard uncommitted changes"
+                        aria-label="Discard uncommitted changes"
+                      >
+                        {isDiscardingChanges ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    ) : null}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        void Promise.all([
+                          refreshDiff(),
+                          refreshGitStatus(),
+                          refreshFiles(),
+                        ]);
+                      }}
+                      disabled={!hasSandbox || isRefreshingChanges}
+                      className="h-6 w-6 shrink-0 px-0"
+                      title="Refresh changes"
+                      aria-label="Refresh changes"
+                    >
+                      <RefreshCw
+                        className={cn(
+                          "h-3.5 w-3.5",
+                          isRefreshingChanges && "animate-spin",
+                        )}
+                      />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* File summary */}
+              {diffFiles &&
+                diffFiles.length > 0 &&
+                hasDiffChanges &&
+                (() => {
+                  const visibleFiles =
+                    diffScope === "branch"
+                      ? diffFiles
+                      : diffFiles.filter(isUncommittedFile);
+                  const adds = visibleFiles.reduce(
+                    (sum, f) => sum + f.additions,
+                    0,
+                  );
+                  const dels = visibleFiles.reduce(
+                    (sum, f) => sum + f.deletions,
+                    0,
+                  );
+                  return (
+                    <div className="mb-2 flex items-center justify-between gap-2 px-2">
+                      <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                        <span>
+                          {visibleFiles.length} file
+                          {visibleFiles.length !== 1 ? "s" : ""} changed
+                        </span>
+                        {adds > 0 && (
+                          <span className="text-green-600 dark:text-green-500">
+                            +{adds}
+                          </span>
+                        )}
+                        {dels > 0 && (
+                          <span className="text-red-600 dark:text-red-400">
+                            -{dels}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
+            </div>
+
+            {/* Scrollable file list */}
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+              {diffFiles && diffFiles.length > 0 ? (
+                <DiffFileList
+                  files={diffFiles}
+                  onDiscardFile={(file) => {
+                    setDiscardTarget({
+                      filePath: file.path,
+                      ...(file.oldPath ? { oldPath: file.oldPath } : {}),
+                    });
+                    setDiscardError(null);
+                    setDiscardDialogOpen(true);
+                  }}
+                  discardingFilePath={
+                    isDiscardingChanges && discardTarget
+                      ? discardingFilePath
+                      : null
+                  }
+                  discardDisabled={isDiscardingChanges || isAgentWorking}
+                />
+              ) : (
+                <div className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/25 py-8 text-center">
+                  <p className="text-xs text-muted-foreground">
+                    {!hasSandbox
+                      ? "Waiting for sandbox..."
+                      : diffFiles === null
+                        ? "Loading..."
+                        : "No file changes yet"}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

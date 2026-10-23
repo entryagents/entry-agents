@@ -68,7 +68,6 @@ export {
 export {
   hasUncommittedChanges,
   stageAll,
-  stageFiles,
   getCurrentBranch,
   getHeadSha,
   getStagedDiff,
