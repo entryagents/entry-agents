@@ -776,7 +776,7 @@ async function resolveChatModelRuntime(params: {
             ? `Your Entry plan's 5-hour usage window is full -- $${limitUsd} of usage per rolling 5 hours. It refills continuously as your oldest usage slides out; try again in a little while.`
             : exceeded === "weekly"
               ? `Your Entry plan's weekly usage window is full -- $${limitUsd} of usage per rolling 7 days. It refills as your oldest usage slides out of the week; try again later.`
-              : `Your Entry plan's monthly usage window is full -- $${limitUsd} of usage per rolling 30 days. It refills as your oldest usage slides out of the month; try again later.`,
+              : `Your Entry plan's overall monthly usage limit of $${limitUsd} has been reached. Generation is stopped until your next subscription billing cycle.`,
       };
     }
 

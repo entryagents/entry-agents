@@ -137,3 +137,51 @@ describe("dedupeMessageReasoning", () => {
     expect(original.parts).toHaveLength(originalPartsLength);
   });
 });
+
+import { dedupeMessageParts, dedupeMessageList } from "./dedupe-message-reasoning";
+
+describe("dedupeMessageParts", () => {
+  test("removes duplicate reasoning with identical text even without itemId", () => {
+    const message = msg([
+      reasoning("Launching subagents..."),
+      reasoning("Launching subagents..."),
+    ]);
+    const result = dedupeMessageParts(message);
+    expect(result.parts).toHaveLength(1);
+    expect(result.parts[0]).toEqual(reasoning("Launching subagents..."));
+  });
+
+  test("deduplicates tool calls by toolCallId keeping the output-available part", () => {
+    const part1 = {
+      type: "dynamic-tool" as const,
+      toolName: "task",
+      toolCallId: "call_subagent_1",
+      state: "input-available" as const,
+      input: { role: "Executor" },
+    };
+    const part2 = {
+      type: "dynamic-tool" as const,
+      toolName: "task",
+      toolCallId: "call_subagent_1",
+      state: "output-available" as const,
+      input: { role: "Executor" },
+      output: { summary: "done" },
+    };
+    const message = msg([part1, part2]);
+    const result = dedupeMessageParts(message);
+    expect(result.parts).toHaveLength(1);
+    expect((result.parts[0] as typeof part2).state).toBe("output-available");
+  });
+});
+
+describe("dedupeMessageList", () => {
+  test("deduplicates consecutive identical assistant messages on reload or continuation", () => {
+    const m1 = msg([reasoning("Launching subagents...")]);
+    m1.id = "asst_1";
+    const m2 = msg([reasoning("Launching subagents...")]);
+    m2.id = "asst_2";
+    const list = dedupeMessageList([m1, m2]);
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe("asst_1");
+  });
+});

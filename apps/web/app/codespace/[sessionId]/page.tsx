@@ -46,7 +46,7 @@ function normalizeEditorUrl(rawUrl: string): string {
 
 async function waitForEditorReady(
   sessionId: string,
-  attempts = 40,
+  attempts = 120,
 ): Promise<CodeEditorStatusResponse | null> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const response = await fetch(`/api/sessions/${sessionId}/code-editor`, {
@@ -61,7 +61,7 @@ async function waitForEditorReady(
         };
       }
     }
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
   return null;
 }

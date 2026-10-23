@@ -196,13 +196,13 @@ async function isPortInUse(
 
 async function waitForCodeServer(
   sandbox: ConnectedSandbox,
-  attempts = 12,
+  attempts = 80,
 ): Promise<boolean> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     if (await isPortInUse(sandbox, CODE_SERVER_PORT)) {
       return true;
     }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await new Promise((resolve) => setTimeout(resolve, 500));
   }
   return false;
 }
@@ -407,13 +407,16 @@ export async function POST(req: Request, context: RouteContext) {
           );
         }
       } catch (error) {
-        await sandbox
-          .exec(
-            `rm -f ${shellQuote(CODE_SERVER_PIDFILE)}`,
-            workingDirectory,
-            5_000,
-          )
-          .catch(() => undefined);
+        const pid = await findRunningCodeServerPid(sandbox);
+        if (!pid) {
+          await sandbox
+            .exec(
+              `rm -f ${shellQuote(CODE_SERVER_PIDFILE)}`,
+              workingDirectory,
+              5_000,
+            )
+            .catch(() => undefined);
+        }
         throw error;
       }
 

@@ -290,7 +290,7 @@ export function DesktopCodexBillingStatus() {
           return (
             <div
               key={label}
-              title={`Rolling ${label}: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`}
+              title={label === "30d" ? `Monthly Limit: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)` : `Rolling ${label}: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`}
               className="rounded-lg border border-border/60 bg-background/75 px-1.5 py-1"
             >
               <div className="flex items-center justify-between font-mono text-[10px] leading-none">

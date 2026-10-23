@@ -100,7 +100,7 @@ export function AssistantMessageGroups({
   // multi-tool-call loop protection) -- see MAX_TURN_SPEND_CENTS in
   // app/workflows/chat.ts.
   const stopNotice = message.metadata?.windowExhausted
-    ? "Your Entry plan's usage window filled up mid-response, so generation stopped here. Windows refill continuously as your oldest usage slides out -- try again in a little while."
+    ? "Your Entry plan's usage window reached its limit mid-response, so generation stopped here. Send a follow-up message when your window refills or your billing cycle renews."
     : message.metadata?.creditExhausted
       ? "Ran out of credit mid-response, so generation stopped here. Top up or upgrade your plan to continue."
       : message.metadata?.turnSpendCapped

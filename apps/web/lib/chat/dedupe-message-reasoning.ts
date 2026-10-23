@@ -1,13 +1,9 @@
-import type { WebAgentUIMessage } from "@/app/types";
+import { isToolUIPart } from "ai";
+import type { WebAgentUIMessage, WebAgentUIToolPart } from "@/app/types";
 
 /**
  * Returns a reasoning item ID from a part's provider metadata, if present.
- *
- * OpenAI (and Azure OpenAI) Responses API reasoning parts carry an `itemId`
- * inside `providerMetadata.openai` (or `.azure`).  When a durable-workflow
- * step is replayed the streaming chunks are re-applied on top of the already-
- * persisted message, which can duplicate reasoning parts that share the same
- * item ID.
+ * Supports OpenAI, Azure, Google, Anthropic, or custom gateway itemId metadata.
  */
 function getReasoningItemId(
   part: WebAgentUIMessage["parts"][number],
@@ -18,36 +14,75 @@ function getReasoningItemId(
     | Record<string, Record<string, unknown> | undefined>
     | undefined;
 
-  const openai = meta?.openai ?? meta?.azure;
-  const itemId = openai?.itemId;
+  const provider =
+    meta?.openai ?? meta?.azure ?? meta?.anthropic ?? meta?.google ?? meta?.gateway;
+  const itemId = provider?.itemId ?? provider?.id;
   return typeof itemId === "string" ? itemId : undefined;
 }
 
 /**
- * Remove duplicate reasoning parts from a message's `parts` array.
- *
- * A reasoning part is considered a duplicate when another part with the same
- * provider-level item ID **and** the same text already exists earlier in the
- * array.  Multi-summary parts (same item ID, different text) are intentionally
- * kept because they represent distinct summary segments of a single reasoning
- * output.
- *
- * Returns a **new** message object when duplicates are found; the original is
- * returned as-is when the parts are already clean.
+ * Normalizes text for duplicate checking while preserving whitespace semantics.
+ */
+function normalizeText(text: string): string {
+  return text.trim();
+}
+
+/**
+ * Extract a stable deduplication identity for tool call parts.
+ */
+function getToolCallIdentity(
+  part: WebAgentUIMessage["parts"][number],
+): string | undefined {
+  if (!isToolUIPart(part)) return undefined;
+
+  if (part.toolCallId) {
+    return `toolCallId:${part.toolCallId}`;
+  }
+
+  // Dynamic tool or subagent invocation fallback
+  const anyPart = part as unknown as Record<string, unknown>;
+  const toolName = anyPart.toolName ?? part.type;
+  if (toolName === "task" || toolName === "dynamic-tool" || anyPart.toolName) {
+    const rawInput =
+      typeof anyPart.input === "string"
+        ? anyPart.input
+        : JSON.stringify(anyPart.input ?? "");
+    return `tool:${toolName}:${rawInput}`;
+  }
+
+  return undefined;
+}
+
+/**
+ * Deduplicate reasoning parts from a message.
+ * Compatible with existing test suite expectations:
+ * - If itemId is present, removes exact duplicate reasoning (same itemId and same text).
+ * - Multi-summary parts (same itemId, different text) are preserved.
+ * - If no itemId, removes exact duplicate reasoning (identical text).
+ * - Non-reasoning parts (text, step-start, etc.) are kept untouched.
  */
 export function dedupeMessageReasoning<T extends WebAgentUIMessage>(
   message: T,
 ): T {
+  if (!message.parts || message.parts.length <= 1) {
+    return message;
+  }
+
   const seen = new Set<string>();
   let hasDuplicates = false;
 
   for (const part of message.parts) {
-    const itemId = getReasoningItemId(part);
-    if (itemId == null) continue;
+    if (part.type !== "reasoning") continue;
 
-    // Composite key: item ID + text content.  Two parts for the same
-    // reasoning output but with different summary text are *not* duplicates.
-    const key = `${itemId}\0${part.type === "reasoning" ? part.text : ""}`;
+    const itemId = getReasoningItemId(part);
+    // Composite key: if itemId is present use that + text; if not present, use normalized text if non-empty
+    const key = itemId
+      ? `${itemId}\0${part.text}`
+      : normalizeText(part.text).length > 0
+        ? `noId\0${normalizeText(part.text)}`
+        : null;
+
+    if (!key) continue;
 
     if (seen.has(key)) {
       hasDuplicates = true;
@@ -58,17 +93,122 @@ export function dedupeMessageReasoning<T extends WebAgentUIMessage>(
 
   if (!hasDuplicates) return message;
 
-  // Second pass: rebuild parts without duplicates.
   const deduped = new Set<string>();
   const filteredParts = message.parts.filter((part) => {
-    const itemId = getReasoningItemId(part);
-    if (itemId == null) return true;
+    if (part.type !== "reasoning") return true;
 
-    const key = `${itemId}\0${part.type === "reasoning" ? part.text : ""}`;
+    const itemId = getReasoningItemId(part);
+    const key = itemId
+      ? `${itemId}\0${part.text}`
+      : normalizeText(part.text).length > 0
+        ? `noId\0${normalizeText(part.text)}`
+        : null;
+
+    if (!key) return true;
+
     if (deduped.has(key)) return false;
     deduped.add(key);
     return true;
   });
 
   return { ...message, parts: filteredParts };
+}
+
+/**
+ * Full message parts deduplication (reasoning, tool calls, dynamic tools).
+ * Used when rendering and on stream updates so replayed stream chunks never
+ * stack duplicate subagents or thoughts.
+ */
+export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
+  if (!message.parts || message.parts.length <= 1) {
+    return message;
+  }
+
+  // First deduplicate reasoning
+  const withDedupedReasoning = dedupeMessageReasoning(message);
+
+  const seenToolCalls = new Map<string, number>();
+  let hasToolDuplicates = false;
+  const filteredParts: WebAgentUIMessage["parts"] = [];
+
+  for (const part of withDedupedReasoning.parts) {
+    const toolIdentity = getToolCallIdentity(part);
+    if (toolIdentity) {
+      if (seenToolCalls.has(toolIdentity)) {
+        hasToolDuplicates = true;
+        const existingIndex = seenToolCalls.get(toolIdentity)!;
+        const existingPart = filteredParts[existingIndex] as WebAgentUIToolPart;
+        const newPart = part as WebAgentUIToolPart;
+        const existingPre = Boolean((existingPart as unknown as { preliminary?: boolean }).preliminary);
+        const newPre = Boolean((newPart as unknown as { preliminary?: boolean }).preliminary);
+        const isNewMoreComplete =
+          (newPart.state === "output-available" && existingPart.state !== "output-available") ||
+          (!newPre && existingPre);
+        if (isNewMoreComplete) {
+          filteredParts[existingIndex] = part;
+        }
+        continue;
+      }
+
+      seenToolCalls.set(toolIdentity, filteredParts.length);
+      filteredParts.push(part);
+      continue;
+    }
+
+    filteredParts.push(part);
+  }
+
+  if (!hasToolDuplicates && withDedupedReasoning === message) {
+    return message;
+  }
+
+  return { ...message, parts: filteredParts };
+}
+
+/**
+ * Deduplicates a list of messages:
+ * 1. Deduplicates parts within each message.
+ * 2. Deduplicates messages by id and prevents identical consecutive assistant blocks from stream re-attaches.
+ */
+export function dedupeMessageList<T extends WebAgentUIMessage>(messages: T[]): T[] {
+  if (!messages || messages.length === 0) {
+    return [];
+  }
+
+  const result: T[] = [];
+  const seenMessageIds = new Set<string>();
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = dedupeMessageParts(messages[i]);
+
+    if (seenMessageIds.has(msg.id)) {
+      const existingIdx = result.findIndex((m) => m.id === msg.id);
+      if (existingIdx !== -1 && msg.role === "assistant") {
+        result[existingIdx] = dedupeMessageParts({
+          ...result[existingIdx],
+          parts: [...result[existingIdx].parts, ...msg.parts],
+        });
+      }
+      continue;
+    }
+
+    // Check if consecutive assistant message is a duplicate of the previous
+    if (msg.role === "assistant" && result.length > 0) {
+      const prev = result[result.length - 1];
+      if (prev.role === "assistant") {
+        const merged = dedupeMessageParts({
+          ...prev,
+          parts: [...prev.parts, ...msg.parts],
+        });
+        if (merged.parts.length === prev.parts.length) {
+          continue;
+        }
+      }
+    }
+
+    seenMessageIds.add(msg.id);
+    result.push(msg);
+  }
+
+  return result;
 }

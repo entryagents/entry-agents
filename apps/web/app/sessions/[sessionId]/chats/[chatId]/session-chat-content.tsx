@@ -81,6 +81,7 @@ import { useInlineQuestion } from "@/components/inline-question-input";
 import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
 import { SnippetChip } from "@/components/snippet-chip";
 import { AssistantMessageGroups } from "@/components/assistant-message-groups";
+import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import { MessageModelPill } from "@/components/message-model-pill";
 import {
   PinnedTodoPanel,
@@ -1519,7 +1520,7 @@ export function SessionChatContent({
     [chatInfo.id, markChatRead, refreshChats, session.id, setMessages],
   );
   const renderMessages = useMemo(
-    () => (hasMounted ? messages : initialMessages),
+    () => dedupeMessageList(hasMounted ? messages : initialMessages),
     [hasMounted, messages, initialMessages],
   );
   // Track explicit user-initiated stops so the UI can immediately reflect the

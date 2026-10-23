@@ -15,6 +15,7 @@ import type {
 } from "@/app/types";
 import { AbortableChatTransport } from "@/lib/abortable-chat-transport";
 import { triggerBillingSync } from "@/components/sidebar-billing-widget";
+import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import {
   abortChatInstanceTransport,
   getOrCreateChatInstance,
@@ -310,7 +311,7 @@ export function useSessionChatRuntime({
                   isStreaming?: boolean;
                 };
                 if (data?.messages) {
-                  chat.setMessages(data.messages);
+                  chat.setMessages(dedupeMessageList(data.messages));
                 }
                 if (!data?.isStreaming) {
                   clearChatWorkspaceStatus(chatId);
