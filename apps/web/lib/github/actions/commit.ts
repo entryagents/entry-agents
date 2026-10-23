@@ -3,6 +3,7 @@
 import {
   connectSandbox,
   stageAll,
+  stageFiles,
   getStagedDiff,
   syncToRemote,
   syncToRemotePreservingChanges,
@@ -100,14 +101,19 @@ export interface CommitResult {
  * Commit and push changes from a session's sandbox.
  * Creates a verified commit via the GitHub API.
  */
-export async function commitChanges(params: {
+export interface CommitChangesParams {
   sessionId: string;
   sessionTitle: string;
   baseBranch: string;
   branchName: string;
   commitTitle?: string;
   commitBody?: string;
-}): Promise<CommitResult> {
+  filePaths?: string[];
+}
+
+export async function commitChanges(
+  params: CommitChangesParams,
+): Promise<CommitResult> {
   const {
     sessionId,
     sessionTitle,
@@ -115,6 +121,7 @@ export async function commitChanges(params: {
     branchName,
     commitTitle,
     commitBody,
+    filePaths,
   } = params;
 
   // auth
@@ -289,7 +296,11 @@ export async function commitChanges(params: {
 
   // stage
   try {
-    await stageAll(sandbox);
+    if (filePaths && filePaths.length > 0) {
+      await stageFiles(sandbox, filePaths);
+    } else {
+      await stageAll(sandbox);
+    }
   } catch {
     return {
       committed: false,
