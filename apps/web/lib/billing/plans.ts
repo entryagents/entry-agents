@@ -450,7 +450,7 @@ export function resolvePlanForProductId(
  * zero, exactly like a paid user. The previous owner-sponsored $0 model
  * pattern (Luna, ling-3.0-flash-free) is intentionally NOT applied here.
  */
-export const FREE_PLAN_MODEL_ID = "qwen3.8-flash:free";
+export const FREE_PLAN_MODEL_ID = "step-5-preview";
 
 /**
  * Free-plan model selection.
@@ -474,7 +474,8 @@ export const FREE_PLAN_MODEL_ID = "qwen3.8-flash:free";
  */
 export const FREE_TIER_ALLOWED_MODEL_IDS: readonly string[] = [
   FREE_PLAN_MODEL_ID,
-  "mimo-v2.6-flash:free",
+  "glm-5.3-flash",
+  "deepseek-v4.1-flash",
 ];
 
 export function getPlanDefinition(

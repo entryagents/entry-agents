@@ -1608,11 +1608,11 @@ export function InboxSidebar({
                         type="button"
                         onClick={() => {
                           setProfileMenuOpen(false);
-                          router.push("/settings/usage");
+                          router.push("/usage");
                         }}
                         className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
                       >
-                        <span>Credit</span>
+                        <span>Usage &amp; Balance</span>
                         <span className="font-mono text-xs tabular-nums text-muted-foreground">
                           {creditDisplay}
                         </span>

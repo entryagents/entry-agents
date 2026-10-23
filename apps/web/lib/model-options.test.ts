@@ -93,18 +93,9 @@ describe("model options", () => {
     expect(groups[0].options[0].id).toBe("anthropic/claude-opus-4.6");
   });
 
-  test("withMissingModelOption appends missing model option", () => {
+  test("withMissingModelOption preserves original list without appending dead models", () => {
     const result = withMissingModelOption([], "openai/removed");
-
-    expect(result).toHaveLength(1);
-    expect(result[0]).toEqual({
-      id: "openai/removed",
-      label: "openai/removed (unavailable)",
-      shortLabel: "openai/removed (unavailable)",
-      description: "Model no longer available",
-      contextWindow: undefined,
-      provider: "unknown",
-    });
+    expect(result).toHaveLength(0);
   });
 
   test("withMissingModelOption returns original list when id already exists", () => {

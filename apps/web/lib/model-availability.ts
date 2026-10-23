@@ -1,5 +1,79 @@
 import { getDisabledModelIdSet } from "@/lib/db/model-overrides";
 
+interface GatewayHealthResponse {
+  ok?: boolean;
+  status?: string;
+  routedModels?: string[];
+  circuitBreakers?: Record<string, string>;
+}
+
+let gatewayHealthCache: {
+  promise: Promise<GatewayHealthResponse | null>;
+  expiresAt: number;
+} | null = null;
+
+const GATEWAY_HEALTH_CACHE_TTL_MS = 30_000;
+
+export async function fetchGatewayHealth(): Promise<GatewayHealthResponse | null> {
+  const now = Date.now();
+  if (gatewayHealthCache && gatewayHealthCache.expiresAt > now) {
+    return gatewayHealthCache.promise;
+  }
+
+  const promise = (async () => {
+    const rawBaseUrl = process.env.GATEWAY_BASE_URL || "";
+    if (!rawBaseUrl) return null;
+    const baseUrl = rawBaseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
+    try {
+      const res = await fetch(`${baseUrl}/health`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!res.ok) return null;
+      return (await res.json()) as GatewayHealthResponse;
+    } catch {
+      return null;
+    }
+  })();
+
+  gatewayHealthCache = {
+    promise,
+    expiresAt: now + GATEWAY_HEALTH_CACHE_TTL_MS,
+  };
+
+  promise.catch(() => {
+    if (gatewayHealthCache?.promise === promise) {
+      gatewayHealthCache = null;
+    }
+  });
+
+  return promise;
+}
+
+export async function isModelGatewayRoutable(modelId: string): Promise<boolean> {
+  const health = await fetchGatewayHealth();
+  if (!health) {
+    return true;
+  }
+
+  const breakers = health.circuitBreakers || {};
+  if (
+    breakers[`model:${modelId}`] === "open" ||
+    breakers[modelId] === "open" ||
+    breakers[`freemodel:${modelId}`] === "open"
+  ) {
+    return false;
+  }
+
+  if (Array.isArray(health.routedModels) && health.routedModels.length > 0) {
+    return health.routedModels.includes(modelId);
+  }
+
+  return true;
+}
+
+
 const DISABLED_OPENAI_GPT_PREFIX = "openai/gpt-";
 const DISABLED_OPENAI_PRO_SUFFIX = "-pro";
 
@@ -67,14 +141,44 @@ export async function isModelDisabled(modelId: string): Promise<boolean> {
   }
 
   const disabledIds = await getDisabledModelIdSet();
-  return disabledIds.has(modelId);
+  if (disabledIds.has(modelId)) {
+    return true;
+  }
+
+  const routable = await isModelGatewayRoutable(modelId);
+  return !routable;
 }
 
 export async function filterDisabledModels<T extends { id: string }>(
   models: T[],
 ): Promise<T[]> {
-  const disabledIds = await getDisabledModelIdSet();
-  return models.filter(
-    (model) => !isModelHardBlocked(model.id) && !disabledIds.has(model.id),
-  );
+  const [disabledIds, health] = await Promise.all([
+    getDisabledModelIdSet(),
+    fetchGatewayHealth(),
+  ]);
+
+  const routedModelsSet =
+    health && Array.isArray(health.routedModels) && health.routedModels.length > 0
+      ? new Set(health.routedModels)
+      : null;
+  const breakers = health?.circuitBreakers || {};
+
+  return models.filter((model) => {
+    if (isModelHardBlocked(model.id)) return false;
+    if (disabledIds.has(model.id)) return false;
+
+    if (
+      breakers[`model:${model.id}`] === "open" ||
+      breakers[model.id] === "open" ||
+      breakers[`freemodel:${model.id}`] === "open"
+    ) {
+      return false;
+    }
+
+    if (routedModelsSet && !routedModelsSet.has(model.id)) {
+      return false;
+    }
+
+    return true;
+  });
 }

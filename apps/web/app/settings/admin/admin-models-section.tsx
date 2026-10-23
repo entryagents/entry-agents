@@ -343,7 +343,7 @@ export function AdminModelsSection() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__default__">
-                Default (qwen3.8-flash:free)
+                Default (step-5-preview)
               </SelectItem>
               <SelectItem value="__all__">All models (unrestricted)</SelectItem>
               {(data ?? []).map((row) => (

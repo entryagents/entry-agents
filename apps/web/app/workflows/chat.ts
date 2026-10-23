@@ -2434,6 +2434,8 @@ export async function runAgentWorkflow(options: Options) {
       };
       await sendTextMessage(writable, "setup-error", notice);
       await persistAssistantMessage(options.chatId, pendingAssistantResponse);
+      const { reconcileSessionStatus } = await import("@/lib/db/sessions");
+      await reconcileSessionStatus(options.sessionId, "completed").catch(() => {});
       return;
     }
 
@@ -2997,6 +2999,9 @@ export async function runAgentWorkflow(options: Options) {
         ? [refreshDiffCache(options.sessionId, sandboxState)]
         : []),
     ]);
+    const { reconcileSessionStatus: markSessionFinished } =
+      await import("@/lib/db/sessions");
+    await markSessionFinished(options.sessionId, "completed").catch(() => {});
     streamClosed = true;
 
     workflowStatus = wasAborted
@@ -3043,6 +3048,13 @@ export async function runAgentWorkflow(options: Options) {
           sendFinish(writable).then(() => closeStream(writable)),
         ]);
       }
+      const { reconcileSessionStatus: reconcileSessionInFinally } =
+        await import("@/lib/db/sessions");
+      const terminalState =
+        workflowStatus === "failed" || caughtError ? "failed" : "completed";
+      await reconcileSessionInFinally(options.sessionId, terminalState).catch(
+        () => {},
+      );
     } finally {
       const runFinishedAt = new Date();
       await recordWorkflowUsage(

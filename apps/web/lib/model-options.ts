@@ -86,23 +86,12 @@ export function buildSessionChatModelOptions(
 
 export function withMissingModelOption(
   modelOptions: ModelOption[],
-  modelId: string | null | undefined,
+  _modelId: string | null | undefined,
 ): ModelOption[] {
-  if (!modelId || modelOptions.some((option) => option.id === modelId)) {
-    return modelOptions;
-  }
-
-  return [
-    ...modelOptions,
-    {
-      id: modelId,
-      label: `${modelId} (unavailable)`,
-      shortLabel: `${modelId} (unavailable)`,
-      description: "Model no longer available",
-      contextWindow: undefined,
-      provider: "unknown",
-    },
-  ];
+  // If a model is removed from gateway or admin-disabled, it must never show
+  // in the model selector dropdown ("any time a model is removed from gateway or
+  // admin disabled it should never show in model selector no matter the scenerio").
+  return modelOptions;
 }
 
 export function getDefaultModelOptionId(modelOptions: ModelOption[]): string {

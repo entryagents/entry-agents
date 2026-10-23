@@ -50,76 +50,6 @@ const PLAN_BLURB: Record<string, string> = {
  * the oldest usage slides out, so there is no fixed reset timestamp to
  * display.
  */
-function EntryWindowsCard({
-  windows,
-}: {
-  windows: NonNullable<BillingMeResponse["usageWindows"]>;
-}) {
-  const rows = [
-    { key: "5 hours", ...windows.fiveHour },
-    { key: "7 days", ...windows.weekly },
-    { key: "30 days", ...windows.monthly },
-  ] as const;
-
-  const isFixed = windows.mode === "fixed";
-  return (
-    <div className="mt-3 rounded-2xl border border-(--l-border) bg-(--l-fg)/[0.04] px-5 py-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-(--l-fg)">Entry Windows</p>
-        <p className="text-xs text-(--l-fg-3)">
-          {isFixed
-            ? "Fixed cycle refill -- resets 100% at cycle end"
-            : "Sliding window -- refills continuously as usage ages out"}
-        </p>
-      </div>
-      <div className="mt-3 flex flex-col gap-3">
-        {rows.map((row) => {
-          const pct =
-            row.usedCents >= row.limitCents
-              ? 100
-              : row.usedCents > 0
-                ? Math.max(
-                    1,
-                    Math.min(
-                      99,
-                      Math.floor(
-                        (row.usedCents / Math.max(1, row.limitCents)) * 100,
-                      ),
-                    ),
-                  )
-                : 0;
-          const full = row.usedCents >= row.limitCents;
-          return (
-            <div key={row.key}>
-              <div className="flex items-center justify-between text-xs text-(--l-fg-2)">
-                <span>
-                  {isFixed ? `Fixed ${row.key}` : `Rolling ${row.key}`}
-                </span>
-                <span className={full ? "font-semibold text-red-500" : ""}>
-                  {formatUsdCents(row.usedCents)} of{" "}
-                  {formatUsdCents(row.limitCents)}
-                  {full
-                    ? isFixed
-                      ? " -- full, refills at cycle boundary"
-                      : " -- full, refills as usage slides out"
-                    : ""}
-                </span>
-              </div>
-              <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-(--l-border)">
-                <div
-                  className={`h-full rounded-full ${
-                    full ? "bg-red-500" : "bg-emerald-500"
-                  }`}
-                  style={{ width: `${pct}%` }}
-                />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 
 /**
  * The public plan catalog (was /billing/plans, now mounted at /pricing
@@ -235,18 +165,20 @@ export function PlansCatalog() {
             )}
 
             {me && (
-              <div className="mt-6 rounded-2xl border border-(--l-border) bg-(--l-fg)/[0.04] px-5 py-4">
+              <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-(--l-border) bg-(--l-fg)/[0.04] px-5 py-4">
                 <p className="text-sm text-(--l-fg-2)">
-                  You&apos;re on the{" "}
+                  Current subscription:{" "}
                   <span className="font-semibold text-(--l-fg)">
                     {me.planName}
                   </span>{" "}
-                  plan -- {formatUsdCents(me.creditBalanceCents)} credit
-                  remaining.
+                  plan.
                 </p>
-                {me.usageWindows && (
-                  <EntryWindowsCard windows={me.usageWindows} />
-                )}
+                <a
+                  href="/usage"
+                  className="inline-flex items-center text-sm font-medium text-(--l-fg) underline decoration-(--l-fg-3) underline-offset-4 transition-colors hover:decoration-(--l-fg)"
+                >
+                  View balance &amp; usage windows &rarr;
+                </a>
               </div>
             )}
 

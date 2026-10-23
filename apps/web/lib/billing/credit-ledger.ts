@@ -242,7 +242,8 @@ async function applyLedgerEntry(
 // or orphaned workflow run that never reached its cleanup/finally) and
 // can be stolen by a new turn. Generous relative to a normal turn's
 // length so it never fires on a merely-slow-but-alive turn.
-const BILLING_TURN_LOCK_STALE_MS = 30 * 60 * 1000;
+// Heartbeat is emitted every 30s during active turns; 2 minutes is 4 missed heartbeats.
+const BILLING_TURN_LOCK_STALE_MS = 2 * 60 * 1000;
 
 /**
  * Sums usage_debit rows in the trailing 5h / 7d / 30d windows in ONE
@@ -399,13 +400,15 @@ export async function claimUserBillingTurn(
   userId: string,
   workflowRunId: string,
 ): Promise<boolean> {
+  const now = new Date();
   const staleThreshold = new Date(Date.now() - BILLING_TURN_LOCK_STALE_MS);
 
+  // 1. Fast path: claim if unheld, self-owned, or older than stale threshold
   const [updated] = await db
     .update(users)
     .set({
       activeBillingRunId: workflowRunId,
-      activeBillingRunClaimedAt: new Date(),
+      activeBillingRunClaimedAt: now,
     })
     .where(
       and(
@@ -420,7 +423,64 @@ export async function claimUserBillingTurn(
     )
     .returning({ id: users.id });
 
-  return Boolean(updated);
+  if (updated) {
+    return true;
+  }
+
+  // 2. Slow path: check if the holding run is actually still alive.
+  // If the run reached a terminal state (completed/failed/cancelled) or does not exist,
+  // we immediately steal the lease rather than waiting for staleThreshold.
+  try {
+    const [userRow] = await db
+      .select({
+        activeBillingRunId: users.activeBillingRunId,
+        activeBillingRunClaimedAt: users.activeBillingRunClaimedAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!userRow?.activeBillingRunId) {
+      const [retryClaim] = await db
+        .update(users)
+        .set({
+          activeBillingRunId: workflowRunId,
+          activeBillingRunClaimedAt: now,
+        })
+        .where(and(eq(users.id, userId), isNull(users.activeBillingRunId)))
+        .returning({ id: users.id });
+      return Boolean(retryClaim);
+    }
+
+    if (userRow.activeBillingRunId === workflowRunId) {
+      return true;
+    }
+
+    const { verifyRunState } = await import("@/lib/workflow-run-recovery");
+    const outcome = await verifyRunState(userRow.activeBillingRunId);
+    if (outcome === "gone") {
+      const [stolen] = await db
+        .update(users)
+        .set({
+          activeBillingRunId: workflowRunId,
+          activeBillingRunClaimedAt: now,
+        })
+        .where(
+          and(
+            eq(users.id, userId),
+            eq(users.activeBillingRunId, userRow.activeBillingRunId),
+          ),
+        )
+        .returning({ id: users.id });
+      if (stolen) {
+        return true;
+      }
+    }
+  } catch (err) {
+    console.error("[billing] Failed to verify activeBillingRunId state:", err);
+  }
+
+  return false;
 }
 
 /**

@@ -686,6 +686,20 @@ export async function setChatRunStatus(
  * whole point: without it, the finally-block would stomp a successful
  * or already-cancelled outcome.
  */
+/**
+ * Transitions a session's status to a terminal state ('completed' or 'failed')
+ * unless the session is already archived.
+ */
+export async function reconcileSessionStatus(
+  sessionId: string,
+  status: "completed" | "failed",
+): Promise<void> {
+  await db
+    .update(sessions)
+    .set({ status, updatedAt: new Date() })
+    .where(and(eq(sessions.id, sessionId), ne(sessions.status, "archived")));
+}
+
 export async function failActiveChatRun(chatId: string): Promise<void> {
   await db
     .update(chats)

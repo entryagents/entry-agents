@@ -87,13 +87,10 @@ mock.module("@entry-agents/agent", () => ({
 // under test dragged in the real "server-only"-guarded DB client.
 mock.module("@/lib/billing/credit-ledger", () => ({
   releaseUserBillingTurn: mock(() => Promise.resolve()),
-  // debitUsage prices SUBAGENT usage against the billing catalog (see
-  // recordWorkflowUsage's own comment on why main-turn usage bills
-  // elsewhere) -- left out of the earlier mock and only surfaced once
-  // that call path executed, silently swallowing the *rest* of the
-  // same try block including the unrelated main-agent recordUsage call
-  // below it.
   debitUsage: mock(() => Promise.resolve(0)),
+  recordBillableUsage: mock(() => Promise.resolve({ balanceCents: 100, chargedCents: 0, duplicate: false })),
+  heartbeatUserBillingTurn: mock(() => Promise.resolve(true)),
+  claimUserBillingTurn: mock(() => Promise.resolve(true)),
 }));
 
 // fetchAvailableLanguageModels() is already wrapped in a .catch(() =>

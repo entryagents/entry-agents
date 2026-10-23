@@ -43,7 +43,7 @@ import {
 } from "@/hooks/use-session-git-status";
 import { useSessionSkills } from "@/hooks/use-session-skills";
 import type { Chat, Session } from "@/lib/db/schema";
-import { type ModelOption, withMissingModelOption } from "@/lib/model-options";
+import { type ModelOption, withMissingModelOption, getDefaultModelOptionId } from "@/lib/model-options";
 import {
   clearSandboxResumeState,
   clearSandboxState,
@@ -382,6 +382,7 @@ export function SessionChatProvider({
     () => withMissingModelOption(baseModelOptions, chatInfo.modelId),
     [baseModelOptions, chatInfo.modelId],
   );
+
   const modelOptionsLoading =
     modelOptions.length === 0 && modelOptionsLoadingFromApi;
   const contextLimit = useMemo(
@@ -1140,6 +1141,21 @@ export function SessionChatProvider({
     },
     [sessionRecord.id, chatInfo.id],
   );
+
+  // Self-heal stale / dead model: if the chat was saved on a model that has since
+  // been removed from the gateway or disabled by admin, automatically transition
+  // this chat to a healthy active model so the user is never stuck sending to a dead route.
+  useEffect(() => {
+    if (
+      !modelOptionsLoadingFromApi &&
+      allModelOptions.length > 0 &&
+      chatInfo.modelId &&
+      !allModelOptions.some((o) => o.id === chatInfo.modelId)
+    ) {
+      const fallbackId = getDefaultModelOptionId(allModelOptions);
+      void updateChatModel(fallbackId);
+    }
+  }, [allModelOptions, chatInfo.modelId, modelOptionsLoadingFromApi, updateChatModel]);
 
   const updateChatReasoningEffort = useCallback(
     async (reasoningEffort: string | null) => {
