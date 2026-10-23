@@ -67,13 +67,13 @@ function ConnectionsPageSkeleton() {
 const baseSidebarItems = [
   {
     id: "profile",
-    label: "Profile",
+    label: "Profile & Usage",
     href: "/settings/profile",
     icon: User,
   },
   {
-    id: "billing",
-    label: "Billing",
+    id: "pricing",
+    label: "Pricing & Plans",
     href: "/pricing",
     icon: CreditCard,
   },

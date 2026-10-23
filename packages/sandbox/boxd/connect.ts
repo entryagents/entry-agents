@@ -49,15 +49,24 @@ async function bootstrapWorkspace(
     const branch = source.branch
       ? ` --branch ${shellEscape(source.branch)}`
       : "";
-    const command = hasRepository.success
-      ? `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} fetch --all --prune` +
-        (source.branch
-          ? ` && ${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} checkout ${shellEscape(source.branch)}`
-          : "")
-      : `${git} clone${branch} ${shellEscape(source.repo)} ${shellEscape(BOXD_WORKING_DIRECTORY)}`;
-    const result = await sandbox.exec(command, BOXD_WORKING_DIRECTORY, 180_000);
-    if (!result.success) {
-      throw new Error(`Failed to prepare workspace: ${result.stderr.trim()}`);
+    if (hasRepository.success) {
+      if (options?.githubToken) {
+        const fetchCmd =
+          `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} fetch --all --prune` +
+          (source.branch
+            ? ` && ${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} checkout ${shellEscape(source.branch)}`
+            : "");
+        const fetchRes = await sandbox.exec(fetchCmd, BOXD_WORKING_DIRECTORY, 60_000);
+        if (!fetchRes.success) {
+          console.warn("[boxd] Workspace git fetch warning:", fetchRes.stderr);
+        }
+      }
+    } else {
+      const command = `${git} clone${branch} ${shellEscape(source.repo)} ${shellEscape(BOXD_WORKING_DIRECTORY)}`;
+      const result = await sandbox.exec(command, BOXD_WORKING_DIRECTORY, 180_000);
+      if (!result.success) {
+        throw new Error(`Failed to prepare workspace: ${result.stderr.trim()}`);
+      }
     }
 
     if (source.newBranch) {
@@ -200,7 +209,40 @@ export async function connectBoxd(
     await client.machines.resume(machine.id);
   }
 
-  await client.machines.waitUntilReady(machine.id);
+  try {
+    await client.machines.waitUntilReady(machine.id);
+  } catch (readyError) {
+    const errorMsg =
+      readyError instanceof Error ? readyError.message : String(readyError);
+    if (
+      errorMsg.includes("exec did not succeed") ||
+      errorMsg.includes("terminal state") ||
+      errorMsg.includes("did not reach 'running'")
+    ) {
+      console.warn(
+        `[boxd] Machine ${machine.id} (${machine.name}) is hung/unhealthy: ${errorMsg}. Evicting and provisioning fresh VM.`,
+      );
+      await client.machines.delete(machine.id).catch(() => {});
+      machine = await client.machines.create({
+        name,
+        image: options?.image ?? "ubuntu:24.04",
+        isolated: false,
+        restartPolicy: "never",
+        config: {
+          vcpu: BOXD_VCPU,
+          memory: BOXD_MEMORY,
+          disk: BOXD_DISK,
+          autoSuspendTimeout: 300,
+          autoDestroyTimeout: 0,
+          ssh: true,
+        },
+      });
+      await client.machines.setAutoHibernateTimeout(machine.id, 1200);
+      await client.machines.waitUntilReady(machine.id);
+    } else {
+      throw readyError;
+    }
+  }
   await client.machines
     .setBotProtection(machine.id, false)
     .catch(() => undefined);

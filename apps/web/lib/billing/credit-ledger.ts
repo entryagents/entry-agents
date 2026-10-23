@@ -301,77 +301,55 @@ export async function getUsageWindowTotals(
   const now = Date.now();
   const mode = await getUserGoatWindowMode(userId);
 
+  const userRow = await db
+    .select({
+      billingCycleAnchor: users.billingCycleAnchor,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+  const anchorMs = (
+    userRow[0]?.billingCycleAnchor ??
+    userRow[0]?.createdAt ??
+    new Date(now - THIRTY_DAYS_MS)
+  ).getTime();
+
+  // The 30d window is the permanent fixed monthly cycle usage.
+  // It anchors to the active billing cycle and resets only when the subscription renews.
+  // It NEVER rolls away past days.
+  const cycleStart30dMs = anchorMs;
+  const resetsAt30d = new Date(anchorMs + THIRTY_DAYS_MS).toISOString();
+  const cutoff30d = new Date(cycleStart30dMs);
+
+  let cutoff5hIso: string;
+  let cutoff7dIso: string;
+  let resetsAt5h: string | null = null;
+  let resetsAt7d: string | null = null;
+
   if (mode === "fixed") {
-    const userRow = await db
-      .select({
-        billingCycleAnchor: users.billingCycleAnchor,
-        createdAt: users.createdAt,
-      })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    const anchorMs = (
-      userRow[0]?.billingCycleAnchor ??
-      userRow[0]?.createdAt ??
-      new Date(0)
-    ).getTime();
-
-    const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
-    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-
     const cycleStart5hMs =
       anchorMs +
       Math.max(0, Math.floor((now - anchorMs) / FIVE_HOURS_MS)) * FIVE_HOURS_MS;
     const cycleStart7dMs =
       anchorMs +
       Math.max(0, Math.floor((now - anchorMs) / SEVEN_DAYS_MS)) * SEVEN_DAYS_MS;
-    const cycleStart30dMs =
-      anchorMs +
-      Math.max(0, Math.floor((now - anchorMs) / THIRTY_DAYS_MS)) *
-        THIRTY_DAYS_MS;
 
-    const resetsAt5h = new Date(cycleStart5hMs + FIVE_HOURS_MS).toISOString();
-    const resetsAt7d = new Date(cycleStart7dMs + SEVEN_DAYS_MS).toISOString();
-    const resetsAt30d = new Date(
-      cycleStart30dMs + THIRTY_DAYS_MS,
-    ).toISOString();
+    resetsAt5h = new Date(cycleStart5hMs + FIVE_HOURS_MS).toISOString();
+    resetsAt7d = new Date(cycleStart7dMs + SEVEN_DAYS_MS).toISOString();
 
-    const cutoff5hIso = new Date(cycleStart5hMs).toISOString();
-    const cutoff7dIso = new Date(cycleStart7dMs).toISOString();
-    const cutoff30d = new Date(cycleStart30dMs);
-
-    const [row] = await db
-      .select({
-        last5HoursCents: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} >= ${cutoff5hIso}::timestamptz then -${creditTransactions.amountCents} else 0 end), 0)::int`,
-        last7DaysCents: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} >= ${cutoff7dIso}::timestamptz then -${creditTransactions.amountCents} else 0 end), 0)::int`,
-        last30DaysCents: sql<number>`coalesce(sum(-${creditTransactions.amountCents}), 0)::int`,
-      })
-      .from(creditTransactions)
-      .where(
-        and(
-          eq(creditTransactions.userId, userId),
-          eq(creditTransactions.type, "usage_debit"),
-          gte(creditTransactions.createdAt, cutoff30d),
-        ),
-      );
-
-    return {
-      last5HoursCents: row?.last5HoursCents ?? 0,
-      last7DaysCents: row?.last7DaysCents ?? 0,
-      last30DaysCents: row?.last30DaysCents ?? 0,
-      mode: "fixed",
-      resetsAt5h,
-      resetsAt7d,
-      resetsAt30d,
-    };
+    cutoff5hIso = new Date(cycleStart5hMs).toISOString();
+    cutoff7dIso = new Date(cycleStart7dMs).toISOString();
+  } else {
+    // Rolling / sliding 5h and 7d sub-windows
+    cutoff5hIso = new Date(now - FIVE_HOURS_MS).toISOString();
+    cutoff7dIso = new Date(now - SEVEN_DAYS_MS).toISOString();
   }
-
-  // Rolling / sliding window mode
-  const cutoff5hIso = new Date(now - 5 * 60 * 60 * 1000).toISOString();
-  const cutoff7dIso = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const cutoff30d = new Date(now - 30 * 24 * 60 * 60 * 1000);
 
   const [row] = await db
     .select({
@@ -392,7 +370,10 @@ export async function getUsageWindowTotals(
     last5HoursCents: row?.last5HoursCents ?? 0,
     last7DaysCents: row?.last7DaysCents ?? 0,
     last30DaysCents: row?.last30DaysCents ?? 0,
-    mode: "rolling",
+    mode,
+    resetsAt5h,
+    resetsAt7d,
+    resetsAt30d,
   };
 }
 

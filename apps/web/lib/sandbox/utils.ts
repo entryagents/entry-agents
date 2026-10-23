@@ -195,7 +195,13 @@ export function isSandboxUnavailableError(message: string): boolean {
     normalized.includes("sandbox is not running") ||
     normalized.includes("sandbox_timed_out") ||
     normalized.includes("has already finished") ||
-    normalized.includes("sandbox has been terminated")
+    normalized.includes("sandbox has been terminated") ||
+    normalized.includes("exec did not succeed") ||
+    normalized.includes("terminal state") ||
+    normalized.includes("did not reach 'running'") ||
+    normalized.includes("boxderror") ||
+    normalized.includes("machine reached 'running'") ||
+    normalized.includes("machine not found")
   );
 }
 
@@ -263,8 +269,13 @@ export function clearSandboxResumeState(
 ): SandboxState | null {
   if (!state) return null;
 
-  if (state.type === "modal" || state.type === "boxd") {
+  if (state.type === "modal") {
     return clearSandboxState(state);
+  }
+
+  if (state.type === "boxd") {
+    const source = (state as { source?: unknown }).source;
+    return { type: "boxd", ...(source ? { source } : {}) } as SandboxState;
   }
 
   return { type: state.type } as SandboxState;

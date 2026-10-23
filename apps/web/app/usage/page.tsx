@@ -1,21 +1,9 @@
-import type { Metadata } from "next";
-import { UsageClient } from "./usage-client";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Usage & Balance",
-  description:
-    "Real-time Entry account credit balance, rolling usage windows, and agent compute telemetry.",
-  alternates: {
-    canonical: "/usage",
-  },
-  openGraph: {
-    url: "/usage",
-    title: "Usage & Balance — Entry Agents",
-  },
-};
-
-export const dynamic = "force-dynamic";
-
+/**
+ * Usage is private account telemetry and is merged with the user's
+ * Profile & Settings page. Redirect all visits to /settings/profile.
+ */
 export default function UsagePage() {
-  return <UsageClient />;
+  redirect("/settings/profile");
 }

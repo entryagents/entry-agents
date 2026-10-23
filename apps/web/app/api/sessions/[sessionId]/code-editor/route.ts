@@ -64,6 +64,7 @@ async function connectCodeEditorSandbox(sessionId: string, userId: string) {
   try {
     const sandbox = await connectSandbox(sandboxState, {
       ports: DEFAULT_SANDBOX_PORTS,
+      skipGitWorkspaceBootstrap: true,
     });
 
     return {

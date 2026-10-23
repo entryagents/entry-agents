@@ -94,10 +94,8 @@ export function computeFixedWindowBoundaries(
   const cycleStart7dMs =
     anchorMs +
     Math.max(0, Math.floor((nowMs - anchorMs) / SEVEN_DAYS_MS)) * SEVEN_DAYS_MS;
-  const cycleStart30dMs =
-    anchorMs +
-    Math.max(0, Math.floor((nowMs - anchorMs) / THIRTY_DAYS_MS)) *
-      THIRTY_DAYS_MS;
+  // The monthly cycle is fixed to the billing cycle anchor and resets at renewal
+  const cycleStart30dMs = anchorMs;
 
   return {
     cycleStart5hMs,
@@ -105,7 +103,7 @@ export function computeFixedWindowBoundaries(
     cycleStart30dMs,
     resetsAt5h: new Date(cycleStart5hMs + FIVE_HOURS_MS).toISOString(),
     resetsAt7d: new Date(cycleStart7dMs + SEVEN_DAYS_MS).toISOString(),
-    resetsAt30d: new Date(cycleStart30dMs + THIRTY_DAYS_MS).toISOString(),
+    resetsAt30d: new Date(anchorMs + THIRTY_DAYS_MS).toISOString(),
   };
 }
 

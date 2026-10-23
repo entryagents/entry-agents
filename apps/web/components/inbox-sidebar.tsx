@@ -20,6 +20,8 @@ import {
   SmilePlus,
   Sun,
   X,
+  CreditCard,
+  User,
 } from "lucide-react";
 import { useTheme } from "@/app/providers";
 import { EntryMark } from "@/components/entry-mark";
@@ -1309,31 +1311,38 @@ export function InboxSidebar({
           {sidebarUser ? (
             <div className="border-t border-border p-3">
               <div className="flex items-center gap-2 rounded-lg p-2">
-                <Avatar className="h-9 w-9 shrink-0">
-                  {sidebarUser.avatar ? (
-                    <AvatarImage
-                      src={sidebarUser.avatar}
-                      alt={sidebarUser.username}
-                    />
-                  ) : null}
-                  <AvatarFallback>
-                    {getAvatarFallback(sidebarUser.username)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <p className="truncate text-sm font-semibold leading-none text-foreground">
-                      {sidebarUser.username}
-                    </p>
-                    <SidebarPlanBadge />
+                <button
+                  type="button"
+                  onClick={() => router.push("/settings/profile")}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left transition-opacity hover:opacity-85 cursor-pointer"
+                  aria-label="Open profile and usage"
+                >
+                  <Avatar className="h-9 w-9 shrink-0">
+                    {sidebarUser.avatar ? (
+                      <AvatarImage
+                        src={sidebarUser.avatar}
+                        alt={sidebarUser.username}
+                      />
+                    ) : null}
+                    <AvatarFallback>
+                      {getAvatarFallback(sidebarUser.username)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate text-sm font-semibold leading-none text-foreground">
+                        {sidebarUser.username}
+                      </p>
+                      <SidebarPlanBadge />
+                    </div>
+                    {sidebarUser.email ? (
+                      <p className="mt-1 truncate text-xs text-muted-foreground">
+                        {sidebarUser.email}
+                      </p>
+                    ) : null}
                   </div>
-                  {sidebarUser.email ? (
-                    <p className="mt-1 truncate text-xs text-muted-foreground">
-                      {sidebarUser.email}
-                    </p>
-                  ) : null}
-                </div>
-                <SidebarBalancePill />
+                  <SidebarBalancePill />
+                </button>
                 <Button
                   type="button"
                   variant="ghost"
@@ -1575,19 +1584,19 @@ export function InboxSidebar({
                         type="button"
                         onClick={() => {
                           setProfileMenuOpen(false);
-                          router.push("/settings");
+                          router.push("/settings/profile");
                         }}
                         className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
                       >
-                        <span>Settings</span>
-                        <Settings className="h-4 w-4 text-muted-foreground" />
+                        <span>Profile &amp; Usage</span>
+                        <User className="h-4 w-4 text-muted-foreground" />
                       </button>
 
                       <button
                         type="button"
                         onClick={() => {
                           setProfileMenuOpen(false);
-                          router.push("/billing/plans");
+                          router.push("/settings/profile");
                         }}
                         className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
                       >
@@ -1608,7 +1617,7 @@ export function InboxSidebar({
                         type="button"
                         onClick={() => {
                           setProfileMenuOpen(false);
-                          router.push("/usage");
+                          router.push("/settings/profile");
                         }}
                         className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
                       >
@@ -1616,6 +1625,30 @@ export function InboxSidebar({
                         <span className="font-mono text-xs tabular-nums text-muted-foreground">
                           {creditDisplay}
                         </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          router.push("/pricing");
+                        }}
+                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      >
+                        <span>Pricing &amp; Plans</span>
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProfileMenuOpen(false);
+                          router.push("/settings");
+                        }}
+                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      >
+                        <span>Settings</span>
+                        <Settings className="h-4 w-4 text-muted-foreground" />
                       </button>
                     </div>
 

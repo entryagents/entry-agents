@@ -135,6 +135,8 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
   let hasToolDuplicates = false;
   const filteredParts: WebAgentUIMessage["parts"] = [];
 
+  let lastTextIndex = -1;
+
   for (const part of withDedupedReasoning.parts) {
     const toolIdentity = getToolCallIdentity(part);
     if (toolIdentity) {
@@ -160,6 +162,34 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
       }
 
       seenToolCalls.set(toolIdentity, filteredParts.length);
+      filteredParts.push(part);
+      lastTextIndex = -1;
+      continue;
+    }
+
+    if (part.type === "text") {
+      const newText = (part.text ?? "").trim();
+      if (!newText) {
+        continue;
+      }
+      if (lastTextIndex >= 0) {
+        const prevTextPart = filteredParts[lastTextIndex] as { type: "text"; text: string };
+        const prevText = (prevTextPart.text ?? "").trim();
+        if (prevText === newText) {
+          hasToolDuplicates = true;
+          continue;
+        }
+        if (newText.startsWith(prevText)) {
+          hasToolDuplicates = true;
+          filteredParts[lastTextIndex] = part;
+          continue;
+        }
+        if (prevText.startsWith(newText)) {
+          hasToolDuplicates = true;
+          continue;
+        }
+      }
+      lastTextIndex = filteredParts.length;
       filteredParts.push(part);
       continue;
     }

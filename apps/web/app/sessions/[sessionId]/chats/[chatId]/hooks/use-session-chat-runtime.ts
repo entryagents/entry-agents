@@ -424,11 +424,6 @@ export function useSessionChatRuntime({
   // 204 when there's no active stream (cheap), so this is safe to call
   // speculatively.
   useEffect(() => {
-    if (initialChatActiveStreamId) {
-      // Normal resume path handles this; don't double-probe.
-      return;
-    }
-
     const lastMessage = chatInstance.messages[chatInstance.messages.length - 1];
     const endsWithUserMessage = lastMessage?.role === "user";
     const hasUnfinishedAssistant =
@@ -438,8 +433,9 @@ export function useSessionChatRuntime({
           (p.type as string) === "step-finish" ||
           (p.type as string) === "finish",
       );
-    if (!endsWithUserMessage && !hasUnfinishedAssistant) {
-      // No unanswered user turn and no in-flight assistant — no reason to expect a running stream.
+
+    // If there is no active stream recorded and no in-flight turn, skip
+    if (!initialChatActiveStreamId && !endsWithUserMessage && !hasUnfinishedAssistant) {
       return;
     }
 
