@@ -700,9 +700,16 @@ async function resolveChatModelRuntime(params: {
     if (plan.modelAccess === "luna-only" && adminFreeTierModel !== "__all__") {
       const allowedModel = adminFreeTierModel ?? FREE_PLAN_MODEL_ID;
       const isAllowed =
+        !selectedModelId ||
         selectedModelId === allowedModel ||
-        FREE_TIER_ALLOWED_MODEL_IDS.includes(selectedModelId ?? "");
+        FREE_TIER_ALLOWED_MODEL_IDS.includes(selectedModelId);
       if (!isAllowed) {
+        return {
+          blockedNotice:
+            "This model requires a paid plan. Upgrade your plan to chat with paid models.",
+        };
+      }
+      if (!selectedModelId) {
         selectedModelId = allowedModel;
       }
     }
@@ -776,7 +783,7 @@ async function resolveChatModelRuntime(params: {
             ? `Your Entry plan's 5-hour usage window is full -- $${limitUsd} of usage per rolling 5 hours. It refills continuously as your oldest usage slides out; try again in a little while.`
             : exceeded === "weekly"
               ? `Your Entry plan's weekly usage window is full -- $${limitUsd} of usage per rolling 7 days. It refills as your oldest usage slides out of the week; try again later.`
-              : `Your Entry plan's overall monthly usage limit of $${limitUsd} has been reached. Generation is stopped until your next subscription billing cycle.`,
+              : `You have exhausted your monthly usage of $${limitUsd}. Upgrade your plan or top up credit to continue.`,
       };
     }
 

@@ -29,6 +29,7 @@ import {
   SidebarBalancePill,
   SidebarPlanBadge,
   useBillingMe,
+  formatExpirationDate,
 } from "@/components/sidebar-billing-widget";
 import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
@@ -1593,6 +1594,15 @@ export function InboxSidebar({
                         <span>Plan</span>
                         <SidebarPlanBadge showIcon />
                       </button>
+
+                      {billingData?.expiresAt ? (
+                        <div className="flex w-full items-center justify-between px-3.5 py-1.5 text-[12px] text-muted-foreground">
+                          <span>Expires</span>
+                          <span className="font-mono text-xs tabular-nums text-foreground/80">
+                            {formatExpirationDate(billingData.expiresAt)}
+                          </span>
+                        </div>
+                      ) : null}
 
                       <button
                         type="button"

@@ -158,9 +158,6 @@ import { SandboxCreateErrorBanner } from "./sandbox-create-error-banner";
 import { WorkspaceFileViewer } from "./workspace-file-viewer";
 import "streamdown/styles.css";
 
-/** Minimum interval between textarea-focus activity pings (5 minutes). */
-const ACTIVITY_PING_THROTTLE_MS = 5 * 60 * 1000;
-
 const DiffViewer = dynamic(
   () => import("./diff-viewer").then((m) => m.DiffViewer),
   { ssr: false },
@@ -1142,7 +1139,6 @@ export function SessionChatContent({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isMountedRef = useRef(true);
   const copyResetTimeoutRef = useRef<number | null>(null);
-  const lastActivityPingRef = useRef(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -1316,7 +1312,26 @@ export function SessionChatContent({
   // it's the more urgent, platform-wide reason. Both share the exact
   // same hard-lock overlay/composer treatment below -- only the message
   // text differs.
-  const composerGate = freeTierGate ?? creditGate;
+  const isPaidModelBlockedForFreeUser = useMemo(() => {
+    if (userPlan?.modelAccess !== "luna-only") return false;
+    const allowed =
+      freePlanModelId ?? "moonshotai/moonlight-16b-a3b-instruct:free";
+    const currentModel = chatInfo.modelId;
+    if (!currentModel) return false;
+    return (
+      currentModel !== allowed &&
+      !FREE_TIER_ALLOWED_MODEL_IDS.includes(currentModel)
+    );
+  }, [userPlan?.modelAccess, freePlanModelId, chatInfo.modelId]);
+
+  const paidModelGate = isPaidModelBlockedForFreeUser
+    ? {
+        reason:
+          "This model requires a paid plan. Upgrade your plan to chat with paid models.",
+      }
+    : null;
+
+  const composerGate = freeTierGate ?? creditGate ?? paidModelGate;
   const {
     chat,
     contextLimit,

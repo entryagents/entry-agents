@@ -15,7 +15,11 @@ function getReasoningItemId(
     | undefined;
 
   const provider =
-    meta?.openai ?? meta?.azure ?? meta?.anthropic ?? meta?.google ?? meta?.gateway;
+    meta?.openai ??
+    meta?.azure ??
+    meta?.anthropic ??
+    meta?.google ??
+    meta?.gateway;
   const itemId = provider?.itemId ?? provider?.id;
   return typeof itemId === "string" ? itemId : undefined;
 }
@@ -139,10 +143,15 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
         const existingIndex = seenToolCalls.get(toolIdentity)!;
         const existingPart = filteredParts[existingIndex] as WebAgentUIToolPart;
         const newPart = part as WebAgentUIToolPart;
-        const existingPre = Boolean((existingPart as unknown as { preliminary?: boolean }).preliminary);
-        const newPre = Boolean((newPart as unknown as { preliminary?: boolean }).preliminary);
+        const existingPre = Boolean(
+          (existingPart as unknown as { preliminary?: boolean }).preliminary,
+        );
+        const newPre = Boolean(
+          (newPart as unknown as { preliminary?: boolean }).preliminary,
+        );
         const isNewMoreComplete =
-          (newPart.state === "output-available" && existingPart.state !== "output-available") ||
+          (newPart.state === "output-available" &&
+            existingPart.state !== "output-available") ||
           (!newPre && existingPre);
         if (isNewMoreComplete) {
           filteredParts[existingIndex] = part;
@@ -170,7 +179,9 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
  * 1. Deduplicates parts within each message.
  * 2. Deduplicates messages by id and prevents identical consecutive assistant blocks from stream re-attaches.
  */
-export function dedupeMessageList<T extends WebAgentUIMessage>(messages: T[]): T[] {
+export function dedupeMessageList<T extends WebAgentUIMessage>(
+  messages: T[],
+): T[] {
   if (!messages || messages.length === 0) {
     return [];
   }
@@ -178,8 +189,8 @@ export function dedupeMessageList<T extends WebAgentUIMessage>(messages: T[]): T
   const result: T[] = [];
   const seenMessageIds = new Set<string>();
 
-  for (let i = 0; i < messages.length; i++) {
-    const msg = dedupeMessageParts(messages[i]);
+  for (const rawMsg of messages) {
+    const msg = dedupeMessageParts(rawMsg);
 
     if (seenMessageIds.has(msg.id)) {
       const existingIdx = result.findIndex((m) => m.id === msg.id);

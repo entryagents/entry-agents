@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { dedupeMessageReasoning } from "./dedupe-message-reasoning";
+import { dedupeMessageReasoning, dedupeMessageParts, dedupeMessageList } from "./dedupe-message-reasoning";
 import type { WebAgentUIMessage } from "@/app/types";
 
 /** Helper to build a minimal assistant message with the given parts. */
@@ -137,8 +137,6 @@ describe("dedupeMessageReasoning", () => {
     expect(original.parts).toHaveLength(originalPartsLength);
   });
 });
-
-import { dedupeMessageParts, dedupeMessageList } from "./dedupe-message-reasoning";
 
 describe("dedupeMessageParts", () => {
   test("removes duplicate reasoning with identical text even without itemId", () => {

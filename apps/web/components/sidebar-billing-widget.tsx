@@ -17,12 +17,28 @@ export interface BillingMeResponse {
   planName: string;
   creditBalanceCents: number;
   creditGrantCents: number;
+  billingCycleAnchor?: string | null;
+  expiresAt?: string | null;
   usageWindows?: {
     mode?: "rolling" | "fixed";
     fiveHour: UsageWindowMetric;
     weekly: UsageWindowMetric;
     monthly: UsageWindowMetric;
   } | null;
+}
+
+export function formatExpirationDate(isoString: string): string {
+  try {
+    const d = new Date(isoString);
+    if (Number.isNaN(d.getTime())) return "";
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return "";
+  }
 }
 
 const BILLING_SWR_KEY = "/api/billing/me";
@@ -290,7 +306,11 @@ export function DesktopCodexBillingStatus() {
           return (
             <div
               key={label}
-              title={label === "30d" ? `Monthly Limit: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)` : `Rolling ${label}: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`}
+              title={
+                label === "30d"
+                  ? `Monthly Limit: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`
+                  : `Rolling ${label}: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`
+              }
               className="rounded-lg border border-border/60 bg-background/75 px-1.5 py-1"
             >
               <div className="flex items-center justify-between font-mono text-[10px] leading-none">
@@ -329,6 +349,14 @@ export function DesktopCodexBillingStatus() {
           );
         })}
       </div>
+      {data.expiresAt ? (
+        <div className="flex items-center justify-between border-t border-border/40 pt-1 text-[10px] text-muted-foreground/80">
+          <span>Expires</span>
+          <span className="font-mono font-medium text-foreground/90">
+            {formatExpirationDate(data.expiresAt)}
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }

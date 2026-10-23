@@ -43,6 +43,7 @@ import {
   clearSandboxState,
   getSessionSandboxName,
   hasResumableSandboxState,
+  isSandboxState,
 } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
@@ -229,8 +230,16 @@ export async function POST(req: Request) {
     // actually selected.
     const provider = requireSandboxProvider(activeProviderId);
 
+    const existingState = isSandboxState(sessionRecord?.sandboxState)
+      ? sessionRecord.sandboxState
+      : undefined;
+
     sandbox = await connectSandbox({
-      state: provider.buildProvisionState({ sessionId, source }),
+      state: provider.buildProvisionState({
+        sessionId,
+        source,
+        existing: existingState,
+      }),
       options: {
         githubToken: setupToken?.token,
         gitUser,

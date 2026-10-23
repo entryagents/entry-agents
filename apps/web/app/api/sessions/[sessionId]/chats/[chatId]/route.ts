@@ -50,6 +50,37 @@ export interface ChatRefreshResponse {
   messages: WebAgentUIMessage[];
 }
 
+function normalizeStoredMessage(m: {
+  id: string;
+  role: string;
+  parts: unknown;
+  createdAt?: Date;
+}): WebAgentUIMessage {
+  const raw = m.parts as unknown;
+  if (Array.isArray(raw)) {
+    return {
+      id: m.id,
+      role: m.role as WebAgentUIMessage["role"],
+      parts: raw,
+    } as WebAgentUIMessage;
+  }
+  if (raw && typeof raw === "object") {
+    const obj = raw as { id?: unknown; role?: unknown; parts?: unknown };
+    return {
+      id: typeof obj.id === "string" ? obj.id : m.id,
+      role: (typeof obj.role === "string"
+        ? obj.role
+        : m.role) as WebAgentUIMessage["role"],
+      parts: Array.isArray(obj.parts) ? obj.parts : [],
+    } as WebAgentUIMessage;
+  }
+  return {
+    id: m.id,
+    role: m.role as WebAgentUIMessage["role"],
+    parts: [],
+  } as WebAgentUIMessage;
+}
+
 export async function GET(req: Request, context: RouteContext) {
   const authResult = await requireAuthenticatedUser();
   if (!authResult.ok) {
@@ -89,7 +120,7 @@ export async function GET(req: Request, context: RouteContext) {
     },
     status: chatContext.chat.status,
     isStreaming: chatContext.chat.activeStreamId !== null,
-    messages: messages.map((message) => message.parts as WebAgentUIMessage),
+    messages: messages.map((message) => normalizeStoredMessage(message)),
   } satisfies ChatRefreshResponse);
 }
 

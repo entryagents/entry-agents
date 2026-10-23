@@ -431,8 +431,15 @@ export function useSessionChatRuntime({
 
     const lastMessage = chatInstance.messages[chatInstance.messages.length - 1];
     const endsWithUserMessage = lastMessage?.role === "user";
-    if (!endsWithUserMessage) {
-      // No unanswered user turn — no reason to expect a running stream.
+    const hasUnfinishedAssistant =
+      lastMessage?.role === "assistant" &&
+      !lastMessage.parts.some(
+        (p) =>
+          (p.type as string) === "step-finish" ||
+          (p.type as string) === "finish",
+      );
+    if (!endsWithUserMessage && !hasUnfinishedAssistant) {
+      // No unanswered user turn and no in-flight assistant — no reason to expect a running stream.
       return;
     }
 

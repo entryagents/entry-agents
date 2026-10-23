@@ -130,9 +130,6 @@ export async function connectBoxd(
       machine = await client.machines.create({
         name,
         image: options?.image ?? "ubuntu:24.04",
-        // Use the default network so workspace commands have outbound internet
-        // access for GitHub, package registries, web fetch, and model tooling.
-        // The machine is still private to the workspace and has no public proxy.
         isolated: false,
         restartPolicy: "never",
         config: {
@@ -145,19 +142,54 @@ export async function connectBoxd(
         },
       });
     } catch (error) {
-      // Resume is frequently triggered by both the editor and lifecycle
-      // monitor. If they race, boxd may report that the deterministic name
-      // is already taken even though the first request created the machine.
-      // Resolve the existing named machine instead of surfacing a false
-      // restore failure.
       const message = error instanceof Error ? error.message : String(error);
-      if (!message.toLowerCase().includes("already taken")) throw error;
-      machine = await client.machines.get(name).catch(() => null);
-      if (!machine) {
-        const machines = await client.machines.list();
-        machine = machines.find((candidate) => candidate.name === name) ?? null;
+      if (
+        message.toLowerCase().includes("limit reached") ||
+        message.toLowerCase().includes("destroy an org vm")
+      ) {
+        // Evict oldest inactive VMs to recover org capacity
+        try {
+          const allMachines = await client.machines.list().catch(() => []);
+          const inactive = allMachines
+            .filter((m) => m.name !== name && m.status !== "running")
+            .sort(
+              (a, b) =>
+                new Date(a.createdAt || 0).getTime() -
+                new Date(b.createdAt || 0).getTime(),
+            );
+          for (const victim of inactive.slice(0, 10)) {
+            await client.machines.delete(victim.id).catch(() => {});
+          }
+          // Retry create after cleanup
+          machine = await client.machines.create({
+            name,
+            image: options?.image ?? "ubuntu:24.04",
+            isolated: false,
+            restartPolicy: "never",
+            config: {
+              vcpu: BOXD_VCPU,
+              memory: BOXD_MEMORY,
+              disk: BOXD_DISK,
+              autoSuspendTimeout: 300,
+              autoDestroyTimeout: 0,
+              ssh: true,
+            },
+          });
+        } catch (retryErr) {
+          console.error("[boxd] Capacity eviction/recreate failed:", retryErr);
+        }
       }
-      if (!machine) throw error;
+
+      if (!machine) {
+        if (!message.toLowerCase().includes("already taken")) throw error;
+        machine = await client.machines.get(name).catch(() => null);
+        if (!machine) {
+          const machines = await client.machines.list();
+          machine =
+            machines.find((candidate) => candidate.name === name) ?? null;
+        }
+        if (!machine) throw error;
+      }
     }
     await client.machines.setAutoHibernateTimeout(machine.id, 1200);
   } else if (machine.status === "stopped") {

@@ -70,12 +70,23 @@ export async function GET() {
     };
   }
 
+  const anchorDate = state.billingCycleAnchor
+    ? new Date(state.billingCycleAnchor)
+    : null;
+  const isPaidPlan = state.plan && state.plan !== "free";
+  const expiresAt =
+    anchorDate && isPaidPlan
+      ? new Date(anchorDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
   return Response.json(
     {
       plan: state.plan,
       planName: plan.name,
       creditBalanceCents: state.creditBalanceCents,
       creditGrantCents: plan.creditGrantCents,
+      billingCycleAnchor: anchorDate?.toISOString() ?? null,
+      expiresAt,
       usageWindows,
     },
     {
