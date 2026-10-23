@@ -335,6 +335,19 @@ const BILLING_TURN_RELEASE_RETRY_DELAY_MS = 50;
  * throws, since a stuck lock self-heals via the staleness fallback
  * anyway -- this is just the fast path.
  */
+export async function reconcileSessionStatusStep(
+  sessionId: string,
+  status: "completed" | "failed",
+): Promise<void> {
+  "use step";
+  try {
+    const { reconcileSessionStatus } = await import("@/lib/db/sessions");
+    await reconcileSessionStatus(sessionId, status);
+  } catch (error) {
+    console.error("[workflow] Failed to reconcile session status:", error);
+  }
+}
+
 export async function releaseUserBillingTurnStep(
   userId: string,
   workflowRunId: string,
