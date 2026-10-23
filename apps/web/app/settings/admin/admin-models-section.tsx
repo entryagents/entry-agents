@@ -30,7 +30,9 @@ import {
 } from "@/components/ui/tooltip";
 import {
   getAdminFreeTierGateStatus,
+  getAdminFreeTierModel,
   getAdminModelCatalog,
+  setAdminFreeTierModel,
   setAdminModelDisabled,
   setAdminTitleModel,
   type AdminModelCatalogRow,
@@ -152,6 +154,10 @@ export function AdminModelsSection() {
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [titleModelId, setTitleModelState] = useState<string | null>(null);
   const [titlePending, setTitlePending] = useState(false);
+  const [freeTierModelId, setFreeTierModelState] = useState<string | null>(
+    null,
+  );
+  const [freeTierPending, setFreeTierPending] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,9 +174,13 @@ export function AdminModelsSection() {
       .then((settings) => {
         if (!cancelled) setTitleModelState(settings.titleModelId);
       })
-      .catch(() => {
-        // Non-fatal: the selector simply shows the default until loaded.
-      });
+      .catch(() => {});
+
+    getAdminFreeTierModel()
+      .then((modelId) => {
+        if (!cancelled) setFreeTierModelState(modelId);
+      })
+      .catch(() => {});
 
     return () => {
       cancelled = true;
@@ -248,6 +258,32 @@ export function AdminModelsSection() {
     }
   }
 
+  async function handleFreeTierModelChange(next: string) {
+    const value = next === "__default__" ? null : next;
+    const previous = freeTierModelId;
+    setFreeTierModelState(value);
+    setFreeTierPending(true);
+    try {
+      await setAdminFreeTierModel(value);
+      toast.success(
+        value === "__all__"
+          ? "Free tier unlocked for all models"
+          : value
+            ? `Free tier model set to ${value}`
+            : "Free tier model back to default",
+      );
+    } catch (err) {
+      setFreeTierModelState(previous);
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to update free tier model.",
+      );
+    } finally {
+      setFreeTierPending(false);
+    }
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -280,6 +316,36 @@ export function AdminModelsSection() {
               <SelectItem value="__default__">
                 Default (step-5-preview)
               </SelectItem>
+              {(data ?? []).map((row) => (
+                <SelectItem key={row.id} value={row.id}>
+                  {row.id}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border/60 p-3">
+          <div className="min-w-0 max-w-xl">
+            <p className="text-sm font-semibold">Free tier model</p>
+            <p className="text-xs text-muted-foreground">
+              Controls what model users on the Free plan have access to. Select
+              any model on the gateway, allow all models, or use the default.
+            </p>
+          </div>
+          <Select
+            value={freeTierModelId ?? "__default__"}
+            onValueChange={handleFreeTierModelChange}
+            disabled={freeTierPending || !data}
+          >
+            <SelectTrigger className="w-60" aria-label="Free tier model">
+              <SelectValue placeholder="Select a model" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__default__">
+                Default (qwen3.8-flash:free)
+              </SelectItem>
+              <SelectItem value="__all__">All models (unrestricted)</SelectItem>
               {(data ?? []).map((row) => (
                 <SelectItem key={row.id} value={row.id}>
                   {row.id}

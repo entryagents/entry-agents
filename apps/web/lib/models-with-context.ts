@@ -283,6 +283,18 @@ const gatewayModelsResponseSchema = z.object({
         modelType: z.string().nullish(),
         capabilities: z.array(z.string()).optional(),
         context_window: z.number().finite().positive().optional(),
+        contextWindow: z.number().finite().positive().optional(),
+        max_output_tokens: z.number().finite().positive().optional(),
+        maxOutputTokens: z.number().finite().positive().optional(),
+        compaction_threshold: z.number().finite().positive().optional(),
+        compactionThreshold: z.number().finite().positive().optional(),
+        limit: z
+          .object({
+            context: z.number().finite().positive().optional(),
+            output: z.number().finite().positive().optional(),
+          })
+          .passthrough()
+          .optional(),
         cost: z
           .object({
             input: z.number().finite().optional(),
@@ -391,17 +403,35 @@ async function fetchGatewayModelsUncached(): Promise<GatewayModel[]> {
   }
 
   const parsed = gatewayModelsResponseSchema.parse(await response.json());
-  return parsed.data.map((model) => ({
-    ...model,
-    modelType: model.modelType ?? "language",
-    name: model.name ?? model.id,
-    // Workspace access is provided by Entry's agent runtime for every
-    // language model. Preserve gateway-advertised capabilities and make
-    // this capability explicit for plugins and model-aware clients.
-    capabilities: Array.from(
-      new Set([...(model.capabilities ?? []), "workspace"]),
-    ),
-  }));
+  return parsed.data.map((model) => {
+    const context_window =
+      model.context_window ?? model.contextWindow ?? model.limit?.context;
+    const max_output_tokens =
+      model.max_output_tokens ?? model.maxOutputTokens ?? model.limit?.output;
+    const compaction_threshold =
+      model.compaction_threshold ?? model.compactionThreshold;
+
+    return {
+      ...model,
+      ...(typeof context_window === "number" && context_window > 0
+        ? { context_window }
+        : {}),
+      ...(typeof max_output_tokens === "number" && max_output_tokens > 0
+        ? { max_output_tokens }
+        : {}),
+      ...(typeof compaction_threshold === "number" && compaction_threshold > 0
+        ? { compaction_threshold }
+        : {}),
+      modelType: model.modelType ?? "language",
+      name: model.name ?? model.id,
+      // Workspace access is provided by Entry's agent runtime for every
+      // language model. Preserve gateway-advertised capabilities and make
+      // this capability explicit for plugins and model-aware clients.
+      capabilities: Array.from(
+        new Set([...(model.capabilities ?? []), "workspace"]),
+      ),
+    };
+  });
 }
 
 export async function fetchAvailableLanguageModels(): Promise<

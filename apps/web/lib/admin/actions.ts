@@ -472,10 +472,26 @@ export async function setAdminTitleModel(
   await setTitleModelId(modelId, adminUserId);
 }
 
+export async function getAdminFreeTierModel(): Promise<string | null> {
+  await requireAdmin();
+  const { getFreeTierModelId } = await import("@/lib/db/platform-settings");
+  return getFreeTierModelId();
+}
+
+export async function setAdminFreeTierModel(
+  modelId: string | null,
+): Promise<void> {
+  const adminUserId = await requireAdmin();
+  const { setFreeTierModelId } = await import("@/lib/db/platform-settings");
+  await setFreeTierModelId(modelId, adminUserId);
+}
+
 /**
  * Most recently created accounts for the admin Users tab. Admin-only.
  */
-export async function getAdminSignups(limit?: number): Promise<AdminSignupRow[]> {
+export async function getAdminSignups(
+  limit?: number,
+): Promise<AdminSignupRow[]> {
   await requireAdmin();
   return getAdminRecentSignups(limit);
 }

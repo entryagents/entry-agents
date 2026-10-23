@@ -63,13 +63,64 @@ export type ExceededUsageWindow = "fiveHour" | "weekly" | "monthly" | null;
  * Sums of trailing usage_debit spend, produced by
  * getUsageWindowTotals() in credit-ledger.ts.
  */
+export type GoatWindowMode = "rolling" | "fixed";
+
+export function normalizeGoatWindowMode(
+  value: string | null | undefined,
+): GoatWindowMode {
+  return value === "fixed" ? "fixed" : "rolling";
+}
+
+export interface FixedWindowBoundaries {
+  cycleStart5hMs: number;
+  cycleStart7dMs: number;
+  cycleStart30dMs: number;
+  resetsAt5h: string;
+  resetsAt7d: string;
+  resetsAt30d: string;
+}
+
+export function computeFixedWindowBoundaries(
+  anchorMs: number,
+  nowMs: number = Date.now(),
+): FixedWindowBoundaries {
+  const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+  const cycleStart5hMs =
+    anchorMs +
+    Math.max(0, Math.floor((nowMs - anchorMs) / FIVE_HOURS_MS)) * FIVE_HOURS_MS;
+  const cycleStart7dMs =
+    anchorMs +
+    Math.max(0, Math.floor((nowMs - anchorMs) / SEVEN_DAYS_MS)) * SEVEN_DAYS_MS;
+  const cycleStart30dMs =
+    anchorMs +
+    Math.max(0, Math.floor((nowMs - anchorMs) / THIRTY_DAYS_MS)) *
+      THIRTY_DAYS_MS;
+
+  return {
+    cycleStart5hMs,
+    cycleStart7dMs,
+    cycleStart30dMs,
+    resetsAt5h: new Date(cycleStart5hMs + FIVE_HOURS_MS).toISOString(),
+    resetsAt7d: new Date(cycleStart7dMs + SEVEN_DAYS_MS).toISOString(),
+    resetsAt30d: new Date(cycleStart30dMs + THIRTY_DAYS_MS).toISOString(),
+  };
+}
+
 export interface UsageWindowTotals {
-  /** Total usage_debit spend in the trailing 5 hours, USD cents. */
+  /** Total usage_debit spend in the current 5-hour window, USD cents. */
   last5HoursCents: number;
-  /** Total usage_debit spend in the trailing 7 days, USD cents. */
+  /** Total usage_debit spend in the current 7-day window, USD cents. */
   last7DaysCents: number;
-  /** Total usage_debit spend in the trailing 30 days, USD cents. */
+  /** Total usage_debit spend in the current 30-day window, USD cents. */
   last30DaysCents: number;
+  /** Whether the user selected sliding ("rolling") or fixed boundary ("fixed") refill mode. */
+  mode?: GoatWindowMode;
+  resetsAt5h?: string | null;
+  resetsAt7d?: string | null;
+  resetsAt30d?: string | null;
 }
 
 /**

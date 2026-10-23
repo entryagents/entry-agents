@@ -22,20 +22,19 @@ describe("getLifecycleDueAtMs", () => {
   // real Hobby-plan 45-min hard cap. Now the real expiry governs
   // whenever it's known, full stop; `hibernateAfter`/inactivity is only
   // a fallback for sessions with no tracked expiry yet.
-  test("uses the real sandbox expiry even when hibernateAfter is much earlier", () => {
+  test("uses hibernateAfter when earlier than sandbox expiry", () => {
     const baseMs = Date.UTC(2025, 0, 1, 0, 0, 0);
     const expiresAt = new Date(baseMs + 45 * 60 * 1000);
+    const hibernateAfter = new Date(baseMs + 20 * 60 * 1000);
     const record = {
-      // Simulates the old 30-min idle timer firing well before the
-      // real 45-min cap -- must NOT win anymore.
-      hibernateAfter: new Date(baseMs + 15 * 60 * 1000),
+      hibernateAfter,
       lastActivityAt: new Date(baseMs),
       sandboxExpiresAt: expiresAt,
       updatedAt: new Date(baseMs),
     };
 
     expect(lifecycleModule.getLifecycleDueAtMs(record)).toBe(
-      expiresAt.getTime() - SANDBOX_MIGRATION_LEAD_MS,
+      hibernateAfter.getTime(),
     );
   });
 

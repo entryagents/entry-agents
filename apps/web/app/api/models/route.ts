@@ -5,6 +5,7 @@ import { getFreeTierGateStatus } from "@/lib/db/platform-settings";
 import { isUserAdmin } from "@/lib/db/users";
 import { getUserBillingState } from "@/lib/billing/credit-ledger";
 import { getPlanDefinition, FREE_PLAN_MODEL_ID } from "@/lib/billing/plans";
+import { getFreeTierModelId } from "@/lib/db/platform-settings";
 
 const CACHE_CONTROL = "private, no-store";
 
@@ -42,9 +43,12 @@ export async function GET(req: Request) {
       const billingState = await getUserBillingState(session.user.id).catch(
         () => null,
       );
+      const configuredFreeModelId = await getFreeTierModelId();
       const plan = getPlanDefinition(billingState?.plan);
       const balanceCents = billingState?.creditBalanceCents ?? 0;
-      userPlan = { id: plan.id, modelAccess: plan.modelAccess };
+      const effectiveModelAccess =
+        configuredFreeModelId === "__all__" ? "all" : plan.modelAccess;
+      userPlan = { id: plan.id, modelAccess: effectiveModelAccess };
       if (balanceCents <= 0) {
         creditGate = {
           blocked: true,
@@ -57,6 +61,8 @@ export async function GET(req: Request) {
       }
     }
 
+    const configuredFreeModelId = await getFreeTierModelId();
+
     return Response.json(
       {
         models: filterModelsForSession(models, session, req.url),
@@ -66,7 +72,10 @@ export async function GET(req: Request) {
             : null,
         creditGate,
         userPlan,
-        freePlanModelId: FREE_PLAN_MODEL_ID,
+        freePlanModelId:
+          configuredFreeModelId && configuredFreeModelId !== "__all__"
+            ? configuredFreeModelId
+            : FREE_PLAN_MODEL_ID,
       },
       {
         headers: {

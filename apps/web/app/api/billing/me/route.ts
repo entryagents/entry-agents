@@ -35,33 +35,53 @@ export async function GET() {
   // the billing page can render the window status card. Everything
   // else gets null -- windows are exclusive to this plan.
   let usageWindows: {
-    fiveHour: { usedCents: number; limitCents: number };
-    weekly: { usedCents: number; limitCents: number };
-    monthly: { usedCents: number; limitCents: number };
+    mode?: "rolling" | "fixed";
+    fiveHour: {
+      usedCents: number;
+      limitCents: number;
+      resetsAt?: string | null;
+    };
+    weekly: { usedCents: number; limitCents: number; resetsAt?: string | null };
+    monthly: {
+      usedCents: number;
+      limitCents: number;
+      resetsAt?: string | null;
+    };
   } | null = null;
   if (plan.usageWindows) {
     const totals = await getUsageWindowTotals(session.user.id);
     usageWindows = {
+      mode: totals.mode ?? "rolling",
       fiveHour: {
         usedCents: totals.last5HoursCents,
         limitCents: plan.usageWindows.fiveHourLimitCents,
+        resetsAt: totals.resetsAt5h ?? null,
       },
       weekly: {
         usedCents: totals.last7DaysCents,
         limitCents: plan.usageWindows.weeklyLimitCents,
+        resetsAt: totals.resetsAt7d ?? null,
       },
       monthly: {
         usedCents: totals.last30DaysCents,
         limitCents: plan.usageWindows.monthlyLimitCents,
+        resetsAt: totals.resetsAt30d ?? null,
       },
     };
   }
 
-  return Response.json({
-    plan: state.plan,
-    planName: plan.name,
-    creditBalanceCents: state.creditBalanceCents,
-    creditGrantCents: plan.creditGrantCents,
-    usageWindows,
-  });
+  return Response.json(
+    {
+      plan: state.plan,
+      planName: plan.name,
+      creditBalanceCents: state.creditBalanceCents,
+      creditGrantCents: plan.creditGrantCents,
+      usageWindows,
+    },
+    {
+      headers: {
+        "Cache-Control": "private, no-store, no-cache, must-revalidate",
+      },
+    },
+  );
 }

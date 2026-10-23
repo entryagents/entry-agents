@@ -53,7 +53,7 @@ export const MODAL_WORKSPACE_MOUNT_PATH = "/workspace";
 
 /** Default sandbox lifetime: 24h (Modal's ceiling) with idle reap at 15m. */
 export const MODAL_DEFAULT_TIMEOUT_MS = MODAL_MAX_TIMEOUT_MS;
-export const MODAL_DEFAULT_IDLE_TIMEOUT_MS = 15 * 60 * 1000;
+export const MODAL_DEFAULT_IDLE_TIMEOUT_MS = 20 * 60 * 1000;
 
 /** Base image: Alpine 3.21. Small, fast cold starts, has git/sh. */
 export const MODAL_DEFAULT_IMAGE = "alpine:3.21";

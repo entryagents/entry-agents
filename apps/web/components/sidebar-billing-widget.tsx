@@ -1,14 +1,15 @@
 "use client";
 
-import useSWR from "swr";
+import { useEffect } from "react";
+import useSWR, { mutate } from "swr";
 import { EntryMark } from "@/components/entry-mark";
-import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 import { formatUsdCents } from "@/lib/format-usd";
 
 export interface UsageWindowMetric {
   usedCents: number;
   limitCents: number;
+  resetsAt?: string | null;
 }
 
 export interface BillingMeResponse {
@@ -17,10 +18,46 @@ export interface BillingMeResponse {
   creditBalanceCents: number;
   creditGrantCents: number;
   usageWindows?: {
+    mode?: "rolling" | "fixed";
     fiveHour: UsageWindowMetric;
     weekly: UsageWindowMetric;
     monthly: UsageWindowMetric;
   } | null;
+}
+
+const BILLING_SWR_KEY = "/api/billing/me";
+const BILLING_SYNC_CHANNEL = "entry-billing-sync";
+
+async function fetchBillingMeNoStore(url: string): Promise<BillingMeResponse> {
+  const res = await fetch(url, {
+    cache: "no-store",
+    headers: {
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to fetch billing state: ${res.status}`);
+  }
+  return res.json() as Promise<BillingMeResponse>;
+}
+
+/**
+ * Triggers an immediate revalidation of `/api/billing/me` in the current tab
+ * and broadcasts to all other open tabs/windows on the same device.
+ * Other devices stay synchronized within ~2 seconds via `refreshInterval: 2000`.
+ */
+export function triggerBillingSync(): void {
+  void mutate(BILLING_SWR_KEY);
+  if (typeof window !== "undefined" && "BroadcastChannel" in window) {
+    try {
+      const bc = new BroadcastChannel(BILLING_SYNC_CHANNEL);
+      bc.postMessage({ type: "sync", at: Date.now() });
+      bc.close();
+    } catch {
+      // Ignore BroadcastChannel errors in restricted contexts
+    }
+  }
 }
 
 export const PLAN_STYLES: Record<
@@ -60,9 +97,39 @@ export const PLAN_STYLES: Record<
 };
 
 export function useBillingMe() {
-  return useSWR<BillingMeResponse>("/api/billing/me", fetcher, {
-    refreshInterval: 60_000,
-  });
+  const swr = useSWR<BillingMeResponse>(
+    BILLING_SWR_KEY,
+    fetchBillingMeNoStore,
+    {
+      refreshInterval: 2_000,
+      dedupingInterval: 800,
+      revalidateOnFocus: true,
+      revalidateOnReconnect: true,
+      refreshWhenHidden: false,
+    },
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("BroadcastChannel" in window)) {
+      return;
+    }
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel(BILLING_SYNC_CHANNEL);
+      bc.onmessage = () => {
+        void swr.mutate();
+      };
+    } catch {
+      // Ignore if unsupported
+    }
+    return () => {
+      try {
+        bc?.close();
+      } catch {}
+    };
+  }, [swr]);
+
+  return swr;
 }
 
 export function formatCompactUsdCents(cents: number): string {
@@ -198,7 +265,7 @@ export function DesktopCodexBillingStatus() {
     >
       <div className="flex items-center justify-between gap-1.5 px-0.5">
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Usage Windows
+          {windows.mode === "fixed" ? "Fixed Windows" : "Usage Windows"}
         </span>
 
         <div className="flex items-baseline gap-1 font-mono text-[11px] tabular-nums">

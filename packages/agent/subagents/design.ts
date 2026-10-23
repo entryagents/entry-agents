@@ -133,8 +133,12 @@ export const designSubagent = new ToolLoopAgent({
         messages: maybeCompactMessages({
           messages,
           model,
-          contextWindowOverride: (context as { contextWindow?: number })
-            .contextWindow,
+          contextWindowOverride: (
+            context as { contextWindow?: number; compactionThreshold?: number }
+          ).contextWindow,
+          compactionThresholdOverride: (
+            context as { contextWindow?: number; compactionThreshold?: number }
+          ).compactionThreshold,
         }),
         model,
       }),

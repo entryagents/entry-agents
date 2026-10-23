@@ -201,12 +201,18 @@ function getExpiryDueAtMs(source: LifecycleTimingSource): number | null {
 // a fallback only for the rare case a session has no tracked
 // `sandboxExpiresAt` yet (e.g. mid-provisioning), so the lifecycle
 // workflow never sleeps forever.
+/**
+ * Determines when the lifecycle workflow must evaluate this session.
+ * Pauses / hibernates after 20 minutes of inactivity if no agent is running,
+ * or earlier if the sandbox reaches its migration/expiry limit.
+ */
 export function getLifecycleDueAtMs(source: LifecycleTimingSource): number {
+  const inactivityDueAtMs = getInactivityDueAtMs(source);
   const expiryDueAtMs = getExpiryDueAtMs(source);
   if (expiryDueAtMs !== null) {
-    return expiryDueAtMs;
+    return Math.min(inactivityDueAtMs, expiryDueAtMs);
   }
-  return getInactivityDueAtMs(source);
+  return inactivityDueAtMs;
 }
 
 async function hasActiveStreamForSession(sessionId: string): Promise<boolean> {

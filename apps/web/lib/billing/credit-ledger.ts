@@ -6,6 +6,7 @@ import { db } from "@/lib/db/client";
 import { billingUsageEvents, creditTransactions, users } from "@/lib/db/schema";
 import {
   getPlanDefinition,
+  type GoatWindowMode,
   type PlanId,
   type UsageWindowTotals,
 } from "./plans";
@@ -249,20 +250,124 @@ const BILLING_TURN_LOCK_STALE_MS = 30 * 60 * 1000;
  * Used by the pre-turn billing gate in resolveChatModelRuntime to
  * enforce a plan's rolling usage windows (GOAT's Entry Windows).
  */
+export async function getUserGoatWindowMode(
+  userId: string,
+): Promise<GoatWindowMode> {
+  try {
+    const { platformSettings } = await import("@/lib/db/schema");
+    const [row] = await db
+      .select({ titleModelId: platformSettings.titleModelId })
+      .from(platformSettings)
+      .where(eq(platformSettings.id, `goat_window_mode:${userId}`))
+      .limit(1);
+
+    return row?.titleModelId === "fixed" ? "fixed" : "rolling";
+  } catch {
+    return "rolling";
+  }
+}
+
+export async function setUserGoatWindowMode(
+  userId: string,
+  mode: GoatWindowMode,
+  billingCycleAnchor?: Date | null,
+): Promise<void> {
+  const { platformSettings } = await import("@/lib/db/schema");
+  const anchorIso = billingCycleAnchor
+    ? billingCycleAnchor.toISOString()
+    : null;
+  await db
+    .insert(platformSettings)
+    .values({
+      id: `goat_window_mode:${userId}`,
+      titleModelId: mode,
+      disabledReason: anchorIso,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: platformSettings.id,
+      set: {
+        titleModelId: mode,
+        disabledReason: anchorIso,
+        updatedAt: new Date(),
+      },
+    });
+}
+
 export async function getUsageWindowTotals(
   userId: string,
 ): Promise<UsageWindowTotals> {
   const now = Date.now();
-  // Pass ISO strings + an explicit ::timestamptz cast, NOT Date objects.
-  // Raw sql`` template params are serialized by the driver, and on the
-  // production Neon serverless driver a Date param stringifies via
-  // Date.prototype.toString() ("Tue Sep 15 2026 07:25:59 GMT+0000...")
-  // -- a format Postgres can't parse, which failed the whole query
-  // (found live 2026-09-15: it 500'd /api/billing/me for Entry-plan
-  // users, so the billing page showed no current plan at all, while
-  // Plus/Pro/Max users never hit this path and looked fine).
-  // Drizzle's typed gte() below serializes Date correctly (ISO), so
-  // only the raw-template params needed the change.
+  const mode = await getUserGoatWindowMode(userId);
+
+  if (mode === "fixed") {
+    const userRow = await db
+      .select({
+        billingCycleAnchor: users.billingCycleAnchor,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    const anchorMs = (
+      userRow[0]?.billingCycleAnchor ??
+      userRow[0]?.createdAt ??
+      new Date(0)
+    ).getTime();
+
+    const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+    const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+    const cycleStart5hMs =
+      anchorMs +
+      Math.max(0, Math.floor((now - anchorMs) / FIVE_HOURS_MS)) * FIVE_HOURS_MS;
+    const cycleStart7dMs =
+      anchorMs +
+      Math.max(0, Math.floor((now - anchorMs) / SEVEN_DAYS_MS)) * SEVEN_DAYS_MS;
+    const cycleStart30dMs =
+      anchorMs +
+      Math.max(0, Math.floor((now - anchorMs) / THIRTY_DAYS_MS)) *
+        THIRTY_DAYS_MS;
+
+    const resetsAt5h = new Date(cycleStart5hMs + FIVE_HOURS_MS).toISOString();
+    const resetsAt7d = new Date(cycleStart7dMs + SEVEN_DAYS_MS).toISOString();
+    const resetsAt30d = new Date(
+      cycleStart30dMs + THIRTY_DAYS_MS,
+    ).toISOString();
+
+    const cutoff5hIso = new Date(cycleStart5hMs).toISOString();
+    const cutoff7dIso = new Date(cycleStart7dMs).toISOString();
+    const cutoff30d = new Date(cycleStart30dMs);
+
+    const [row] = await db
+      .select({
+        last5HoursCents: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} >= ${cutoff5hIso}::timestamptz then -${creditTransactions.amountCents} else 0 end), 0)::int`,
+        last7DaysCents: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} >= ${cutoff7dIso}::timestamptz then -${creditTransactions.amountCents} else 0 end), 0)::int`,
+        last30DaysCents: sql<number>`coalesce(sum(-${creditTransactions.amountCents}), 0)::int`,
+      })
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.userId, userId),
+          eq(creditTransactions.type, "usage_debit"),
+          gte(creditTransactions.createdAt, cutoff30d),
+        ),
+      );
+
+    return {
+      last5HoursCents: row?.last5HoursCents ?? 0,
+      last7DaysCents: row?.last7DaysCents ?? 0,
+      last30DaysCents: row?.last30DaysCents ?? 0,
+      mode: "fixed",
+      resetsAt5h,
+      resetsAt7d,
+      resetsAt30d,
+    };
+  }
+
+  // Rolling / sliding window mode
   const cutoff5hIso = new Date(now - 5 * 60 * 60 * 1000).toISOString();
   const cutoff7dIso = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
   const cutoff30d = new Date(now - 30 * 24 * 60 * 60 * 1000);
@@ -286,6 +391,7 @@ export async function getUsageWindowTotals(
     last5HoursCents: row?.last5HoursCents ?? 0,
     last7DaysCents: row?.last7DaysCents ?? 0,
     last30DaysCents: row?.last30DaysCents ?? 0,
+    mode: "rolling",
   };
 }
 

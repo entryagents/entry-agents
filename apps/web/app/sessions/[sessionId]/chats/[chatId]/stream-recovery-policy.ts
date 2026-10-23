@@ -46,10 +46,9 @@ export function getStreamRecoveryDecision(options: {
     return "retry-error";
   }
 
-  // When the tab regains visibility and the chat looks idle, probe the
-  // server to check if a workflow is still running. The browser may have
-  // silently dropped the connection while the tab was backgrounded.
-  if (isVisibilityRecovery && status === "ready") {
+  // When the tab regains visibility, network returns, or multi-device sync
+  // runs, probe the server to check if a workflow is running or finished.
+  if (isVisibilityRecovery) {
     if (isProbeInFlight) {
       return "none";
     }

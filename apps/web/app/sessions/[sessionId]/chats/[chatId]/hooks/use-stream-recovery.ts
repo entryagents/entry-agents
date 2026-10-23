@@ -15,7 +15,7 @@ import {
  * a returned user sees their conversation catch up without touching
  * anything. Only controls polling -- never whether we reconnect.
  */
-const RECOVERY_POLL_INTERVAL_MS = 10_000;
+const RECOVERY_POLL_INTERVAL_MS = 2_500;
 
 type RetryChatStream = (opts?: {
   auto?: boolean;
@@ -61,6 +61,7 @@ export function useStreamRecovery({
       inFlightStartedAt: inFlightStartedAtRef.current,
       isProbeInFlight: streamRecoveryProbeInFlightRef.current,
       isVisibilityRecovery: opts?.isVisibilityRecovery,
+      minIntervalMs: 2_000,
     });
 
     if (recoveryDecision === "none") {
@@ -100,7 +101,11 @@ export function useStreamRecovery({
           return;
         }
 
-        retryChatStream({ auto: true, strategy: "soft" });
+        // Only attach when this device is not already actively streaming,
+        // or when local status is error.
+        if (!isChatInFlight || status === "error") {
+          retryChatStream({ auto: true, strategy: "soft" });
+        }
       } catch {
         // Ignore transient probe failures and try again on next interval.
       } finally {
@@ -145,33 +150,32 @@ export function useStreamRecovery({
       maybeRecoverStreamOnVisibility();
     };
 
+    const onOnline = () => {
+      retryChatStream({ auto: true, strategy: "soft" });
+    };
+
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onFocus);
-    window.addEventListener("online", maybeRecoverStream);
+    window.addEventListener("online", onOnline);
 
-    // A viewer re-attaches on its own schedule, not only when the tab
-    // happens to fire an event.
-    //
-    // Phones often wake with the document already "visible", and a network
-    // that never dropped never fires "online" -- so both of the triggers
-    // above can stay silent for the entire time a returned user is staring
-    // at a turn that finished hours ago. The run owns execution; this poll
-    // only mirrors it. Probing once on mount covers the refresh case, and
-    // the interval covers the case where nothing else ever changes.
-    maybeRecoverStream();
-    const recoveryPoll = isChatInFlight
-      ? window.setInterval(() => {
-          maybeRecoverStream();
-        }, RECOVERY_POLL_INTERVAL_MS)
-      : null;
+    // Poll every 2.5s across all open devices so any device viewing the same
+    // chat attaches to a newly started stream in real time and reconciles
+    // immediately when a stream completes.
+    maybeRecoverStreamOnVisibility();
+    const recoveryPoll = window.setInterval(() => {
+      if (
+        typeof document === "undefined" ||
+        document.visibilityState === "visible"
+      ) {
+        maybeRecoverStreamOnVisibility();
+      }
+    }, RECOVERY_POLL_INTERVAL_MS);
 
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onFocus);
-      window.removeEventListener("online", maybeRecoverStream);
-      if (recoveryPoll !== null) {
-        window.clearInterval(recoveryPoll);
-      }
+      window.removeEventListener("online", onOnline);
+      window.clearInterval(recoveryPoll);
     };
   }, [maybeRecoverStream, maybeRecoverStreamOnVisibility, isChatInFlight]);
 

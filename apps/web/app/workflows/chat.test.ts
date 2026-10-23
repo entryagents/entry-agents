@@ -401,6 +401,8 @@ mock.module("@/lib/db/platform-settings", () => ({
   getFreeTierGateStatus: mock(() =>
     Promise.resolve({ enabled: true, reason: null }),
   ),
+  getFreeTierModelId: mock(() => Promise.resolve("openai/gpt-5.6-luna")),
+  setFreeTierModelId: mock(() => Promise.resolve()),
 }));
 
 mock.module("@/lib/billing/credit-ledger", () => ({
@@ -422,6 +424,9 @@ mock.module("@/lib/billing/credit-ledger", () => ({
 
 mock.module("@/lib/vercel/token", () => ({
   hasVercelAccountLinked: mock(() => Promise.resolve(false)),
+  getUserVercelToken: mock(() => Promise.resolve(null)),
+  refreshUserVercelToken: mock(() => Promise.resolve(null)),
+  isVercelAuthFailure: mock(() => false),
 }));
 
 // fetchModelCostCatalogStep's dynamic import -- real implementation makes
