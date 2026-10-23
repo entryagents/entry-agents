@@ -144,7 +144,7 @@ export const EXTEND_TIMEOUT_DURATION_MS = 20 * 60 * 1000;
  * hibernating (and, since sandboxes are non-persistent, permanently
  * discarding) an idle sandbox's filesystem up to ~25 minutes early.
  */
-export const SANDBOX_INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+export const SANDBOX_INACTIVITY_TIMEOUT_MS = 20 * 60 * 1000;
 
 /** Buffer for sandbox expiry checks (10 seconds) */
 export const SANDBOX_EXPIRES_BUFFER_MS = 10 * 1000;

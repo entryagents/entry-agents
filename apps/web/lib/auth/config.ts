@@ -1,4 +1,4 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import type {
   GithubProfile,
@@ -112,6 +112,108 @@ function mapGitHubProfileToUser(profile: GithubProfile): {
   };
 }
 
+const VERCEL_OAUTH_TOKEN_ENDPOINT = "https://api.vercel.com/login/oauth/token";
+
+interface RefreshedOAuthTokens {
+  accessToken: string;
+  refreshToken?: string;
+  tokenType?: string;
+  scopes?: string[];
+  idToken?: string;
+  accessTokenExpiresAt?: Date;
+  refreshTokenExpiresAt?: Date;
+}
+
+/**
+ * Exchanges a stored Vercel refresh token for a fresh access token.
+ *
+ * Better Auth's built-in `vercel` social provider does NOT implement
+ * `refreshAccessToken` (unlike google/github/etc.), so
+ * `auth.api.getAccessToken` silently kept handing back the original
+ * access token after it expired (~1h after sign-in). That expired token
+ * was then brokered into the sandbox for `vercel_cli` and sent as the
+ * Bearer for `vercel_api`, which is exactly why both tools reported
+ * "invalid credentials / invalid token". We already request
+ * `offline_access`, so a refresh token is stored -- it just was never used.
+ */
+export async function refreshVercelAccessToken(
+  refreshToken: string,
+): Promise<RefreshedOAuthTokens> {
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: process.env.NEXT_PUBLIC_VERCEL_APP_CLIENT_ID ?? "",
+    client_secret: process.env.VERCEL_APP_CLIENT_SECRET ?? "",
+  });
+
+  const response = await fetch(VERCEL_OAUTH_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
+    body,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(
+      `Vercel token refresh failed (${response.status})${detail ? `: ${detail.slice(0, 200)}` : ""}`,
+    );
+  }
+
+  const data = (await response.json()) as {
+    access_token?: string;
+    refresh_token?: string;
+    token_type?: string;
+    scope?: string;
+    id_token?: string;
+    expires_in?: number;
+    refresh_token_expires_in?: number;
+  };
+
+  if (!data.access_token) {
+    throw new Error("Vercel token refresh returned no access_token");
+  }
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    tokenType: data.token_type,
+    scopes: data.scope ? data.scope.split(" ") : undefined,
+    idToken: data.id_token,
+    accessTokenExpiresAt: data.expires_in
+      ? new Date(Date.now() + data.expires_in * 1000)
+      : undefined,
+    refreshTokenExpiresAt: data.refresh_token_expires_in
+      ? new Date(Date.now() + data.refresh_token_expires_in * 1000)
+      : undefined,
+  };
+}
+
+/**
+ * Attaches `refreshAccessToken` to the Vercel social provider at auth
+ * context init so Better Auth's normal `getAccessToken` (auto-refresh when
+ * within 5s of expiry) and `refreshToken` endpoints work for Vercel the
+ * same way they already do for every other provider.
+ */
+const vercelTokenRefreshPlugin = {
+  id: "vercel-token-refresh",
+  init(ctx) {
+    const providers = (ctx as { socialProviders?: unknown }).socialProviders;
+    if (!Array.isArray(providers)) return;
+    for (const provider of providers as Array<{
+      id: string;
+      refreshAccessToken?: (token: string) => Promise<RefreshedOAuthTokens>;
+    }>) {
+      if (provider.id === "vercel" && !provider.refreshAccessToken) {
+        provider.refreshAccessToken = refreshVercelAccessToken;
+      }
+    }
+  },
+} satisfies BetterAuthPlugin;
+
 const authBaseURLFallback = getAuthBaseURLFallback();
 const authAllowedHosts = getAllowedAuthHosts();
 
@@ -187,6 +289,8 @@ export const auth = betterAuth({
       mapProfileToUser: mapGoogleProfileToUser,
     },
   },
+
+  plugins: [vercelTokenRefreshPlugin],
 
   advanced: {
     database: {

@@ -1341,23 +1341,10 @@ export function SessionChatContent({
     refreshSkills,
   } = useSessionChatWorkspaceContext();
 
-  // Ping the server to refresh the inactivity timer when the user focuses
-  // the textarea. Throttled to at most once every 5 minutes so we don't
-  // spam the endpoint on repeated focus/blur cycles.
-  const handleTextareaFocus = useCallback(() => {
-    const now = Date.now();
-    if (now - lastActivityPingRef.current < ACTIVITY_PING_THROTTLE_MS) {
-      return;
-    }
-    lastActivityPingRef.current = now;
-    void fetch("/api/sandbox/activity", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: session.id }),
-    }).catch(() => {
-      // Fire-and-forget – don't block the UI on failures.
-    });
-  }, [session.id]);
+  // Passive textarea focus deliberately does NOT postpone the 20-minute
+  // inactivity timeout; only actual user prompts or running agents keep the
+  // workspace active.
+  const handleTextareaFocus = useCallback(() => {}, []);
 
   const autoCommitEnabled = Boolean(
     session.cloneUrl &&

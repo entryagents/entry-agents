@@ -122,6 +122,46 @@ export async function setTitleModelId(
     });
 }
 
+const FREE_TIER_MODEL_SETTINGS_ID = "free_tier_model";
+
+/**
+ * Returns the admin-configured free tier model ID, "__all__" if all models are
+ * unlocked for free users, or null if using the code fallback (FREE_PLAN_MODEL_ID).
+ */
+export async function getFreeTierModelId(): Promise<string | null> {
+  const [row] = await db
+    .select({ titleModelId: platformSettings.titleModelId })
+    .from(platformSettings)
+    .where(eq(platformSettings.id, FREE_TIER_MODEL_SETTINGS_ID))
+    .limit(1);
+
+  return row?.titleModelId ?? null;
+}
+
+export async function setFreeTierModelId(
+  modelId: string | null,
+  updatedBy: string,
+): Promise<void> {
+  const normalized = modelId?.trim() || null;
+
+  await db
+    .insert(platformSettings)
+    .values({
+      id: FREE_TIER_MODEL_SETTINGS_ID,
+      titleModelId: normalized,
+      updatedBy,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: platformSettings.id,
+      set: {
+        titleModelId: normalized,
+        updatedBy,
+        updatedAt: new Date(),
+      },
+    });
+}
+
 /** For the admin settings page -- includes audit fields the gate check itself doesn't need. */
 export async function getPlatformSettingsRow(): Promise<PlatformSettingsRow> {
   const [row] = await db

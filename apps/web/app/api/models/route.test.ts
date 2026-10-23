@@ -55,6 +55,8 @@ mock.module("@/lib/db/platform-settings", () => ({
   getFreeTierGateStatus: mock(() =>
     Promise.resolve({ enabled: true, reason: null }),
   ),
+  getFreeTierModelId: mock(() => Promise.resolve("openai/gpt-5.6-luna")),
+  setFreeTierModelId: mock(() => Promise.resolve()),
 }));
 mock.module("@/lib/billing/credit-ledger", () => ({
   getUserBillingState: mock(() =>

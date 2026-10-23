@@ -128,22 +128,49 @@ export async function getCompactionOverview(
  */
 export async function getCompactionEligibleTurnCount(
   days = 30,
+  catalog?: Array<{
+    id: string;
+    context_window?: number;
+    compaction_threshold?: number;
+  }>,
 ): Promise<number> {
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  // Per-turn totals are the SUM of every step's context in the turn, so
-  // (input + cached) / (tool_call_count + 1) approximates the average
-  // per-step context. A turn is "eligible" when that average already sits
-  // at ~240K tokens -- the 95% line of the 256K-window model class. Typed
-  // drizzle helpers (gte) serialize Dates safely on Neon serverless; see
-  // lessons-learned 2026-09-15 before switching this to a raw sql`` template.
+  let models = catalog;
+  if (!models) {
+    try {
+      const { fetchModelCostCatalog } =
+        await import("@/lib/models-with-context");
+      models = await fetchModelCostCatalog();
+    } catch {
+      models = [];
+    }
+  }
+
+  const modelThresholds = (models ?? [])
+    .filter((m) => typeof m.context_window === "number" && m.context_window > 0)
+    .map((m) => ({
+      id: m.id,
+      thresholdTokens: Math.floor(
+        m.context_window! * (m.compaction_threshold ?? 0.95),
+      ),
+    }));
+
+  const whenClauses = modelThresholds.map(
+    (t) => sql`WHEN ${usageEvents.modelId} = ${t.id} THEN ${t.thresholdTokens}`,
+  );
+  const thresholdExpr =
+    whenClauses.length > 0
+      ? sql`CASE ${sql.join(whenClauses, sql` `)} ELSE 240000 END`
+      : sql`240000`;
+
   const [row] = await db
     .select({ eligible: sql<number>`count(*)::int` })
     .from(usageEvents)
     .where(
       and(
         gte(usageEvents.createdAt, since),
-        sql`${usageEvents.inputTokens} + ${usageEvents.cachedInputTokens} >= 240000 * (${usageEvents.toolCallCount} + 1)`,
+        sql`${usageEvents.inputTokens} + ${usageEvents.cachedInputTokens} >= ${thresholdExpr} * (${usageEvents.toolCallCount} + 1)`,
       ),
     );
 

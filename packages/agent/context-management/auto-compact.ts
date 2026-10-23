@@ -105,6 +105,7 @@ export function maybeCompactMessages({
   messages,
   model,
   contextWindowOverride,
+  compactionThresholdOverride,
 }: {
   messages: ModelMessage[];
   model: LanguageModel;
@@ -114,6 +115,10 @@ export function maybeCompactMessages({
    * the gateway is enough to teach compaction its real window.
    */
   contextWindowOverride?: number;
+  /**
+   * Live compaction threshold (e.g. 0.95 or model-specific ratio) from the gateway.
+   */
+  compactionThresholdOverride?: number;
 }): ModelMessage[] {
   if (messages.length <= PROTECTED_RECENT_MESSAGES) {
     return messages;
@@ -130,10 +135,16 @@ export function maybeCompactMessages({
   const estimatedTokens =
     estimateMessagesTokens(messages) + SYSTEM_AND_TOOLS_OVERHEAD_TOKENS;
 
-  const thresholdTokens = Math.min(
-    contextWindow * AUTO_COMPACT_THRESHOLD,
-    EARLY_COMPACTION_TOKEN_CEILING,
-  );
+  const thresholdRatio =
+    typeof compactionThresholdOverride === "number" &&
+    compactionThresholdOverride > 0 &&
+    compactionThresholdOverride <= 1
+      ? compactionThresholdOverride
+      : AUTO_COMPACT_THRESHOLD;
+
+  // Use the model's true context window scaled by the gateway's threshold,
+  // without artificial token caps.
+  const thresholdTokens = Math.round(contextWindow * thresholdRatio);
 
   if (estimatedTokens < thresholdTokens) {
     return messages;

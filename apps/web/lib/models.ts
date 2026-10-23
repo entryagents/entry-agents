@@ -129,6 +129,8 @@ export interface AvailableModelCost extends AvailableModelCostTier {
 
 export type AvailableModel = GatewayAvailableModel & {
   context_window?: number;
+  max_output_tokens?: number;
+  compaction_threshold?: number;
   cost?: AvailableModelCost;
 };
 

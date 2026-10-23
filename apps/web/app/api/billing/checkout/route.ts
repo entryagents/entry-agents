@@ -25,6 +25,8 @@ interface CheckoutRequest {
    * the customer is.
    */
   currency?: "NGN" | "GHS" | "KES";
+  /** For the GOAT ("goat") plan: user's chosen window refill method. */
+  windowMode?: "rolling" | "fixed";
 }
 
 /**
@@ -130,6 +132,19 @@ export async function POST(req: Request) {
     // the saved card now; a downgrade becomes customer credit applied to
     // future invoices).
     const billingState = await getUserBillingState(session.user.id);
+    if (
+      plan.id === "goat" &&
+      (body.windowMode === "rolling" || body.windowMode === "fixed")
+    ) {
+      const { setUserGoatWindowMode } =
+        await import("@/lib/billing/credit-ledger");
+      await setUserGoatWindowMode(
+        session.user.id,
+        body.windowMode,
+        billingState?.billingCycleAnchor ?? new Date(),
+      );
+    }
+
     const existingSubscriptionId =
       billingState?.billingSubscriptionCode ?? null;
 

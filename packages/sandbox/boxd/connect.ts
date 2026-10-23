@@ -159,7 +159,7 @@ export async function connectBoxd(
       }
       if (!machine) throw error;
     }
-    await client.machines.setAutoHibernateTimeout(machine.id, 900);
+    await client.machines.setAutoHibernateTimeout(machine.id, 1200);
   } else if (machine.status === "stopped") {
     await client.machines.start(machine.id);
   } else if (machine.status === "hibernated") {

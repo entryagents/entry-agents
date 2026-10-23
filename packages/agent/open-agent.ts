@@ -64,6 +64,8 @@ export interface AgentModelSelection {
    * not require a second hardcoded context-window entry here.
    */
   contextWindow?: number;
+  maxOutputTokens?: number;
+  compactionThreshold?: number;
 }
 
 export type OpenAgentModelInput = SharedProviderModelId | AgentModelSelection;
@@ -213,6 +215,7 @@ export const openAgent = new ToolLoopAgent({
     const context = (experimental_context ?? {}) as {
       readFileState?: unknown;
       contextWindow?: number;
+      compactionThreshold?: number;
     };
     let readFileState: ReadFileState | undefined =
       context.readFileState instanceof Map ? context.readFileState : undefined;
@@ -227,6 +230,7 @@ export const openAgent = new ToolLoopAgent({
           messages,
           model,
           contextWindowOverride: context.contextWindow,
+          compactionThresholdOverride: context.compactionThreshold,
         }),
         model,
       }),
@@ -283,7 +287,7 @@ export const openAgent = new ToolLoopAgent({
     return {
       ...settings,
       model: callModel,
-      maxOutputTokens: options.maxOutputTokens,
+      maxOutputTokens: options.maxOutputTokens ?? mainSelection.maxOutputTokens,
       tools: addCacheControl({
         tools: options.extraTools
           ? { ...(settings.tools ?? tools), ...options.extraTools }
@@ -304,6 +308,7 @@ export const openAgent = new ToolLoopAgent({
         model: callModel,
         subagentModel,
         contextWindow: mainSelection.contextWindow,
+        compactionThreshold: mainSelection.compactionThreshold,
         permissionMode: options.permissionMode ?? "ask",
         github: options.github,
         vercel: options.vercel,

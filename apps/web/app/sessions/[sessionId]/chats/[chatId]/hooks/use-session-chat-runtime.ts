@@ -14,6 +14,7 @@ import type {
   WebAgentWorkspaceStatusData,
 } from "@/app/types";
 import { AbortableChatTransport } from "@/lib/abortable-chat-transport";
+import { triggerBillingSync } from "@/components/sidebar-billing-widget";
 import {
   abortChatInstanceTransport,
   getOrCreateChatInstance,
@@ -139,7 +140,10 @@ export function useSessionChatRuntime({
         // into the client and can make completed tool/model output appear a
         // second time. The Workflow transport supports a negative index and
         // uses the stream tail header to resume only the recent live tail.
-        initialStartIndex: -64,
+        // Always start from chunk 0 so the stream's `start` (messageId) and
+        // `*-start` chunks are received on every reload and secondary device,
+        // preventing @workflow/ai's orphanFilter from dropping live deltas.
+        initialStartIndex: 0,
         prepareReconnectToStreamRequest: ({ id }) => ({
           api: `/api/chat/${id}/stream`,
         }),
@@ -157,6 +161,10 @@ export function useSessionChatRuntime({
           if (dataPart.type === "data-workspace-status") {
             setChatWorkspaceStatus(chatId, dataPart.data);
           }
+          triggerBillingSync();
+        },
+        onFinish: () => {
+          triggerBillingSync();
         },
         sendAutomaticallyWhen: shouldAutoSubmit,
       }),
@@ -301,11 +309,20 @@ export function useSessionChatRuntime({
                   messages?: WebAgentUIMessage[];
                   isStreaming?: boolean;
                 };
-                if (data?.messages && !data.isStreaming) {
+                if (data?.messages) {
                   chat.setMessages(data.messages);
+                }
+                if (!data?.isStreaming) {
                   clearChatWorkspaceStatus(chatId);
+                  triggerBillingSync();
                   return;
                 }
+                // Server is actively streaming (e.g. turn started on another
+                // device or reconnected after network loss) -- reset local
+                // transport and attach to the live stream.
+                abortChatInstanceTransport(chatId);
+                await chat.resumeStream();
+                return;
               }
             } catch {
               // Ignore network failure during hydration attempt

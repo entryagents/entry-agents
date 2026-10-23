@@ -167,32 +167,25 @@ function attachLiveModelContextWindow(
   }
 
   const modelId = typeof selection === "string" ? selection : selection.id;
-  const contextWindow = catalog.find(
-    (model) => model.id === modelId,
-  )?.context_window;
+  const match = catalog.find((model) => model.id === modelId);
+  const contextWindow = match?.context_window;
+  const maxOutputTokens = match?.max_output_tokens;
+  const compactionThreshold = match?.compaction_threshold;
 
-  if (
-    typeof contextWindow !== "number" ||
-    !Number.isFinite(contextWindow) ||
-    contextWindow <= 0
-  ) {
-    // Keep the existing conservative package fallback when the gateway
-    // doesn't publish a context_window for a model. This preserves
-    // backwards compatibility without making a missing metadata field
-    // capable of disabling the agent.
-    return selection;
-  }
-
-  if (typeof selection === "string") {
-    return {
-      id: selection,
-      contextWindow,
-    };
-  }
+  const base =
+    typeof selection === "string" ? { id: selection } : { ...selection };
 
   return {
-    ...selection,
-    contextWindow,
+    ...base,
+    ...(typeof contextWindow === "number" && contextWindow > 0
+      ? { contextWindow }
+      : {}),
+    ...(typeof maxOutputTokens === "number" && maxOutputTokens > 0
+      ? { maxOutputTokens }
+      : {}),
+    ...(typeof compactionThreshold === "number" && compactionThreshold > 0
+      ? { compactionThreshold }
+      : {}),
   };
 }
 
@@ -701,15 +694,17 @@ async function resolveChatModelRuntime(params: {
     const balanceCents = billingState?.creditBalanceCents ?? 0;
     startingBalanceCents = balanceCents;
 
-    // 2026-08-19: Free-plan users can also pick any owner-sponsored $0
-    // model in FREE_TIER_ALLOWED_MODEL_IDS (e.g. ling-3.0-flash-free)
-    // without being force-swapped to Luna -- only fall back to Luna if
-    // they haven't picked one of the allowed free models.
-    if (
-      plan.modelAccess === "luna-only" &&
-      !FREE_TIER_ALLOWED_MODEL_IDS.includes(selectedModelId ?? "")
-    ) {
-      selectedModelId = FREE_PLAN_MODEL_ID;
+    const { getFreeTierModelId } = await import("@/lib/db/platform-settings");
+    const adminFreeTierModel = await getFreeTierModelId();
+
+    if (plan.modelAccess === "luna-only" && adminFreeTierModel !== "__all__") {
+      const allowedModel = adminFreeTierModel ?? FREE_PLAN_MODEL_ID;
+      const isAllowed =
+        selectedModelId === allowedModel ||
+        FREE_TIER_ALLOWED_MODEL_IDS.includes(selectedModelId ?? "");
+      if (!isAllowed) {
+        selectedModelId = allowedModel;
+      }
     }
 
     if (balanceCents <= 0) {
@@ -1858,7 +1853,8 @@ async function performAgentVercelCli(params: {
 
   const { connectSandbox, withTemporaryVercelAuth } =
     await import("@entry-agents/sandbox");
-  const { getUserVercelToken } = await import("@/lib/vercel/token");
+  const { getUserVercelToken, refreshUserVercelToken, isVercelAuthFailure } =
+    await import("@/lib/vercel/token");
   const { getVercelProjectLinkByRepo } =
     await import("@/lib/db/vercel-project-links");
 
@@ -1905,23 +1901,43 @@ async function performAgentVercelCli(params: {
     ? ` --scope=${shellEscapeForVercelEnv(projectLink.teamSlug)}`
     : "";
   // Brokered VERCEL_TOKEN is injected directly by withTemporaryVercelAuth into
-  // the execution environment. We omit any dummy inline placeholder so the CLI
-  // receives the real scoped token during this command only.
-  const command = `${ENSURE_VERCEL_CLI_INSTALLED}; vercel ${params.args}${scopeFlag}`;
+  // the execution environment for this command only. We ALSO pass it
+  // explicitly as `--token "$VERCEL_TOKEN"` (expanded by the sandbox shell,
+  // so the literal token never appears in the command string / history):
+  // without auth.json on disk, CLI subcommands that don't honour the env var
+  // fall back to "No existing credentials found" / interactive login.
+  const hasExplicitToken = /(?:^|\s)(?:--token|-t)(?:=|\s|$)/.test(params.args);
+  const tokenFlag = hasExplicitToken ? "" : ' --token "$VERCEL_TOKEN"';
+  const command = `${ENSURE_VERCEL_CLI_INSTALLED}; vercel ${params.args}${scopeFlag}${tokenFlag}`;
+
+  const usedTokens: string[] = [token];
+  const redact = (text: string) => {
+    if (!text) return text;
+    let out = text;
+    for (const t of usedTokens) out = out.split(t).join("[REDACTED]");
+    return out.split(VERCEL_CLI_PLACEHOLDER_TOKEN).join("[REDACTED]");
+  };
 
   try {
-    const result = await withTemporaryVercelAuth(sandbox, token, () =>
+    let result = await withTemporaryVercelAuth(sandbox, token, () =>
       sandbox.exec(command, params.workingDirectory, 120000),
     );
 
-    const redact = (text: string) =>
-      text
-        ? text
-            .split(token)
-            .join("[REDACTED]")
-            .split(VERCEL_CLI_PLACEHOLDER_TOKEN)
-            .join("[REDACTED]")
-        : text;
+    // One-shot refresh + retry when Vercel rejected the credentials (expired
+    // or revoked OAuth token) -- the agent should never have to see
+    // "invalid token" for something we can fix transparently.
+    if (
+      !result.success &&
+      isVercelAuthFailure({ text: `${result.stdout}\n${result.stderr}` })
+    ) {
+      const refreshed = await refreshUserVercelToken(params.userId);
+      if (refreshed && refreshed !== token) {
+        usedTokens.push(refreshed);
+        result = await withTemporaryVercelAuth(sandbox, refreshed, () =>
+          sandbox.exec(command, params.workingDirectory, 120000),
+        );
+      }
+    }
 
     return {
       success: result.success,
@@ -2097,7 +2113,8 @@ async function performAgentVercelApiRequest(params: {
 }): Promise<VercelApiResult> {
   "use step";
 
-  const { getUserVercelToken } = await import("@/lib/vercel/token");
+  const { getUserVercelToken, refreshUserVercelToken, isVercelAuthFailure } =
+    await import("@/lib/vercel/token");
 
   const token = await getUserVercelToken(params.userId);
   if (!token) {
@@ -2124,17 +2141,29 @@ async function performAgentVercelApiRequest(params: {
     }
   }
 
-  try {
-    const response = await fetch(url.toString(), {
+  const send = (bearer: string) =>
+    fetch(url.toString(), {
       method,
       headers: {
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${bearer}`,
         ...(body ? { "Content-Type": "application/json" } : {}),
       },
       ...(body ? { body } : {}),
     });
 
-    const text = await response.text();
+  try {
+    let response = await send(token);
+    let text = await response.text();
+
+    // Expired/revoked OAuth token -> refresh once and retry transparently.
+    if (isVercelAuthFailure({ status: response.status, text })) {
+      const refreshed = await refreshUserVercelToken(params.userId);
+      if (refreshed && refreshed !== token) {
+        response = await send(refreshed);
+        text = await response.text();
+      }
+    }
+
     let data: unknown = null;
     if (text) {
       try {

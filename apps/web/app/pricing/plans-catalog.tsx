@@ -16,6 +16,7 @@ interface PlanRow {
 interface WindowUsage {
   usedCents: number;
   limitCents: number;
+  resetsAt?: string | null;
 }
 
 interface BillingMeResponse {
@@ -23,9 +24,9 @@ interface BillingMeResponse {
   planName: string;
   creditBalanceCents: number;
   creditGrantCents: number;
-  /** Live rolling-window usage; non-null ONLY for plans with windows
-   * (the Entry plan). */
+  /** Live window usage; non-null ONLY for plans with windows (the Entry/Goat plan). */
   usageWindows: {
+    mode?: "rolling" | "fixed";
     fiveHour: WindowUsage;
     weekly: WindowUsage;
     monthly: WindowUsage;
@@ -33,9 +34,9 @@ interface BillingMeResponse {
 }
 
 const PLAN_BLURB: Record<string, string> = {
-  free: "Try Entry with GPT-5.6 Luna. $1 trial credit, no card required.",
+  free: "Try Entry with included starter models. $1 trial credit, no card required.",
   plus: "Full model access. $10 of credit every month.",
-  goat: "The flagship Entry plan. $13/mo grants $50 of usage credit (3.8x). Your $10 / 5-hour, $25 / 7-day, and $50 / 30-day limits are rolling windows -- usage does not reset all at once; older usage drops out continuously and capacity returns.",
+  goat: "The flagship Entry plan. $13/mo grants $50 of usage credit (3.8x). Choose between continuous Sliding Windows or Fixed Window Refill cycles for your $10 / 5-hour, $25 / 7-day, and $50 / 30-day limits.",
   pro: "$100 of credit every month for heavy builders.",
   max: "$180 of credit. Our biggest monthly pool.",
 };
@@ -60,12 +61,15 @@ function EntryWindowsCard({
     { key: "30 days", ...windows.monthly },
   ] as const;
 
+  const isFixed = windows.mode === "fixed";
   return (
     <div className="mt-3 rounded-2xl border border-(--l-border) bg-(--l-fg)/[0.04] px-5 py-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-semibold text-(--l-fg)">Entry Windows</p>
         <p className="text-xs text-(--l-fg-3)">
-          Rolling limits -- no fixed reset time
+          {isFixed
+            ? "Fixed cycle refill -- resets 100% at cycle end"
+            : "Sliding window -- refills continuously as usage ages out"}
         </p>
       </div>
       <div className="mt-3 flex flex-col gap-3">
@@ -88,11 +92,17 @@ function EntryWindowsCard({
           return (
             <div key={row.key}>
               <div className="flex items-center justify-between text-xs text-(--l-fg-2)">
-                <span>Rolling {row.key}</span>
+                <span>
+                  {isFixed ? `Fixed ${row.key}` : `Rolling ${row.key}`}
+                </span>
                 <span className={full ? "font-semibold text-red-500" : ""}>
                   {formatUsdCents(row.usedCents)} of{" "}
                   {formatUsdCents(row.limitCents)}
-                  {full ? " -- full, refills as usage slides out" : ""}
+                  {full
+                    ? isFixed
+                      ? " -- full, refills at cycle boundary"
+                      : " -- full, refills as usage slides out"
+                    : ""}
                 </span>
               </div>
               <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-(--l-border)">
@@ -128,6 +138,10 @@ export function PlansCatalog() {
   // "pick a plan" marketing page a first-time visitor sees, with no
   // acknowledgement they were already paying for something.
   const [me, setMe] = useState<BillingMeResponse | null | undefined>(undefined);
+  const [goatModalOpen, setGoatModalOpen] = useState(false);
+  const [selectedGoatMode, setSelectedGoatMode] = useState<"rolling" | "fixed">(
+    "rolling",
+  );
 
   useEffect(() => {
     fetch("/api/billing/plans")
@@ -143,17 +157,28 @@ export function PlansCatalog() {
       .catch(() => setMe(null));
   }, []);
 
-  async function handleSubscribe(planId: string) {
+  async function handleSubscribe(
+    planId: string,
+    windowMode?: "rolling" | "fixed",
+  ) {
     if (planId === "free") {
       return;
     }
+    if (planId === "goat" && !windowMode) {
+      setGoatModalOpen(true);
+      return;
+    }
+    setGoatModalOpen(false);
     setErrorMessage(null);
     setPendingPlan(planId);
     try {
       const res = await fetch("/api/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({
+          planId,
+          ...(windowMode ? { windowMode } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -273,7 +298,7 @@ export function PlansCatalog() {
                       <p className="mt-1 text-sm text-(--l-fg-2)">
                         {plan.modelAccess === "all"
                           ? "Every model, full access"
-                          : "GPT-5.6 Luna only"}
+                          : "Included starter models"}
                       </p>
                     </div>
 
@@ -308,6 +333,89 @@ export function PlansCatalog() {
           </div>
         </section>
       </div>
+
+      {goatModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-(--l-border) bg-(--l-bg) p-6 text-(--l-fg) shadow-2xl">
+            <h2 className="text-lg font-semibold">
+              Choose your Entry (GOAT) Window Method
+            </h2>
+            <p className="mt-1.5 text-xs leading-relaxed text-(--l-fg-2)">
+              Select how your 5-hour ($10), 7-day ($25), and 30-day ($50) usage
+              windows replenish during your subscription:
+            </p>
+
+            <div className="mt-4 space-y-2.5">
+              <button
+                type="button"
+                onClick={() => setSelectedGoatMode("rolling")}
+                className={`w-full rounded-xl border p-3.5 text-left transition ${
+                  selectedGoatMode === "rolling"
+                    ? "border-(--l-fg) bg-(--l-fg)/[0.06]"
+                    : "border-(--l-border) hover:border-(--l-fg-3)"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold">
+                    1. Sliding Window (Continuous)
+                  </span>
+                  <span className="rounded-full border border-(--l-border) px-2 py-0.5 text-[10px] uppercase">
+                    Default
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-(--l-fg-2)">
+                  Capacity returns continuously as older usage ages past 5 hours
+                  / 7 days / 30 days. You never wait for a fixed reset day.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedGoatMode("fixed")}
+                className={`w-full rounded-xl border p-3.5 text-left transition ${
+                  selectedGoatMode === "fixed"
+                    ? "border-(--l-fg) bg-(--l-fg)/[0.06]"
+                    : "border-(--l-border) hover:border-(--l-fg-3)"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold">
+                    2. Fixed Window Refill (Full Reset)
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-(--l-fg-2)">
+                  Waits until the end of each fixed 5-hour / 7-day / 30-day
+                  cycle boundary and refills 100% of the window capacity all at
+                  once.
+                </p>
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-300">
+              <strong>Permanent for this billing cycle:</strong> Once you
+              subscribe, this window method is locked and can only be changed
+              when you renew your subscription again.
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setGoatModalOpen(false)}
+                className="rounded-full border border-(--l-border) px-4 py-2 text-xs font-medium text-(--l-fg-2) hover:text-(--l-fg)"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSubscribe("goat", selectedGoatMode)}
+                className="rounded-full bg-(--l-fg) px-5 py-2 text-xs font-semibold text-(--l-bg)"
+              >
+                Confirm &amp; Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <LandingFooter />
     </div>
