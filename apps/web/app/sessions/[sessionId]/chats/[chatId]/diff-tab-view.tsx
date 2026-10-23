@@ -3,7 +3,9 @@
 import { PatchDiff } from "@pierre/diffs/react";
 import {
   AlignJustify,
+  Check,
   ChevronRight,
+  Copy,
   Columns2,
   Download,
   FileText,
@@ -148,42 +150,60 @@ function FileDiffSection({
   return (
     <div ref={sectionRef} className="border-b border-border last:border-b-0">
       {/* Collapsible header */}
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 px-4 py-2 text-left transition-colors hover:bg-accent/50"
-      >
-        <ChevronRight
-          className={cn(
-            "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
-            isExpanded && "rotate-90",
-          )}
-        />
-        <FileStatusIcon status={file.status} />
-        <span className="shrink-0 text-xs font-medium text-foreground font-mono">
-          {fileName}
-        </span>
-        {dirPath && (
-          <span
-            className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-muted-foreground"
-            dir="rtl"
-          >
-            <bdi>{dirPath.replace(/\/$/, "")}</bdi>
+      <div className="flex w-full items-center justify-between px-3 py-2 text-left transition-colors hover:bg-accent/40 group">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center gap-2 select-none"
+        >
+          <ChevronRight
+            className={cn(
+              "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
+              isExpanded && "rotate-90",
+            )}
+          />
+          <FileStatusIcon status={file.status} />
+          <span className="shrink-0 font-mono text-xs font-medium text-foreground">
+            {fileName}
           </span>
-        )}
-        <div className="ml-auto flex shrink-0 items-center gap-1.5 text-xs">
-          {file.additions > 0 && (
-            <span className="text-green-600 dark:text-green-500">
-              +{file.additions}
+          {dirPath && (
+            <span
+              className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[10px] text-muted-foreground/70"
+              dir="rtl"
+            >
+              <bdi>{dirPath.replace(/\/$/, "")}</bdi>
             </span>
           )}
-          {file.deletions > 0 && (
-            <span className="text-red-600 dark:text-red-400">
-              -{file.deletions}
-            </span>
-          )}
+        </button>
+
+        <div className="flex shrink-0 items-center gap-2 text-xs">
+          <div className="flex items-center gap-1 font-mono text-[11px]">
+            {file.additions > 0 && (
+              <span className="text-green-600 dark:text-green-400 font-semibold">
+                +{file.additions}
+              </span>
+            )}
+            {file.deletions > 0 && (
+              <span className="text-red-600 dark:text-red-400 font-semibold">
+                -{file.deletions}
+              </span>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigator.clipboard.writeText(file.path);
+              toast.success("Path copied to clipboard");
+            }}
+            className="rounded p-1 text-muted-foreground opacity-0 transition hover:bg-accent hover:text-foreground group-hover:opacity-100"
+            title="Copy file path"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
         </div>
-      </button>
+      </div>
 
       {/* Diff content */}
       {isExpanded && (

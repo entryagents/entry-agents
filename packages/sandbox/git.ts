@@ -226,6 +226,27 @@ async function stripNestedGitDirectories(sandbox: Sandbox): Promise<void> {
 /**
  * Stage all changes in the sandbox working directory.
  */
+export async function stageFiles(
+  sandbox: Sandbox,
+  filePaths: string[],
+): Promise<void> {
+  await stripNestedGitDirectories(sandbox);
+
+  if (!filePaths || filePaths.length === 0) {
+    return;
+  }
+
+  // Reset index first to avoid carrying over unstaged files
+  await exec(sandbox, "git reset", 10000);
+
+  // Stage files with safety quotes
+  const escaped = filePaths.map((p) => `"${p.replace(/"/g, '\\"')}"`).join(" ");
+  const result = await exec(sandbox, `git add -A -- ${escaped}`, 15000);
+  if (!result.success) {
+    throw new Error(`Failed to stage specified files: ${result.stdout}`);
+  }
+}
+
 export async function stageAll(sandbox: Sandbox): Promise<void> {
   await stripNestedGitDirectories(sandbox);
 
