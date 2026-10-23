@@ -8,7 +8,11 @@ import {
   getChatMessages,
   getChatsBySessionId,
   updateChat,
+  updateChatActiveStreamId,
+  setChatRunStatus,
+  ACTIVE_CHAT_RUN_STATUSES,
 } from "@/lib/db/sessions";
+import { verifyRunState } from "@/lib/workflow-run-recovery";
 import { sanitizeSelectedModelIdForSession } from "@/lib/model-access";
 import {
   reasoningEffortSchema,
@@ -99,6 +103,29 @@ export async function GET(req: Request, context: RouteContext) {
     return chatContext.response;
   }
 
+  let activeStreamId = chatContext.chat.activeStreamId;
+  let chatStatus = chatContext.chat.status;
+  let isStreaming = activeStreamId !== null;
+
+  if (activeStreamId) {
+    const outcome = await verifyRunState(activeStreamId);
+    if (outcome === "gone") {
+      await updateChatActiveStreamId(chatId, null);
+      await setChatRunStatus(chatId, "idle");
+      activeStreamId = null;
+      chatStatus = "idle";
+      isStreaming = false;
+    }
+  } else if (
+    ACTIVE_CHAT_RUN_STATUSES.includes(chatStatus as any) &&
+    chatContext.chat.runStatusUpdatedAt &&
+    Date.now() - new Date(chatContext.chat.runStatusUpdatedAt).getTime() > 120_000
+  ) {
+    await setChatRunStatus(chatId, "idle");
+    chatStatus = "idle";
+    isStreaming = false;
+  }
+
   const messages = await getChatMessages(chatId);
   const modelId =
     sanitizeSelectedModelIdForSession(
@@ -116,10 +143,10 @@ export async function GET(req: Request, context: RouteContext) {
       reasoningEffort: modelId
         ? sanitizeReasoningEffort(modelId, chatContext.chat.reasoningEffort)
         : null,
-      activeStreamId: chatContext.chat.activeStreamId,
+      activeStreamId,
     },
-    status: chatContext.chat.status,
-    isStreaming: chatContext.chat.activeStreamId !== null,
+    status: chatStatus,
+    isStreaming,
     messages: messages.map((message) => normalizeStoredMessage(message)),
   } satisfies ChatRefreshResponse);
 }

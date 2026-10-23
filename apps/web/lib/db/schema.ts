@@ -28,7 +28,7 @@ export const users = pgTable("users", {
   // --- Billing (Bachs-backed credit plans) ---
   // "free" | "plus" | "goat" | "pro" | "max" -- see lib/billing/plans.ts for the
   // catalog (price, credit grant, model access) each id maps to.
-  plan: text("plan", { enum: ["free", "plus", "goat", "pro", "max"] })
+  plan: text("plan", { enum: ["free", "plus", "goat", "pro", "max", "x"] })
     .notNull()
     .default("free"),
   // Spendable balance, in USD cents, against the live model cost catalog.
@@ -180,7 +180,7 @@ export const sessions = pgTable(
       enum: ["running", "completed", "failed", "archived"],
     })
       .notNull()
-      .default("running"),
+      .default("completed"),
     // Repository info
     repoOwner: text("repo_owner"),
     repoName: text("repo_name"),

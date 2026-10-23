@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   ArrowLeft,
   Cable,
   CreditCard,
@@ -67,9 +68,15 @@ function ConnectionsPageSkeleton() {
 const baseSidebarItems = [
   {
     id: "profile",
-    label: "Profile & Usage",
+    label: "Profile",
     href: "/settings/profile",
     icon: User,
+  },
+  {
+    id: "usage",
+    label: "Usage & Balance",
+    href: "/settings/usage",
+    icon: Activity,
   },
   {
     id: "pricing",

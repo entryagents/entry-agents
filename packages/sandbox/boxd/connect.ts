@@ -303,3 +303,42 @@ export async function connectBoxd(
   }
   return sandbox;
 }
+
+
+export async function listAllBoxdMachines(): Promise<Array<{
+  id: string;
+  name: string;
+  status: string;
+  createdAt?: string;
+}>> {
+  const client = new Boxd();
+  const machines = await client.machines.list();
+  return machines.map((m) => ({
+    id: m.id,
+    name: m.name,
+    status: m.status,
+    createdAt: m.createdAt ? String(m.createdAt) : undefined,
+  }));
+}
+
+export async function deleteAllBoxdMachines(): Promise<{
+  deletedCount: number;
+  remainingCount: number;
+}> {
+  const client = new Boxd();
+  const machines = await client.machines.list();
+  let deletedCount = 0;
+  for (const m of machines) {
+    try {
+      await client.machines.delete(m.id);
+      deletedCount++;
+    } catch (err) {
+      console.warn(`[boxd] Failed to delete machine ${m.id}:`, err);
+    }
+  }
+  const remaining = await client.machines.list().catch(() => []);
+  return {
+    deletedCount,
+    remainingCount: remaining.length,
+  };
+}

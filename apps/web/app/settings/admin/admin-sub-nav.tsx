@@ -1,6 +1,6 @@
 "use client";
 
-import { Cpu, Gauge, ShieldAlert, TriangleAlert, Users } from "lucide-react";
+import { Cpu, Gauge, ShieldAlert, TriangleAlert, Users, MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,12 @@ const ADMIN_TABS = [
     label: "Overview",
     href: "/settings/admin",
     icon: ShieldAlert,
+  },
+  {
+    id: "chats",
+    label: "Chats & Agents",
+    href: "/settings/admin/chats",
+    icon: MessageSquare,
   },
   {
     id: "users",

@@ -18,6 +18,7 @@ import {
 } from "@/lib/db/sessions";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
 import { verifyRunState } from "@/lib/workflow-run-recovery";
+import { sanitizeMessageForDatabase } from "@/lib/chat/sanitize-db-message";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
   requireAuthenticatedUser,
@@ -268,11 +269,12 @@ async function persistLatestUserMessage(
   }
 
   try {
+    const sanitized = sanitizeMessageForDatabase(latestMessage);
     const created = await createChatMessageIfNotExists({
       id: latestMessage.id,
       chatId,
       role: "user",
-      parts: latestMessage,
+      parts: sanitized,
     });
 
     if (!created) {

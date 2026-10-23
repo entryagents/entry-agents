@@ -14,14 +14,6 @@ import { fetcher } from "@/lib/swr";
 import { formatDateOnly } from "@/lib/usage/date-range";
 import type { UsageInsights, UsageRepositoryInsight } from "@/lib/usage/types";
 import { UsageInsightsSection } from "../usage/usage-insights-section";
-import {
-  useBillingMe,
-  formatExpirationDate,
-  PLAN_STYLES,
-} from "@/components/sidebar-billing-widget";
-import { formatUsdCents } from "@/lib/format-usd";
-import { Sparkles, Clock, ArrowUpRight, CheckCircle2, CreditCard } from "lucide-react";
-import Link from "next/link";
 
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -457,172 +449,6 @@ function ProfileSidebar({
 // ── Main page ──────────────────────────────────────────────────────────────
 
 
-function getUsageWindowPercent(usedCents: number, limitCents: number): number {
-  if (limitCents <= 0) return 0;
-  if (usedCents >= limitCents) return 100;
-  if (usedCents <= 0) return 0;
-  return Math.max(1, Math.min(99, Math.floor((usedCents / limitCents) * 100)));
-}
-
-function ProfileBillingSection() {
-  const { data: billing, isLoading } = useBillingMe();
-
-  if (isLoading || !billing) {
-    return (
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Skeleton className="h-44 rounded-2xl" />
-        <Skeleton className="h-44 rounded-2xl" />
-      </div>
-    );
-  }
-
-  const planStyle = PLAN_STYLES[billing.plan] ?? PLAN_STYLES.free;
-  const isFixed = billing.usageWindows?.mode === "fixed";
-  const windows = billing.usageWindows;
-
-  return (
-    <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2">
-        {/* Subscription & Credit Card */}
-        <div className="flex flex-col justify-between rounded-2xl border border-border bg-card p-5 shadow-xs">
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Subscription Plan
-              </span>
-              <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${planStyle.badge}`}
-              >
-                <Sparkles className="h-3 w-3" />
-                {billing.planName} Plan
-              </span>
-            </div>
-
-            <div className="mt-3">
-              <p className="text-xs text-muted-foreground">Available Credit Balance</p>
-              <p className="mt-0.5 font-mono text-3xl font-bold tracking-tight text-foreground">
-                {formatUsdCents(billing.creditBalanceCents)}
-              </p>
-            </div>
-
-            <div className="mt-4 space-y-1.5 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-              <div className="flex justify-between">
-                <span>Monthly Credit Grant</span>
-                <span className="font-mono font-medium text-foreground">
-                  {billing.creditGrantCents ? formatUsdCents(billing.creditGrantCents) : "$0"}
-                </span>
-              </div>
-              {billing.expiresAt ? (
-                <div className="flex justify-between">
-                  <span>Subscription Renewal</span>
-                  <span className="font-mono font-medium text-foreground">
-                    {formatExpirationDate(billing.expiresAt)}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mt-4 pt-3 border-t border-border/60">
-            <Button asChild size="sm" variant="outline" className="w-full rounded-xl">
-              <Link href="/pricing">
-                <CreditCard className="mr-1.5 h-3.5 w-3.5" />
-                Change Plan or Add Credit
-                <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-
-        {/* Windows Telemetry Card (For GOAT/Entry plan) */}
-        {windows ? (
-          <div className="flex flex-col justify-between rounded-2xl border border-border bg-card p-5 shadow-xs">
-            <div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Usage Windows
-                </span>
-                <span className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground">
-                  <Clock className="h-3.5 w-3.5" />
-                  {isFixed ? "Fixed Refill Cycle" : "Rolling Sub-Windows"}
-                </span>
-              </div>
-
-              <div className="mt-3 space-y-2.5">
-                {[
-                  { label: "5 Hours", win: windows.fiveHour, desc: isFixed ? "Fixed 5h period" : "Rolling 5h window" },
-                  { label: "7 Days", win: windows.weekly, desc: isFixed ? "Fixed 7d period" : "Rolling 7d window" },
-                  {
-                    label: "Monthly Cycle",
-                    win: windows.monthly,
-                    desc: billing.expiresAt ? `Renews on ${formatExpirationDate(billing.expiresAt)}` : "Monthly subscription cycle",
-                  },
-                ].map(({ label, win, desc }) => {
-                  const pct = getUsageWindowPercent(win.usedCents, win.limitCents);
-                  const isFull = win.usedCents >= win.limitCents;
-                  const isWarn = !isFull && pct >= 75;
-
-                  return (
-                    <div key={label} className="space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-foreground">{label}</span>
-                          <span className="text-[10px] text-muted-foreground/75">({desc})</span>
-                        </div>
-                        <span
-                          className={`font-mono tabular-nums ${
-                            isFull ? "font-semibold text-red-500" : isWarn ? "text-amber-500" : "text-muted-foreground"
-                          }`}
-                        >
-                          {formatUsdCents(win.usedCents)} / {formatUsdCents(win.limitCents)} ({pct}%)
-                        </span>
-                      </div>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                        <div
-                          className={`h-full rounded-full transition-all duration-300 ${
-                            isFull ? "bg-red-500" : isWarn ? "bg-amber-400" : "bg-emerald-500"
-                          }`}
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mt-3 pt-2.5 border-t border-border/60 flex items-center justify-between text-[11px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                Real-time usage synchronization active
-              </span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col justify-between rounded-2xl border border-dashed border-border bg-card/50 p-5 shadow-xs">
-            <div>
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Plan Allowance
-              </span>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                Your current {billing.planName} plan uses standard credit metering with unlimited requests as long as your balance remains positive.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-border/40">
-              <Button asChild size="sm" variant="ghost" className="w-full text-xs">
-                <Link href="/pricing">
-                  Explore Entry &amp; Pro tiers with higher limits
-                  <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function ProfilePage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
@@ -761,9 +587,6 @@ export default function ProfilePage() {
 
         {/* Right content */}
         <div className="min-w-0 flex-1 space-y-8">
-          {/* Account, Plan & Live Usage Overview */}
-          <ProfileBillingSection />
-
           {/* Activity grid */}
           <div>
             <div className="mb-3 flex items-center justify-between">

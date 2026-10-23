@@ -34,7 +34,7 @@
  *   blocking) was REMOVED per owner instruction on 2026-08-17.
  */
 
-export type PlanId = "free" | "plus" | "goat" | "pro" | "max";
+export type PlanId = "free" | "plus" | "goat" | "pro" | "max" | "x";
 
 /**
  * Rolling usage windows -- exclusive to the "Entry" plan, id goat
@@ -318,6 +318,19 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
     // same reason as Pro: the old flat-2x grant at $35 was dominated by GOAT.
     modelAccess: "all",
     bachsProductId: "prod_7436be95761d4ab5a071",
+  },
+  x: {
+    id: "x",
+    name: "X",
+    priceUsdCents: 5000, // $50/mo
+    creditGrantCents: 5000, // $50 credit
+    modelAccess: "all",
+    usageWindows: {
+      fiveHourLimitCents: 2000, // $20 per trailing 5 hours
+      weeklyLimitCents: 3500, // $35 per trailing 7 days
+      monthlyLimitCents: 5000, // $50 max spend per month (monthly rolling or fixed allowance)
+    },
+    bachsProductId: "prod_x_monthly_50",
   },
 };
 

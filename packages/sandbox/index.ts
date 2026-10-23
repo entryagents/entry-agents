@@ -101,3 +101,5 @@ export { toErrorMessage } from "./modal/client.ts";
 // reclaim an archived session's workspace. The credential resolution stays
 // inside modal/client.ts; callers only ever see these functions.
 export { createModalClient, deleteModalVolume } from "./modal/client.ts";
+
+export { listAllBoxdMachines, deleteAllBoxdMachines } from "./boxd/connect.ts";

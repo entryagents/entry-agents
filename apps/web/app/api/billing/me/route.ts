@@ -2,6 +2,7 @@ import { getServerSession } from "@/lib/session/get-server-session";
 import {
   enforcePlanExpiry,
   getUsageWindowTotals,
+  getUserTopUpBalance,
 } from "@/lib/billing/credit-ledger";
 import { isUserAdmin } from "@/lib/db/users";
 import { getPlanDefinition } from "@/lib/billing/plans";
@@ -29,6 +30,7 @@ export async function GET() {
   }
 
   const plan = getPlanDefinition(state.plan);
+  const topUp = await getUserTopUpBalance(session.user.id);
 
   // Entry Windows (2026-09-15): plans with rolling usage windows (only
   // the Entry plan today) also get their live window usage returned so
@@ -85,6 +87,8 @@ export async function GET() {
       planName: plan.name,
       creditBalanceCents: state.creditBalanceCents,
       creditGrantCents: plan.creditGrantCents,
+      topUpBalanceCents: topUp.balanceCents,
+      topUpExpiresAt: topUp.expiresAt,
       billingCycleAnchor: anchorDate?.toISOString() ?? null,
       expiresAt,
       usageWindows,

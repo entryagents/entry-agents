@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, or, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db } from "@/lib/db/client";
 import { billingUsageEvents, creditTransactions, users } from "@/lib/db/schema";
@@ -830,4 +830,50 @@ export async function downgradeToFreeOnSubscriptionEnd(
   }
 
   return { downgraded: true, userId: row.id };
+}
+
+
+/**
+ * Calculates a user's active top-up credit balance and 3-month expiry timestamp.
+ * Top-ups expire 90 days after purchase.
+ */
+export async function getUserTopUpBalance(userId: string): Promise<{
+  balanceCents: number;
+  expiresAt: string | null;
+}> {
+  const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+  const cutoff = new Date(Date.now() - NINETY_DAYS_MS);
+
+  const topUpRows = await db
+    .select({
+      amountCents: creditTransactions.amountCents,
+      createdAt: creditTransactions.createdAt,
+    })
+    .from(creditTransactions)
+    .where(
+      and(
+        eq(creditTransactions.userId, userId),
+        eq(creditTransactions.type, "topup"),
+        gte(creditTransactions.createdAt, cutoff),
+      ),
+    )
+    .orderBy(desc(creditTransactions.createdAt));
+
+  if (topUpRows.length === 0) {
+    return { balanceCents: 0, expiresAt: null };
+  }
+
+  const totalTopUpCents = topUpRows.reduce(
+    (acc, r) => acc + Math.max(0, r.amountCents),
+    0,
+  );
+  const latestCreatedAt = topUpRows[0]?.createdAt ?? new Date();
+  const expiresAt = new Date(
+    latestCreatedAt.getTime() + NINETY_DAYS_MS,
+  ).toISOString();
+
+  return {
+    balanceCents: totalTopUpCents,
+    expiresAt,
+  };
 }

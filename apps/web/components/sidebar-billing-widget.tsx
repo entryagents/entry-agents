@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useSidebar } from "@/components/ui/sidebar";
 import useSWR, { mutate } from "swr";
 import { EntryMark } from "@/components/entry-mark";
 import { cn } from "@/lib/utils";
@@ -17,6 +19,8 @@ export interface BillingMeResponse {
   planName: string;
   creditBalanceCents: number;
   creditGrantCents: number;
+  topUpBalanceCents?: number;
+  topUpExpiresAt?: string | null;
   billingCycleAnchor?: string | null;
   expiresAt?: string | null;
   usageWindows?: {
@@ -110,6 +114,11 @@ export const PLAN_STYLES: Record<
     card: "border-amber-400/20 bg-gradient-to-b from-amber-400/[0.06] to-transparent",
     segmentActive: "bg-amber-400",
   },
+  x: {
+    badge: "bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/30",
+    card: "border-fuchsia-500/20 bg-gradient-to-b from-fuchsia-500/[0.06] to-transparent",
+    segmentActive: "bg-fuchsia-400",
+  },
 };
 
 export function useBillingMe() {
@@ -192,18 +201,25 @@ export function SidebarBalancePill() {
  */
 export function DesktopBalanceBox() {
   const { data, isLoading } = useBillingMe();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const router = useRouter();
 
-  if (isLoading || !data || data.plan === "goat") {
+  if (isLoading || !data || data.plan === "goat" || data.plan === "x") {
     return null;
   }
 
   return (
-    <div
-      title={`Credit balance: ${formatUsdCents(data.creditBalanceCents)}`}
-      className="flex h-9 min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-border bg-background/80 px-2.5 font-mono text-xs font-semibold tabular-nums text-foreground shadow-2xs"
+    <button
+      type="button"
+      onClick={() => {
+        if (isMobile) setOpenMobile(false);
+        router.push("/pricing");
+      }}
+      title={`Credit balance: ${formatUsdCents(data.creditBalanceCents)} (Click to view plans & top up)`}
+      className="flex h-9 min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-border bg-background/80 px-2.5 font-mono text-xs font-semibold tabular-nums text-foreground shadow-2xs transition-colors hover:bg-muted/80 cursor-pointer"
     >
       {formatCompactUsdCents(data.creditBalanceCents)}
-    </div>
+    </button>
   );
 }
 
@@ -248,7 +264,10 @@ function getUsageWindowPercent(usedCents: number, limitCents: number): number {
 export function DesktopCodexBillingStatus() {
   const { data, isLoading } = useBillingMe();
 
-  if (isLoading || !data || data.plan !== "goat") {
+  const { isMobile, setOpenMobile } = useSidebar();
+  const router = useRouter();
+
+  if (isLoading || !data || (data.plan !== "goat" && data.plan !== "x")) {
     return null;
   }
 
@@ -273,10 +292,16 @@ export function DesktopCodexBillingStatus() {
 
   return (
     <div
-      title="Rolling usage windows and remaining window allowance"
+      role="button"
+      tabIndex={0}
+      onClick={() => {
+        if (isMobile) setOpenMobile(false);
+        router.push("/settings/usage");
+      }}
+      title="Click to view detailed Usage & Balance"
       className={cn(
-        "space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors",
-        PLAN_STYLES.goat.card,
+        "space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors cursor-pointer hover:border-foreground/30",
+        PLAN_STYLES[data.plan]?.card ?? PLAN_STYLES.goat.card,
       )}
     >
       <div className="flex items-center justify-between gap-1.5 px-0.5">

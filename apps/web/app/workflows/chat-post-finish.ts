@@ -20,6 +20,7 @@ import {
   buildLifecycleActivityUpdate,
 } from "@/lib/sandbox/lifecycle";
 import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
+import { sanitizeMessageForDatabase } from "@/lib/chat/sanitize-db-message";
 import {
   recordWorkflowRun,
   type WorkflowRunStatus,
@@ -99,11 +100,12 @@ export async function persistUserMessage(
   }
 
   try {
+    const sanitized = sanitizeMessageForDatabase(message);
     const created = await createChatMessageIfNotExists({
       id: message.id,
       chatId,
       role: "user",
-      parts: message,
+      parts: sanitized,
     });
 
     if (!created) {
@@ -161,11 +163,12 @@ export async function persistAssistantMessageWithToolResults(
 
   try {
     const dedupedMessage = dedupeMessageReasoning(message);
+    const sanitized = sanitizeMessageForDatabase(dedupedMessage);
     const result = await upsertChatMessageScoped({
       id: dedupedMessage.id,
       chatId,
       role: "assistant",
-      parts: dedupedMessage,
+      parts: sanitized,
     });
 
     if (result.status === "conflict") {
@@ -189,11 +192,12 @@ export async function persistAssistantMessage(
 
   try {
     const dedupedMessage = dedupeMessageReasoning(message);
+    const sanitized = sanitizeMessageForDatabase(dedupedMessage);
     const result = await upsertChatMessageScoped({
       id: dedupedMessage.id,
       chatId,
       role: "assistant",
-      parts: dedupedMessage,
+      parts: sanitized,
     });
 
     if (result.status === "conflict") {
@@ -222,12 +226,13 @@ export async function persistFinalAssistantMessage(
 
   try {
     const dedupedMessage = dedupeMessageReasoning(message);
+    const sanitized = sanitizeMessageForDatabase(dedupedMessage);
     const result = await upsertChatMessageAndClearActiveStream(
       {
         id: dedupedMessage.id,
         chatId,
         role: "assistant",
-        parts: dedupedMessage,
+        parts: sanitized,
       },
       workflowRunId,
     );
