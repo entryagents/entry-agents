@@ -1,6 +1,6 @@
 "use client";
 
-import { Cpu, Gauge, ShieldAlert, TriangleAlert, Users, MessageSquare } from "lucide-react";
+import { Cpu, Gauge, ShieldAlert, TriangleAlert, Users, MessageSquare, Inbox } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,12 @@ const ADMIN_TABS = [
     label: "Chats & Agents",
     href: "/settings/admin/chats",
     icon: MessageSquare,
+  },
+  {
+    id: "feedback",
+    label: "Feedback Inbox",
+    href: "/settings/admin/feedback",
+    icon: Inbox,
   },
   {
     id: "users",
@@ -44,16 +50,11 @@ const ADMIN_TABS = [
   },
 ] as const;
 
-/**
- * Segmented sub-nav for the admin section, matching the same tab-chip
- * design token used by AdminUsageSection's date-range picker
- * (rounded-md border, bg-secondary active state).
- */
 export function AdminSubNav() {
   const pathname = usePathname();
 
   return (
-    <div className="flex gap-1 rounded-md border p-0.5">
+    <div className="flex flex-wrap gap-1 rounded-md border p-0.5">
       {ADMIN_TABS.map((tab) => {
         const isActive =
           tab.href === "/settings/admin"

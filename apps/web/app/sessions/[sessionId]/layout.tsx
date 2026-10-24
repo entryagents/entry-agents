@@ -6,6 +6,7 @@ import { getSessionByIdCached } from "@/lib/db/sessions-cache";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
 import { getServerSession } from "@/lib/session/get-server-session";
+import { isUserAdmin } from "@/lib/db/users";
 import { SessionLayoutShell } from "./session-layout-shell";
 
 interface SessionLayoutProps {
@@ -32,7 +33,9 @@ export default async function SessionLayout({
     notFound();
   }
 
-  if (sessionRecord.userId !== session.user.id) {
+  const isOwner = sessionRecord.userId === session.user.id;
+  const isAdmin = isOwner ? false : await isUserAdmin(session.user.id).catch(() => false);
+  if (!isOwner && !isAdmin) {
     redirect("/");
   }
 
@@ -46,7 +49,7 @@ export default async function SessionLayout({
   try {
     const requestHost = (await headers()).get("host") ?? "";
     const [chats, rawPreferences] = await Promise.all([
-      getChatSummariesBySessionId(sessionId, session.user.id),
+      getChatSummariesBySessionId(sessionId, sessionRecord.userId),
       getUserPreferences(session.user.id),
     ]);
     const preferences = sanitizeUserPreferencesForSession(

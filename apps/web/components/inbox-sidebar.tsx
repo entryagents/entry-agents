@@ -37,6 +37,7 @@ import { useRouter } from "next/navigation";
 import type { CSSProperties } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BranchPickerDialog } from "@/components/branch-picker-dialog";
+import { FeedbackDialog } from "@/components/feedback-dialog";
 import { getValidRenameTitle } from "@/components/inbox-sidebar-rename";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -864,6 +865,7 @@ export function InboxSidebar({
 
   const [desktopSearchQuery, setDesktopSearchQuery] = useState("");
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const { data: billingData } = useBillingMe();
   const creditDisplay = billingData
@@ -1294,19 +1296,6 @@ export function InboxSidebar({
                         onClick={() => {
                           setProfileMenuOpen(false);
                           if (isMobile) setOpenMobile(false);
-                          router.push("/settings/profile");
-                        }}
-                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
-                      >
-                        <span>Profile</span>
-                        <User className="h-4 w-4 text-muted-foreground" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfileMenuOpen(false);
-                          if (isMobile) setOpenMobile(false);
                           router.push("/pricing");
                         }}
                         className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
@@ -1371,11 +1360,8 @@ export function InboxSidebar({
                         type="button"
                         onClick={() => {
                           setProfileMenuOpen(false);
-                          window.open(
-                            "https://github.com/entryagents/entry-agents/issues/new",
-                            "_blank",
-                            "noopener,noreferrer",
-                          );
+                          if (isMobile) setOpenMobile(false);
+                          setFeedbackOpen(true);
                         }}
                         className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
                       >
@@ -1451,6 +1437,8 @@ export function InboxSidebar({
             </div>
           ) : null}
         </div>
+
+      <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
 
       {branchPickerRepo ? (
         <BranchPickerDialog

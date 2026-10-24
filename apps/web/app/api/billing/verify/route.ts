@@ -75,8 +75,13 @@ export async function GET(req: Request) {
 
     const billingState = await getUserBillingState(session.user.id);
 
+    const kind = (typeof metadata.kind === "string" ? metadata.kind : null) ?? (metadata.planId ? "subscription" : "topup");
+    const amountCents = typeof metadata.usdAmountCents === "string" && Number.isFinite(Number(metadata.usdAmountCents)) ? Number(metadata.usdAmountCents) : null;
+
     return Response.json({
       status: "success",
+      kind,
+      amountCents,
       creditBalanceCents: billingState?.creditBalanceCents ?? null,
       plan: billingState?.plan ?? null,
     });

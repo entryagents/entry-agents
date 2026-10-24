@@ -1,5 +1,6 @@
 import * as sessionsDb from "@/lib/db/sessions";
 import { getServerSession } from "@/lib/session/get-server-session";
+import { isUserAdmin } from "@/lib/db/users";
 
 export type SessionRecord = NonNullable<
   Awaited<ReturnType<typeof sessionsDb.getSessionById>>
@@ -82,7 +83,10 @@ export async function requireOwnedSession(
 ): Promise<OwnedSessionResult> {
   const { userId, sessionId, forbiddenMessage = "Forbidden" } = params;
 
-  const sessionRecord = await sessionsDb.getSessionById(sessionId);
+  const [sessionRecord, authSession] = await Promise.all([
+    sessionsDb.getSessionById(sessionId),
+    getServerSession(),
+  ]);
   if (!sessionRecord) {
     return {
       ok: false,
@@ -90,7 +94,10 @@ export async function requireOwnedSession(
     };
   }
 
-  if (sessionRecord.userId !== userId) {
+  const isOwner = sessionRecord.userId === userId;
+  const isAdmin = isOwner ? false : await isUserAdmin(userId).catch(() => false);
+
+  if (!isOwner && !isAdmin) {
     return {
       ok: false,
       response: toErrorResponse(forbiddenMessage, 403),
@@ -139,9 +146,10 @@ export async function requireOwnedSessionChat(
 ): Promise<OwnedSessionChatResult> {
   const { userId, sessionId, chatId, forbiddenMessage = "Forbidden" } = params;
 
-  const [sessionRecord, chat] = await Promise.all([
+  const [sessionRecord, chat, authSession] = await Promise.all([
     sessionsDb.getSessionById(sessionId),
     sessionsDb.getChatById(chatId),
+    getServerSession(),
   ]);
 
   if (!sessionRecord) {
@@ -151,7 +159,10 @@ export async function requireOwnedSessionChat(
     };
   }
 
-  if (sessionRecord.userId !== userId) {
+  const isOwner = sessionRecord.userId === userId;
+  const isAdmin = isOwner ? false : await isUserAdmin(userId).catch(() => false);
+
+  if (!isOwner && !isAdmin) {
     return {
       ok: false,
       response: toErrorResponse(forbiddenMessage, 403),

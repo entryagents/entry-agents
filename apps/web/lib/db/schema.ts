@@ -892,3 +892,16 @@ export const githubRepoIndex = pgTable(
 
 export type GithubRepoIndexRow = typeof githubRepoIndex.$inferSelect;
 export type NewComposioSessionRow = typeof composioSessions.$inferInsert;
+
+export const feedback = pgTable("feedback", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").references(() => users.id, { onDelete: "set null" }),
+  userEmail: text("user_email"),
+  userName: text("user_name"),
+  category: text("category").notNull().default("general"),
+  sentiment: text("sentiment").default("good"),
+  title: text("title"),
+  message: text("message").notNull(),
+  status: text("status").notNull().default("new"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});

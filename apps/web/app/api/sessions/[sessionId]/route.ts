@@ -6,6 +6,7 @@ import {
 import { archiveSession } from "@/lib/sandbox/archive-session";
 import { hasRuntimeSandboxState } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
+import { isUserAdmin } from "@/lib/db/users";
 
 interface UpdateSessionRequest {
   title?: string;
@@ -44,7 +45,9 @@ export async function GET(
     return Response.json({ error: "Session not found" }, { status: 404 });
   }
 
-  if (existingSession.userId !== session.user.id) {
+  const isOwner = existingSession.userId === session.user.id;
+  const isAdmin = isOwner ? false : await isUserAdmin(session.user.id).catch(() => false);
+  if (!isOwner && !isAdmin) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -67,7 +70,9 @@ export async function PATCH(
     return Response.json({ error: "Session not found" }, { status: 404 });
   }
 
-  if (existingSession.userId !== session.user.id) {
+  const isOwner = existingSession.userId === session.user.id;
+  const isAdmin = isOwner ? false : await isUserAdmin(session.user.id).catch(() => false);
+  if (!isOwner && !isAdmin) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -146,7 +151,9 @@ export async function DELETE(
     return Response.json({ error: "Session not found" }, { status: 404 });
   }
 
-  if (existingSession.userId !== session.user.id) {
+  const isOwner = existingSession.userId === session.user.id;
+  const isAdmin = isOwner ? false : await isUserAdmin(session.user.id).catch(() => false);
+  if (!isOwner && !isAdmin) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 

@@ -19,6 +19,7 @@ import {
 } from "@/lib/model-access";
 import { fetchAvailableLanguageModelsWithContext } from "@/lib/models-with-context";
 import { getServerSession } from "@/lib/session/get-server-session";
+import { isUserAdmin } from "@/lib/db/users";
 import { getInitialIsOnlyChatInSession } from "./only-chat-in-session";
 import { SessionChatContent } from "./session-chat-content";
 import { SessionChatProvider } from "./session-chat-context";
@@ -143,8 +144,10 @@ export default async function SessionChatPage({
     notFound();
   }
 
-  // Check ownership
-  if (sessionRecord.userId !== session.user.id) {
+  // Check ownership (admins can audit any user session/chat)
+  const isOwner = sessionRecord.userId === session.user.id;
+  const isAdmin = isOwner ? false : await isUserAdmin(session.user.id).catch(() => false);
+  if (!isOwner && !isAdmin) {
     redirect("/");
   }
 
@@ -155,7 +158,7 @@ export default async function SessionChatPage({
     getChatByIdWithRetry(chatId, sessionId),
     getChatMessages(chatId),
     getInitialModels(),
-    getChatSummariesBySessionId(sessionId, session.user.id),
+    getChatSummariesBySessionId(sessionId, sessionRecord.userId),
   ]);
 
   if (!chat) {

@@ -421,3 +421,21 @@ export function verifyBachsSignature(
     );
   });
 }
+
+export async function createCustomerPortalSession(
+  customerId: string,
+  returnUrl?: string,
+): Promise<{ id: string; url: string }> {
+  const data = await bachsRequest<{
+    id: string;
+    url: string;
+  }>(`/v1/customers/${encodeURIComponent(customerId)}/portal-sessions`, {
+    method: "POST",
+    body: JSON.stringify(returnUrl ? { return_url: returnUrl } : {}),
+  });
+
+  return {
+    id: data.id,
+    url: data.url,
+  };
+}
