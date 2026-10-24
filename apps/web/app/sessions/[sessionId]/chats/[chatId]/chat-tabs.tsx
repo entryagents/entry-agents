@@ -1,16 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import {
-  Code2,
-  FileText,
-  GitCommitHorizontal,
-  GitCompare,
-  Pencil,
-  Plus,
-  Terminal,
-  X,
-} from "lucide-react";
+import { FileText, GitCompare, Pencil, Plus, X } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -59,10 +50,6 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     setFocusedFilePath,
     fileTabDismissed,
     setFileTabDismissed,
-    changesCount,
-    hasActionNeeded,
-    setGitPanelTab,
-    setGitPanelOpen,
   } = useGitPanel();
 
   const isMobile = useIsMobile();
@@ -124,21 +111,20 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
 
   const [changesTabIndex, setChangesTabIndex] = useState<number | null>(null);
   useEffect(() => {
-    const isChangesVisible =
-      !changesTabDismissed && (Boolean(focusedDiffFile) || changesCount > 0);
+    const isChangesVisible = !changesTabDismissed && !!focusedDiffFile;
     if (isChangesVisible && changesTabIndex === null) {
       setChangesTabIndex(chats.length);
     } else if (!isChangesVisible) {
       setChangesTabIndex(null);
     }
-  }, [focusedDiffFile, changesCount, changesTabDismissed, chats.length, changesTabIndex]);
+  }, [focusedDiffFile, changesTabDismissed, chats.length, changesTabIndex]);
 
   const [fileTabIndex, setFileTabIndex] = useState<number | null>(null);
   useEffect(() => {
-    const isFileVisible = !fileTabDismissed && Boolean(focusedFilePath);
+    const isFileVisible = !fileTabDismissed && !!focusedFilePath;
     if (isFileVisible && fileTabIndex === null) {
       setFileTabIndex(
-        chats.length + (!changesTabDismissed && (Boolean(focusedDiffFile) || changesCount > 0) ? 1 : 0),
+        chats.length + (!changesTabDismissed && !!focusedDiffFile ? 1 : 0),
       );
     } else if (!isFileVisible) {
       setFileTabIndex(null);
@@ -150,7 +136,6 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     fileTabIndex,
     changesTabDismissed,
     focusedDiffFile,
-    changesCount,
   ]);
 
   const handleNewChat = () => {
@@ -221,11 +206,9 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
   }, [deletingChatId, activeChatId, chats, deleteChat, switchChat]);
 
   const canDelete = chats.length > 1;
-  const showChangesTab =
-    !changesTabDismissed &&
-    (Boolean(focusedDiffFile) || changesCount > 0 || activeView === "diff");
+  const showChangesTab = !changesTabDismissed && !!focusedDiffFile;
   const insertAt = showChangesTab ? (changesTabIndex ?? chats.length) : null;
-  const showFileTab = !fileTabDismissed && Boolean(focusedFilePath);
+  const showFileTab = !fileTabDismissed && !!focusedFilePath;
   const fileInsertAt = showFileTab
     ? (fileTabIndex ?? chats.length + (showChangesTab ? 1 : 0))
     : null;
@@ -250,11 +233,6 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
         >
           <GitCompare className="h-3.5 w-3.5" />
           <span>Changes</span>
-          {changesCount > 0 && (
-            <span className="rounded-full bg-blue-500/15 px-1.5 py-0.2 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
-              +{changesCount}
-            </span>
-          )}
         </button>
         <button
           type="button"
@@ -415,7 +393,6 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     activeChatId,
     activeView,
     canDelete,
-    changesCount,
     chats,
     fileInsertAt,
     fileTabFileName,
@@ -436,7 +413,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
 
   return (
     <>
-      <div className="flex items-center justify-between border-b border-border bg-muted/30 px-1">
+      <div className="flex items-center gap-0 border-b border-border bg-muted/30 px-1">
         <div
           ref={scrollContainerRef}
           className="flex min-w-0 flex-1 items-center overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -454,64 +431,6 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">New chat</TooltipContent>
-          </Tooltip>
-        </div>
-
-        {/* Third Tab & Workspace Actions: Commit & GitHub, Editor, Terminal */}
-        <div className="flex shrink-0 items-center gap-1 border-l border-border/60 pl-2 pr-1">
-          {/* Commit & GitHub Action */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => {
-                  setGitPanelTab("diff");
-                  setGitPanelOpen(true);
-                }}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors",
-                  hasActionNeeded
-                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 font-semibold"
-                    : "text-muted-foreground hover:bg-accent hover:text-foreground",
-                )}
-              >
-                <GitCommitHorizontal className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Commit</span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              Commit changes and manage Pull Request
-            </TooltipContent>
-          </Tooltip>
-
-          {/* Code Editor Tab */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => router.push(`/codespace/${sessionId}`)}
-                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <Code2 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Editor</span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Open Full VS Code Editor</TooltipContent>
-          </Tooltip>
-
-          {/* Terminal Tab */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={() => router.push(`/codespace/${sessionId}`)}
-                className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-              >
-                <Terminal className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Terminal</span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Open Interactive Sandbox Terminal</TooltipContent>
           </Tooltip>
         </div>
       </div>
