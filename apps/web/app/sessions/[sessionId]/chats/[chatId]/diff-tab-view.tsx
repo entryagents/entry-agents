@@ -12,6 +12,8 @@ import {
   SquareDot,
   SquareMinus,
   SquarePlus,
+  GitCommitHorizontal,
+  X,
 } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -241,7 +243,14 @@ export function DiffTabView() {
     refreshDiff,
     gitStatus,
   } = useSessionChatWorkspaceContext();
-  const { focusedDiffFile, focusedDiffRequestId, diffScope } = useGitPanel();
+  const {
+    focusedDiffFile,
+    focusedDiffRequestId,
+    diffScope,
+    setActiveView,
+    setGitPanelTab,
+    setGitPanelOpen,
+  } = useGitPanel();
   const isMobile = useIsMobile();
   const { preferences } = useUserPreferences();
   const [diffStyle, setDiffStyle] = useState<DiffStyle>("unified");
@@ -511,6 +520,41 @@ export function DiffTabView() {
               <TooltipContent side="bottom">Split</TooltipContent>
             </Tooltip>
           </div>
+
+          {/* Commit Changes action */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setGitPanelTab("diff");
+                  setGitPanelOpen(true);
+                }}
+                className="h-7 gap-1 px-2 text-xs font-medium"
+              >
+                <GitCommitHorizontal className="h-3.5 w-3.5 text-primary" />
+                <span>Commit</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Commit changes & open Pull Request</TooltipContent>
+          </Tooltip>
+
+          {/* Close Diff View */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setActiveView("chat")}
+                className="h-7 w-7 px-0 text-muted-foreground hover:text-foreground"
+                aria-label="Back to chat"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Back to chat</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
