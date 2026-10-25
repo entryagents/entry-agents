@@ -3797,7 +3797,7 @@ export function SessionChatContent({
                                       className={cn(
                                         "flex min-w-0 py-2",
                                         m.role === "user"
-                                          ? "justify-end"
+                                          ? "w-full justify-start"
                                           : "justify-start",
                                         // Breathing room above final assistant text after tool calls
                                         isFinalAssistantTextPart &&
@@ -3810,9 +3810,10 @@ export function SessionChatContent({
                                       )}
                                     >
                                       {m.role === "user" ? (
-                                        <div className="group flex w-fit min-w-0 max-w-[80%] flex-col items-end">
-                                          <button
-                                            type="button"
+                                        <div className="group flex w-full flex-col">
+                                          <div
+                                            role="button"
+                                            tabIndex={0}
                                             onClick={() =>
                                               setActiveMessageActionsId(
                                                 (current) =>
@@ -3821,16 +3822,22 @@ export function SessionChatContent({
                                                     : m.id,
                                               )
                                             }
-                                            className="rounded-3xl bg-secondary px-4 py-2 text-left"
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter" || e.key === " ") {
+                                                e.preventDefault();
+                                                setActiveMessageActionsId((current) => current === m.id ? null : m.id);
+                                              }
+                                            }}
+                                            className="w-full rounded-2xl bg-muted/40 dark:bg-[#18191f] border border-border/80 dark:border-white/10 p-4 text-xs font-mono text-foreground dark:text-neutral-200 leading-relaxed shadow-sm transition-all hover:border-border dark:hover:border-white/20 select-text cursor-text"
                                           >
                                             <p className="whitespace-pre-wrap break-words">
                                               {p.text}
                                             </p>
-                                          </button>
+                                          </div>
                                           {group.index === 0 && (
                                             <div
                                               className={cn(
-                                                "mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition group-hover:opacity-100 focus-within:opacity-100",
+                                                "mt-1.5 flex items-center justify-end gap-1 text-muted-foreground opacity-0 transition group-hover:opacity-100 focus-within:opacity-100",
                                                 activeMessageActionsId ===
                                                   m.id && "opacity-100",
                                               )}
@@ -4129,7 +4136,7 @@ export function SessionChatContent({
                                       className={cn(
                                         "flex",
                                         m.role === "user"
-                                          ? "justify-end"
+                                          ? "w-full justify-start"
                                           : "justify-start",
                                       )}
                                     >
@@ -4341,7 +4348,7 @@ export function SessionChatContent({
                     <PinnedTodoPanel todos={latestTodos} />
                     {/* Input form */}
                     <div
-                      className={`relative overflow-hidden rounded-2xl bg-muted transition-colors ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
+                      className={`relative overflow-hidden rounded-2xl bg-card dark:bg-[#14151a] border border-border/80 dark:border-white/10 shadow-xl transition-all ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
                     >
                       <form
                         onSubmit={async (e) => {
