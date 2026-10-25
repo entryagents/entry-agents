@@ -3688,7 +3688,6 @@ const runAgentStep = async (
     const { runWithCompactionSink } = await import("@entry-agents/agent");
     const { recordCompactionEvent } = await import("@/lib/db/compaction");
 
-    let activeModelId = modelId;
     const result = await runWithCompactionSink(
       (event) =>
         recordCompactionEvent(event, {
@@ -3747,7 +3746,6 @@ const runAgentStep = async (
               maxOutputTokens: spendCap.maxOutputTokens,
             }
           : fullAgentOptions;
-        let fallbackTriggered = false;
         let contextRecoveryTriggered = false;
         const MAX_TRANSIENT_ATTEMPTS = 4;
 
@@ -3785,14 +3783,14 @@ const runAgentStep = async (
             if (isContextOverflow && !contextRecoveryTriggered) {
               contextRecoveryTriggered = true;
               console.warn(
-                `[chat-workflow] Context window limit reached for model ${activeModelId}. Triggering auto-compaction recovery...`,
+                `[chat-workflow] Context window limit reached for model ${modelId}. Triggering auto-compaction recovery...`,
               );
               try {
                 const { maybeCompactMessages } =
                   await import("@entry-agents/agent");
                 currentMessages = maybeCompactMessages({
                   messages: currentMessages,
-                  model: activeModelId,
+                  model: modelId,
                   compactionThresholdOverride: 0.4,
                 });
                 continue;
@@ -3847,30 +3845,6 @@ const runAgentStep = async (
               continue;
             }
 
-            // 3. Graceful Model Fallback for Upstream Outages:
-            // If primary model fails permanently after retries (e.g. gateway 502/503 persists or model not found),
-            // dynamically pivot to APP_DEFAULT_MODEL_ID to keep turn crash-resistant.
-            // Fall back to default model
-            if (
-              !fallbackTriggered &&
-              activeModelId !== APP_DEFAULT_MODEL_ID &&
-              modelCostCatalog.some((m) => m.id === APP_DEFAULT_MODEL_ID)
-            ) {
-              fallbackTriggered = true;
-              console.warn(
-                `[chat-workflow] Model ${activeModelId} failed after ${streamAttempts} attempts (${errSignal.slice(0, 100)}). Falling back to ${APP_DEFAULT_MODEL_ID} to preserve turn continuity...`,
-              );
-              activeModelId = APP_DEFAULT_MODEL_ID;
-              currentStreamOptions = {
-                ...currentStreamOptions,
-                model: attachLiveModelContextWindow(
-                  { id: APP_DEFAULT_MODEL_ID as unknown as import("@entry-agents/agent").AgentModelSelection["id"] },
-                  modelCostCatalog,
-                ),
-              };
-              streamAttempts = 0;
-              continue;
-            }
 
             throw streamErr;
           }
@@ -4067,7 +4041,7 @@ const runAgentStep = async (
       metadata: withModelMetadata(
         responseMessage.metadata,
         selectedModelId,
-        activeModelId,
+        modelId,
       ),
     };
 
@@ -4095,7 +4069,7 @@ const runAgentStep = async (
     const stepsCost = steps.reduce<number | undefined>((sum, step) => {
       const cost = estimateStepCost(
         step.providerMetadata,
-        activeModelId,
+        modelId,
         step.usage,
         modelCostCatalog,
       );
@@ -4110,13 +4084,13 @@ const runAgentStep = async (
     // model, token usage, estimated cost, and which tools it called.
     const newStepBreakdown: WebAgentStepCostBreakdown[] = steps.map((step) => ({
       stepNumber: existingStepBreakdown.length + step.stepNumber + 1,
-      modelId: step.model?.modelId ?? activeModelId,
+      modelId: step.model?.modelId ?? modelId,
       finishReason: step.finishReason,
       rawFinishReason: step.rawFinishReason,
       usage: step.usage,
       cost: estimateStepCost(
         step.providerMetadata,
-        activeModelId,
+        modelId,
         step.usage,
         modelCostCatalog,
       ),
