@@ -51,7 +51,9 @@ export async function fetchGatewayHealth(): Promise<GatewayHealthResponse | null
   return promise;
 }
 
-export async function isModelGatewayRoutable(modelId: string): Promise<boolean> {
+export async function isModelGatewayRoutable(
+  modelId: string,
+): Promise<boolean> {
   const health = await fetchGatewayHealth();
   if (!health) {
     return true;
@@ -72,7 +74,6 @@ export async function isModelGatewayRoutable(modelId: string): Promise<boolean> 
 
   return true;
 }
-
 
 const DISABLED_OPENAI_GPT_PREFIX = "openai/gpt-";
 const DISABLED_OPENAI_PRO_SUFFIX = "-pro";
@@ -158,7 +159,9 @@ export async function filterDisabledModels<T extends { id: string }>(
   ]);
 
   const routedModelsSet =
-    health && Array.isArray(health.routedModels) && health.routedModels.length > 0
+    health &&
+    Array.isArray(health.routedModels) &&
+    health.routedModels.length > 0
       ? new Set(health.routedModels)
       : null;
   const breakers = health?.circuitBreakers || {};

@@ -44,30 +44,40 @@ import {
 } from "@/lib/github/queries/pr";
 import { cn } from "@/lib/utils";
 import type { GitPanelProps } from "../git-panel";
+import { FileTypeIcon } from "@/components/file-type-icons";
 
 export type WorkspaceReviewTabProps = GitPanelProps & {
   onOpenFile?: (filePath: string) => void;
 };
 
-function StatusBadge({ status }: { status: DiffFile["status"] }) {
+function FileStatusIndicator({ status }: { status: DiffFile["status"] }) {
   switch (status) {
     case "added":
       return (
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-emerald-500/15 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-          A
+        <span
+          title="Added file"
+          className="flex h-4 px-1.5 shrink-0 items-center justify-center rounded bg-emerald-500/15 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"
+        >
+          +
         </span>
       );
     case "deleted":
       return (
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-rose-500/15 text-[10px] font-bold text-rose-600 dark:text-rose-400">
-          D
+        <span
+          title="Deleted file"
+          className="flex h-4 px-1.5 shrink-0 items-center justify-center rounded bg-rose-500/15 text-[10px] font-semibold text-rose-600 dark:text-rose-400"
+        >
+          -
         </span>
       );
     case "modified":
     default:
       return (
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-amber-500/15 text-[10px] font-bold text-amber-600 dark:text-amber-400">
-          M
+        <span
+          title="Modified file"
+          className="flex h-4 px-1.5 shrink-0 items-center justify-center rounded bg-amber-500/15 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+        >
+          ~
         </span>
       );
   }
@@ -103,12 +113,16 @@ export function WorkspaceReviewTab({
   const [commitError, setCommitError] = useState<string | null>(null);
 
   // Discard state
-  const [discardFileTarget, setDiscardFileTarget] = useState<string | null>(null);
+  const [discardFileTarget, setDiscardFileTarget] = useState<string | null>(
+    null,
+  );
   const [confirmDiscardAllOpen, setConfirmDiscardAllOpen] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
 
   // PR & Merge state
-  const [readiness, setReadiness] = useState<MergeReadinessResponse | null>(null);
+  const [readiness, setReadiness] = useState<MergeReadinessResponse | null>(
+    null,
+  );
   const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [isMerging, setIsMerging] = useState(false);
   const [createPrDialogOpen, setCreatePrDialogOpen] = useState(false);
@@ -144,8 +158,7 @@ export function WorkspaceReviewTab({
 
   const totalAdds = diffSummary?.totalAdditions ?? 0;
   const totalDels = diffSummary?.totalDeletions ?? 0;
-  const branchName =
-    gitStatus?.branch ?? session.branch ?? "main";
+  const branchName = gitStatus?.branch ?? session.branch ?? "main";
 
   const allExpanded =
     uncommittedFiles.length > 0 &&
@@ -336,7 +349,8 @@ export function WorkspaceReviewTab({
           </div>
 
           <span className="font-mono text-xs text-muted-foreground">
-            {uncommittedFiles.length} file{uncommittedFiles.length !== 1 ? "s" : ""}
+            {uncommittedFiles.length} file
+            {uncommittedFiles.length !== 1 ? "s" : ""}
           </span>
 
           {(totalAdds > 0 || totalDels > 0) && (
@@ -466,7 +480,10 @@ export function WorkspaceReviewTab({
                           isExpanded && "rotate-90",
                         )}
                       />
-                      <StatusBadge status={file.status} />
+                      <FileTypeIcon
+                        filename={file.path}
+                        className="h-4 w-4 shrink-0"
+                      />
                       <div className="flex min-w-0 items-center gap-1 text-xs font-mono truncate">
                         {dirPath && (
                           <span className="text-muted-foreground truncate hidden sm:inline">
@@ -477,6 +494,7 @@ export function WorkspaceReviewTab({
                           {fileName}
                         </span>
                       </div>
+                      <FileStatusIndicator status={file.status} />
                     </div>
 
                     {/* Right: Line Changes + Open in Tab + Discard File */}
@@ -732,8 +750,9 @@ export function WorkspaceReviewTab({
             <DialogTitle>Discard all uncommitted changes?</DialogTitle>
             <DialogDescription>
               This will permanently discard all uncommitted changes across all{" "}
-              {uncommittedFiles.length} file{uncommittedFiles.length !== 1 ? "s" : ""}.
-              This action cannot be undone.
+              {uncommittedFiles.length} file
+              {uncommittedFiles.length !== 1 ? "s" : ""}. This action cannot be
+              undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">
@@ -759,10 +778,7 @@ export function WorkspaceReviewTab({
       </Dialog>
 
       {/* Dialog: Create Pull Request */}
-      <Dialog
-        open={createPrDialogOpen}
-        onOpenChange={setCreatePrDialogOpen}
-      >
+      <Dialog open={createPrDialogOpen} onOpenChange={setCreatePrDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Create Pull Request</DialogTitle>

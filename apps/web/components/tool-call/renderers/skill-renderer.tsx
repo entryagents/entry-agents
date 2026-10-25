@@ -32,7 +32,7 @@ export function SkillRenderer({
     : state;
 
   const expandedContent = rawArgs ? (
-    <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+    <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/60 p-3 font-mono text-xs leading-relaxed text-neutral-800 dark:text-neutral-200">
       {rawArgs}
     </pre>
   ) : undefined;

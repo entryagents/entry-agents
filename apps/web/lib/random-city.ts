@@ -1,220 +1,107 @@
 /**
- * A curated list of ~200 notable cities from across the globe.
- * Used to assign memorable, unique session names.
+ * Developer-focused session title generator.
+ * Replaces legacy random city names with clean, contextual workspace names.
  */
-const CITIES: string[] = [
-  // Africa
-  "Abidjan",
-  "Accra",
-  "Addis Ababa",
-  "Algiers",
-  "Antananarivo",
-  "Cairo",
-  "Cape Town",
-  "Casablanca",
-  "Dakar",
-  "Dar es Salaam",
-  "Johannesburg",
-  "Kampala",
-  "Kigali",
-  "Kinshasa",
-  "Lagos",
-  "Luanda",
-  "Lusaka",
-  "Maputo",
-  "Marrakech",
-  "Nairobi",
-  "Tunis",
-  "Windhoek",
 
-  // Asia
-  "Almaty",
-  "Amman",
-  "Baku",
-  "Bangkok",
-  "Beijing",
-  "Beirut",
-  "Bengaluru",
-  "Bishkek",
-  "Colombo",
-  "Dhaka",
-  "Dubai",
-  "Hanoi",
-  "Ho Chi Minh City",
-  "Hong Kong",
-  "Hyderabad",
-  "Islamabad",
-  "Istanbul",
-  "Jakarta",
-  "Jeddah",
-  "Jerusalem",
-  "Kabul",
-  "Karachi",
-  "Kathmandu",
-  "Kolkata",
-  "Kuala Lumpur",
-  "Kyoto",
-  "Manila",
-  "Mumbai",
-  "Muscat",
-  "New Delhi",
-  "Osaka",
-  "Phnom Penh",
-  "Riyadh",
-  "Seoul",
-  "Shanghai",
-  "Shenzhen",
-  "Singapore",
-  "Taipei",
-  "Tashkent",
-  "Tbilisi",
-  "Tehran",
-  "Tel Aviv",
-  "Thimphu",
-  "Tokyo",
-  "Ulaanbaatar",
-  "Vientiane",
-  "Yangon",
-  "Yerevan",
-
-  // Europe
-  "Amsterdam",
-  "Athens",
-  "Barcelona",
-  "Belgrade",
-  "Berlin",
-  "Bern",
-  "Bordeaux",
-  "Bratislava",
-  "Brussels",
-  "Bucharest",
-  "Budapest",
-  "Copenhagen",
-  "Dublin",
-  "Edinburgh",
-  "Florence",
-  "Geneva",
-  "Hamburg",
-  "Helsinki",
-  "Kraków",
-  "Kyiv",
-  "Lisbon",
-  "Ljubljana",
-  "London",
-  "Lyon",
-  "Madrid",
-  "Marseille",
-  "Milan",
-  "Minsk",
-  "Monaco",
-  "Moscow",
-  "Munich",
-  "Naples",
-  "Oslo",
-  "Paris",
-  "Porto",
-  "Prague",
-  "Reykjavik",
-  "Riga",
-  "Rome",
-  "Sarajevo",
-  "Seville",
-  "Sofia",
-  "Stockholm",
-  "Tallinn",
-  "Valencia",
-  "Venice",
-  "Vienna",
-  "Vilnius",
-  "Warsaw",
-  "Zagreb",
-  "Zurich",
-
-  // North America
-  "Anchorage",
-  "Atlanta",
-  "Austin",
-  "Boston",
-  "Calgary",
-  "Chicago",
-  "Denver",
-  "Detroit",
-  "Guadalajara",
-  "Havana",
-  "Honolulu",
-  "Houston",
-  "Kingston",
-  "Los Angeles",
-  "Mexico City",
-  "Miami",
-  "Minneapolis",
-  "Montreal",
-  "Nashville",
-  "New Orleans",
-  "New York",
-  "Ottawa",
-  "Philadelphia",
-  "Phoenix",
-  "Portland",
-  "San Diego",
-  "San Francisco",
-  "San Juan",
-  "Seattle",
-  "Toronto",
-  "Vancouver",
-  "Washington",
-
-  // South America
-  "Bogotá",
-  "Brasília",
-  "Buenos Aires",
-  "Caracas",
-  "Cartagena",
-  "Cusco",
-  "Guayaquil",
-  "La Paz",
-  "Lima",
-  "Medellín",
-  "Montevideo",
-  "Quito",
-  "Recife",
-  "Rio de Janeiro",
-  "Santiago",
-  "São Paulo",
-  "Valparaíso",
-
-  // Oceania
-  "Adelaide",
-  "Auckland",
-  "Brisbane",
-  "Christchurch",
-  "Fiji",
-  "Melbourne",
-  "Perth",
-  "Sydney",
-  "Wellington",
-];
+export interface SessionTitleOptions {
+  repoName?: string | null;
+  initialPrompt?: string | null;
+}
 
 /**
- * Pick a random city name that hasn't been used yet by this user.
- *
- * @param usedNames - Set of session titles the user already has.
- * @returns A city name not in `usedNames`, or a numbered fallback
- *          (e.g. "Tokyo 2") if all cities have been used.
+ * Derives a clean, concise default title for a session before AI title generation completes.
+ * Uses repository context or clean developer placeholders ("New Session", "New Session 2", etc.).
+ * Never uses random world cities.
  */
-export function getRandomCityName(usedNames: Set<string>): string {
-  // Filter to cities not yet used
-  const available = CITIES.filter((city) => !usedNames.has(city));
-
-  if (available.length > 0) {
-    return available[Math.floor(Math.random() * available.length)]!;
+export function getDefaultSessionTitle(
+  usedNames: Set<string>,
+  options?: SessionTitleOptions,
+): string {
+  // 1. If repoName is provided, use repo name if available
+  if (options?.repoName && options.repoName.trim()) {
+    const cleanRepo = options.repoName.trim();
+    if (!usedNames.has(cleanRepo)) {
+      return cleanRepo;
+    }
+    let suffix = 2;
+    while (usedNames.has(`${cleanRepo} (${suffix})`)) {
+      suffix++;
+    }
+    return `${cleanRepo} (${suffix})`;
   }
 
-  // All cities exhausted — pick a random city and append a number
-  const base = CITIES[Math.floor(Math.random() * CITIES.length)]!;
+  // 2. If an initial prompt was given, extract a clean fallback title
+  if (options?.initialPrompt && options.initialPrompt.trim()) {
+    const fallback = sanitizePromptToTitle(options.initialPrompt);
+    if (fallback && !usedNames.has(fallback)) {
+      return fallback;
+    }
+  }
+
+  // 3. Fall back to clean "New Session", "New Session 2", etc.
+  const base = "New Session";
+  if (!usedNames.has(base)) {
+    return base;
+  }
+
   let suffix = 2;
   while (usedNames.has(`${base} ${suffix}`)) {
     suffix++;
   }
   return `${base} ${suffix}`;
+}
+
+/**
+ * Backward compatibility export for callers expecting getRandomCityName.
+ * Now returns clean developer session titles rather than random cities.
+ */
+export function getRandomCityName(
+  usedNames: Set<string>,
+  context?: { repoName?: string },
+): string {
+  return getDefaultSessionTitle(usedNames, context);
+}
+
+/**
+ * Quick local sanitizer that turns a user prompt into a clean 3-6 word title
+ * when AI title generation is slow, rate-limited, or unavailable.
+ */
+export function sanitizePromptToTitle(prompt: string): string {
+  let cleaned =
+    prompt
+      .trim()
+      .replace(/^[`'"]+|[`'"]+$/g, "")
+      // Remove common conversational opening phrases
+      .replace(
+        /^(can you\s+(please\s+)?(help\s+(me\s+)?with\s+|to\s+)?|please\s+|hey\s+|hi\s+|hello\s+|let's\s+|let\s+us\s+|let\s+me\s+|i\s+want\s+to\s+|i\s+need\s+to\s+|could\s+you\s+)/i,
+        "",
+      )
+      .replace(
+        /^(build\s+a\s+|create\s+a\s+|make\s+a\s+|add\s+a\s+)/i,
+        (match) => {
+          // Capitalize verb
+          return match.charAt(0).toUpperCase() + match.slice(1);
+        },
+      )
+      .split("\n")[0]
+      ?.trim() ?? "";
+
+  // Strip trailing punctuation
+  cleaned = cleaned.replace(/[.?!,:;]+$/, "").trim();
+
+  if (cleaned.length === 0) {
+    return "New Session";
+  }
+
+  // Capitalize first character
+  cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+
+  if (cleaned.length > 50) {
+    const truncated = cleaned.slice(0, 48);
+    const lastSpace = truncated.lastIndexOf(" ");
+    cleaned =
+      (lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated) + "...";
+  }
+
+  return cleaned;
 }

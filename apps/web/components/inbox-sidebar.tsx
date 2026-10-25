@@ -580,7 +580,9 @@ const SessionRow = memo(function SessionRow({
     </span>
   ) : null;
 
-  const showDesktopSubMeta = Boolean(hasRepo || session.branch || session.prNumber);
+  const showDesktopSubMeta = Boolean(
+    hasRepo || session.branch || session.prNumber,
+  );
 
   const sessionButton = (
     <button
@@ -1066,377 +1068,374 @@ export function InboxSidebar({
 
   return (
     <>
-        <div className="flex h-full min-h-0 flex-col bg-sidebar p-2 select-none">
-          {/* Authentic Header: Real EntryMark Logo + Active/Archive Switcher + New Button */}
-          <div className="mb-1.5 flex items-center justify-between px-1 py-0.5">
-            <div className="flex items-center gap-2">
-              <EntryMark className="h-4 w-4 shrink-0 text-foreground" />
+      <div className="flex h-full min-h-0 flex-col bg-sidebar p-2 select-none">
+        {/* Authentic Header: Real EntryMark Logo + Active/Archive Switcher + New Button */}
+        <div className="mb-1.5 flex items-center justify-between px-1 py-0.5">
+          <div className="flex items-center gap-2">
+            <EntryMark className="h-4 w-4 shrink-0 text-foreground" />
 
-              <div className="flex items-center gap-0.5 rounded-lg border border-border/60 bg-background/40 p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setShowArchived(false)}
-                  className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
-                    !showArchived
-                      ? "bg-sidebar-active text-foreground shadow-2xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  Active
-                  {activeSessions.length > 0 ? (
-                    <span className="ml-1 font-mono text-[10px] text-muted-foreground">
-                      {activeSessions.length}
-                    </span>
-                  ) : null}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowArchived(true)}
-                  className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
-                    showArchived
-                      ? "bg-sidebar-active text-foreground shadow-2xs"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  <Archive className="h-3 w-3" />
-                  <span>Archive</span>
-                  {archivedCount > 0 ? (
-                    <span className="ml-0.5 font-mono text-[10px] text-muted-foreground">
-                      {archivedCount}
-                    </span>
-                  ) : null}
-                </button>
-              </div>
-            </div>
-
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => {
-                if (isMobile) setOpenMobile(false);
-                onOpenNewSession();
-              }}
-              className="h-7 w-7 text-muted-foreground hover:text-foreground"
-              aria-label="New session"
-            >
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Borderless Filter Input */}
-          <div className="mb-1.5 flex items-center rounded-lg px-2 py-1 transition-colors hover:bg-muted/40 focus-within:bg-muted/50">
-            <Search className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/75" />
-            <input
-              type="text"
-              value={desktopSearchQuery}
-              onChange={(e) => setDesktopSearchQuery(e.target.value)}
-              placeholder="Filter sessions..."
-              className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
-            />
-            {desktopSearchQuery ? (
+            <div className="flex items-center gap-0.5 rounded-lg border border-border/60 bg-background/40 p-0.5">
               <button
                 type="button"
-                onClick={() => setDesktopSearchQuery("")}
-                className="ml-1 rounded p-0.5 text-muted-foreground hover:text-foreground"
-                aria-label="Clear filter"
+                onClick={() => setShowArchived(false)}
+                className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                  !showArchived
+                    ? "bg-sidebar-active text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
               >
-                <X className="h-3 w-3" />
+                Active
+                {activeSessions.length > 0 ? (
+                  <span className="ml-1 font-mono text-[10px] text-muted-foreground">
+                    {activeSessions.length}
+                  </span>
+                ) : null}
               </button>
-            ) : null}
-          </div>
-
-          {/* Unified Smooth Repository & Session Branch Tree */}
-          <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
-            {showLoadingSkeleton ? (
-              <div className="space-y-1 p-1">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div key={index} className="space-y-1.5 rounded-lg px-2 py-2">
-                    <div className="h-3.5 w-3/4 animate-pulse rounded bg-muted" />
-                    <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
-                  </div>
-                ))}
-              </div>
-            ) : filteredDisplayedSessions.length === 0 ? (
-              <div className="px-3 py-12 text-center text-xs text-muted-foreground">
-                {desktopSearchQuery
-                  ? "No matching sessions"
-                  : showArchived
-                    ? (archivedSessionsError ?? "No archived sessions")
-                    : "No sessions yet"}
-                {showArchived && archivedSessionsError ? (
-                  <div className="mt-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleRetryArchivedSessions}
-                    >
-                      Retry
-                    </Button>
-                  </div>
+              <button
+                type="button"
+                onClick={() => setShowArchived(true)}
+                className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                  showArchived
+                    ? "bg-sidebar-active text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Archive className="h-3 w-3" />
+                <span>Archive</span>
+                {archivedCount > 0 ? (
+                  <span className="ml-0.5 font-mono text-[10px] text-muted-foreground">
+                    {archivedCount}
+                  </span>
                 ) : null}
-              </div>
-            ) : (
-              <>
-                <div className="space-y-0.5 p-0.5">
-                  {filteredDisplayedSessions.map((sessionItem) => (
-                    <SessionRow
-                      key={sessionItem.id}
-                      session={sessionItem}
-                      isActive={sessionItem.id === activeSessionId}
-                      isPending={sessionItem.id === pendingSessionId}
-                      onSessionClick={handleSessionClick}
-                      onSessionPrefetch={handleSessionPrefetch}
-                      onRenameSession={onRenameSession}
-                      onArchiveSession={handleArchiveSession}
-                      onUnarchiveSession={handleUnarchiveSession}
-                      onOpenBranchPicker={handleOpenBranchPicker}
-                    />
-                  ))}
-                </div>
-
-                {showArchived &&
-                (hasMoreArchivedSessions || archivedSessionsError) ? (
-                  <div className="px-2 pb-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="w-full"
-                      onClick={
-                        archivedSessionsError
-                          ? handleRetryArchivedSessions
-                          : handleLoadMoreArchivedSessions
-                      }
-                      disabled={archivedSessionsLoading}
-                    >
-                      {archivedSessionsLoading
-                        ? "Loading..."
-                        : archivedSessionsError
-                          ? "Retry loading archived sessions"
-                          : "Load more archived sessions"}
-                    </Button>
-                  </div>
-                ) : null}
-              </>
-            )}
-          </div>
-
-          {/* GOAT-only Usage Windows Telemetry + Clickable User Profile Popover & Balance Box */}
-          {sidebarUser ? (
-            <div className="mt-1.5 space-y-2 border-t border-border/60 pt-2">
-              <DesktopCodexBillingStatus />
-              <div className="flex items-center gap-1.5">
-                <Popover
-                  open={profileMenuOpen}
-                  onOpenChange={setProfileMenuOpen}
-                >
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 text-left transition-colors cursor-pointer ${
-                        profileMenuOpen
-                          ? "bg-muted text-foreground"
-                          : "hover:bg-muted/60 text-foreground"
-                      }`}
-                      aria-label="Open profile menu"
-                    >
-                      <Avatar className="h-6 w-6 shrink-0 border border-border/60">
-                        {sidebarUser.avatar ? (
-                          <AvatarImage
-                            src={sidebarUser.avatar}
-                            alt={sidebarUser.username}
-                          />
-                        ) : null}
-                        <AvatarFallback className="bg-background text-[10px]">
-                          <EntryMark className="h-3 w-3 text-foreground" />
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none text-foreground">
-                        {sidebarUser.username}
-                      </span>
-                    </button>
-                  </PopoverTrigger>
-
-                  <PopoverContent
-                    side="top"
-                    align="start"
-                    sideOffset={8}
-                    className="w-[244px] overflow-hidden rounded-2xl border border-border bg-popover p-0 text-popover-foreground shadow-xl"
-                  >
-                    {/* User Identity Header */}
-                    <div className="flex items-center justify-between gap-2.5 px-3.5 py-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-semibold leading-tight text-foreground">
-                          {sidebarUser.username}
-                        </p>
-                        {sidebarUser.email ? (
-                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                            {sidebarUser.email}
-                          </p>
-                        ) : null}
-                      </div>
-                      <Avatar className="h-7 w-7 shrink-0 border border-border/60">
-                        {sidebarUser.avatar ? (
-                          <AvatarImage
-                            src={sidebarUser.avatar}
-                            alt={sidebarUser.username}
-                          />
-                        ) : null}
-                        <AvatarFallback className="bg-background text-xs">
-                          <EntryMark className="h-3.5 w-3.5 text-foreground" />
-                        </AvatarFallback>
-                      </Avatar>
-                    </div>
-
-                    <div className="border-t border-border py-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfileMenuOpen(false);
-                          if (isMobile) setOpenMobile(false);
-                          router.push("/pricing");
-                        }}
-                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
-                      >
-                        <span>Plan</span>
-                        <SidebarPlanBadge showIcon />
-                      </button>
-
-                      {billingData?.expiresAt ? (
-                        <div className="flex w-full items-center justify-between px-3.5 py-1.5 text-[12px] text-muted-foreground">
-                          <span>Expires</span>
-                          <span className="font-mono text-xs tabular-nums text-foreground/80">
-                            {formatExpirationDate(billingData.expiresAt)}
-                          </span>
-                        </div>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfileMenuOpen(false);
-                          if (isMobile) setOpenMobile(false);
-                          router.push("/settings/usage");
-                        }}
-                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
-                      >
-                        <span>Usage &amp; Balance</span>
-                        <span className="font-mono text-xs tabular-nums text-muted-foreground">
-                          {creditDisplay}
-                        </span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfileMenuOpen(false);
-                          if (isMobile) setOpenMobile(false);
-                          router.push("/pricing");
-                        }}
-                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
-                      >
-                        <span>Pricing &amp; Plans</span>
-                        <CreditCard className="h-4 w-4 text-muted-foreground" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfileMenuOpen(false);
-                          if (isMobile) setOpenMobile(false);
-                          router.push("/settings");
-                        }}
-                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
-                      >
-                        <span>Settings</span>
-                        <Settings className="h-4 w-4 text-muted-foreground" />
-                      </button>
-                    </div>
-
-                    <div className="border-t border-border py-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfileMenuOpen(false);
-                          if (isMobile) setOpenMobile(false);
-                          setFeedbackOpen(true);
-                        }}
-                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
-                      >
-                        <span>Feedback</span>
-                        <SmilePlus className="h-4 w-4 text-muted-foreground" />
-                      </button>
-
-                      <div className="flex items-center justify-between px-3.5 py-1.5 text-[13px] text-foreground">
-                        <span>Theme</span>
-                        <div className="flex items-center gap-0.5 rounded-full border border-border bg-background/60 p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => setTheme("system")}
-                            aria-label="System theme"
-                            title="System theme"
-                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
-                              theme === "system"
-                                ? "border border-border bg-muted text-foreground shadow-2xs"
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
-                          >
-                            <Monitor className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setTheme("light")}
-                            aria-label="Light theme"
-                            title="Light theme"
-                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
-                              theme === "light"
-                                ? "border border-border bg-muted text-foreground shadow-2xs"
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
-                          >
-                            <Sun className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setTheme("dark")}
-                            aria-label="Dark theme"
-                            title="Dark theme"
-                            className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
-                              theme === "dark"
-                                ? "border border-border bg-muted text-foreground shadow-2xs"
-                                : "text-muted-foreground hover:text-foreground"
-                            }`}
-                          >
-                            <Moon className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border py-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProfileMenuOpen(false);
-                          if (isMobile) setOpenMobile(false);
-                          void signOut();
-                        }}
-                        className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
-                      >
-                        <span>Sign Out</span>
-                        <LogOut className="h-4 w-4 text-muted-foreground" />
-                      </button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-
-                <DesktopBalanceBox />
-              </div>
+              </button>
             </div>
+          </div>
+
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              if (isMobile) setOpenMobile(false);
+              onOpenNewSession();
+            }}
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            aria-label="New session"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Borderless Filter Input */}
+        <div className="mb-1.5 flex items-center rounded-lg px-2 py-1 transition-colors hover:bg-muted/40 focus-within:bg-muted/50">
+          <Search className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/75" />
+          <input
+            type="text"
+            value={desktopSearchQuery}
+            onChange={(e) => setDesktopSearchQuery(e.target.value)}
+            placeholder="Filter sessions..."
+            className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
+          />
+          {desktopSearchQuery ? (
+            <button
+              type="button"
+              onClick={() => setDesktopSearchQuery("")}
+              className="ml-1 rounded p-0.5 text-muted-foreground hover:text-foreground"
+              aria-label="Clear filter"
+            >
+              <X className="h-3 w-3" />
+            </button>
           ) : null}
         </div>
+
+        {/* Unified Smooth Repository & Session Branch Tree */}
+        <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+          {showLoadingSkeleton ? (
+            <div className="space-y-1 p-1">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={index} className="space-y-1.5 rounded-lg px-2 py-2">
+                  <div className="h-3.5 w-3/4 animate-pulse rounded bg-muted" />
+                  <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+                </div>
+              ))}
+            </div>
+          ) : filteredDisplayedSessions.length === 0 ? (
+            <div className="px-3 py-12 text-center text-xs text-muted-foreground">
+              {desktopSearchQuery
+                ? "No matching sessions"
+                : showArchived
+                  ? (archivedSessionsError ?? "No archived sessions")
+                  : "No sessions yet"}
+              {showArchived && archivedSessionsError ? (
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRetryArchivedSessions}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <div className="space-y-0.5 p-0.5">
+                {filteredDisplayedSessions.map((sessionItem) => (
+                  <SessionRow
+                    key={sessionItem.id}
+                    session={sessionItem}
+                    isActive={sessionItem.id === activeSessionId}
+                    isPending={sessionItem.id === pendingSessionId}
+                    onSessionClick={handleSessionClick}
+                    onSessionPrefetch={handleSessionPrefetch}
+                    onRenameSession={onRenameSession}
+                    onArchiveSession={handleArchiveSession}
+                    onUnarchiveSession={handleUnarchiveSession}
+                    onOpenBranchPicker={handleOpenBranchPicker}
+                  />
+                ))}
+              </div>
+
+              {showArchived &&
+              (hasMoreArchivedSessions || archivedSessionsError) ? (
+                <div className="px-2 pb-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={
+                      archivedSessionsError
+                        ? handleRetryArchivedSessions
+                        : handleLoadMoreArchivedSessions
+                    }
+                    disabled={archivedSessionsLoading}
+                  >
+                    {archivedSessionsLoading
+                      ? "Loading..."
+                      : archivedSessionsError
+                        ? "Retry loading archived sessions"
+                        : "Load more archived sessions"}
+                  </Button>
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+
+        {/* GOAT-only Usage Windows Telemetry + Clickable User Profile Popover & Balance Box */}
+        {sidebarUser ? (
+          <div className="mt-1.5 space-y-2 border-t border-border/60 pt-2">
+            <DesktopCodexBillingStatus />
+            <div className="flex items-center gap-1.5">
+              <Popover open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 text-left transition-colors cursor-pointer ${
+                      profileMenuOpen
+                        ? "bg-muted text-foreground"
+                        : "hover:bg-muted/60 text-foreground"
+                    }`}
+                    aria-label="Open profile menu"
+                  >
+                    <Avatar className="h-6 w-6 shrink-0 border border-border/60">
+                      {sidebarUser.avatar ? (
+                        <AvatarImage
+                          src={sidebarUser.avatar}
+                          alt={sidebarUser.username}
+                        />
+                      ) : null}
+                      <AvatarFallback className="bg-background text-[10px]">
+                        <EntryMark className="h-3 w-3 text-foreground" />
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-medium leading-none text-foreground">
+                      {sidebarUser.username}
+                    </span>
+                  </button>
+                </PopoverTrigger>
+
+                <PopoverContent
+                  side="top"
+                  align="start"
+                  sideOffset={8}
+                  className="w-[244px] overflow-hidden rounded-2xl border border-border bg-popover p-0 text-popover-foreground shadow-xl"
+                >
+                  {/* User Identity Header */}
+                  <div className="flex items-center justify-between gap-2.5 px-3.5 py-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-semibold leading-tight text-foreground">
+                        {sidebarUser.username}
+                      </p>
+                      {sidebarUser.email ? (
+                        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                          {sidebarUser.email}
+                        </p>
+                      ) : null}
+                    </div>
+                    <Avatar className="h-7 w-7 shrink-0 border border-border/60">
+                      {sidebarUser.avatar ? (
+                        <AvatarImage
+                          src={sidebarUser.avatar}
+                          alt={sidebarUser.username}
+                        />
+                      ) : null}
+                      <AvatarFallback className="bg-background text-xs">
+                        <EntryMark className="h-3.5 w-3.5 text-foreground" />
+                      </AvatarFallback>
+                    </Avatar>
+                  </div>
+
+                  <div className="border-t border-border py-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        if (isMobile) setOpenMobile(false);
+                        router.push("/pricing");
+                      }}
+                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                    >
+                      <span>Plan</span>
+                      <SidebarPlanBadge showIcon />
+                    </button>
+
+                    {billingData?.expiresAt ? (
+                      <div className="flex w-full items-center justify-between px-3.5 py-1.5 text-[12px] text-muted-foreground">
+                        <span>Expires</span>
+                        <span className="font-mono text-xs tabular-nums text-foreground/80">
+                          {formatExpirationDate(billingData.expiresAt)}
+                        </span>
+                      </div>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        if (isMobile) setOpenMobile(false);
+                        router.push("/settings/usage");
+                      }}
+                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                    >
+                      <span>Usage &amp; Balance</span>
+                      <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                        {creditDisplay}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        if (isMobile) setOpenMobile(false);
+                        router.push("/pricing");
+                      }}
+                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                    >
+                      <span>Pricing &amp; Plans</span>
+                      <CreditCard className="h-4 w-4 text-muted-foreground" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        if (isMobile) setOpenMobile(false);
+                        router.push("/settings");
+                      }}
+                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                    >
+                      <span>Settings</span>
+                      <Settings className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </div>
+
+                  <div className="border-t border-border py-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        if (isMobile) setOpenMobile(false);
+                        setFeedbackOpen(true);
+                      }}
+                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                    >
+                      <span>Feedback</span>
+                      <SmilePlus className="h-4 w-4 text-muted-foreground" />
+                    </button>
+
+                    <div className="flex items-center justify-between px-3.5 py-1.5 text-[13px] text-foreground">
+                      <span>Theme</span>
+                      <div className="flex items-center gap-0.5 rounded-full border border-border bg-background/60 p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setTheme("system")}
+                          aria-label="System theme"
+                          title="System theme"
+                          className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
+                            theme === "system"
+                              ? "border border-border bg-muted text-foreground shadow-2xs"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <Monitor className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTheme("light")}
+                          aria-label="Light theme"
+                          title="Light theme"
+                          className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
+                            theme === "light"
+                              ? "border border-border bg-muted text-foreground shadow-2xs"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <Sun className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTheme("dark")}
+                          aria-label="Dark theme"
+                          title="Dark theme"
+                          className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
+                            theme === "dark"
+                              ? "border border-border bg-muted text-foreground shadow-2xs"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <Moon className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-border py-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProfileMenuOpen(false);
+                        if (isMobile) setOpenMobile(false);
+                        void signOut();
+                      }}
+                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                    >
+                      <span>Sign Out</span>
+                      <LogOut className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <DesktopBalanceBox />
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
 

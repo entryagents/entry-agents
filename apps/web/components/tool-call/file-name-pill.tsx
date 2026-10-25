@@ -40,7 +40,7 @@ export function FileNamePill({
     : "";
   const normalStyles = error
     ? ""
-    : "border-border/80 bg-muted/60 text-muted-foreground";
+    : "border-border bg-muted/80 text-foreground font-medium";
   const hoverStyles = error
     ? "hover:border-red-500/40 hover:bg-red-500/15"
     : "hover:border-foreground/20 hover:bg-muted hover:shadow-sm hover:ring-1 hover:ring-foreground/5";

@@ -53,7 +53,7 @@ export function BashRenderer({
         </pre>
       ) : undefined
     ) : (
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/60 p-3 font-mono text-xs leading-relaxed text-neutral-800 dark:text-neutral-200">
         {hasOutput ? combinedOutput : "(No output)"}
       </pre>
     )

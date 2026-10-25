@@ -1,6 +1,14 @@
 "use client";
 
-import { Cpu, Gauge, ShieldAlert, TriangleAlert, Users, MessageSquare, Inbox } from "lucide-react";
+import {
+  Cpu,
+  Gauge,
+  ShieldAlert,
+  TriangleAlert,
+  Users,
+  MessageSquare,
+  Inbox,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";

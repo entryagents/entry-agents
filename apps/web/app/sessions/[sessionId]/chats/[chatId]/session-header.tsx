@@ -215,7 +215,8 @@ export function SessionHeader() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {gitPanelOpen ? "Close workspace" : "Open workspace"} ({tooltipText}) · ⌘⇧B / Ctrl+Shift+B
+              {gitPanelOpen ? "Close workspace" : "Open workspace"} (
+              {tooltipText}) · ⌘⇧B / Ctrl+Shift+B
             </TooltipContent>
           </Tooltip>
         </div>

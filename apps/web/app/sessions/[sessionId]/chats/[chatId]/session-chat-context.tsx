@@ -43,7 +43,11 @@ import {
 } from "@/hooks/use-session-git-status";
 import { useSessionSkills } from "@/hooks/use-session-skills";
 import type { Chat, Session } from "@/lib/db/schema";
-import { type ModelOption, withMissingModelOption, getDefaultModelOptionId } from "@/lib/model-options";
+import {
+  type ModelOption,
+  withMissingModelOption,
+  getDefaultModelOptionId,
+} from "@/lib/model-options";
 import {
   clearSandboxResumeState,
   clearSandboxState,
@@ -1155,7 +1159,12 @@ export function SessionChatProvider({
       const fallbackId = getDefaultModelOptionId(allModelOptions);
       void updateChatModel(fallbackId);
     }
-  }, [allModelOptions, chatInfo.modelId, modelOptionsLoadingFromApi, updateChatModel]);
+  }, [
+    allModelOptions,
+    chatInfo.modelId,
+    modelOptionsLoadingFromApi,
+    updateChatModel,
+  ]);
 
   const updateChatReasoningEffort = useCallback(
     async (reasoningEffort: string | null) => {

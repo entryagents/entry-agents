@@ -24,7 +24,7 @@ import {
 } from "@/lib/github/urls";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { kickSandboxProvisioningWorkflow } from "@/lib/sandbox/provisioning-kick";
-import { getRandomCityName } from "@/lib/random-city";
+import { getDefaultSessionTitle } from "@/lib/random-city";
 import { getServerSession } from "@/lib/session/get-server-session";
 import {
   isVercelInvalidTokenError,
@@ -73,7 +73,7 @@ async function resolveSessionTitle(
     return input.title.trim();
   }
   const usedNames = await getUsedSessionTitles(userId);
-  return getRandomCityName(usedNames);
+  return getDefaultSessionTitle(usedNames, { repoName: input.repoName });
 }
 
 const DEFAULT_ARCHIVED_SESSIONS_LIMIT = 50;

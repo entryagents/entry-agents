@@ -64,7 +64,7 @@
   --secondary: oklch(0.967 0.001 286.375);
   --secondary-foreground: oklch(0.21 0.006 285.885);
   --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
+  --muted-foreground: oklch(0.4 0.02 285.9);
   --accent: oklch(0.94 0.001 286.375);
   --accent-foreground: oklch(0.21 0.006 285.885);
   --destructive: oklch(0.577 0.245 27.325);
@@ -351,7 +351,16 @@
   pre code {
     white-space: pre !important;
   }
-  [data-streamdown="inline-code"] {
+  [data-streamdown="inline-code"],
+  code:not(pre code) {
+    font-family: var(--font-mono, monospace);
+    font-size: 0.875em;
+    padding: 0.15em 0.35em;
+    border-radius: 0.375rem;
+    background-color: var(--muted);
+    color: var(--foreground);
+    border: 1px solid var(--border);
+    font-weight: 500;
     overflow-wrap: anywhere;
     word-break: break-word;
   }

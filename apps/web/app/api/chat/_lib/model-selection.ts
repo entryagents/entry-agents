@@ -34,9 +34,8 @@ export async function resolveLiveModelId(
     return requestedModelId;
   }
 
-  const { fetchAvailableLanguageModels } = await import(
-    "@/lib/models-with-context"
-  );
+  const { fetchAvailableLanguageModels } =
+    await import("@/lib/models-with-context");
   const live = await fetchAvailableLanguageModels().catch(() => []);
   const liveIds = live.map((m) => m.id);
   if (liveIds.includes(APP_DEFAULT_MODEL_ID)) {

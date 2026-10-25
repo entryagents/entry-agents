@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { GitPanelProps } from "../git-panel";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import { useGitPanel } from "../git-panel-context";
 import { WorkspaceReviewTab } from "./workspace-review-tab";
 import { WorkspacePreviewTab } from "./workspace-preview-tab";
@@ -89,7 +90,10 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   } = useGitPanel();
 
   // Dynamic tool tabs: which core tabs are open
-  const [openToolTabs, setOpenToolTabs] = useState<string[]>(["review", "preview"]);
+  const [openToolTabs, setOpenToolTabs] = useState<string[]>([
+    "review",
+    "preview",
+  ]);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState("");
 
@@ -106,7 +110,12 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         setActiveWorkspaceTab("review");
       }
     }
-  }, [activeWorkspaceTab, changesCount, isDevServerReady, setActiveWorkspaceTab]);
+  }, [
+    activeWorkspaceTab,
+    changesCount,
+    isDevServerReady,
+    setActiveWorkspaceTab,
+  ]);
 
   // Keep review open if changes occur
   useEffect(() => {
@@ -118,7 +127,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   // Keep preview open if dev server is ready
   useEffect(() => {
     if (isDevServerReady && !openToolTabs.includes("preview")) {
-      setOpenToolTabs((prev) => (prev.includes("preview") ? prev : [...prev, "preview"]));
+      setOpenToolTabs((prev) =>
+        prev.includes("preview") ? prev : [...prev, "preview"],
+      );
     }
   }, [isDevServerReady, openToolTabs]);
 
@@ -138,7 +149,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   const openToolTab = useCallback(
     (tabId: string) => {
-      setOpenToolTabs((prev) => (prev.includes(tabId) ? prev : [...prev, tabId]));
+      setOpenToolTabs((prev) =>
+        prev.includes(tabId) ? prev : [...prev, tabId],
+      );
       setActiveWorkspaceTab(tabId);
     },
     [setActiveWorkspaceTab],
@@ -150,7 +163,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     const nonDirs = files.filter((f) => !f.isDirectory);
     if (!fileSearchQuery.trim()) return nonDirs.slice(0, 40);
     const q = fileSearchQuery.toLowerCase();
-    return nonDirs.filter((f) => f.value.toLowerCase().includes(q)).slice(0, 40);
+    return nonDirs
+      .filter((f) => f.value.toLowerCase().includes(q))
+      .slice(0, 40);
   }, [files, fileSearchQuery]);
 
   // Construct dynamic tab list
@@ -320,7 +335,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
               {(!openToolTabs.includes("review") ||
                 !openToolTabs.includes("preview") ||
-                !openToolTabs.includes("terminal")) && <DropdownMenuSeparator />}
+                !openToolTabs.includes("terminal")) && (
+                <DropdownMenuSeparator />
+              )}
 
               <DropdownMenuItem
                 onClick={() => setFileSearchOpen(true)}
@@ -390,10 +407,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             activeWorkspaceTab === "review" ? "block" : "hidden",
           )}
         >
-          <WorkspaceReviewTab
-            {...gitPanelProps}
-            onOpenFile={openFileTab}
-          />
+          <WorkspaceReviewTab {...gitPanelProps} onOpenFile={openFileTab} />
         </div>
 
         {/* Live Preview Tab */}

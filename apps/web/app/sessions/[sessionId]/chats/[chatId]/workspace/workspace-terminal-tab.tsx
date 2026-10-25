@@ -79,7 +79,10 @@ export function WorkspaceTerminalTab({
       };
 
       setLogs((prev) => [...prev, newEntry]);
-      setCommandHistory((prev) => [trimmed, ...prev.filter((c) => c !== trimmed)]);
+      setCommandHistory((prev) => [
+        trimmed,
+        ...prev.filter((c) => c !== trimmed),
+      ]);
       setHistoryIndex(-1);
       setInputCommand("");
       setIsRunning(true);
@@ -252,7 +255,9 @@ export function WorkspaceTerminalTab({
                 <span>VS Code</span>
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Open full Codespace terminal</TooltipContent>
+            <TooltipContent side="bottom">
+              Open full Codespace terminal
+            </TooltipContent>
           </Tooltip>
         </div>
       </div>
@@ -260,7 +265,8 @@ export function WorkspaceTerminalTab({
       {/* Terminal Output Area */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs leading-relaxed selection:bg-emerald-800 selection:text-white">
         <div className="text-zinc-500 text-[11px]">
-          Connected to Entry Agents container sandbox. Type any command below or use quick actions.
+          Connected to Entry Agents container sandbox. Type any command below or
+          use quick actions.
         </div>
 
         {logs.map((log) => (

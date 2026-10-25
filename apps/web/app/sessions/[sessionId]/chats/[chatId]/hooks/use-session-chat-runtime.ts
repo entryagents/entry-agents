@@ -435,7 +435,11 @@ export function useSessionChatRuntime({
       );
 
     // If there is no active stream recorded and no in-flight turn, skip
-    if (!initialChatActiveStreamId && !endsWithUserMessage && !hasUnfinishedAssistant) {
+    if (
+      !initialChatActiveStreamId &&
+      !endsWithUserMessage &&
+      !hasUnfinishedAssistant
+    ) {
       return;
     }
 

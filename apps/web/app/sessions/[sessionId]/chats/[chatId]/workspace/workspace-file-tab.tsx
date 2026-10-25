@@ -242,7 +242,8 @@ export function WorkspaceFileTab({
           <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-destructive">
             <p className="text-sm font-semibold">Failed to load file</p>
             <p className="text-xs text-muted-foreground max-w-sm">
-              {error.message || "An unexpected error occurred while loading this file."}
+              {error.message ||
+                "An unexpected error occurred while loading this file."}
             </p>
           </div>
         ) : data ? (

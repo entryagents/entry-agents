@@ -34,7 +34,9 @@ export default async function SessionLayout({
   }
 
   const isOwner = sessionRecord.userId === session.user.id;
-  const isAdmin = isOwner ? false : await isUserAdmin(session.user.id).catch(() => false);
+  const isAdmin = isOwner
+    ? false
+    : await isUserAdmin(session.user.id).catch(() => false);
   if (!isOwner && !isAdmin) {
     redirect("/");
   }

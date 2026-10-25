@@ -9,7 +9,7 @@ import { getVercelProjectLinkByRepo } from "@/lib/db/vercel-project-links";
 import { getUserPreferences } from "@/lib/db/user-preferences";
 import { getUserGitHubToken } from "@/lib/github/token";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
-import { getRandomCityName } from "@/lib/random-city";
+import { getDefaultSessionTitle } from "@/lib/random-city";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 interface RepoPageProps {
@@ -107,7 +107,7 @@ export default async function RepoPage({ params }: RepoPageProps) {
   const cloneUrl = `https://github.com/${username}/${repo}.git`;
 
   const usedNames = await getUsedSessionTitles(session.user.id);
-  const title = getRandomCityName(usedNames);
+  const title = getDefaultSessionTitle(usedNames, { repoName: repo });
 
   const result = await createSessionWithInitialChat({
     session: {

@@ -1,6 +1,10 @@
 "use client";
 
-import { useBillingMe, formatExpirationDate, PLAN_STYLES } from "@/components/sidebar-billing-widget";
+import {
+  useBillingMe,
+  formatExpirationDate,
+  PLAN_STYLES,
+} from "@/components/sidebar-billing-widget";
 import { formatUsdCents } from "@/lib/format-usd";
 import { LandingNav } from "@/components/landing/nav";
 import { LandingFooter } from "@/components/landing/footer";
@@ -11,15 +15,26 @@ import { ArrowUpRight, CheckCircle2, Clock, Sparkles } from "lucide-react";
 export function UsageClient() {
   const { data: billing, isLoading } = useBillingMe();
 
-  const planStyle = billing ? PLAN_STYLES[billing.plan] ?? PLAN_STYLES.free : PLAN_STYLES.free;
+  const planStyle = billing
+    ? (PLAN_STYLES[billing.plan] ?? PLAN_STYLES.free)
+    : PLAN_STYLES.free;
   const windows = billing?.usageWindows;
   const isFixed = windows?.mode === "fixed";
 
   const windowRows = windows
     ? [
-        { label: isFixed ? "Fixed 5 Hours" : "Rolling 5 Hours", ...windows.fiveHour },
-        { label: isFixed ? "Fixed 7 Days" : "Rolling 7 Days", ...windows.weekly },
-        { label: isFixed ? "Fixed 30 Days" : "Rolling 30 Days", ...windows.monthly },
+        {
+          label: isFixed ? "Fixed 5 Hours" : "Rolling 5 Hours",
+          ...windows.fiveHour,
+        },
+        {
+          label: isFixed ? "Fixed 7 Days" : "Rolling 7 Days",
+          ...windows.weekly,
+        },
+        {
+          label: isFixed ? "Fixed 30 Days" : "Rolling 30 Days",
+          ...windows.monthly,
+        },
       ]
     : null;
 
@@ -36,11 +51,16 @@ export function UsageClient() {
                 Usage &amp; Balance
               </h1>
               <p className="mt-3 text-base text-(--l-fg-2) sm:text-lg">
-                Monitor your live balance, rolling usage limits, and agent compute telemetry.
+                Monitor your live balance, rolling usage limits, and agent
+                compute telemetry.
               </p>
             </div>
             <div className="flex items-center gap-3">
-              <Button asChild variant="outline" className="rounded-full border-(--l-border)">
+              <Button
+                asChild
+                variant="outline"
+                className="rounded-full border-(--l-border)"
+              >
                 <a href="/pricing">
                   Pricing Plans
                   <ArrowUpRight className="ml-1.5 h-4 w-4" />
@@ -69,9 +89,13 @@ export function UsageClient() {
                 </div>
 
                 <div className="mt-4">
-                  <p className="text-xs text-(--l-fg-3)">Available Credit Balance</p>
+                  <p className="text-xs text-(--l-fg-3)">
+                    Available Credit Balance
+                  </p>
                   <p className="mt-1 font-mono text-4xl font-semibold tracking-tight text-(--l-fg) sm:text-5xl">
-                    {isLoading ? "..." : formatUsdCents(billing?.creditBalanceCents ?? 0)}
+                    {isLoading
+                      ? "..."
+                      : formatUsdCents(billing?.creditBalanceCents ?? 0)}
                   </p>
                 </div>
 
@@ -79,7 +103,9 @@ export function UsageClient() {
                   <div className="flex justify-between">
                     <span>Monthly Credit Grant</span>
                     <span className="font-mono font-medium text-(--l-fg)">
-                      {billing?.creditGrantCents ? formatUsdCents(billing.creditGrantCents) : "$0"}
+                      {billing?.creditGrantCents
+                        ? formatUsdCents(billing.creditGrantCents)
+                        : "$0"}
                     </span>
                   </div>
                   {billing?.expiresAt ? (
@@ -109,7 +135,9 @@ export function UsageClient() {
                   </span>
                   <span className="inline-flex items-center gap-1 text-xs text-(--l-fg-3)">
                     <Clock className="h-3.5 w-3.5" />
-                    {isFixed ? "Fixed Refill Cycle" : "Continuous Sliding Windows"}
+                    {isFixed
+                      ? "Fixed Refill Cycle"
+                      : "Continuous Sliding Windows"}
                   </span>
                 </div>
 
@@ -130,7 +158,11 @@ export function UsageClient() {
                                 1,
                                 Math.min(
                                   99,
-                                  Math.floor((row.usedCents / Math.max(1, row.limitCents)) * 100),
+                                  Math.floor(
+                                    (row.usedCents /
+                                      Math.max(1, row.limitCents)) *
+                                      100,
+                                  ),
                                 ),
                               )
                             : 0;
@@ -139,11 +171,14 @@ export function UsageClient() {
                       return (
                         <div key={row.label} className="space-y-1.5">
                           <div className="flex items-center justify-between text-xs">
-                            <span className="font-medium text-(--l-fg-2)">{row.label}</span>
+                            <span className="font-medium text-(--l-fg-2)">
+                              {row.label}
+                            </span>
                             <span
                               className={`font-mono tabular-nums ${full ? "font-semibold text-red-500" : "text-(--l-fg-2)"}`}
                             >
-                              {formatUsdCents(row.usedCents)} / {formatUsdCents(row.limitCents)}
+                              {formatUsdCents(row.usedCents)} /{" "}
+                              {formatUsdCents(row.limitCents)}
                             </span>
                           </div>
                           <div className="h-2 w-full overflow-hidden rounded-full bg-(--l-border)">
@@ -160,7 +195,8 @@ export function UsageClient() {
                   </div>
                 ) : (
                   <div className="mt-8 rounded-2xl border border-dashed border-(--l-border) p-6 text-center text-xs text-(--l-fg-3)">
-                    Usage windows apply to the Entry (Goat) plan. Your current plan uses standard balance metering.
+                    Usage windows apply to the Entry (Goat) plan. Your current
+                    plan uses standard balance metering.
                   </div>
                 )}
               </div>

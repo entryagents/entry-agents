@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { isUserAdmin } from "@/lib/db/users";
-import { listAllBoxdMachines, deleteAllBoxdMachines } from "@entry-agents/sandbox";
+import {
+  listAllBoxdMachines,
+  deleteAllBoxdMachines,
+} from "@entry-agents/sandbox";
 
 async function isAuthorized(req: Request): Promise<boolean> {
   const suppliedSecret = req.headers.get("x-audit-secret");
@@ -43,7 +46,10 @@ export async function GET(req: Request) {
   } catch (error) {
     console.error("[admin/sandboxes] Failed to list machines:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to list sandboxes" },
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to list sandboxes",
+      },
       { status: 500 },
     );
   }
@@ -64,7 +70,10 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("[admin/sandboxes] Failed to purge machines:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to purge sandboxes" },
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to purge sandboxes",
+      },
       { status: 500 },
     );
   }

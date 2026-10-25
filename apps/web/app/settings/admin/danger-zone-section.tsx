@@ -1,6 +1,13 @@
 "use client";
 
-import { AlertTriangle, Boxes, Loader2, RefreshCw, ShieldAlert, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Boxes,
+  Loader2,
+  RefreshCw,
+  ShieldAlert,
+  Trash2,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -70,7 +77,9 @@ export function DangerZoneSection() {
           });
         }
       } else if (targetAction === "reconcile") {
-        const res = await fetch("/api/admin/reconcile-runs", { method: "POST" });
+        const res = await fetch("/api/admin/reconcile-runs", {
+          method: "POST",
+        });
         const data = await res.json();
         if (res.ok && data.success) {
           toast.success("Database Reconciled", {
@@ -100,7 +109,8 @@ export function DangerZoneSection() {
             Infrastructure Maintenance
           </CardTitle>
           <CardDescription>
-            Reconcile runtime locks, clean stuck agent runs, and purge sandboxes to free server capacity.
+            Reconcile runtime locks, clean stuck agent runs, and purge sandboxes
+            to free server capacity.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -108,9 +118,12 @@ export function DangerZoneSection() {
             {/* Purge Boxd Sandboxes */}
             <div className="flex items-center justify-between gap-4 px-6 py-4">
               <div>
-                <p className="text-sm font-medium">Purge All Active Boxd Sandboxes</p>
+                <p className="text-sm font-medium">
+                  Purge All Active Boxd Sandboxes
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Terminate all machines across Boxd cloud. Frees up machine slots against the 50-sandbox account limit.
+                  Terminate all machines across Boxd cloud. Frees up machine
+                  slots against the 50-sandbox account limit.
                 </p>
               </div>
               <Button
@@ -127,9 +140,12 @@ export function DangerZoneSection() {
             {/* Reconcile Stale Runs */}
             <div className="flex items-center justify-between gap-4 px-6 py-4">
               <div>
-                <p className="text-sm font-medium">Reconcile Stale Agent Runs &amp; Locks</p>
+                <p className="text-sm font-medium">
+                  Reconcile Stale Agent Runs &amp; Locks
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Resets chats stuck in queued/running with dead streams to idle, cleans user billing locks, and completes idle sessions.
+                  Resets chats stuck in queued/running with dead streams to
+                  idle, cleans user billing locks, and completes idle sessions.
                 </p>
               </div>
               <Button
@@ -225,7 +241,8 @@ export function DangerZoneSection() {
               {targetAction === "vercel" && (
                 <span className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-400">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  You will be signed out and redirected to login after this action completes.
+                  You will be signed out and redirected to login after this
+                  action completes.
                 </span>
               )}
             </DialogDescription>

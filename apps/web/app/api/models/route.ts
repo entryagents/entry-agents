@@ -1,7 +1,10 @@
 import { filterModelsForSession } from "@/lib/model-access";
 import { fetchAvailableLanguageModelsWithContext } from "@/lib/models-with-context";
 import { getServerSession } from "@/lib/session/get-server-session";
-import { getFreeTierGateStatus, getFreeTierModelId } from "@/lib/db/platform-settings";
+import {
+  getFreeTierGateStatus,
+  getFreeTierModelId,
+} from "@/lib/db/platform-settings";
 import { isUserAdmin } from "@/lib/db/users";
 import { getUserBillingState } from "@/lib/billing/credit-ledger";
 import { getPlanDefinition, FREE_PLAN_MODEL_ID } from "@/lib/billing/plans";

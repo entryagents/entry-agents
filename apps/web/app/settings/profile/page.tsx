@@ -15,7 +15,6 @@ import { formatDateOnly } from "@/lib/usage/date-range";
 import type { UsageInsights, UsageRepositoryInsight } from "@/lib/usage/types";
 import { UsageInsightsSection } from "../usage/usage-insights-section";
 
-
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface DailyUsageRow {
@@ -447,7 +446,6 @@ function ProfileSidebar({
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────
-
 
 export default function ProfilePage() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);

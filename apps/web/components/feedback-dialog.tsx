@@ -32,8 +32,12 @@ const SENTIMENTS = [
 ] as const;
 
 export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
-  const [category, setCategory] = useState<"bug" | "feature" | "general">("general");
-  const [sentiment, setSentiment] = useState<"love" | "good" | "neutral" | "bad">("good");
+  const [category, setCategory] = useState<"bug" | "feature" | "general">(
+    "general",
+  );
+  const [sentiment, setSentiment] = useState<
+    "love" | "good" | "neutral" | "bad"
+  >("good");
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -50,7 +54,12 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
       const res = await fetch("/api/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, sentiment, title: title.trim() || null, message: message.trim() }),
+        body: JSON.stringify({
+          category,
+          sentiment,
+          title: title.trim() || null,
+          message: message.trim(),
+        }),
       });
 
       if (!res.ok) {
@@ -74,16 +83,21 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md p-6">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">Send Feedback</DialogTitle>
+          <DialogTitle className="text-lg font-semibold">
+            Send Feedback
+          </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Have a suggestion, noticed a bug, or want a feature? Let the founders know directly.
+            Have a suggestion, noticed a bug, or want a feature? Let the
+            founders know directly.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
           {/* Category Chips */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">Feedback Category</label>
+            <label className="text-xs font-medium text-foreground">
+              Feedback Category
+            </label>
             <div className="grid grid-cols-3 gap-2">
               {CATEGORIES.map((c) => {
                 const Icon = c.icon;
@@ -109,7 +123,9 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
 
           {/* Sentiment Selection */}
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">How has your experience been?</label>
+            <label className="text-xs font-medium text-foreground">
+              How has your experience been?
+            </label>
             <div className="flex items-center justify-between gap-2">
               {SENTIMENTS.map((s) => {
                 const isSelected = sentiment === s.id;
@@ -125,7 +141,9 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                     }`}
                   >
                     <span className="text-lg leading-none">{s.emoji}</span>
-                    <span className="text-[10px] text-muted-foreground">{s.label}</span>
+                    <span className="text-[10px] text-muted-foreground">
+                      {s.label}
+                    </span>
                   </button>
                 );
               })}
@@ -134,7 +152,9 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
 
           {/* Title input */}
           <div className="space-y-1">
-            <label className="text-xs font-medium text-foreground">Subject (Optional)</label>
+            <label className="text-xs font-medium text-foreground">
+              Subject (Optional)
+            </label>
             <input
               type="text"
               value={title}
@@ -147,7 +167,9 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
 
           {/* Message textarea */}
           <div className="space-y-1">
-            <label className="text-xs font-medium text-foreground">Details &amp; Feedback *</label>
+            <label className="text-xs font-medium text-foreground">
+              Details &amp; Feedback *
+            </label>
             <textarea
               required
               rows={4}

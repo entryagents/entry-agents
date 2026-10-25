@@ -280,7 +280,8 @@ export function WorkspacePreviewTab({
                 Starting Development Server...
               </p>
               <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-                Booting project framework inside the sandbox environment. This usually takes just a few seconds.
+                Booting project framework inside the sandbox environment. This
+                usually takes just a few seconds.
               </p>
             </div>
           </div>
@@ -294,7 +295,8 @@ export function WorkspacePreviewTab({
                 Application Preview Idle
               </h3>
               <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                Start the development server to preview and interact with the application live inside your workspace.
+                Start the development server to preview and interact with the
+                application live inside your workspace.
               </p>
             </div>
 

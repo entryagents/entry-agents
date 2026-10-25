@@ -46,7 +46,9 @@ export async function GET(
   }
 
   const isOwner = existingSession.userId === session.user.id;
-  const isAdmin = isOwner ? false : await isUserAdmin(session.user.id).catch(() => false);
+  const isAdmin = isOwner
+    ? false
+    : await isUserAdmin(session.user.id).catch(() => false);
   if (!isOwner && !isAdmin) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -71,7 +73,9 @@ export async function PATCH(
   }
 
   const isOwner = existingSession.userId === session.user.id;
-  const isAdmin = isOwner ? false : await isUserAdmin(session.user.id).catch(() => false);
+  const isAdmin = isOwner
+    ? false
+    : await isUserAdmin(session.user.id).catch(() => false);
   if (!isOwner && !isAdmin) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -152,7 +156,9 @@ export async function DELETE(
   }
 
   const isOwner = existingSession.userId === session.user.id;
-  const isAdmin = isOwner ? false : await isUserAdmin(session.user.id).catch(() => false);
+  const isAdmin = isOwner
+    ? false
+    : await isUserAdmin(session.user.id).catch(() => false);
   if (!isOwner && !isAdmin) {
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }

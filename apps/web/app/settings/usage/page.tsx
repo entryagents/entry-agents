@@ -55,10 +55,8 @@ function getUsageWindowPercent(usedCents: number, limitCents: number): number {
 
 export default function SettingsUsagePage() {
   const { data: billing, isLoading: isBillingLoading } = useBillingMe();
-  const { data: usageData, isLoading: isUsageLoading } = useSWR<UsageApiResponse>(
-    "/api/usage",
-    fetcher,
-  );
+  const { data: usageData, isLoading: isUsageLoading } =
+    useSWR<UsageApiResponse>("/api/usage", fetcher);
   const [isCheckingOut, setIsCheckingOut] = useState<number | null>(null);
 
   const handleTopup = async (amountCents: number) => {
@@ -137,7 +135,9 @@ export default function SettingsUsagePage() {
             </div>
 
             <div className="mt-3">
-              <p className="text-xs text-muted-foreground">Total Spendable Balance</p>
+              <p className="text-xs text-muted-foreground">
+                Total Spendable Balance
+              </p>
               <p className="mt-0.5 font-mono text-3xl font-bold tracking-tight text-foreground">
                 {formatUsdCents(billing.creditBalanceCents)}
               </p>
@@ -147,7 +147,9 @@ export default function SettingsUsagePage() {
               <div className="flex justify-between">
                 <span>Monthly Grant</span>
                 <span className="font-mono font-medium text-foreground">
-                  {billing.creditGrantCents ? formatUsdCents(billing.creditGrantCents) : "$0"}
+                  {billing.creditGrantCents
+                    ? formatUsdCents(billing.creditGrantCents)
+                    : "$0"}
                 </span>
               </div>
               {billing.expiresAt ? (
@@ -162,7 +164,12 @@ export default function SettingsUsagePage() {
           </div>
 
           <div className="mt-4 pt-3 border-t border-border/60">
-            <Button asChild size="sm" variant="outline" className="w-full rounded-xl">
+            <Button
+              asChild
+              size="sm"
+              variant="outline"
+              className="w-full rounded-xl"
+            >
               <Link href="/pricing">
                 Manage Subscription
                 <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
@@ -187,21 +194,26 @@ export default function SettingsUsagePage() {
             </div>
 
             <div className="mt-3">
-              <p className="text-xs text-muted-foreground">Active Top-Up Balance</p>
+              <p className="text-xs text-muted-foreground">
+                Active Top-Up Balance
+              </p>
               <p className="mt-0.5 font-mono text-3xl font-bold tracking-tight text-foreground">
                 {formatUsdCents(topUpBalance)}
               </p>
             </div>
 
             <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-              Top-up credits never expire mid-cycle and stay valid for 90 days from purchase. Use them whenever you need extra compute.
+              Top-up credits never expire mid-cycle and stay valid for 90 days
+              from purchase. Use them whenever you need extra compute.
             </p>
           </div>
 
           {/* Quick Top-Up Package Buttons */}
           <div className="mt-4 pt-3 border-t border-border/60">
             <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-              <span className="font-medium text-foreground">Quick Add Credit</span>
+              <span className="font-medium text-foreground">
+                Quick Add Credit
+              </span>
               <span>1 USD = $1 compute</span>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
@@ -247,12 +259,26 @@ export default function SettingsUsagePage() {
 
           <div className="mt-6 space-y-4">
             {[
-              { label: "5 Hours", win: windows.fiveHour, desc: isFixed ? "Fixed 5h refill period" : "Trailing 5-hour rolling window" },
-              { label: "7 Days", win: windows.weekly, desc: isFixed ? "Fixed 7-day refill period" : "Trailing 7-day rolling window" },
+              {
+                label: "5 Hours",
+                win: windows.fiveHour,
+                desc: isFixed
+                  ? "Fixed 5h refill period"
+                  : "Trailing 5-hour rolling window",
+              },
+              {
+                label: "7 Days",
+                win: windows.weekly,
+                desc: isFixed
+                  ? "Fixed 7-day refill period"
+                  : "Trailing 7-day rolling window",
+              },
               {
                 label: "Monthly Cycle",
                 win: windows.monthly,
-                desc: billing.expiresAt ? `Cycle renewal on ${formatExpirationDate(billing.expiresAt)}` : "Monthly subscription allowance",
+                desc: billing.expiresAt
+                  ? `Cycle renewal on ${formatExpirationDate(billing.expiresAt)}`
+                  : "Monthly subscription allowance",
               },
             ].map(({ label, win, desc }) => {
               const pct = getUsageWindowPercent(win.usedCents, win.limitCents);
@@ -263,21 +289,34 @@ export default function SettingsUsagePage() {
                 <div key={label} className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-foreground">{label}</span>
-                      <span className="text-[11px] text-muted-foreground">({desc})</span>
+                      <span className="font-semibold text-foreground">
+                        {label}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">
+                        ({desc})
+                      </span>
                     </div>
                     <span
                       className={`font-mono tabular-nums ${
-                        isFull ? "font-semibold text-red-500" : isWarn ? "text-amber-500" : "text-muted-foreground"
+                        isFull
+                          ? "font-semibold text-red-500"
+                          : isWarn
+                            ? "text-amber-500"
+                            : "text-muted-foreground"
                       }`}
                     >
-                      {formatUsdCents(win.usedCents)} / {formatUsdCents(win.limitCents)} ({pct}%)
+                      {formatUsdCents(win.usedCents)} /{" "}
+                      {formatUsdCents(win.limitCents)} ({pct}%)
                     </span>
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
-                        isFull ? "bg-red-500" : isWarn ? "bg-amber-400" : "bg-emerald-500"
+                        isFull
+                          ? "bg-red-500"
+                          : isWarn
+                            ? "bg-amber-400"
+                            : "bg-emerald-500"
                       }`}
                       style={{ width: `${pct}%` }}
                     />

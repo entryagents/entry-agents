@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { dedupeMessageReasoning, dedupeMessageParts, dedupeMessageList } from "./dedupe-message-reasoning";
+import {
+  dedupeMessageReasoning,
+  dedupeMessageParts,
+  dedupeMessageList,
+} from "./dedupe-message-reasoning";
 import type { WebAgentUIMessage } from "@/app/types";
 
 /** Helper to build a minimal assistant message with the given parts. */

@@ -78,7 +78,10 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("[admin/reconcile-runs] Failed:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to reconcile runs" },
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to reconcile runs",
+      },
       { status: 500 },
     );
   }

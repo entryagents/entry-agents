@@ -823,7 +823,9 @@ async function resolveChatModelRuntime(params: {
   // persist the healed model to the chat row so it never fails again.
   if (chat && mainModelSelection.id !== chat.modelId) {
     const { updateChat } = await import("@/lib/db/sessions");
-    await updateChat(chat.id, { modelId: mainModelSelection.id }).catch(() => {});
+    await updateChat(chat.id, { modelId: mainModelSelection.id }).catch(
+      () => {},
+    );
   }
 
   const autoCommitEnabled =
@@ -3735,13 +3737,51 @@ const runAgentStep = async (
         let liveStreamedChars = 0;
         let midStreamDebited = false;
 
-        const stream = await webAgent.stream({
-          messages: compactImageVisionContext(messages),
-          options: spendCap.maxOutputTokens
-            ? { ...fullAgentOptions, maxOutputTokens: spendCap.maxOutputTokens }
-            : fullAgentOptions,
-          abortSignal: abortController.signal,
-        });
+        let stream: Awaited<ReturnType<typeof webAgent.stream>>;
+        let streamAttempts = 0;
+        while (true) {
+          try {
+            stream = await webAgent.stream({
+              messages: compactImageVisionContext(messages),
+              options: spendCap.maxOutputTokens
+                ? {
+                    ...fullAgentOptions,
+                    maxOutputTokens: spendCap.maxOutputTokens,
+                  }
+                : fullAgentOptions,
+              abortSignal: abortController.signal,
+            });
+            break;
+          } catch (streamErr: unknown) {
+            streamAttempts++;
+            const errSignal = String(
+              (streamErr as Error)?.message || streamErr || "",
+            ).toLowerCase();
+            const isTransient =
+              errSignal.includes("429") ||
+              errSignal.includes("rate limit") ||
+              errSignal.includes("too many requests") ||
+              errSignal.includes("503") ||
+              errSignal.includes("temporarily unavailable") ||
+              errSignal.includes("fetch failed");
+
+            if (
+              isTransient &&
+              streamAttempts < 3 &&
+              !abortController.signal.aborted
+            ) {
+              console.warn(
+                `[chat-workflow] Transient model error on attempt ${streamAttempts}, retrying in 1.5s...`,
+                streamErr,
+              );
+              await new Promise((resolve) =>
+                setTimeout(resolve, 1500 * streamAttempts),
+              );
+              continue;
+            }
+            throw streamErr;
+          }
+        }
 
         for await (const part of stream.toUIMessageStream<WebAgentUIMessage>({
           originalMessages,

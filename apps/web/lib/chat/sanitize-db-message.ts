@@ -5,7 +5,9 @@ import type { WebAgentUIMessage } from "@/app/types";
  * before persisting messages to the PostgreSQL database (Neon).
  * Preserves user prompts, assistant replies, reasoning tokens, tool invocations, and tool outputs.
  */
-export function sanitizeMessageForDatabase<T extends WebAgentUIMessage>(message: T): T {
+export function sanitizeMessageForDatabase<T extends WebAgentUIMessage>(
+  message: T,
+): T {
   if (!message || !Array.isArray(message.parts)) {
     return message;
   }
@@ -15,7 +17,10 @@ export function sanitizeMessageForDatabase<T extends WebAgentUIMessage>(message:
     // 1. Sanitize image parts with base64 data URLs
     if (part.type === "image") {
       const img = part.image;
-      if (typeof img === "string" && (img.startsWith("data:") || img.length > 2048)) {
+      if (
+        typeof img === "string" &&
+        (img.startsWith("data:") || img.length > 2048)
+      ) {
         return {
           ...part,
           image: "[Media attached - binary omitted from db storage]",
@@ -40,7 +45,8 @@ export function sanitizeMessageForDatabase<T extends WebAgentUIMessage>(message:
       if (typeof result === "string" && result.length > 65_536) {
         return {
           ...part,
-          result: result.slice(0, 65_536) + "\n...[output truncated for db storage]",
+          result:
+            result.slice(0, 65_536) + "\n...[output truncated for db storage]",
         };
       }
     }

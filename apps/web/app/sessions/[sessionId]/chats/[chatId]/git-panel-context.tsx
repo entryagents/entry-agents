@@ -12,7 +12,13 @@ import {
 } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-export type GitPanelTab = "diff" | "pr" | "files" | "review" | "preview" | "terminal";
+export type GitPanelTab =
+  | "diff"
+  | "pr"
+  | "files"
+  | "review"
+  | "preview"
+  | "terminal";
 export type ActiveView = "chat" | "diff" | "file";
 export type DiffScope = "uncommitted" | "branch";
 
@@ -109,7 +115,8 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
   const [isWorkspaceExpanded, setIsWorkspaceExpanded] = useState(false);
   const [openFiles, setOpenFiles] = useState<string[]>([]);
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<string>("preview");
+  const [activeWorkspaceTab, setActiveWorkspaceTab] =
+    useState<string>("preview");
   const [gitPanelTab, setGitPanelTab] = useState<GitPanelTab>("files");
   const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [focusedDiffFile, setFocusedDiffFile] = useState<string | null>(null);
@@ -158,7 +165,9 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
   const openFileTab = useCallback(
     (filePath: string) => {
       setFocusedFilePath(filePath);
-      setOpenFiles((prev) => (prev.includes(filePath) ? prev : [...prev, filePath]));
+      setOpenFiles((prev) =>
+        prev.includes(filePath) ? prev : [...prev, filePath],
+      );
       setActiveWorkspaceTab(filePath);
       setGitPanelOpen(true);
       if (isMobile) {

@@ -88,7 +88,9 @@ mock.module("@entry-agents/agent", () => ({
 mock.module("@/lib/billing/credit-ledger", () => ({
   releaseUserBillingTurn: mock(() => Promise.resolve()),
   debitUsage: mock(() => Promise.resolve(0)),
-  recordBillableUsage: mock(() => Promise.resolve({ balanceCents: 100, chargedCents: 0, duplicate: false })),
+  recordBillableUsage: mock(() =>
+    Promise.resolve({ balanceCents: 100, chargedCents: 0, duplicate: false }),
+  ),
   heartbeatUserBillingTurn: mock(() => Promise.resolve(true)),
   claimUserBillingTurn: mock(() => Promise.resolve(true)),
 }));

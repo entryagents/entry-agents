@@ -6,7 +6,7 @@ import { isUserAdmin } from "@/lib/db/users";
 
 export async function PATCH(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getServerSession();
   const secretHeader = req.headers.get("x-audit-secret");
@@ -14,7 +14,9 @@ export async function PATCH(
     Boolean(process.env.AUDIT_ROUTE_SECRET) &&
     secretHeader === process.env.AUDIT_ROUTE_SECRET;
 
-  const isAdmin = session?.user?.id ? await isUserAdmin(session.user.id).catch(() => false) : false;
+  const isAdmin = session?.user?.id
+    ? await isUserAdmin(session.user.id).catch(() => false)
+    : false;
   if (!isAuditAuthorized && !isAdmin) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -30,6 +32,9 @@ export async function PATCH(
     return Response.json({ success: true });
   } catch (error) {
     console.error("[api/admin/feedback] Error updating feedback:", error);
-    return Response.json({ error: "Failed to update feedback" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to update feedback" },
+      { status: 500 },
+    );
   }
 }

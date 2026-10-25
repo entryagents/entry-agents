@@ -44,12 +44,8 @@ function SessionLayoutInner({
   activeChatId: string;
   children: ReactNode;
 }) {
-  const {
-    panelPortalRef,
-    gitPanelOpen,
-    setGitPanelOpen,
-    isWorkspaceExpanded,
-  } = useGitPanel();
+  const { panelPortalRef, gitPanelOpen, setGitPanelOpen, isWorkspaceExpanded } =
+    useGitPanel();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [chatWidthPercent, setChatWidthPercent] = useState<number>(50);
@@ -83,7 +79,10 @@ function SessionLayoutInner({
     const handleMouseUp = () => {
       setIsDragging(false);
       try {
-        localStorage.setItem("entry_agents_workspace_split", String(chatWidthPercent));
+        localStorage.setItem(
+          "entry_agents_workspace_split",
+          String(chatWidthPercent),
+        );
       } catch {}
     };
 

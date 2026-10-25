@@ -56,14 +56,19 @@ const SENTIMENT_EMOJIS: Record<string, string> = {
 export default function AdminFeedbackPage() {
   const { data, isLoading, mutate } = useSWR<FeedbackApiResponse>(
     "/api/admin/feedback",
-    fetcher
+    fetcher,
   );
 
-  const [activeTab, setActiveTab] = useState<"all" | "new" | "bug" | "feature" | "resolved">("all");
+  const [activeTab, setActiveTab] = useState<
+    "all" | "new" | "bug" | "feature" | "resolved"
+  >("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  async function handleStatusChange(id: string, nextStatus: FeedbackItem["status"]) {
+  async function handleStatusChange(
+    id: string,
+    nextStatus: FeedbackItem["status"],
+  ) {
     setUpdatingId(id);
     try {
       const res = await fetch(`/api/admin/feedback/${id}`, {
@@ -109,9 +114,12 @@ export default function AdminFeedbackPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">User Feedback Inbox</h1>
+          <h1 className="text-2xl font-bold tracking-tight">
+            User Feedback Inbox
+          </h1>
           <p className="text-sm text-muted-foreground">
-            Direct suggestions, bug reports, and sentiment submitted by platform users.
+            Direct suggestions, bug reports, and sentiment submitted by platform
+            users.
           </p>
         </div>
         <Button
@@ -120,7 +128,9 @@ export default function AdminFeedbackPage() {
           onClick={() => void mutate()}
           disabled={isLoading}
         >
-          <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+          <RefreshCw
+            className={`mr-1.5 h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
+          />
           Refresh
         </Button>
       </div>
@@ -222,7 +232,9 @@ export default function AdminFeedbackPage() {
       ) : filteredItems.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border p-12 text-center text-muted-foreground">
           <Inbox className="mx-auto h-8 w-8 opacity-40 mb-2" />
-          <p className="text-sm font-medium">No feedback items match this filter.</p>
+          <p className="text-sm font-medium">
+            No feedback items match this filter.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -249,8 +261,8 @@ export default function AdminFeedbackPage() {
                             item.category === "bug"
                               ? "border-red-500/30 text-red-500 bg-red-500/10 text-[10px]"
                               : item.category === "feature"
-                              ? "border-blue-500/30 text-blue-500 bg-blue-500/10 text-[10px]"
-                              : "border-border text-muted-foreground text-[10px]"
+                                ? "border-blue-500/30 text-blue-500 bg-blue-500/10 text-[10px]"
+                                : "border-border text-muted-foreground text-[10px]"
                           }
                         >
                           {item.category.toUpperCase()}
@@ -261,8 +273,8 @@ export default function AdminFeedbackPage() {
                             item.status === "new"
                               ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[10px]"
                               : item.status === "resolved"
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px]"
-                              : "text-[10px]"
+                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px]"
+                                : "text-[10px]"
                           }
                         >
                           {item.status}
@@ -279,7 +291,12 @@ export default function AdminFeedbackPage() {
                             {item.userEmail}
                           </span>
                         )}
-                        <span>• {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}</span>
+                        <span>
+                          •{" "}
+                          {formatDistanceToNow(new Date(item.createdAt), {
+                            addSuffix: true,
+                          })}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -290,7 +307,9 @@ export default function AdminFeedbackPage() {
                         size="sm"
                         variant="outline"
                         className="h-7 text-xs text-emerald-500 hover:bg-emerald-500/10"
-                        onClick={() => void handleStatusChange(item.id, "resolved")}
+                        onClick={() =>
+                          void handleStatusChange(item.id, "resolved")
+                        }
                         disabled={isPending}
                       >
                         <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
@@ -302,7 +321,9 @@ export default function AdminFeedbackPage() {
                         size="sm"
                         variant="ghost"
                         className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => void handleStatusChange(item.id, "archived")}
+                        onClick={() =>
+                          void handleStatusChange(item.id, "archived")
+                        }
                         disabled={isPending}
                       >
                         <Archive className="mr-1 h-3.5 w-3.5" />

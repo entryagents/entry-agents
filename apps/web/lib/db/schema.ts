@@ -903,5 +903,7 @@ export const feedback = pgTable("feedback", {
   title: text("title"),
   message: text("message").notNull(),
   status: text("status").notNull().default("new"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });

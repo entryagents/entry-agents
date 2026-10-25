@@ -146,7 +146,9 @@ export default async function SessionChatPage({
 
   // Check ownership (admins can audit any user session/chat)
   const isOwner = sessionRecord.userId === session.user.id;
-  const isAdmin = isOwner ? false : await isUserAdmin(session.user.id).catch(() => false);
+  const isAdmin = isOwner
+    ? false
+    : await isUserAdmin(session.user.id).catch(() => false);
   if (!isOwner && !isAdmin) {
     redirect("/");
   }

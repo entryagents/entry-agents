@@ -376,7 +376,7 @@ export function TaskRenderer({
 
   const meta =
     statParts.length > 0 ? (
-      <span className="font-mono text-xs text-muted-foreground/60">
+      <span className="font-mono text-xs text-neutral-600 dark:text-neutral-400">
         {statParts.join(" · ")}
       </span>
     ) : null;
@@ -423,7 +423,7 @@ export function TaskRenderer({
     <ToolLayout
       name={getSubagentLabel(subagentType)}
       summary={desc}
-      summaryClassName="font-sans"
+      summaryClassName="font-sans text-neutral-700 dark:text-neutral-300"
       meta={meta}
       rightAlignMeta
       state={state}

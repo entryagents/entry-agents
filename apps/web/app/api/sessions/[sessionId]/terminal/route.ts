@@ -84,9 +84,7 @@ export async function POST(req: Request, context: RouteContext) {
     return Response.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Failed to execute command",
+          error instanceof Error ? error.message : "Failed to execute command",
       },
       { status: 500 },
     );

@@ -832,7 +832,6 @@ export async function downgradeToFreeOnSubscriptionEnd(
   return { downgraded: true, userId: row.id };
 }
 
-
 /**
  * Calculates a user's active top-up credit balance and 3-month expiry timestamp.
  * Top-ups expire 90 days after purchase.

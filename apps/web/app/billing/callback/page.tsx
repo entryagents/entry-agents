@@ -3,7 +3,14 @@
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle2, AlertCircle, Loader2, ArrowRight, Activity, ExternalLink } from "lucide-react";
+import {
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  ArrowRight,
+  Activity,
+  ExternalLink,
+} from "lucide-react";
 import { EntryMark } from "@/components/entry-mark";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -96,9 +103,12 @@ function BillingCallbackInner() {
             <div className="space-y-4 py-4">
               <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
               <div className="space-y-1.5">
-                <h1 className="text-xl font-bold tracking-tight">Confirming payment...</h1>
+                <h1 className="text-xl font-bold tracking-tight">
+                  Confirming payment...
+                </h1>
                 <p className="text-xs text-muted-foreground">
-                  Synchronizing transaction with Bachs and crediting your account.
+                  Synchronizing transaction with Bachs and crediting your
+                  account.
                 </p>
               </div>
             </div>
@@ -112,7 +122,9 @@ function BillingCallbackInner() {
 
               <div className="space-y-2">
                 <h1 className="text-2xl font-bold tracking-tight">
-                  {result.kind === "topup" ? "Credit Top-Up Successful 🎉" : "Subscription Activated 🎉"}
+                  {result.kind === "topup"
+                    ? "Credit Top-Up Successful 🎉"
+                    : "Subscription Activated 🎉"}
                 </h1>
                 <p className="text-xs leading-relaxed text-muted-foreground">
                   {result.kind === "topup"
@@ -143,7 +155,12 @@ function BillingCallbackInner() {
                 </Button>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <Button asChild variant="outline" size="sm" className="rounded-xl text-xs">
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="rounded-xl text-xs"
+                  >
                     <Link href="/settings/usage">
                       <Activity className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
                       Usage &amp; Balance
@@ -176,12 +193,19 @@ function BillingCallbackInner() {
                 <Loader2 className="h-6 w-6 animate-spin" />
               </div>
               <div className="space-y-1.5">
-                <h1 className="text-xl font-bold tracking-tight">Payment {result.status}</h1>
+                <h1 className="text-xl font-bold tracking-tight">
+                  Payment {result.status}
+                </h1>
                 <p className="text-xs text-muted-foreground">
-                  Your payment is currently processing. If you completed payment, it usually confirms within a minute.
+                  Your payment is currently processing. If you completed
+                  payment, it usually confirms within a minute.
                 </p>
               </div>
-              <Button asChild variant="outline" className="mt-4 w-full rounded-xl">
+              <Button
+                asChild
+                variant="outline"
+                className="mt-4 w-full rounded-xl"
+              >
                 <Link href="/sessions">Return to Dashboard</Link>
               </Button>
             </div>
@@ -193,8 +217,12 @@ function BillingCallbackInner() {
                 <AlertCircle className="h-6 w-6" />
               </div>
               <div className="space-y-1.5">
-                <h1 className="text-xl font-bold tracking-tight">Payment Issue</h1>
-                <p className="text-xs text-muted-foreground">{result.message}</p>
+                <h1 className="text-xl font-bold tracking-tight">
+                  Payment Issue
+                </h1>
+                <p className="text-xs text-muted-foreground">
+                  {result.message}
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <Button asChild variant="outline" className="rounded-xl">

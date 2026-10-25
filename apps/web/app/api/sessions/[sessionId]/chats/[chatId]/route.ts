@@ -119,7 +119,8 @@ export async function GET(req: Request, context: RouteContext) {
   } else if (
     ACTIVE_CHAT_RUN_STATUSES.includes(chatStatus as any) &&
     chatContext.chat.runStatusUpdatedAt &&
-    Date.now() - new Date(chatContext.chat.runStatusUpdatedAt).getTime() > 120_000
+    Date.now() - new Date(chatContext.chat.runStatusUpdatedAt).getTime() >
+      120_000
   ) {
     await setChatRunStatus(chatId, "idle");
     chatStatus = "idle";

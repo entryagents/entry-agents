@@ -102,7 +102,7 @@ const CATEGORY_MESSAGES: Record<ChatErrorCategory, string> = {
   // Retry control and the persisted run error detail, and stops. The raw
   // cause is logged server-side, never echoed into the chat.
   unknown:
-    "The last turn failed with an error Entry doesn't recognize. Use the Retry button -- if it keeps failing, switch models or start a new chat. The run's saved error detail can pinpoint the cause.",
+    "The response was interrupted. Click Retry to continue where you left off, or switch models if the issue persists.",
 };
 
 /** Classifies a raw error (or a raw error-message string pulled back out
@@ -270,6 +270,13 @@ export function classifyChatError(error: unknown): ChatErrorCategory {
       "enotfound",
       "socket hang up",
       "network",
+      "connection closed",
+      "stream closed",
+      "stream terminated",
+      "unterminated",
+      "premature close",
+      "unexpected end of json",
+      "broken pipe",
     ])
   ) {
     return "network";

@@ -173,7 +173,10 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
         continue;
       }
       if (lastTextIndex >= 0) {
-        const prevTextPart = filteredParts[lastTextIndex] as { type: "text"; text: string };
+        const prevTextPart = filteredParts[lastTextIndex] as {
+          type: "text";
+          text: string;
+        };
         const prevText = (prevTextPart.text ?? "").trim();
         if (prevText === newText) {
           hasToolDuplicates = true;

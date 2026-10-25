@@ -44,9 +44,7 @@ const wrappedFileExtensions = new Set([".md", ".mdx", ".markdown", ".txt"]);
 
 function shouldWrapFileContent(filePath: string) {
   const normalizedPath = filePath.toLowerCase();
-  return [...wrappedFileExtensions].some((ext) =>
-    normalizedPath.endsWith(ext),
-  );
+  return [...wrappedFileExtensions].some((ext) => normalizedPath.endsWith(ext));
 }
 
 export function WorkspaceCodeTab({
@@ -60,7 +58,10 @@ export function WorkspaceCodeTab({
   const router = useRouter();
   const fileList = useMemo(() => files ?? [], [files]);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(
-    initialFilePath || (fileList.length > 0 && !fileList[0].isDirectory ? fileList[0].value : null),
+    initialFilePath ||
+      (fileList.length > 0 && !fileList[0].isDirectory
+        ? fileList[0].value
+        : null),
   );
   const [showFileTree, setShowFileTree] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -107,9 +108,10 @@ export function WorkspaceCodeTab({
               ? "binary"
               : undefined);
 
-  const fileOptions = selectedFilePath && shouldWrapFileContent(selectedFilePath)
-    ? { ...defaultFileOptions, overflow: "wrap" as const }
-    : defaultFileOptions;
+  const fileOptions =
+    selectedFilePath && shouldWrapFileContent(selectedFilePath)
+      ? { ...defaultFileOptions, overflow: "wrap" as const }
+      : defaultFileOptions;
 
   return (
     <div className="flex h-full overflow-hidden bg-background">
@@ -196,7 +198,9 @@ export function WorkspaceCodeTab({
                 </span>
               </div>
             ) : (
-              <span className="text-xs text-muted-foreground">No file selected</span>
+              <span className="text-xs text-muted-foreground">
+                No file selected
+              </span>
             )}
           </div>
 
@@ -271,7 +275,9 @@ export function WorkspaceCodeTab({
                   <span className="hidden sm:inline">VS Code</span>
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom">Open in full VS Code Codespace</TooltipContent>
+              <TooltipContent side="bottom">
+                Open in full VS Code Codespace
+              </TooltipContent>
             </Tooltip>
           </div>
         </div>
@@ -281,7 +287,9 @@ export function WorkspaceCodeTab({
           {!selectedFilePath ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center text-muted-foreground">
               <FileText className="h-8 w-8 opacity-40" />
-              <p className="text-xs">Select a file from the explorer to view contents</p>
+              <p className="text-xs">
+                Select a file from the explorer to view contents
+              </p>
             </div>
           ) : isLoading ? (
             <div className="flex h-full items-center justify-center py-12">
@@ -311,7 +319,11 @@ export function WorkspaceCodeTab({
                 />
               ) : binaryKind === "audio" && binaryPreview ? (
                 <div className="flex justify-center p-8">
-                  <audio controls src={binaryPreview} className="w-full max-w-xl">
+                  <audio
+                    controls
+                    src={binaryPreview}
+                    className="w-full max-w-xl"
+                  >
                     <track kind="captions" />
                   </audio>
                 </div>

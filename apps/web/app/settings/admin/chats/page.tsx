@@ -142,46 +142,62 @@ export default function AdminChatsPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="p-4 bg-card/60">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">Total Chats</span>
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              Total Chats
+            </span>
             <MessageSquare className="h-4 w-4 text-primary" />
           </div>
           <div className="mt-2 text-2xl font-bold font-mono">
             {data?.metrics.totalChats.toLocaleString() ?? "—"}
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Conversations across all sessions</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Conversations across all sessions
+          </p>
         </Card>
 
         <Card className="p-4 bg-card/60">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">Active Turns</span>
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              Active Turns
+            </span>
             <Activity className="h-4 w-4 text-emerald-500 animate-pulse" />
           </div>
           <div className="mt-2 text-2xl font-bold font-mono text-emerald-500">
             {data?.metrics.activeChats ?? 0}
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">In-flight streaming &amp; queued runs</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            In-flight streaming &amp; queued runs
+          </p>
         </Card>
 
         <Card className="p-4 bg-card/60">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">Messages Persisted</span>
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              Messages Persisted
+            </span>
             <Bot className="h-4 w-4 text-blue-500" />
           </div>
           <div className="mt-2 text-2xl font-bold font-mono">
             {data?.metrics.totalMessages.toLocaleString() ?? "—"}
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Sanitized user &amp; assistant turns</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Sanitized user &amp; assistant turns
+          </p>
         </Card>
 
         <Card className="p-4 bg-card/60">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">Boxd Sandboxes</span>
+            <span className="text-xs font-semibold uppercase text-muted-foreground">
+              Boxd Sandboxes
+            </span>
             <Box className="h-4 w-4 text-amber-500" />
           </div>
           <div className="mt-2 text-2xl font-bold font-mono">
             {sandboxes ? `${sandboxes.count} / ${sandboxes.limit}` : "—"}
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Allocated VM capacity</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Allocated VM capacity
+          </p>
         </Card>
       </div>
 
@@ -190,13 +206,21 @@ export default function AdminChatsPage() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center justify-between">
             <span>Agent Operations &amp; Capacity Recovery</span>
-            <Button size="sm" variant="outline" onClick={fetchData} disabled={isLoading}>
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`} />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={fetchData}
+              disabled={isLoading}
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`}
+              />
               Refresh
             </Button>
           </CardTitle>
           <CardDescription>
-            Quick maintenance actions to purge sandboxes and reconcile any hung runs across the platform.
+            Quick maintenance actions to purge sandboxes and reconcile any hung
+            runs across the platform.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
@@ -209,7 +233,9 @@ export default function AdminChatsPage() {
               className="cursor-pointer"
             >
               <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-              {isPurgingSandboxes ? "Purging Sandboxes..." : "Purge All Boxd Sandboxes (Reset Capacity to 0/50)"}
+              {isPurgingSandboxes
+                ? "Purging Sandboxes..."
+                : "Purge All Boxd Sandboxes (Reset Capacity to 0/50)"}
             </Button>
 
             <Button
@@ -220,7 +246,9 @@ export default function AdminChatsPage() {
               className="cursor-pointer"
             >
               <CheckCircle2 className="h-3.5 w-3.5 mr-1.5 text-emerald-500" />
-              {isReconciling ? "Reconciling Runs..." : "Reconcile Stale Runs to Idle"}
+              {isReconciling
+                ? "Reconciling Runs..."
+                : "Reconcile Stale Runs to Idle"}
             </Button>
           </div>
         </CardContent>
@@ -231,8 +259,13 @@ export default function AdminChatsPage() {
         <CardHeader className="pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <CardTitle className="text-base">Recent Chats &amp; Assistant Runs</CardTitle>
-              <CardDescription>Real-time log of the latest 50 conversations and their run states.</CardDescription>
+              <CardTitle className="text-base">
+                Recent Chats &amp; Assistant Runs
+              </CardTitle>
+              <CardDescription>
+                Real-time log of the latest 50 conversations and their run
+                states.
+              </CardDescription>
             </div>
             <div className="relative w-full sm:w-64">
               <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
@@ -261,18 +294,30 @@ export default function AdminChatsPage() {
               <tbody className="divide-y divide-border/40">
                 {filteredChats.map((c) => {
                   const isRunActive =
-                    ["queued", "running", "sleeping", "resuming"].includes(c.status) ||
-                    Boolean(c.activeStreamId);
+                    ["queued", "running", "sleeping", "resuming"].includes(
+                      c.status,
+                    ) || Boolean(c.activeStreamId);
 
                   return (
-                    <tr key={c.id} className="hover:bg-muted/20 transition-colors">
+                    <tr
+                      key={c.id}
+                      className="hover:bg-muted/20 transition-colors"
+                    >
                       <td className="px-4 py-3 max-w-[280px]">
-                        <p className="font-medium text-foreground truncate">{c.title || "Untitled"}</p>
-                        <p className="font-mono text-[10px] text-muted-foreground truncate">{c.id}</p>
+                        <p className="font-medium text-foreground truncate">
+                          {c.title || "Untitled"}
+                        </p>
+                        <p className="font-mono text-[10px] text-muted-foreground truncate">
+                          {c.id}
+                        </p>
                       </td>
                       <td className="px-4 py-3 max-w-[180px]">
-                        <p className="font-medium truncate text-foreground">{c.userName || "—"}</p>
-                        <p className="text-[11px] text-muted-foreground truncate">{c.userEmail || "—"}</p>
+                        <p className="font-medium truncate text-foreground">
+                          {c.userName || "—"}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {c.userEmail || "—"}
+                        </p>
                       </td>
                       <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">
                         {c.modelId ?? "default"}
@@ -287,16 +332,29 @@ export default function AdminChatsPage() {
                                 : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
                           }`}
                         >
-                          {isRunActive ? <Activity className="h-2.5 w-2.5" /> : null}
+                          {isRunActive ? (
+                            <Activity className="h-2.5 w-2.5" />
+                          ) : null}
                           {c.status}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                        {new Date(c.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {new Date(c.updatedAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button asChild size="sm" variant="ghost" className="h-7 w-7 p-0">
-                          <Link href={`/sessions/${c.sessionId}/chats/${c.id}`} target="_blank">
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                        >
+                          <Link
+                            href={`/sessions/${c.sessionId}/chats/${c.id}`}
+                            target="_blank"
+                          >
                             <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
                           </Link>
                         </Button>
@@ -306,7 +364,10 @@ export default function AdminChatsPage() {
                 })}
                 {filteredChats.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <td
+                      colSpan={6}
+                      className="text-center py-8 text-muted-foreground"
+                    >
                       No chats found.
                     </td>
                   </tr>

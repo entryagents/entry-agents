@@ -236,7 +236,7 @@ export function ToolLayout({
                   ? "text-red-400/80"
                   : showInterruptedHeader
                     ? "text-yellow-400/80"
-                    : "text-muted-foreground",
+                    : "text-neutral-700 dark:text-neutral-300 font-mono",
                 summaryClassName,
               )}
             >
@@ -255,7 +255,7 @@ export function ToolLayout({
           )}
 
           {hasTrailingMeta && (
-            <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[12px] leading-none text-muted-foreground/60">
+            <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[12px] leading-none text-neutral-600 dark:text-neutral-400">
               {meta}
             </span>
           )}

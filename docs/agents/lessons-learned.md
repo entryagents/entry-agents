@@ -3021,3 +3021,37 @@ not a model-generated wrong answer. Keep those cases visible and never report
 an infrastructure error as a model score.
 
 The thinking panel was receiving live Gateway SSE, but the web chat hook throttled UI state updates to 75ms. That made fast reasoning deltas visibly lag behind the stream. Keep the chat UI throttle near one animation frame, currently 16ms, while leaving server-side stream forwarding unbuffered.
+## 2026-10-25: Three-Column Workspace Redesign, Contrast Hardening, Developer Session Titles, and Framework Logos
+
+- **Dynamic Workspace Tab Architecture (OpenCode Model):**
+  - Replaced rigid, hardcoded workspace tabs with a flexible dynamic tab system in `apps/web/app/sessions/[sessionId]/chats/[chatId]/workspace/workspace-panel.tsx`.
+  - Tool tabs (Review, Preview, Terminal) and File tabs (individual source files opened from chat, diffs, or file search) coexist in a unified tab strip.
+  - Tab state preservation: tabs remain mounted in the DOM using `hidden` / `block` CSS rather than unmounting on switch. This prevents losing iframe state, dev server socket connections, terminal session buffers, and Monaco editor scroll/cursor positions.
+  - Quick File Picker (`+` menu): permits searching and opening any workspace file directly in the third column without navigating away from the chat.
+
+- **Framework & Language Logos Over Generic Letter Badges:**
+  - Removed generic letters (`A`, `M`, `D`) from the git review panel (`workspace-review-tab.tsx`).
+  - Integrated `FileTypeIcon` (`apps/web/components/file-type-icons.tsx`) to surface genuine framework and language logos (React `.tsx`/`.jsx`, TypeScript `.ts`, Next.js configs, Tailwind, CSS, Python, Docker, JSON, Markdown, etc.) across the diff file tree, open tabs, and file suggestions.
+  - Accompanied each logo with subtle, high-contrast status tags (`+` in emerald for added, `~` in amber for modified, `-` in rose for deleted) matching modern IDE conventions (VS Code, Cursor, Opencode).
+
+- **Elimination of Arbitrary City Names for Session Titles:**
+  - Previously, `apps/web/lib/random-city.ts` hardcoded ~200 world city names (`Munich`, `Portland`, `Rome`, `Hamburg`, `Dakar`, etc.) as default fallbacks when creating sessions or when title generation timed out.
+  - Reworked `random-city.ts` into a developer-focused generator (`getDefaultSessionTitle`):
+    - Context-aware: uses the active repository name (e.g. `entry-agents` or `rubiks-cube`) or clean developer placeholders (`New Session`, `New Session 2`).
+    - Smart prompt sanitization (`sanitizePromptToTitle`): strips conversational filler ("can you help me with", "please", "let's build a") and derives a clean, technical 3-5 word title from the user's initial prompt.
+    - AI fallback resilience: in `apps/web/app/api/generate-title/route.ts` and `session-chat-content.tsx`, if the AI model fails, times out, or rate-limits, it immediately falls back to the sanitized user prompt instead of failing or staying stuck on a generic city name.
+
+- **Light Mode Accessibility & Contrast Hardening:**
+  - MONOSPACE AND CODE VISIBILITY: In light mode, monospace tool outputs, bash commands (`cd /tmp/...`), subagent metadata, and inline code had become severely washed out due to pale `--muted-foreground` (`oklch(0.552)`).
+  - Hardened `--muted-foreground` in `:root` to `oklch(0.40 0.02 285.9)` (exceeding WCAG AAA contrast ratio > 6:1 against white backgrounds).
+  - Explicitly styled `[data-streamdown="inline-code"]` and `code:not(pre code)` with dark foreground (`var(--foreground)`), crisp border (`var(--border)`), and neutral background (`var(--muted)`).
+  - Updated tool layout summaries (`tool-layout.tsx`), file name pills (`file-name-pill.tsx`), subagent headers (`task-renderer.tsx`), and pre-formatted terminal blocks (`bash-renderer.tsx`, `grep-renderer.tsx`, `glob-renderer.tsx`) to use dark, readable text in light mode (`text-neutral-700 dark:text-neutral-300` / `text-foreground`).
+
+- **Resilience Against 429 Rate Limits and Transient Gateway Disconnections:**
+  - Upstream provider rate limits (HTTP 429) and gateway timeouts were previously throwing immediately and rendering scary red crash banners ("The AI provider is receiving too many requests right now" or "The last turn failed with an error Entry doesn't recognize").
+  - Added an automatic transient retry loop with exponential backoff around `webAgent.stream` in `apps/web/app/workflows/chat.ts`. Transient 429s or 503s are retried gracefully up to 2 times without failing the user's turn.
+  - Sanitized fallback error messages in `apps/web/lib/chat/friendly-error.ts` to be calm, constructive, and actionable ("The response was interrupted. Click Retry to continue where you left off, or switch models if the issue persists") rather than alarming the user with cryptic internal error details.
+
+- **Auto-Healing Model Resolution:**
+  - Removed all hardcoded `:free` model references (`qwen3.8-flash:free`, `mimo-v2.6-flash:free`).
+  - Added auto-healing fallback in `model-selection.ts` that dynamically queries live gateway models (`GET /api/models`) and resolves to active working models (`step-5-preview`, `qwen3.8-flash`) if an older model ID becomes obsolete or unavailable.

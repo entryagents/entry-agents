@@ -61,7 +61,7 @@ export function GrepRenderer({
   const hasExpandedContent = output !== undefined;
 
   const expandedContent = hasExpandedContent ? (
-    <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/50 p-3 font-mono text-xs leading-relaxed text-muted-foreground">
+    <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/60 p-3 font-mono text-xs leading-relaxed text-neutral-800 dark:text-neutral-200">
       {matches.length > 0 ? (
         <>
           Found {uniqueFiles.length} file{uniqueFiles.length !== 1 ? "s" : ""}
@@ -82,7 +82,9 @@ export function GrepRenderer({
         <>
           <span className="font-mono">&apos;{pattern}&apos;</span>
           {summary && (
-            <span className="ml-1.5 text-muted-foreground/60">{summary}</span>
+            <span className="ml-1.5 text-neutral-600 dark:text-neutral-400">
+              {summary}
+            </span>
           )}
         </>
       }

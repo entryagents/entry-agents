@@ -56,14 +56,22 @@ async function bootstrapWorkspace(
           (source.branch
             ? ` && ${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} checkout ${shellEscape(source.branch)}`
             : "");
-        const fetchRes = await sandbox.exec(fetchCmd, BOXD_WORKING_DIRECTORY, 60_000);
+        const fetchRes = await sandbox.exec(
+          fetchCmd,
+          BOXD_WORKING_DIRECTORY,
+          60_000,
+        );
         if (!fetchRes.success) {
           console.warn("[boxd] Workspace git fetch warning:", fetchRes.stderr);
         }
       }
     } else {
       const command = `${git} clone${branch} ${shellEscape(source.repo)} ${shellEscape(BOXD_WORKING_DIRECTORY)}`;
-      const result = await sandbox.exec(command, BOXD_WORKING_DIRECTORY, 180_000);
+      const result = await sandbox.exec(
+        command,
+        BOXD_WORKING_DIRECTORY,
+        180_000,
+      );
       if (!result.success) {
         throw new Error(`Failed to prepare workspace: ${result.stderr.trim()}`);
       }
@@ -304,13 +312,14 @@ export async function connectBoxd(
   return sandbox;
 }
 
-
-export async function listAllBoxdMachines(): Promise<Array<{
-  id: string;
-  name: string;
-  status: string;
-  createdAt?: string;
-}>> {
+export async function listAllBoxdMachines(): Promise<
+  Array<{
+    id: string;
+    name: string;
+    status: string;
+    createdAt?: string;
+  }>
+> {
   const client = new Boxd();
   const machines = await client.machines.list();
   return machines.map((m) => ({

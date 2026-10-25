@@ -11,7 +11,9 @@ export async function GET(req: Request) {
     Boolean(process.env.AUDIT_ROUTE_SECRET) &&
     secretHeader === process.env.AUDIT_ROUTE_SECRET;
 
-  const isAdmin = session?.user?.id ? await isUserAdmin(session.user.id).catch(() => false) : false;
+  const isAdmin = session?.user?.id
+    ? await isUserAdmin(session.user.id).catch(() => false)
+    : false;
   if (!isAuditAuthorized && !isAdmin) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -33,6 +35,9 @@ export async function GET(req: Request) {
     return Response.json({ success: true, feedback: items, stats });
   } catch (error) {
     console.error("[api/admin/feedback] Error fetching feedback:", error);
-    return Response.json({ error: "Failed to fetch feedback" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to fetch feedback" },
+      { status: 500 },
+    );
   }
 }

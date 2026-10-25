@@ -2274,13 +2274,19 @@ export function SessionChatContent({
 
         void generatedTitlePromise
           .then((generatedTitle) => {
-            if (!generatedTitle) {
-              return;
-            }
-            return updateSessionTitle(generatedTitle);
+            const finalTitle =
+              generatedTitle ||
+              (nextTitle.length > 50
+                ? `${nextTitle.slice(0, 50)}...`
+                : nextTitle);
+            return updateSessionTitle(finalTitle);
           })
           .catch(() => {
-            // Ignore failures and keep the existing session title.
+            const fallbackTitle =
+              nextTitle.length > 50
+                ? `${nextTitle.slice(0, 50)}...`
+                : nextTitle;
+            void updateSessionTitle(fallbackTitle).catch(() => {});
           });
       }
     }
@@ -3573,14 +3579,19 @@ export function SessionChatContent({
       onMerged={handleMerged}
       onCloseAndArchiveClick={() => setCloseDialogOpen(true)}
       onFixChecks={handleFixChecks}
-      onFixConflicts={(baseBranchRef: string) => handleFixConflicts(baseBranchRef)}
+      onFixConflicts={(baseBranchRef: string) =>
+        handleFixConflicts(baseBranchRef)
+      }
       hasSandbox={sandboxInfo !== null}
       gitStatus={gitStatus}
       gitStatusLoading={gitStatusLoading}
       refreshGitStatus={refreshGitStatus}
       onCommitted={handleCommitted}
       isAgentWorking={hasPendingResponse || isChatInFlight}
-      onPrDetected={(pr: { prNumber: number; prStatus: "open" | "merged" | "closed" }) => {
+      onPrDetected={(pr: {
+        prNumber: number;
+        prStatus: "open" | "merged" | "closed";
+      }) => {
         updateSessionPullRequest(pr);
         void refreshGitStatus().catch(() => {});
       }}
@@ -3604,7 +3615,10 @@ export function SessionChatContent({
       {isServerMigrating && (
         <div className="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-600 dark:text-amber-400">
           <Loader2 className="h-3 w-3 animate-spin shrink-0" />
-          <span>Refreshing environment &mdash; moving session to a fresh sandbox. Work is preserved.</span>
+          <span>
+            Refreshing environment &mdash; moving session to a fresh sandbox.
+            Work is preserved.
+          </span>
         </div>
       )}
       <div className="flex h-full flex-col overflow-hidden">
@@ -3665,9 +3679,7 @@ export function SessionChatContent({
               <div className="relative flex-1 overflow-hidden">
                 <div ref={containerRef} className="h-full overflow-y-auto">
                   <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
-                    <OpenFileProvider
-                      onOpenFile={(fp) => openFileTab(fp)}
-                    >
+                    <OpenFileProvider onOpenFile={(fp) => openFileTab(fp)}>
                       <div className="space-y-6">
                         {groupedRenderMessages.length === 0 &&
                           !hasPendingResponse && (

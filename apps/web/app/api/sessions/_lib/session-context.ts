@@ -95,7 +95,9 @@ export async function requireOwnedSession(
   }
 
   const isOwner = sessionRecord.userId === userId;
-  const isAdmin = isOwner ? false : await isUserAdmin(userId).catch(() => false);
+  const isAdmin = isOwner
+    ? false
+    : await isUserAdmin(userId).catch(() => false);
 
   if (!isOwner && !isAdmin) {
     return {
@@ -160,7 +162,9 @@ export async function requireOwnedSessionChat(
   }
 
   const isOwner = sessionRecord.userId === userId;
-  const isAdmin = isOwner ? false : await isUserAdmin(userId).catch(() => false);
+  const isAdmin = isOwner
+    ? false
+    : await isUserAdmin(userId).catch(() => false);
 
   if (!isOwner && !isAdmin) {
     return {

@@ -29,6 +29,9 @@ export async function POST(req: Request) {
     return Response.json({ success: true, id });
   } catch (error) {
     console.error("[api/feedback] Error submitting feedback:", error);
-    return Response.json({ error: "Failed to submit feedback" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to submit feedback" },
+      { status: 500 },
+    );
   }
 }

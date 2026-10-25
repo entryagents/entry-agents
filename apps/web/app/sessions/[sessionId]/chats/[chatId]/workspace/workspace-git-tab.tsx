@@ -126,15 +126,21 @@ export function WorkspaceGitTab(props: GitPanelProps) {
   const [prError, setPrError] = useState<string | null>(null);
 
   // Merge state
-  const [readiness, setReadiness] = useState<MergeReadinessResponse | null>(null);
+  const [readiness, setReadiness] = useState<MergeReadinessResponse | null>(
+    null,
+  );
   const [isSubmittingMerge, setIsSubmittingMerge] = useState(false);
   const [mergeMethod, setMergeMethod] = useState<MergeMethod>("squash");
   const [mergeError, setMergeError] = useState<string | null>(null);
   const [isRefreshingStatus, setIsRefreshingStatus] = useState(false);
 
-  const uncommittedFiles = diffFiles?.filter(
-    (f) => f.status === "added" || f.status === "modified" || f.status === "deleted",
-  ) ?? [];
+  const uncommittedFiles =
+    diffFiles?.filter(
+      (f) =>
+        f.status === "added" ||
+        f.status === "modified" ||
+        f.status === "deleted",
+    ) ?? [];
 
   const totalAdds = diffSummary?.totalAdditions ?? 0;
   const totalDels = diffSummary?.totalDeletions ?? 0;
@@ -168,9 +174,12 @@ export function WorkspaceGitTab(props: GitPanelProps) {
     setIsGeneratingMessage(true);
     setCommitError(null);
     try {
-      const res = await fetch(`/api/sessions/${session.id}/generate-commit-message`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `/api/sessions/${session.id}/generate-commit-message`,
+        {
+          method: "POST",
+        },
+      );
       const data = await res.json();
       if (data.message) {
         setCommitMessage(data.message);
@@ -212,7 +221,9 @@ export function WorkspaceGitTab(props: GitPanelProps) {
         if (onCommitted) await onCommitted();
       }
     } catch (err) {
-      setCommitError(err instanceof Error ? err.message : "Error committing changes.");
+      setCommitError(
+        err instanceof Error ? err.message : "Error committing changes.",
+      );
     } finally {
       setIsCommitting(false);
     }
@@ -340,7 +351,8 @@ export function WorkspaceGitTab(props: GitPanelProps) {
 
           {session.repoName && (
             <span className="text-muted-foreground truncate hidden sm:inline">
-              ({session.repoOwner ? `${session.repoOwner}/` : ""}{session.repoName})
+              ({session.repoOwner ? `${session.repoOwner}/` : ""}
+              {session.repoName})
             </span>
           )}
         </div>
@@ -415,7 +427,9 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                 <span>AI Message</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Generate conventional commit message with AI</TooltipContent>
+            <TooltipContent side="bottom">
+              Generate conventional commit message with AI
+            </TooltipContent>
           </Tooltip>
         </div>
 
@@ -438,12 +452,15 @@ export function WorkspaceGitTab(props: GitPanelProps) {
         />
 
         {commitError && (
-          <p className="text-[11px] text-destructive leading-tight">{commitError}</p>
+          <p className="text-[11px] text-destructive leading-tight">
+            {commitError}
+          </p>
         )}
 
         <div className="flex items-center justify-between pt-1">
           <span className="text-[10px] text-muted-foreground">
-            {uncommittedFiles.length} file{uncommittedFiles.length !== 1 ? "s" : ""} to commit
+            {uncommittedFiles.length} file
+            {uncommittedFiles.length !== 1 ? "s" : ""} to commit
           </span>
 
           <Button
@@ -477,8 +494,12 @@ export function WorkspaceGitTab(props: GitPanelProps) {
             </span>
             {(totalAdds > 0 || totalDels > 0) && (
               <span className="text-[10px] font-mono">
-                {totalAdds > 0 && <span className="text-emerald-500">+{totalAdds} </span>}
-                {totalDels > 0 && <span className="text-rose-500">-{totalDels}</span>}
+                {totalAdds > 0 && (
+                  <span className="text-emerald-500">+{totalAdds} </span>
+                )}
+                {totalDels > 0 && (
+                  <span className="text-rose-500">-{totalDels}</span>
+                )}
               </span>
             )}
           </div>
@@ -514,7 +535,9 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                   <div className="flex items-center gap-2 min-w-0">
                     <StatusBadge status={file.status} />
                     <div className="flex items-baseline gap-1 min-w-0 font-mono">
-                      <span className="font-medium text-foreground truncate">{name}</span>
+                      <span className="font-medium text-foreground truncate">
+                        {name}
+                      </span>
                       {dir && (
                         <span className="text-[10px] text-muted-foreground truncate hidden sm:inline">
                           {dir}
@@ -526,7 +549,9 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                   <div className="flex items-center gap-1.5 shrink-0">
                     <div className="flex items-center gap-1 text-[10px] font-mono">
                       {file.additions > 0 && (
-                        <span className="text-emerald-500">+{file.additions}</span>
+                        <span className="text-emerald-500">
+                          +{file.additions}
+                        </span>
                       )}
                       {file.deletions > 0 && (
                         <span className="text-rose-500">-{file.deletions}</span>
@@ -565,7 +590,9 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                             <Trash2 className="h-3 w-3" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent side="bottom">Discard changes</TooltipContent>
+                        <TooltipContent side="bottom">
+                          Discard changes
+                        </TooltipContent>
                       </Tooltip>
                     </div>
                   </div>
@@ -609,7 +636,9 @@ export function WorkspaceGitTab(props: GitPanelProps) {
           )}
 
           {mergeError && (
-            <p className="text-[11px] text-destructive leading-tight">{mergeError}</p>
+            <p className="text-[11px] text-destructive leading-tight">
+              {mergeError}
+            </p>
           )}
 
           {/* Merge Button */}
@@ -697,14 +726,18 @@ export function WorkspaceGitTab(props: GitPanelProps) {
           />
 
           {prError && (
-            <p className="text-[11px] text-destructive leading-tight">{prError}</p>
+            <p className="text-[11px] text-destructive leading-tight">
+              {prError}
+            </p>
           )}
 
           <div className="flex justify-end pt-1">
             <Button
               size="sm"
               onClick={handleCreatePr}
-              disabled={!prTitle.trim() || isCreatingPr || uncommittedFiles.length > 0}
+              disabled={
+                !prTitle.trim() || isCreatingPr || uncommittedFiles.length > 0
+              }
               className="h-7 text-xs px-3 gap-1.5"
             >
               {isCreatingPr ? (
@@ -719,25 +752,36 @@ export function WorkspaceGitTab(props: GitPanelProps) {
       ) : null}
 
       {/* Discard Single File Dialog */}
-      <Dialog open={discardTarget !== null} onOpenChange={(open) => !open && setDiscardTarget(null)}>
+      <Dialog
+        open={discardTarget !== null}
+        onOpenChange={(open) => !open && setDiscardTarget(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Discard changes</DialogTitle>
             <DialogDescription>
-              Are you sure you want to discard changes in <code className="font-mono text-foreground">{discardTarget}</code>? This cannot be undone.
+              Are you sure you want to discard changes in{" "}
+              <code className="font-mono text-foreground">{discardTarget}</code>
+              ? This cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">
             <DialogClose asChild>
-              <Button variant="outline" size="sm" disabled={isDiscarding}>Cancel</Button>
+              <Button variant="outline" size="sm" disabled={isDiscarding}>
+                Cancel
+              </Button>
             </DialogClose>
             <Button
               variant="destructive"
               size="sm"
               disabled={isDiscarding}
-              onClick={() => discardTarget && handleDiscardSingle(discardTarget)}
+              onClick={() =>
+                discardTarget && handleDiscardSingle(discardTarget)
+              }
             >
-              {isDiscarding ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+              {isDiscarding ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+              ) : null}
               Discard Changes
             </Button>
           </DialogFooter>
@@ -750,12 +794,17 @@ export function WorkspaceGitTab(props: GitPanelProps) {
           <DialogHeader>
             <DialogTitle>Discard all changes</DialogTitle>
             <DialogDescription>
-              Are you sure you want to discard all uncommitted changes across {uncommittedFiles.length} file{uncommittedFiles.length !== 1 ? "s" : ""}? All modifications will be permanently lost.
+              Are you sure you want to discard all uncommitted changes across{" "}
+              {uncommittedFiles.length} file
+              {uncommittedFiles.length !== 1 ? "s" : ""}? All modifications will
+              be permanently lost.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0">
             <DialogClose asChild>
-              <Button variant="outline" size="sm" disabled={isDiscarding}>Cancel</Button>
+              <Button variant="outline" size="sm" disabled={isDiscarding}>
+                Cancel
+              </Button>
             </DialogClose>
             <Button
               variant="destructive"
@@ -763,7 +812,9 @@ export function WorkspaceGitTab(props: GitPanelProps) {
               disabled={isDiscarding}
               onClick={handleDiscardAll}
             >
-              {isDiscarding ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+              {isDiscarding ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+              ) : null}
               Discard All Changes
             </Button>
           </DialogFooter>
