@@ -2,6 +2,7 @@
 
 import {
   Code2,
+  FileCode,
   FolderGit2,
   GitCompare,
   GitPullRequest,
@@ -11,7 +12,7 @@ import {
   Terminal as TerminalIcon,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DevServerControls } from "../hooks/use-dev-server";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 import { Button } from "@/components/ui/button";
@@ -21,14 +22,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import type { GitPanelProps } from "../git-panel";
 import { useGitPanel } from "../git-panel-context";
 import { DiffTabView } from "../diff-tab-view";
-import { GitPanel, type GitPanelProps } from "../git-panel";
 import { WorkspacePreviewTab } from "./workspace-preview-tab";
-import { WorkspaceCodeTab } from "./workspace-code-tab";
 import { WorkspaceTerminalTab } from "./workspace-terminal-tab";
-
-export type ActiveWorkspaceTab = "preview" | "diff" | "code" | "terminal" | "git";
+import { WorkspaceFileTab } from "./workspace-file-tab";
+import { WorkspaceGitTab } from "./workspace-git-tab";
 
 export type WorkspacePanelProps = GitPanelProps & {
   devServer: DevServerControls;
@@ -56,25 +56,23 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     setGitPanelOpen,
     changesCount,
     hasActionNeeded,
+    openFiles,
+    activeWorkspaceTab,
+    setActiveWorkspaceTab,
+    closeWorkspaceFile,
+    openDiffToFile,
   } = useGitPanel();
-
-  const [activeTab, setActiveTab] = useState<ActiveWorkspaceTab>(
-    devServer.state.status === "ready"
-      ? "preview"
-      : changesCount > 0
-        ? "diff"
-        : "preview",
-  );
 
   const isDevServerReady = devServer.state.status === "ready";
 
-  const tabs: Array<{
-    id: ActiveWorkspaceTab;
-    label: string;
-    icon: typeof Globe;
-    badge?: number | string | null;
-    badgeColor?: string;
-  }> = [
+  // If activeWorkspaceTab is not set, initialize to preview or diff
+  useEffect(() => {
+    if (!activeWorkspaceTab) {
+      setActiveWorkspaceTab(isDevServerReady ? "preview" : changesCount > 0 ? "diff" : "preview");
+    }
+  }, [activeWorkspaceTab, changesCount, isDevServerReady, setActiveWorkspaceTab]);
+
+  const standardTabs = [
     {
       id: "preview",
       label: "Preview",
@@ -92,18 +90,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         : "bg-blue-500/15 text-blue-600 dark:text-blue-400",
     },
     {
-      id: "code",
-      label: "Code",
-      icon: Code2,
-    },
-    {
-      id: "terminal",
-      label: "Terminal",
-      icon: TerminalIcon,
-    },
-    {
       id: "git",
-      label: "Git & PR",
+      label: "Git",
       icon: session.prNumber ? GitPullRequest : FolderGit2,
       badge: session.prNumber ? `#${session.prNumber}` : null,
       badgeColor:
@@ -111,27 +99,38 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
           : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
     },
+    {
+      id: "terminal",
+      label: "Terminal",
+      icon: TerminalIcon,
+    },
   ];
+
+  const isStandardTab =
+    activeWorkspaceTab === "preview" ||
+    activeWorkspaceTab === "diff" ||
+    activeWorkspaceTab === "git" ||
+    activeWorkspaceTab === "terminal";
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
       {/* Workspace Header Tab Bar */}
       <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-2 py-1 gap-1">
-        {/* Tab Strip */}
-        <div className="flex items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {tabs.map((tab) => {
-            const isActive = activeTab === tab.id;
+        {/* Tab Strip: Standard Tool Tabs + Dynamic Open File Tabs */}
+        <div className="flex items-center gap-1 overflow-x-auto min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {standardTabs.map((tab) => {
+            const isActive = activeWorkspaceTab === tab.id;
             const Icon = tab.icon;
             return (
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => setActiveWorkspaceTab(tab.id)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer shrink-0",
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer shrink-0",
                   isActive
-                    ? "bg-background text-foreground shadow-sm font-semibold"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    ? "bg-background text-foreground shadow-xs font-semibold border border-border/80"
+                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                 )}
               >
                 <Icon className="h-3.5 w-3.5" />
@@ -149,10 +148,55 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               </button>
             );
           })}
+
+          {/* Divider between standard tabs and open file tabs */}
+          {openFiles.length > 0 && (
+            <div className="h-4 w-[1px] bg-border mx-1 shrink-0" />
+          )}
+
+          {/* Dynamic Open File Tabs */}
+          {openFiles.map((filePath) => {
+            const isActive = activeWorkspaceTab === filePath;
+            const fileName = filePath.split("/").pop() ?? filePath;
+
+            return (
+              <div
+                key={filePath}
+                onClick={() => setActiveWorkspaceTab(filePath)}
+                onAuxClick={(e) => {
+                  if (e.button === 1) {
+                    e.preventDefault();
+                    closeWorkspaceFile(filePath);
+                  }
+                }}
+                className={cn(
+                  "group flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-mono transition-colors cursor-pointer shrink-0 max-w-[180px]",
+                  isActive
+                    ? "bg-background text-foreground shadow-xs font-medium border border-border/80"
+                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                )}
+                title={filePath}
+              >
+                <FileCode className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <span className="truncate">{fileName}</span>
+                <button
+                  type="button"
+                  aria-label={`Close ${fileName}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeWorkspaceFile(filePath);
+                  }}
+                  className="rounded p-0.5 text-muted-foreground opacity-60 hover:opacity-100 hover:bg-muted hover:text-foreground transition-opacity"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         {/* Right Header Actions: Expand/Collapse & Close */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 shrink-0 ml-1">
           {onToggleWorkspaceExpand && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -176,7 +220,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {isWorkspaceExpanded
-                  ? "Split view (50/50)"
+                  ? "Restore split screen"
                   : "Expand workspace full width"}
               </TooltipContent>
             </Tooltip>
@@ -205,7 +249,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         <div
           className={cn(
             "h-full w-full",
-            activeTab === "preview" ? "block" : "hidden",
+            activeWorkspaceTab === "preview" ? "block" : "hidden",
           )}
         >
           <WorkspacePreviewTab
@@ -222,33 +266,27 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         <div
           className={cn(
             "h-full w-full overflow-hidden",
-            activeTab === "diff" ? "block" : "hidden",
+            activeWorkspaceTab === "diff" ? "block" : "hidden",
           )}
         >
           <DiffTabView />
         </div>
 
-        {/* Code / Files Tab */}
+        {/* Git & PR Tab */}
         <div
           className={cn(
             "h-full w-full overflow-hidden",
-            activeTab === "code" ? "block" : "hidden",
+            activeWorkspaceTab === "git" ? "block" : "hidden",
           )}
         >
-          <WorkspaceCodeTab
-            sessionId={session.id}
-            files={files}
-            filesLoading={filesLoading}
-            repoName={session.repoName}
-            onRefreshFiles={refreshFiles}
-          />
+          <WorkspaceGitTab {...gitPanelProps} />
         </div>
 
         {/* Terminal Tab */}
         <div
           className={cn(
             "h-full w-full overflow-hidden",
-            activeTab === "terminal" ? "block" : "hidden",
+            activeWorkspaceTab === "terminal" ? "block" : "hidden",
           )}
         >
           <WorkspaceTerminalTab
@@ -257,15 +295,17 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           />
         </div>
 
-        {/* Git & PR Tab */}
-        <div
-          className={cn(
-            "h-full w-full overflow-hidden",
-            activeTab === "git" ? "block" : "hidden",
-          )}
-        >
-          <GitPanel {...gitPanelProps} />
-        </div>
+        {/* Dynamic File Viewer Tab */}
+        {!isStandardTab && activeWorkspaceTab && (
+          <div className="h-full w-full overflow-hidden">
+            <WorkspaceFileTab
+              sessionId={session.id}
+              filePath={activeWorkspaceTab}
+              onClose={() => closeWorkspaceFile(activeWorkspaceTab)}
+              onOpenDiff={openDiffToFile}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

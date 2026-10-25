@@ -27,6 +27,17 @@ type GitPanelContextValue = {
     expanded: boolean | ((prev: boolean) => boolean),
   ) => void;
 
+  /** Dynamic open files tabs in the workspace */
+  openFiles: string[];
+  setOpenFiles: React.Dispatch<React.SetStateAction<string[]>>;
+
+  /** Active workspace tab ("preview" | "diff" | "git" | "terminal" | filePath) */
+  activeWorkspaceTab: string;
+  setActiveWorkspaceTab: (tab: string) => void;
+
+  /** Close a dynamic file tab */
+  closeWorkspaceFile: (filePath: string) => void;
+
   /** Active tab within the git panel */
   gitPanelTab: GitPanelTab;
   setGitPanelTab: (tab: GitPanelTab) => void;
@@ -44,7 +55,7 @@ type GitPanelContextValue = {
   setFocusedDiffFile: (file: string | null) => void;
   focusedDiffRequestId: number;
 
-  /** Open the diff tab in the main content area, optionally focused on a file */
+  /** Open the diff tab in the main content area / workspace */
   openDiffToFile: (filePath: string) => void;
 
   /** Diff scope: "uncommitted" = uncommitted only, "branch" = all changes vs base */
@@ -71,16 +82,14 @@ type GitPanelContextValue = {
   fileTabDismissed: boolean;
   setFileTabDismissed: (dismissed: boolean) => void;
 
-  /** Open a file in the main content area (non-diff view) */
+  /** Open a file in the workspace dynamic tabs */
   openFileTab: (filePath: string) => void;
 
-  /** Share dialog trigger (set by per-chat page, called by header) */
+  /** Share dialog trigger */
   shareRequested: boolean;
   setShareRequested: (requested: boolean) => void;
 
-  /** Change-repo dialog trigger (set by header, called by per-chat page) --
-   * opens the same connect-repo dialog but in "switch to a different repo"
-   * mode for a session that's already connected. */
+  /** Change-repo dialog trigger */
   changeRepoRequested: boolean;
   setChangeRepoRequested: (requested: boolean) => void;
 
@@ -99,6 +108,8 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
   const [isWorkspaceExpanded, setIsWorkspaceExpanded] = useState(false);
+  const [openFiles, setOpenFiles] = useState<string[]>([]);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<string>("preview");
   const [gitPanelTab, setGitPanelTab] = useState<GitPanelTab>("files");
   const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [focusedDiffFile, setFocusedDiffFile] = useState<string | null>(null);
@@ -115,13 +126,31 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
   const panelPortalRef = useRef<HTMLDivElement | null>(null);
   const headerActionsRef = useRef<HTMLDivElement | null>(null);
 
+  const closeWorkspaceFile = useCallback(
+    (filePath: string) => {
+      setOpenFiles((prev) => {
+        const next = prev.filter((p) => p !== filePath);
+        if (activeWorkspaceTab === filePath) {
+          const idx = prev.indexOf(filePath);
+          const nextActive = next[idx - 1] ?? next[0] ?? "preview";
+          setActiveWorkspaceTab(nextActive);
+        }
+        return next;
+      });
+    },
+    [activeWorkspaceTab],
+  );
+
   const openDiffToFile = useCallback(
     (filePath: string) => {
       setFocusedDiffFile(filePath);
       setFocusedDiffRequestId((prev) => prev + 1);
-      setActiveView("diff");
-      setChangesTabDismissed(false);
-      if (isMobile) setGitPanelOpen(false);
+      setActiveWorkspaceTab("diff");
+      setGitPanelOpen(true);
+      if (isMobile) {
+        setActiveView("diff");
+        setChangesTabDismissed(false);
+      }
     },
     [isMobile],
   );
@@ -129,9 +158,13 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
   const openFileTab = useCallback(
     (filePath: string) => {
       setFocusedFilePath(filePath);
-      setActiveView("file");
-      setFileTabDismissed(false);
-      if (isMobile) setGitPanelOpen(false);
+      setOpenFiles((prev) => (prev.includes(filePath) ? prev : [...prev, filePath]));
+      setActiveWorkspaceTab(filePath);
+      setGitPanelOpen(true);
+      if (isMobile) {
+        setActiveView("file");
+        setFileTabDismissed(false);
+      }
     },
     [isMobile],
   );
@@ -142,6 +175,11 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
       setGitPanelOpen,
       isWorkspaceExpanded,
       setIsWorkspaceExpanded,
+      openFiles,
+      setOpenFiles,
+      activeWorkspaceTab,
+      setActiveWorkspaceTab,
+      closeWorkspaceFile,
       gitPanelTab,
       setGitPanelTab,
       activeView,
@@ -175,6 +213,9 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
     [
       gitPanelOpen,
       isWorkspaceExpanded,
+      openFiles,
+      activeWorkspaceTab,
+      closeWorkspaceFile,
       gitPanelTab,
       activeView,
       changesTabDismissed,

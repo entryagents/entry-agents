@@ -116,6 +116,7 @@ import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import { useSessionChats } from "@/hooks/use-session-chats";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   getGitFinalizationState,
   hasRenderableAssistantPart,
@@ -1106,9 +1107,11 @@ export function SessionChatContent({
   const [branchPreviewUrlChangeBaseline, setBranchPreviewUrlChangeBaseline] =
     useState<string | null | undefined>(undefined);
   const hasMounted = useHasMounted();
+  const isMobile = useIsMobile();
   const {
     activeView,
     gitPanelOpen,
+    openFileTab,
     shareRequested,
     setShareRequested,
     changeRepoRequested,
@@ -3807,11 +3810,11 @@ export function SessionChatContent({
           </DialogContent>
         </Dialog>
 
-        {/* Main content: chat, diff, or file */}
+        {/* Main content: chat messages on desktop; fallback on mobile */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {activeView === "diff" ? (
+          {isMobile && activeView === "diff" ? (
             <DiffTabView />
-          ) : activeView === "file" ? (
+          ) : isMobile && activeView === "file" ? (
             <FileTabView />
           ) : (
             <>
@@ -3820,7 +3823,7 @@ export function SessionChatContent({
                 <div ref={containerRef} className="h-full overflow-y-auto">
                   <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
                     <OpenFileProvider
-                      onOpenFile={(fp) => setSelectedWorkspaceFile(fp)}
+                      onOpenFile={(fp) => openFileTab(fp)}
                     >
                       <div className="space-y-6">
                         {groupedRenderMessages.length === 0 &&
