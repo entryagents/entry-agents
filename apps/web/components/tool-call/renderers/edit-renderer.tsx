@@ -5,7 +5,8 @@ import { Pencil } from "lucide-react";
 import { MultiFileDiff } from "@pierre/diffs/react";
 import { useMemo } from "react";
 import type { ToolRendererProps } from "@/app/lib/render-tool";
-import { defaultDiffOptions } from "@/lib/diffs-config";
+import { getDiffOptions } from "@/lib/diffs-config";
+import { useTheme } from "@/app/providers";
 import { ToolLayout } from "../tool-layout";
 import { FileNamePill } from "../file-name-pill";
 
@@ -22,6 +23,12 @@ export function EditRenderer({
     rawFilePath === "..." ? rawFilePath : toRelativePath(rawFilePath, cwd);
   const oldString = input?.oldString ?? "";
   const newString = input?.newString ?? "";
+
+  const { resolvedTheme } = useTheme();
+  const diffOptions = useMemo(
+    () => getDiffOptions(resolvedTheme),
+    [resolvedTheme],
+  );
 
   const { additions, removals } = useMemo(() => {
     const oldLines = oldString.split("\n");
@@ -68,7 +75,7 @@ export function EditRenderer({
         <MultiFileDiff
           oldFile={{ name: rawFilePath, contents: oldString }}
           newFile={{ name: rawFilePath, contents: newString }}
-          options={defaultDiffOptions}
+          options={diffOptions}
         />
       </div>
     ) : undefined;

@@ -4,7 +4,8 @@ import { toRelativePath } from "@entry-agents/shared/lib/tool-state";
 import { FilePlus } from "lucide-react";
 import { File as DiffsFile } from "@pierre/diffs/react";
 import type { ToolRendererProps } from "@/app/lib/render-tool";
-import { defaultFileOptions } from "@/lib/diffs-config";
+import { getFileOptions } from "@/lib/diffs-config";
+import { useTheme } from "@/app/providers";
 import { ToolLayout } from "../tool-layout";
 import { FileNamePill } from "../file-name-pill";
 
@@ -31,9 +32,11 @@ export function WriteRenderer({
   const content = input?.content ?? "";
 
   const totalLines = content.length === 0 ? 0 : content.split("\n").length;
+  const { resolvedTheme } = useTheme();
+  const baseOptions = getFileOptions(resolvedTheme);
   const fileOptions = shouldWrapFileContent(rawFilePath)
-    ? { ...defaultFileOptions, overflow: "wrap" as const }
-    : defaultFileOptions;
+    ? { ...baseOptions, overflow: "wrap" as const }
+    : baseOptions;
 
   const output = part.state === "output-available" ? part.output : undefined;
   const outputError =

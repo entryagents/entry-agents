@@ -13,7 +13,7 @@
  * below. Nothing in the agent, the workflows or the UI needs to change.
  */
 
-export type SandboxProviderId = "modal" | "local" | "boxd";
+export type SandboxProviderId = "modal" | "local" | "boxd" | "novita";
 
 /**
  * What a sandbox provider can actually do.
@@ -119,6 +119,19 @@ export const BOXD_CAPABILITIES: SandboxCapabilities = {
   maxTimeoutMs: null,
 };
 
+export const NOVITA_CAPABILITIES: SandboxCapabilities = {
+  persistentResume: true,
+  drives: false,
+  snapshots: false,
+  execDetached: true,
+  killCommand: true,
+  publicPorts: true,
+  credentialBrokering: true,
+  timeoutExtension: false,
+  workspaceMigration: false,
+  maxTimeoutMs: 24 * 60 * 60 * 1000,
+};
+
 export const LOCAL_CAPABILITIES: SandboxCapabilities = {
   persistentResume: true,
   drives: false,
@@ -142,6 +155,12 @@ export const SANDBOX_PROVIDER_METADATA: Record<
     description: "Your persistent, hardware-isolated Linux workspace",
     capabilities: BOXD_CAPABILITIES,
   },
+  novita: {
+    id: "novita",
+    displayName: "Novita AI",
+    description: "Fast-booting Firecracker microVM cloud sandbox",
+    capabilities: NOVITA_CAPABILITIES,
+  },
   modal: {
     id: "modal",
     displayName: "Modal",
@@ -161,6 +180,7 @@ export const SANDBOX_TYPES = [
   "modal",
   "local",
   "boxd",
+  "novita",
 ] as const satisfies readonly SandboxProviderId[];
 
 /**
@@ -173,6 +193,7 @@ export const SANDBOX_TYPES = [
 export const USER_SELECTABLE_SANDBOX_TYPES = [
   "boxd",
   "modal",
+  "novita",
 ] as const satisfies readonly SandboxProviderId[];
 
 /**

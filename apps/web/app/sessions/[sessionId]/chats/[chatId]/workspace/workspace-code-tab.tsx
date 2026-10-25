@@ -26,7 +26,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { defaultFileOptions } from "@/lib/diffs-config";
+import { getFileOptions } from "@/lib/diffs-config";
+import { useTheme } from "@/app/providers";
 import { fetcherNoStore } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 import { FileTree } from "../file-tree";
@@ -108,10 +109,12 @@ export function WorkspaceCodeTab({
               ? "binary"
               : undefined);
 
+  const { resolvedTheme } = useTheme();
+  const baseFileOptions = getFileOptions(resolvedTheme);
   const fileOptions =
     selectedFilePath && shouldWrapFileContent(selectedFilePath)
-      ? { ...defaultFileOptions, overflow: "wrap" as const }
-      : defaultFileOptions;
+      ? { ...baseFileOptions, overflow: "wrap" as const }
+      : baseFileOptions;
 
   return (
     <div className="flex h-full overflow-hidden bg-background">

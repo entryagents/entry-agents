@@ -29,7 +29,8 @@ import {
 } from "@/components/ui/drawer";
 import { SelectionPopover } from "@/components/selection-popover";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { defaultFileOptions } from "@/lib/diffs-config";
+import { getFileOptions } from "@/lib/diffs-config";
+import { useTheme } from "@/app/providers";
 import { streamdownPlugins } from "@/lib/streamdown-config";
 import { fetcherNoStore } from "@/lib/swr";
 import { cn } from "@/lib/utils";
@@ -266,9 +267,11 @@ function ViewerBody({
               : undefined);
   const prettyViewKind = getPrettyViewKind(filePath);
   const supportsPrettyView = prettyViewKind != null;
+  const { resolvedTheme } = useTheme();
+  const baseFileOptions = getFileOptions(resolvedTheme);
   const fileOptions = shouldWrapFileContent(filePath)
-    ? { ...defaultFileOptions, overflow: "wrap" as const }
-    : defaultFileOptions;
+    ? { ...baseFileOptions, overflow: "wrap" as const }
+    : baseFileOptions;
   const contentRef = useRef<HTMLDivElement>(null);
   const openInEditorTitle = editorBusy
     ? "Starting editor…"

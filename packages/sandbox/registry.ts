@@ -30,6 +30,9 @@ import { isModalConfigured } from "./modal/client.ts";
 import type { ModalState } from "./modal/state.ts";
 import { connectLocal } from "./local/sandbox.ts";
 import type { LocalSandboxConnectOptions } from "./local/sandbox.ts";
+import { connectNovita } from "./novita/connect.ts";
+import { isNovitaConfigured } from "./novita/config.ts";
+import type { NovitaState } from "./novita/state.ts";
 
 export class UnsupportedSandboxProviderError extends Error {
   readonly providerId: string;
@@ -213,9 +216,39 @@ const localProvider: SandboxProvider = {
   isAvailable: () => true,
 };
 
+const novitaProvider: SandboxProvider = {
+  id: "novita",
+  displayName: SANDBOX_PROVIDER_METADATA.novita.displayName,
+  description: SANDBOX_PROVIDER_METADATA.novita.description,
+  capabilities: SANDBOX_PROVIDER_METADATA.novita.capabilities,
+
+  async connect(state, options) {
+    if (state.type !== "novita") {
+      throw new UnsupportedSandboxProviderError(String(state.type));
+    }
+    return connectNovita(state as { type: "novita" } & NovitaState, options);
+  },
+
+  buildProvisionState({ existing, sessionId, source, fresh }) {
+    const current =
+      existing?.type === "novita"
+        ? (existing as { type: "novita" } & NovitaState)
+        : undefined;
+
+    return {
+      type: "novita",
+      ...(current?.sandboxId && !fresh ? { sandboxId: current.sandboxId } : {}),
+      ...(source ? { source } : {}),
+    } as SandboxState;
+  },
+
+  isAvailable: () => isNovitaConfigured(),
+};
+
 export const SANDBOX_PROVIDERS: Record<SandboxProviderId, SandboxProvider> = {
   boxd: boxdProvider,
   modal: modalProvider,
+  novita: novitaProvider,
   local: localProvider,
 };
 

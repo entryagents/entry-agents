@@ -578,9 +578,10 @@ export function getFileIcon(filename: string, props: IconProps = {}) {
  */
 export function FileTypeIcon({
   filename,
+  path,
   ...rest
-}: { filename: string } & IconProps) {
-  return getFileIcon(filename, rest);
+}: { filename?: string; path?: string } & IconProps) {
+  return getFileIcon(filename ?? path ?? "", rest);
 }
 
 export { GenericFileIcon };

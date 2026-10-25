@@ -3055,3 +3055,36 @@ The thinking panel was receiving live Gateway SSE, but the web chat hook throttl
 - **Auto-Healing Model Resolution:**
   - Removed all hardcoded `:free` model references (`qwen3.8-flash:free`, `mimo-v2.6-flash:free`).
   - Added auto-healing fallback in `model-selection.ts` that dynamically queries live gateway models (`GET /api/models`) and resolves to active working models (`step-5-preview`, `qwen3.8-flash`) if an older model ID becomes obsolete or unavailable.
+
+## 2026-10-25: Diff Viewer Shadow DOM `color-scheme` Isolation, Non-GitHub Local Workspace Mode, and Novita AI MicroVM Provider
+
+- **Light Mode Invisible Code in `@pierre/diffs` Web Component (`color-scheme` Leakage):**
+  - **Symptom:** In light mode, lines of code (notably `.gitignore` paths like `/node_modules`, `*.pem`, and code comments `# dependencies`, `# next.js`) appeared as faint, washed-out white/light-gray text against a white background, rendering diffs invisible.
+  - **Root Cause:** `@pierre/diffs` renders code tokens inside an open Shadow DOM (`attachShadow({ mode: 'open' })`) using CSS `color: light-dark(var(--diffs-token-light), var(--diffs-token-dark))`. When dual themes (`theme: { dark: "vercel-dark", light: "vercel-light" }`) are passed to `<PatchDiff />` or `<FileDiff />`, the browser evaluates `light-dark()` based on the element's computed `color-scheme`. Because `:host` in `unsafeCSS` did not explicitly set `color-scheme: light;`, the browser evaluated `light-dark()` against the host OS preference (`prefers-color-scheme: dark` on Windows/macOS dark mode). This caused dark-theme tokens (`#ededed`, `#a1a1a1`) to be rendered against the light-theme background (`#ffffff`).
+  - **The Architectural Fix:**
+    1) *Single-Theme Dynamic Selection:* Pass a single active theme string (`theme: resolvedTheme === "dark" ? "vercel-dark" : "vercel-light"`) via `getDiffOptions(resolvedTheme)` and `getFileOptions(resolvedTheme)`. When Shiki receives a single theme name, it generates explicit inline color declarations without relying on `light-dark()` or OS media queries.
+    2) *Explicit Shadow DOM `color-scheme`:* In `unsafeCSS`, declare `color-scheme: light;` on `:host`, and `color-scheme: dark;` on `:host-context(.dark)` and `:host(.dark)`.
+    3) *High-Contrast Addition/Deletion Colors:* In light mode, overridden additions to `#15803d` (deep forest green) and deletions to `#b91c1c` (deep crimson), replacing neon pastels that fail WCAG AA contrast.
+    4) *Defensive Inheritance:* Added `:host(:not(.dark)) pre, :host(:not(.dark)) code, :host(:not(.dark)) [data-line] { color: inherit; }` to protect unhighlighted or raw lines against OS inversion.
+
+- **Non-GitHub Connected Chat Workspaces vs. GitHub-Connected Workspaces:**
+  - **Runtime Log & Database Discovery:** Auditing production database records for recent active sessions (e.g. `ZFhFqSIqvUYrHQ9TfsT32`, `M9BKuT6Yez_w9-m0fDoR1` from 1 hour ago) revealed that user sessions were running in pure sandbox mode with `repoOwner: null, repoName: null, branch: null`. The third-column workspace Review tab previously hardcoded a fallback `session.branch ?? "main"`, displayed git branch pills, PR merge readiness checks, and "Commit & Push" buttons for repositories that didn't exist.
+  - **Decoupled Architecture:**
+    - *Local Sandbox Mode (`!hasRepo`):*
+      - Replaced git branch badge with `<Laptop /> Local Workspace` (or Local Sandbox).
+      - Replaced the "Review" tab label with **"Changes"** (or Local Changes).
+      - Added a **Download Diff Patch (`.patch`)** action so users can immediately export their modifications.
+      - Discard All button allows reverting modified sandbox files directly without Git remote dependencies.
+      - Provided a clean, optional **"Connect GitHub Repository"** CTA button allowing users to publish local work to GitHub on demand.
+      - Default active workspace tabs for local chats prioritize **Preview** (`Globe`) and **Terminal** (`TerminalIcon`), opening Changes only when modified files exist.
+    - *GitHub-Connected Mode (`hasRepo` is true):*
+      - Displays active git branch.
+      - Integrated AI-powered PR Summary Generator (`generatePrContent`) summarizing conversation history into PR title and markdown body.
+      - Real Commit & Push workflow with file staging and branch verification.
+      - PR status pill with merge readiness and merge action.
+
+- **Novita AI Agent Sandbox Integration (`packages/sandbox/novita`):**
+  - Integrated Novita AI's Agent Sandbox infrastructure alongside Boxd and Modal in the `@entry-agents/sandbox` provider registry.
+  - Novita AI provides hardware-isolated Firecracker microVMs with sub-second cold starts, fast command execution via REST (`POST /v1/sandbox/create`, `POST /v1/sandbox/{id}/exec`), port forwarding (`https://{port}-{id}.sandbox.novita.ai`), and microVM pause/resume/kill lifecycle.
+  - Registered `novita` in all required registry seams: `SandboxProviderId` union in `registry-types.ts`, `SandboxState` discriminated union in `state.ts`, `NOVITA_CAPABILITIES` and `SANDBOX_PROVIDER_METADATA` in `registry-types.ts`, `SANDBOX_TYPES` and `USER_SELECTABLE_SANDBOX_TYPES` in `registry-types.ts`, `novitaProvider` in `registry.ts`, and database schema enum `defaultSandboxType` in `schema.ts`.
+  - Cleanly verified via monorepo typecheck and test suite.

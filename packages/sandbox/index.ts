@@ -42,6 +42,7 @@ export {
   DEFAULT_SANDBOX_PROVIDER,
   MODAL_CAPABILITIES,
   LOCAL_CAPABILITIES,
+  NOVITA_CAPABILITIES,
   getSandboxCapabilities,
   getSandboxProviderMetadata,
   isKnownSandboxType,
@@ -103,3 +104,9 @@ export { toErrorMessage } from "./modal/client.ts";
 export { createModalClient, deleteModalVolume } from "./modal/client.ts";
 
 export { listAllBoxdMachines, deleteAllBoxdMachines } from "./boxd/connect.ts";
+
+// novita
+export { NovitaSandbox } from "./novita/sandbox.ts";
+export { connectNovita } from "./novita/connect.ts";
+export { isNovitaConfigured } from "./novita/config.ts";
+export type { NovitaState } from "./novita/state.ts";

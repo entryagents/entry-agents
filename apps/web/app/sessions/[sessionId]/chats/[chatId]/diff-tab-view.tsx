@@ -29,7 +29,8 @@ import {
   useUserPreferences,
 } from "@/hooks/use-user-preferences";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { defaultDiffOptions, splitDiffOptions } from "@/lib/diffs-config";
+import { getDiffOptions } from "@/lib/diffs-config";
+import { useTheme } from "@/app/providers";
 import { cn } from "@/lib/utils";
 import { DownloadDiffDialog } from "./download-diff-dialog";
 import { useSessionChatWorkspaceContext } from "./session-chat-context";
@@ -132,8 +133,8 @@ function FileDiffSection({
   diffScope: string;
   sectionRef?: React.Ref<HTMLDivElement>;
 }) {
-  const baseOptions =
-    diffStyle === "split" ? splitDiffOptions : defaultDiffOptions;
+  const { resolvedTheme } = useTheme();
+  const baseOptions = getDiffOptions(resolvedTheme, diffStyle === "split");
   const fileName = file.path.split("/").pop() ?? file.path;
   const dirPath = file.path.slice(0, -fileName.length);
 

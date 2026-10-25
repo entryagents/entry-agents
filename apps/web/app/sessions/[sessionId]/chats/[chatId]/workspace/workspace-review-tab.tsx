@@ -4,15 +4,20 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  Download,
   ExternalLink,
   FileCode,
+  FolderGit2,
   GitBranch,
   GitCommit,
   GitMerge,
   GitPullRequest,
+  Github,
+  Laptop,
   Loader2,
   RefreshCw,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -34,10 +39,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { defaultDiffOptions, splitDiffOptions } from "@/lib/diffs-config";
+import { getDiffOptions } from "@/lib/diffs-config";
+import { useTheme } from "@/app/providers";
 import { commitChanges } from "@/lib/github/actions/commit";
 import { discardChanges } from "@/lib/git/actions/discard";
-import { openPullRequest, mergePr } from "@/lib/github/actions/pr";
+import {
+  openPullRequest,
+  mergePr,
+  generatePrContent,
+} from "@/lib/github/actions/pr";
 import {
   getMergeReadiness,
   type MergeReadinessResponse,
@@ -101,13 +111,15 @@ export function WorkspaceReviewTab({
   onOpenFile,
   onCreateRepoClick,
 }: WorkspaceReviewTabProps) {
-  // Diff View Mode: unified or split (matching OpenCode segmented control)
+  const { resolvedTheme } = useTheme();
+
+  // Diff View Mode: unified or split
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified");
 
   // Track expanded files in accordion
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
-  // Direct commit input state (no AI write commit gimmicks)
+  // Direct commit input state
   const [commitMessage, setCommitMessage] = useState("");
   const [isCommitting, setIsCommitting] = useState(false);
   const [commitError, setCommitError] = useState<string | null>(null);
@@ -119,59 +131,54 @@ export function WorkspaceReviewTab({
   const [confirmDiscardAllOpen, setConfirmDiscardAllOpen] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
 
-  // PR & Merge state
+  // Create PR dialog state
+  const [createPrDialogOpen, setCreatePrDialogOpen] = useState(false);
+  const [prTitle, setPrTitle] = useState("");
+  const [prDescription, setPrDescription] = useState("");
+  const [isGeneratingPr, setIsGeneratingPr] = useState(false);
+  const [isCreatingPr, setIsCreatingPr] = useState(false);
+
+  // Merge PR state
+  const [isMerging, setIsMerging] = useState(false);
   const [readiness, setReadiness] = useState<MergeReadinessResponse | null>(
     null,
   );
-  const [isCreatingPr, setIsCreatingPr] = useState(false);
-  const [isMerging, setIsMerging] = useState(false);
-  const [createPrDialogOpen, setCreatePrDialogOpen] = useState(false);
-  const [prTitle, setPrTitle] = useState(session.title ?? "");
 
-  const uncommittedFiles = useMemo(
-    () =>
-      diffFiles?.filter(
-        (f) =>
-          f.status === "added" ||
-          f.status === "modified" ||
-          f.status === "deleted" ||
-          f.status === "renamed",
-      ) ?? [],
-    [diffFiles],
-  );
+  // Filter uncommitted changes
+  const uncommittedFiles = useMemo(() => {
+    if (!diffFiles) return [];
+    return diffFiles.filter(
+      (f) =>
+        f.stagingStatus === "unstaged" ||
+        f.stagingStatus === "partial" ||
+        !f.stagingStatus,
+    );
+  }, [diffFiles]);
 
-  // Default expand all files when files are loaded
+  // Expand all by default on first load of uncommitted files
   useEffect(() => {
     if (uncommittedFiles.length > 0 && expandedFiles.size === 0) {
       setExpandedFiles(new Set(uncommittedFiles.map((f) => f.path)));
     }
   }, [uncommittedFiles, expandedFiles.size]);
 
-  // Fetch merge readiness when PR exists
+  // Check PR merge readiness when PR exists
   useEffect(() => {
-    if (session.prNumber && hasRepo) {
-      getMergeReadiness({ sessionId: session.id })
-        .then((res) => setReadiness(res))
-        .catch(() => {});
-    }
-  }, [session.prNumber, session.id, hasRepo]);
+    if (!session.prNumber) return;
+    let cancelled = false;
 
-  const totalAdds = diffSummary?.totalAdditions ?? 0;
-  const totalDels = diffSummary?.totalDeletions ?? 0;
-  const branchName = gitStatus?.branch ?? session.branch ?? "main";
+    void getMergeReadiness({ sessionId: session.id })
+      .then((res) => {
+        if (!cancelled) setReadiness(res);
+      })
+      .catch(() => {});
 
-  const allExpanded =
-    uncommittedFiles.length > 0 &&
-    expandedFiles.size === uncommittedFiles.length;
+    return () => {
+      cancelled = true;
+    };
+  }, [session.prNumber, session.id]);
 
-  const toggleExpandCollapseAll = useCallback(() => {
-    if (allExpanded) {
-      setExpandedFiles(new Set());
-    } else {
-      setExpandedFiles(new Set(uncommittedFiles.map((f) => f.path)));
-    }
-  }, [allExpanded, uncommittedFiles]);
-
+  // Toggle single file accordion
   const toggleFile = useCallback((path: string) => {
     setExpandedFiles((prev) => {
       const next = new Set(prev);
@@ -183,6 +190,21 @@ export function WorkspaceReviewTab({
       return next;
     });
   }, []);
+
+  // Expand / collapse all files
+  const allExpanded =
+    uncommittedFiles.length > 0 &&
+    uncommittedFiles.every((f) => expandedFiles.has(f.path));
+
+  const toggleExpandCollapseAll = useCallback(() => {
+    if (allExpanded) {
+      setExpandedFiles(new Set());
+    } else {
+      setExpandedFiles(new Set(uncommittedFiles.map((f) => f.path)));
+    }
+  }, [allExpanded, uncommittedFiles]);
+
+  const branchName = session.branch ?? "main";
 
   // Handle single file discard
   const handleDiscardSingleFile = useCallback(
@@ -228,6 +250,33 @@ export function WorkspaceReviewTab({
     }
   }, [session.id, refreshDiff, refreshGitStatus]);
 
+  // Download patch file for non-GitHub or local workflows
+  const handleDownloadPatch = useCallback(() => {
+    const fullPatch = uncommittedFiles
+      .map((f) => {
+        if (!f.diff) return "";
+        return `diff --git a/${f.path} b/${f.path}\n${f.diff}`;
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (!fullPatch) {
+      toast.info("No patch diffs available to download");
+      return;
+    }
+
+    const blob = new Blob([fullPatch], { type: "text/x-diff;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `changes-${session.id.slice(0, 8)}.patch`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success("Downloaded patch file");
+  }, [uncommittedFiles, session.id]);
+
   // Handle direct commit
   const handleCommit = useCallback(async () => {
     const trimmed = commitMessage.trim();
@@ -254,7 +303,7 @@ export function WorkspaceReviewTab({
       toast.success(
         result.pushed
           ? "Changes committed and pushed to remote"
-          : "Changes committed locally",
+          : "Changes committed locally in sandbox",
       );
       onCommitted?.();
       void refreshDiff();
@@ -276,6 +325,30 @@ export function WorkspaceReviewTab({
     refreshDiff,
     refreshGitStatus,
   ]);
+
+  // AI-powered PR generator
+  const handleGeneratePrSummary = useCallback(async () => {
+    setIsGeneratingPr(true);
+    try {
+      const res = await generatePrContent({
+        sessionId: session.id,
+        sessionTitle: session.title,
+        baseBranch: session.branch ?? "main",
+        branchName,
+      });
+      if (res.title) setPrTitle(res.title);
+      if (res.body) setPrDescription(res.body);
+      toast.success("Generated PR summary from conversation");
+    } catch (err) {
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to generate PR summary with AI",
+      );
+    } finally {
+      setIsGeneratingPr(false);
+    }
+  }, [session.id, session.title, session.branch, branchName]);
 
   // Handle create PR
   const handleCreatePr = useCallback(async () => {
@@ -334,19 +407,38 @@ export function WorkspaceReviewTab({
     }
   }, [session.prNumber, session.id, onMerged, refreshGitStatus]);
 
-  const baseDiffOptions =
-    diffStyle === "split" ? splitDiffOptions : defaultDiffOptions;
+  // High contrast diff options dynamically resolved to active theme
+  const baseDiffOptions = useMemo(
+    () => getDiffOptions(resolvedTheme, diffStyle === "split"),
+    [resolvedTheme, diffStyle],
+  );
+
+  const totalAdds = uncommittedFiles.reduce(
+    (sum, f) => sum + (f.additions ?? 0),
+    0,
+  );
+  const totalDels = uncommittedFiles.reduce(
+    (sum, f) => sum + (f.deletions ?? 0),
+    0,
+  );
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
-      {/* Top Review Toolbar (Matching OpenCode session-review.tsx header) */}
+      {/* Top Review/Changes Toolbar */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-3 py-1.5 text-xs">
-        {/* Left: Branch Pill + Files count + Diff Stats */}
+        {/* Left: Branch / Local Workspace Pill + Files count + Diff Stats */}
         <div className="flex min-w-0 items-center gap-2">
-          <div className="flex items-center gap-1 rounded-md border border-border/80 bg-background px-2 py-0.5 text-xs font-mono font-medium shadow-2xs">
-            <GitBranch className="h-3 w-3 text-muted-foreground" />
-            <span className="truncate max-w-[120px]">{branchName}</span>
-          </div>
+          {hasRepo ? (
+            <div className="flex items-center gap-1 rounded-md border border-border/80 bg-background px-2 py-0.5 text-xs font-mono font-medium shadow-2xs">
+              <GitBranch className="h-3 w-3 text-muted-foreground" />
+              <span className="truncate max-w-[140px]">{branchName}</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 rounded-md border border-border/80 bg-background px-2 py-0.5 text-xs font-medium shadow-2xs">
+              <Laptop className="h-3 w-3 text-muted-foreground" />
+              <span>Local Workspace</span>
+            </div>
+          )}
 
           <span className="font-mono text-xs text-muted-foreground">
             {uncommittedFiles.length} file
@@ -355,15 +447,19 @@ export function WorkspaceReviewTab({
 
           {(totalAdds > 0 || totalDels > 0) && (
             <div className="flex items-center gap-1 font-mono text-xs font-semibold">
-              <span className="text-emerald-500">+{totalAdds}</span>
-              <span className="text-rose-500">-{totalDels}</span>
+              <span className="text-emerald-600 dark:text-emerald-400">
+                +{totalAdds}
+              </span>
+              <span className="text-rose-600 dark:text-rose-400">
+                -{totalDels}
+              </span>
             </div>
           )}
         </div>
 
-        {/* Right: Unified/Split Segmented Control + Expand/Collapse + Discard All + Refresh */}
+        {/* Right: Segmented Control + Actions */}
         <div className="flex items-center gap-1.5">
-          {/* OpenCode Segmented Control: Unified | Split */}
+          {/* Segmented Control: Unified | Split */}
           <div className="flex items-center rounded-md border border-border bg-muted/40 p-0.5 text-[11px]">
             <button
               type="button"
@@ -399,6 +495,37 @@ export function WorkspaceReviewTab({
               className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
             >
               {allExpanded ? "Collapse all" : "Expand all"}
+            </Button>
+          )}
+
+          {uncommittedFiles.length > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDownloadPatch}
+                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer gap-1"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>Patch</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Download as .patch diff
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {!hasRepo && onCreateRepoClick && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onCreateRepoClick}
+              className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              <Github className="h-3 w-3" />
+              <span>Connect GitHub</span>
             </Button>
           )}
 
@@ -448,72 +575,81 @@ export function WorkspaceReviewTab({
           <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center text-muted-foreground">
             <CheckCircle2 className="h-8 w-8 text-emerald-500/80" />
             <p className="text-sm font-medium text-foreground">
-              Working tree is clean
+              {hasRepo ? "Working tree clean" : "No local changes"}
             </p>
-            <p className="text-xs max-w-xs text-muted-foreground">
-              No uncommitted changes in this branch. Any edits made by the agent
-              will appear here for review.
+            <p className="text-xs text-muted-foreground max-w-[260px]">
+              {hasRepo
+                ? "All files are synchronized with your active branch."
+                : "No modified or uncommitted files in this sandbox."}
             </p>
+            {!hasRepo && onCreateRepoClick && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onCreateRepoClick}
+                className="mt-3 gap-1.5 text-xs cursor-pointer"
+              >
+                <Github className="h-3.5 w-3.5" />
+                <span>Connect GitHub Repository</span>
+              </Button>
+            )}
           </div>
         ) : (
           <div className="divide-y divide-border">
             {uncommittedFiles.map((file) => {
               const isExpanded = expandedFiles.has(file.path);
+              const patch = file.diff;
               const fileName = file.path.split("/").pop() ?? file.path;
-              const dirPath = file.path.includes("/")
-                ? file.path.slice(0, file.path.lastIndexOf("/"))
-                : null;
-              const patch = file.localDiff || file.diff;
+              const dirPath = file.path.slice(0, -fileName.length);
 
               return (
                 <div key={file.path} className="group/diff-file">
-                  {/* Sticky Accordion Header (OpenCode style) */}
-                  <div
-                    onClick={() => toggleFile(file.path)}
-                    className="sticky top-0 z-10 flex w-full items-center justify-between border-b border-border/60 bg-muted/40 px-3 py-1.5 transition-colors hover:bg-muted/80 cursor-pointer"
-                  >
-                    {/* Left: Expand chevron + Status Badge + File Path */}
-                    <div className="flex min-w-0 items-center gap-2">
+                  {/* Accordion File Header */}
+                  <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-muted/30 hover:bg-muted/50 transition-colors select-none text-xs">
+                    <button
+                      type="button"
+                      onClick={() => toggleFile(file.path)}
+                      className="flex flex-1 items-center gap-2 min-w-0 text-left cursor-pointer"
+                    >
                       <ChevronRight
                         className={cn(
                           "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
                           isExpanded && "rotate-90",
                         )}
                       />
+                      <FileStatusIndicator status={file.status} />
                       <FileTypeIcon
-                        filename={file.path}
-                        className="h-4 w-4 shrink-0"
+                        path={file.path}
+                        className="h-3.5 w-3.5 shrink-0"
                       />
-                      <div className="flex min-w-0 items-center gap-1 text-xs font-mono truncate">
+                      <span className="font-mono text-xs truncate">
                         {dirPath && (
-                          <span className="text-muted-foreground truncate hidden sm:inline">
-                            {dirPath}/
+                          <span className="text-muted-foreground">
+                            {dirPath}
                           </span>
                         )}
-                        <span className="font-semibold text-foreground truncate">
+                        <span className="text-foreground font-semibold">
                           {fileName}
                         </span>
-                      </div>
-                      <FileStatusIndicator status={file.status} />
-                    </div>
+                      </span>
+                    </button>
 
-                    {/* Right: Line Changes + Open in Tab + Discard File */}
-                    <div
-                      className="flex items-center gap-2 shrink-0"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center gap-1 font-mono text-xs">
-                        {file.additions > 0 && (
-                          <span className="text-emerald-500 font-medium">
-                            +{file.additions}
-                          </span>
-                        )}
-                        {file.deletions > 0 && (
-                          <span className="text-rose-500 font-medium">
-                            -{file.deletions}
-                          </span>
-                        )}
-                      </div>
+                    {/* Right: File line stats + file actions */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {(file.additions > 0 || file.deletions > 0) && (
+                        <div className="flex items-center gap-1 font-mono text-[11px]">
+                          {file.additions > 0 && (
+                            <span className="text-emerald-600 dark:text-emerald-400">
+                              +{file.additions}
+                            </span>
+                          )}
+                          {file.deletions > 0 && (
+                            <span className="text-rose-600 dark:text-rose-400">
+                              -{file.deletions}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {onOpenFile && (
                         <Tooltip>
@@ -521,14 +657,17 @@ export function WorkspaceReviewTab({
                             <Button
                               variant="ghost"
                               size="icon"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenFile(file.path);
+                              }}
                               className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
-                              onClick={() => onOpenFile(file.path)}
                             >
-                              <FileCode className="h-3.5 w-3.5" />
+                              <FileCode className="h-3 w-3" />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent side="top">
-                            Open in file tab
+                          <TooltipContent side="left">
+                            Open file in editor tab
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -538,22 +677,25 @@ export function WorkspaceReviewTab({
                           <Button
                             variant="ghost"
                             size="icon"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDiscardFileTarget(file.path);
+                            }}
                             className="h-6 w-6 text-muted-foreground hover:text-destructive cursor-pointer"
-                            onClick={() => setDiscardFileTarget(file.path)}
                           >
-                            <RotateCcw className="h-3.5 w-3.5" />
+                            <RotateCcw className="h-3 w-3" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent side="top">
-                          Discard changes in this file
+                        <TooltipContent side="left">
+                          Discard changes to this file
                         </TooltipContent>
                       </Tooltip>
                     </div>
                   </div>
 
-                  {/* Accordion Content with Pierre Diff */}
+                  {/* Accordion File Body (Diff Viewer) */}
                   {isExpanded && (
-                    <div className="overflow-x-auto bg-background">
+                    <div className="overflow-x-auto bg-background border-t border-border/50">
                       {file.binary ? (
                         <div className="p-8 text-center text-xs text-muted-foreground font-mono">
                           Binary file &mdash; diff not displayed inline
@@ -564,7 +706,7 @@ export function WorkspaceReviewTab({
                         </div>
                       ) : patch ? (
                         <PatchDiff
-                          key={`${file.path}-${diffStyle}`}
+                          key={`${file.path}-${diffStyle}-${resolvedTheme}`}
                           patch={patch}
                           options={baseDiffOptions}
                         />
@@ -582,10 +724,10 @@ export function WorkspaceReviewTab({
         )}
       </div>
 
-      {/* Bottom Native Commit & PR Bar (OpenCode style, no cheesy AI write commit gimmicks) */}
+      {/* Bottom Action Bar */}
       <div className="shrink-0 border-t border-border bg-muted/20 p-2.5 space-y-2">
         {/* Active PR status badge if exists */}
-        {session.prNumber && (
+        {hasRepo && session.prNumber && (
           <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-1.5 text-xs">
             <div className="flex items-center gap-2 min-w-0">
               <GitPullRequest
@@ -655,7 +797,11 @@ export function WorkspaceReviewTab({
                 void handleCommit();
               }
             }}
-            placeholder="Commit message..."
+            placeholder={
+              hasRepo
+                ? "Commit message..."
+                : "Save checkpoint in local sandbox..."
+            }
             disabled={isCommitting || uncommittedFiles.length === 0}
             className="h-8 text-xs font-mono bg-background focus-visible:ring-1"
           />
@@ -675,14 +821,17 @@ export function WorkspaceReviewTab({
             ) : (
               <GitCommit className="h-3.5 w-3.5" />
             )}
-            <span>Commit{hasRepo ? " & Push" : ""}</span>
+            <span>{hasRepo ? "Commit & Push" : "Save Local"}</span>
           </Button>
 
-          {!session.prNumber && hasRepo && (
+          {hasRepo && !session.prNumber && (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCreatePrDialogOpen(true)}
+              onClick={() => {
+                setPrTitle(session.title || "Feature implementation");
+                setCreatePrDialogOpen(true);
+              }}
               className="h-8 px-2.5 text-xs gap-1.5 shrink-0 cursor-pointer"
             >
               <GitPullRequest className="h-3.5 w-3.5 text-emerald-500" />
@@ -698,23 +847,23 @@ export function WorkspaceReviewTab({
 
       {/* Confirmation Dialog: Discard Single File */}
       <Dialog
-        open={discardFileTarget !== null}
+        open={Boolean(discardFileTarget)}
         onOpenChange={(open) => {
           if (!open) setDiscardFileTarget(null);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Discard changes?</DialogTitle>
+            <DialogTitle>Discard File Changes?</DialogTitle>
             <DialogDescription>
-              This will permanently discard all uncommitted changes in{" "}
-              <span className="font-mono font-medium text-foreground">
+              Are you sure you want to discard all changes in{" "}
+              <code className="text-foreground font-mono font-semibold">
                 {discardFileTarget}
-              </span>
-              . This action cannot be undone.
+              </code>
+              ? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline" size="sm" disabled={isDiscarding}>
                 Cancel
@@ -731,31 +880,28 @@ export function WorkspaceReviewTab({
               }}
             >
               {isDiscarding ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                "Discard changes"
-              )}
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+              ) : null}
+              Discard changes
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Confirmation Dialog: Discard All */}
+      {/* Confirmation Dialog: Discard All Changes */}
       <Dialog
         open={confirmDiscardAllOpen}
         onOpenChange={setConfirmDiscardAllOpen}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Discard all uncommitted changes?</DialogTitle>
+            <DialogTitle>Discard All Uncommitted Changes?</DialogTitle>
             <DialogDescription>
-              This will permanently discard all uncommitted changes across all{" "}
-              {uncommittedFiles.length} file
-              {uncommittedFiles.length !== 1 ? "s" : ""}. This action cannot be
-              undone.
+              This will revert all modified, added, and deleted files in your
+              sandbox. All uncommitted work will be permanently lost.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline" size="sm" disabled={isDiscarding}>
                 Cancel
@@ -768,40 +914,65 @@ export function WorkspaceReviewTab({
               onClick={() => void handleDiscardAll()}
             >
               {isDiscarding ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                "Discard all changes"
-              )}
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+              ) : null}
+              Discard All Changes
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Dialog: Create Pull Request */}
+      {/* Create PR Dialog with AI Generator */}
       <Dialog open={createPrDialogOpen} onOpenChange={setCreatePrDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Create Pull Request</DialogTitle>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Open Pull Request</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleGeneratePrSummary}
+                disabled={isGeneratingPr}
+                className="h-7 px-2 text-xs gap-1.5 text-primary hover:bg-primary/10 cursor-pointer"
+              >
+                {isGeneratingPr ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3 text-purple-500" />
+                )}
+                <span>Auto-Summarize</span>
+              </Button>
+            </DialogTitle>
             <DialogDescription>
-              Open a pull request from branch{" "}
-              <span className="font-mono font-semibold text-foreground">
-                {branchName}
-              </span>{" "}
-              into main.
+              Create a GitHub pull request from{" "}
+              <code className="text-foreground font-mono">{branchName}</code>{" "}
+              into <code className="text-foreground font-mono">main</code>.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-2">
-            <label className="text-xs font-medium text-foreground block mb-1">
-              Title
-            </label>
-            <Input
-              value={prTitle}
-              onChange={(e) => setPrTitle(e.target.value)}
-              placeholder="Pull request title..."
-              className="text-xs"
-            />
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-foreground">
+                PR Title
+              </label>
+              <Input
+                value={prTitle}
+                onChange={(e) => setPrTitle(e.target.value)}
+                placeholder="Brief summary of changes..."
+                className="h-8 text-xs font-mono"
+              />
+            </div>
+            {prDescription && (
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-foreground">
+                  Description
+                </label>
+                <div className="max-h-32 overflow-y-auto rounded-md border border-border bg-muted/30 p-2 text-xs font-mono whitespace-pre-wrap">
+                  {prDescription}
+                </div>
+              </div>
+            )}
           </div>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline" size="sm" disabled={isCreatingPr}>
                 Cancel
@@ -809,15 +980,16 @@ export function WorkspaceReviewTab({
             </DialogClose>
             <Button
               size="sm"
-              disabled={isCreatingPr || !prTitle.trim()}
+              disabled={!prTitle.trim() || isCreatingPr}
               onClick={() => void handleCreatePr()}
+              className="gap-1.5"
             >
               {isCreatingPr ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <GitPullRequest className="h-3.5 w-3.5" />
+                <GitPullRequest className="h-3.5 w-3.5 text-emerald-500" />
               )}
-              Create PR
+              Create Pull Request
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -22,7 +22,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { defaultFileOptions } from "@/lib/diffs-config";
+import { getFileOptions } from "@/lib/diffs-config";
+import { useTheme } from "@/app/providers";
 import { fetcherNoStore } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 
@@ -64,12 +65,13 @@ export function WorkspaceFileTab({
   const fileName = filePath.split("/").pop() ?? filePath;
   const dirPath = filePath.slice(0, -fileName.length);
 
+  const { resolvedTheme } = useTheme();
   const fileOptions = useMemo(
     () => ({
-      ...defaultFileOptions,
+      ...getFileOptions(resolvedTheme),
       wrap: wrapLines,
     }),
-    [wrapLines],
+    [resolvedTheme, wrapLines],
   );
 
   const binaryPreview = useMemo(() => {

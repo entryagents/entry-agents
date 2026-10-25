@@ -1,4 +1,5 @@
-"use client";
+import type { SandboxType } from "@/components/sandbox-selector-compact";
+("use client");
 
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
@@ -34,7 +35,7 @@ interface CreateSessionInput {
   branch?: string;
   cloneUrl?: string;
   isNewBranch: boolean;
-  sandboxType: "modal" | "boxd" | "vercel" | "boat";
+  sandboxType: SandboxType;
   autoCommitPush: boolean;
   autoCreatePr: boolean;
   vercelProject?: VercelProjectSelection | null;

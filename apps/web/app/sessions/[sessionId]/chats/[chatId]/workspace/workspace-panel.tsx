@@ -74,7 +74,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     ...gitPanelProps
   } = props;
 
-  const { session } = gitPanelProps;
+  const { session, hasRepo } = gitPanelProps;
 
   const {
     setGitPanelOpen,
@@ -90,10 +90,14 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   } = useGitPanel();
 
   // Dynamic tool tabs: which core tabs are open
-  const [openToolTabs, setOpenToolTabs] = useState<string[]>([
-    "review",
-    "preview",
-  ]);
+  // If no repo is connected, default to preview + terminal rather than assuming git PR review
+  const [openToolTabs, setOpenToolTabs] = useState<string[]>(() => {
+    if (hasRepo) {
+      return ["review", "preview"];
+    }
+    return changesCount > 0 ? ["review", "preview"] : ["preview", "terminal"];
+  });
+
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState("");
 
@@ -106,6 +110,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         setActiveWorkspaceTab("review");
       } else if (isDevServerReady) {
         setActiveWorkspaceTab("preview");
+      } else if (!hasRepo) {
+        setActiveWorkspaceTab("preview");
       } else {
         setActiveWorkspaceTab("review");
       }
@@ -114,10 +120,11 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     activeWorkspaceTab,
     changesCount,
     isDevServerReady,
+    hasRepo,
     setActiveWorkspaceTab,
   ]);
 
-  // Keep review open if changes occur
+  // Keep review/changes open if changes occur
   useEffect(() => {
     if (changesCount > 0 && !openToolTabs.includes("review")) {
       setOpenToolTabs((prev) => ["review", ...prev]);
@@ -138,13 +145,14 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       setOpenToolTabs((prev) => {
         const next = prev.filter((id) => id !== tabId);
         if (activeWorkspaceTab === tabId) {
-          const fallback = next[0] ?? openFiles[0] ?? "review";
+          const fallback =
+            next[0] ?? openFiles[0] ?? (hasRepo ? "review" : "preview");
           setActiveWorkspaceTab(fallback);
         }
         return next;
       });
     },
-    [activeWorkspaceTab, openFiles, setActiveWorkspaceTab],
+    [activeWorkspaceTab, openFiles, hasRepo, setActiveWorkspaceTab],
   );
 
   const openToolTab = useCallback(
@@ -175,8 +183,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     if (openToolTabs.includes("review")) {
       list.push({
         id: "review",
-        label: "Review",
-        icon: GitCompare,
+        label: hasRepo ? "Review" : "Changes",
+        icon: hasRepo ? GitCompare : FileCode,
         badge: changesCount > 0 ? `+${changesCount}` : null,
         badgeColor: hasActionNeeded
           ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold"
@@ -220,6 +228,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   }, [
     openToolTabs,
     openFiles,
+    hasRepo,
     changesCount,
     hasActionNeeded,
     isDevServerReady,
@@ -310,8 +319,12 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                   onClick={() => openToolTab("review")}
                   className="cursor-pointer gap-2"
                 >
-                  <GitCompare className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>Review</span>
+                  {hasRepo ? (
+                    <GitCompare className="h-3.5 w-3.5 text-muted-foreground" />
+                  ) : (
+                    <FileCode className="h-3.5 w-3.5 text-muted-foreground" />
+                  )}
+                  <span>{hasRepo ? "Review" : "Changes"}</span>
                 </DropdownMenuItem>
               )}
               {!openToolTabs.includes("preview") && (
@@ -400,7 +413,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
       {/* Tab Panels with State Preservation (block/hidden keeps terminal & dev server iframes live) */}
       <div className="relative flex-1 min-h-0 overflow-hidden">
-        {/* OpenCode Review Tab */}
+        {/* OpenCode Review / Changes Tab */}
         <div
           className={cn(
             "h-full w-full overflow-hidden",
@@ -459,63 +472,51 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         ))}
       </div>
 
-      {/* File Search / Quick Open Dialog */}
+      {/* Open File Quick-Open Dialog */}
       <Dialog open={fileSearchOpen} onOpenChange={setFileSearchOpen}>
-        <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden">
+        <DialogContent className="max-w-lg p-0 overflow-hidden gap-0">
           <DialogHeader className="p-3 border-b border-border">
-            <DialogTitle className="text-sm font-medium flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <span>Open File in Workspace</span>
+            <DialogTitle className="text-sm font-medium">
+              Open File in Workspace
             </DialogTitle>
           </DialogHeader>
-
           <div className="p-3 border-b border-border bg-muted/20">
-            <Input
-              autoFocus
-              value={fileSearchQuery}
-              onChange={(e) => setFileSearchQuery(e.target.value)}
-              placeholder="Search files by path (e.g. app/page.tsx)..."
-              className="text-xs h-8"
-            />
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={fileSearchQuery}
+                onChange={(e) => setFileSearchQuery(e.target.value)}
+                placeholder="Search files by path..."
+                className="pl-8 h-8 text-xs font-mono"
+                autoFocus
+              />
+            </div>
           </div>
-
-          <div className="max-h-80 overflow-y-auto p-1 divide-y divide-border/40">
+          <div className="max-h-72 overflow-y-auto p-1.5 divide-y divide-border/40">
             {filteredFiles.length === 0 ? (
               <div className="p-6 text-center text-xs text-muted-foreground">
-                No matching files found.
+                No matching files found
               </div>
             ) : (
-              filteredFiles.map((f) => {
-                const fileName = f.value.split("/").pop() ?? f.value;
-                const dir = f.value.includes("/")
-                  ? f.value.slice(0, f.value.lastIndexOf("/"))
-                  : null;
-
-                return (
-                  <button
-                    key={f.value}
-                    type="button"
-                    onClick={() => {
-                      openFileTab(f.value);
-                      setFileSearchOpen(false);
-                      setFileSearchQuery("");
-                    }}
-                    className="flex w-full items-center justify-between p-2 rounded text-left text-xs hover:bg-accent/60 transition-colors cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
-                      <span className="font-medium font-mono truncate text-foreground">
-                        {fileName}
-                      </span>
-                      {dir && (
-                        <span className="text-[11px] font-mono text-muted-foreground truncate hidden sm:inline">
-                          ({dir})
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })
+              filteredFiles.map((f) => (
+                <button
+                  key={f.value}
+                  type="button"
+                  onClick={() => {
+                    openFileTab(f.value);
+                    setFileSearchOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-left rounded hover:bg-muted/60 transition-colors cursor-pointer group"
+                >
+                  <FileTypeIcon
+                    path={f.value}
+                    className="h-3.5 w-3.5 shrink-0"
+                  />
+                  <span className="font-mono truncate flex-1 text-foreground">
+                    {f.value}
+                  </span>
+                </button>
+              ))
             )}
           </div>
         </DialogContent>

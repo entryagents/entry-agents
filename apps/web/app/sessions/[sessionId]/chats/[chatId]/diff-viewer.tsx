@@ -31,7 +31,8 @@ import {
   useUserPreferences,
 } from "@/hooks/use-user-preferences";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { defaultDiffOptions, splitDiffOptions } from "@/lib/diffs-config";
+import { getDiffOptions } from "@/lib/diffs-config";
+import { useTheme } from "@/app/providers";
 import { cn } from "@/lib/utils";
 import { useSessionChatWorkspaceContext } from "./session-chat-context";
 
@@ -151,8 +152,8 @@ function FileEntry({
 }) {
   const fileName = file.path.split("/").pop() ?? file.path;
   const dirPath = file.path.slice(0, -fileName.length);
-  const baseOptions =
-    diffStyle === "split" ? splitDiffOptions : defaultDiffOptions;
+  const { resolvedTheme } = useTheme();
+  const baseOptions = getDiffOptions(resolvedTheme, diffStyle === "split");
   const options = shouldWrapDiffContent(file.path)
     ? { ...baseOptions, overflow: "wrap" as const }
     : baseOptions;

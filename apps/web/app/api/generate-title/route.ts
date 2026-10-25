@@ -81,7 +81,9 @@ export async function POST(req: Request) {
     let body: { message?: string } | null = null;
     try {
       body = (await req.json()) as { message?: string };
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     const fallbackTitle = body?.message
       ? sanitizePromptToTitle(body.message)
       : "New Session";

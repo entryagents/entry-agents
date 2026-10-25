@@ -13,7 +13,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { defaultFileOptions } from "@/lib/diffs-config";
+import { getFileOptions } from "@/lib/diffs-config";
+import { useTheme } from "@/app/providers";
 import { fetcherNoStore } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 
@@ -81,9 +82,11 @@ export function FileTabView() {
               ? "binary"
               : undefined);
   const downloadUrl = requestUrl ? `${requestUrl}&download=1` : null;
+  const { resolvedTheme } = useTheme();
+  const baseFileOptions = getFileOptions(resolvedTheme);
   const fileOptions = shouldWrapFileContent(focusedFilePath)
-    ? { ...defaultFileOptions, overflow: "wrap" as const }
-    : defaultFileOptions;
+    ? { ...baseFileOptions, overflow: "wrap" as const }
+    : baseFileOptions;
 
   return (
     <div className="flex h-full flex-col">
