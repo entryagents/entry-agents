@@ -3107,3 +3107,16 @@ The thinking panel was receiving live Gateway SSE, but the web chat hook throttl
     2) *Jittered Exponential Backoff:* Increased stream retry attempts to 4 with randomized jitter (`Math.min(6000, 1000 * 1.5^attempt + Math.random() * 500)`), smoothing over gateway recovery spikes.
     3) *Context Window Overflow Auto-Recovery:* Intercepts `context_length_exceeded` / token ceiling errors (`maximum context length`, `token limit`, `prompt is too long`), automatically invokes `maybeCompactMessages` from `@entry-agents/agent` to collapse older tool outputs/results down to placeholders, and immediately retries the model stream without aborting the conversation turn.
     4) *No Silent Model Fallback (User Constraint):* The user explicitly retains 100% control over model selection. The system never silently or dynamically falls back to an alternate model (such as a default or cheaper model) if the chosen model fails. Instead, transient gateway/network errors are retried up to 4 times with exponential backoff and jitter; if the selected model cannot respond, a clear, friendly error is surfaced rather than executing on an unselected model.
+
+
+## 2026-10-25: Entry Agents Multi-Agent Collaborative Architecture
+
+- **From Single-Agent Sequential Chat to Multi-Agent Engineering Teams:**
+  - **Core Vision:** The name **Entry Agents** is explicitly plural. Moving beyond single sequential prompt-and-response loops, the platform is designed as an autonomous engineering organization where a Lead Orchestrator coordinates specialized agents (Architect, Frontend Designer, Backend Engineer, QA/Test Verification, Security Reviewer, and Git Release Agent).
+  - **Isolation via Git Worktrees in Cloud Sandboxes:**
+    - To prevent simultaneous file-write collisions and `.git/index.lock` contention across concurrent agents, each worker agent operates within an isolated git worktree (`/data/workspace/worktrees/agent-<role>`).
+    - The QA and Release agents perform branch integration, run automated test suites (`pnpm test`, `next build`), and merge cleanly into HEAD.
+  - **Asynchronous Inter-Agent Message Bus (A-Bus):**
+    - Communication between agents utilizes typed schemas (`AgentMessage`) with task assignments, artifact sharing (contracts, DTOs, schemas), and review requests rather than noisy prompt concatenation.
+  - **Shared Turn-Level Budget Governance:**
+    - The `SubagentBudgetGuard` pools and caps token spend across concurrent agents, with early-kill triggers if an upstream architecture or QA blocker is detected.
