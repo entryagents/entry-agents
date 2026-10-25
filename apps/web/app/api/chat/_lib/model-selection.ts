@@ -14,42 +14,65 @@ interface ResolveChatModelSelectionParams {
 }
 
 /**
- * Resolves a user's requested model into the concrete selection the agent
- * runtime should use.
+ * Returns a model id that is live on the gateway RIGHT NOW, derived from
+ * the gateway's own routed list (never a hardcoded free model).
  *
- * IMPORTANT -- no silent model substitution here. Owner instruction
- * (2026-08-17, after a user was silently and invisibly moved from
- * gpt-5.6-luna onto a disabled deepseek-v4-flash default and just saw
- * generic "something went wrong" errors with no idea why): if the model
- * the user actually picked is disabled/unavailable, throw a clear,
- * specific, user-facing error instead of quietly swapping in a different
- * model and only logging a console.warn nobody sees. The ONLY case that
- * still uses APP_DEFAULT_MODEL_ID is when no model was selected at all
- * (selectedModelId is null/undefined) -- that's an initial default, not a
- * failure-recovery fallback, so it's fine as long as the default itself
- * is a working model (see APP_DEFAULT_MODEL_ID's own definition).
+ * Changed 2026-10-25 (owner): "remove hardcoded free models asap and this
+ * should never show again" -- the old behaviour threw `Selected model
+ * "qwen3.8-flash:free" is currently unavailable` whenever a chat was
+ * still pinned to a route the gateway had dropped. Chats now self-heal:
+ * if the requested model is unavailable we move to the healthiest live
+ * model (APP_DEFAULT_MODEL_ID when it is live, otherwise the first live
+ * gateway model). The caller persists the swap on the chat row so the
+ * picker shows the model that is actually running -- this is visible,
+ * not silent. We only error when the gateway has zero live models.
+ */
+export async function resolveLiveModelId(
+  requestedModelId: string | null | undefined,
+): Promise<string | null> {
+  if (requestedModelId && !(await isModelDisabled(requestedModelId))) {
+    return requestedModelId;
+  }
+
+  const { fetchAvailableLanguageModels } = await import(
+    "@/lib/models-with-context"
+  );
+  const live = await fetchAvailableLanguageModels().catch(() => []);
+  const liveIds = live.map((m) => m.id);
+  if (liveIds.includes(APP_DEFAULT_MODEL_ID)) {
+    return APP_DEFAULT_MODEL_ID;
+  }
+  return liveIds[0] ?? null;
+}
+
+/**
+ * Resolves a user's requested model into the concrete selection the agent
+ * runtime should use. Unavailable models are healed to a live gateway
+ * model (see resolveLiveModelId); only a fully-empty gateway errors.
  */
 export async function resolveChatModelSelection({
   selectedModelId,
   reasoningEffort,
   missingModelLabel,
 }: ResolveChatModelSelectionParams): Promise<AgentModelSelection> {
-  const requestedModelId = selectedModelId ?? APP_DEFAULT_MODEL_ID;
+  const resolvedModelId = await resolveLiveModelId(
+    selectedModelId ?? APP_DEFAULT_MODEL_ID,
+  );
 
-  if (await isModelDisabled(requestedModelId)) {
+  if (!resolvedModelId) {
     throw toSafeChatError(
-      `${missingModelLabel} "${requestedModelId}" is currently unavailable. Please switch to a different model and try again.`,
+      `${missingModelLabel}: no AI models are reachable right now. Please try again in a moment.`,
     );
   }
 
-  const effort = sanitizeReasoningEffort(requestedModelId, reasoningEffort);
+  const effort = sanitizeReasoningEffort(resolvedModelId, reasoningEffort);
   const providerOptionsOverrides = toReasoningProviderOptions(
     effort,
-    requestedModelId,
+    resolvedModelId,
   );
 
   return {
-    id: requestedModelId as AgentModelSelection["id"],
+    id: resolvedModelId as AgentModelSelection["id"],
     ...(providerOptionsOverrides ? { providerOptionsOverrides } : {}),
   };
 }

@@ -52,7 +52,7 @@ function SessionLayoutInner({
   } = useGitPanel();
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const [chatWidthPercent, setChatWidthPercent] = useState<number>(48);
+  const [chatWidthPercent, setChatWidthPercent] = useState<number>(50);
   const [isDragging, setIsDragging] = useState(false);
 
   // Restore saved width from localStorage on mount
@@ -177,11 +177,11 @@ function SessionLayoutInner({
       <div
         ref={panelPortalRef}
         className={cn(
-          "absolute right-0 top-0 z-30 flex h-full flex-col overflow-hidden border-l border-border bg-background shadow-xl transition-all duration-75 lg:relative lg:right-auto lg:top-auto lg:z-0 lg:shadow-none",
+          "absolute right-0 top-0 z-30 flex h-full min-w-0 flex-col overflow-hidden border-l border-border bg-background shadow-xl transition-all duration-75 lg:relative lg:right-auto lg:top-auto lg:z-0 lg:shadow-none",
           gitPanelOpen
             ? isWorkspaceExpanded
               ? "w-full translate-x-0"
-              : "w-[92vw] sm:w-[540px] lg:w-auto lg:flex-1 translate-x-0"
+              : "w-[92vw] sm:w-[540px] lg:w-auto lg:flex-none lg:shrink-0 translate-x-0"
             : "w-0 translate-x-full lg:translate-x-0 border-l-0 overflow-hidden pointer-events-none",
         )}
         style={{

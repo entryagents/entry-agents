@@ -12,7 +12,7 @@ import {
 } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-export type GitPanelTab = "diff" | "pr" | "files";
+export type GitPanelTab = "diff" | "pr" | "files" | "review" | "preview" | "terminal";
 export type ActiveView = "chat" | "diff" | "file";
 export type DiffScope = "uncommitted" | "branch";
 

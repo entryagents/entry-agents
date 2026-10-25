@@ -817,6 +817,15 @@ async function resolveChatModelRuntime(params: {
         })
       : Promise.resolve(undefined),
   ]);
+
+  // Auto-heal: if the model resolved to a different active gateway model
+  // (e.g. chat was previously pinned to an unavailable free model),
+  // persist the healed model to the chat row so it never fails again.
+  if (chat && mainModelSelection.id !== chat.modelId) {
+    const { updateChat } = await import("@/lib/db/sessions");
+    await updateChat(chat.id, { modelId: mainModelSelection.id }).catch(() => {});
+  }
+
   const autoCommitEnabled =
     (sessionRecord.autoCommitPushOverride ??
       preferences?.autoCommitPush ??

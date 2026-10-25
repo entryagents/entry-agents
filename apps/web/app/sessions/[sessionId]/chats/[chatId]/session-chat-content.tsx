@@ -1743,12 +1743,12 @@ export function SessionChatContent({
         <AssistantFileLink
           {...props}
           onOpenFile={(filePath) => {
-            setSelectedWorkspaceFile(filePath);
+            openFileTab(filePath);
           }}
         />
       ),
     }),
-    [],
+    [openFileTab],
   );
   const [isUpdatingModel, setIsUpdatingModel] = useState(false);
   const lastStatusSyncAtRef = useRef(0);
@@ -3600,170 +3600,13 @@ export function SessionChatContent({
         panelPortalRef.current &&
         createPortal(workspaceElement, panelPortalRef.current)}
 
-      {/* Header actions portaled from chat-level state */}
-      {headerActionsRef.current &&
-        showHeaderActions &&
-        createPortal(
-          <div className="flex items-center gap-1">
-            {isServerMigrating && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="flex h-7 w-7 items-center justify-center">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="max-w-64 text-pretty">
-                  Refreshing environment -- moving your session to a fresh
-                  sandbox. This takes a few seconds and your work is preserved;
-                  any command running right now will automatically retry once
-                  it&apos;s done.
-                </TooltipContent>
-              </Tooltip>
-            )}
-            {canUseSandboxActions && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="hidden sm:inline-flex">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => void codeEditor.handleOpen()}
-                        disabled={isCodeEditorActionDisabled}
-                      >
-                        {codeEditor.state.status === "starting" ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Code2 className="h-3.5 w-3.5" />
-                        )}
-                      </Button>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent
-                    side="bottom"
-                    className="max-w-72 text-pretty"
-                  >
-                    {codeEditorDisabledReason ?? codeEditor.menuLabel}
-                  </TooltipContent>
-                </Tooltip>
-                <div className="hidden h-7 items-center sm:flex">
-                  {devServer.state.status === "ready" ? (
-                    <div className="flex items-center rounded-md border border-border px-0.5">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 rounded-sm"
-                            onClick={() => void devServer.handlePrimaryAction()}
-                          >
-                            <Globe className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          Open dev server
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-5 w-5 rounded-sm"
-                            onClick={() => void devServer.handleStopAction()}
-                          >
-                            <Square className="h-2.5 w-2.5 fill-current" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="bottom">
-                          Stop dev server
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  ) : devServer.state.status === "starting" ||
-                    devServer.state.status === "stopping" ? (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled
-                        >
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {devServer.state.status === "starting"
-                          ? "Starting dev server..."
-                          : "Stopping dev server..."}
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => void devServer.handlePrimaryAction()}
-                        >
-                          <Play className="h-3.5 w-3.5 fill-current" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        Start dev server
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                </div>
-              </>
-            )}
-            {previewDeploymentTargetUrl && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    asChild
-                    variant="ghost"
-                    size="icon"
-                    className="hidden h-7 w-7 sm:inline-flex"
-                  >
-                    <a
-                      href={previewDeploymentTargetUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      aria-label={
-                        isDeploymentStale
-                          ? "Open latest preview deployment (building)"
-                          : "Open latest preview deployment"
-                      }
-                    >
-                      <Globe
-                        className={cn(
-                          "h-3.5 w-3.5",
-                          isDeploymentFailed && "text-red-500",
-                          !isDeploymentFailed &&
-                            !isDeploymentStale &&
-                            "text-green-500",
-                          !isDeploymentFailed &&
-                            isDeploymentStale &&
-                            "animate-pulse text-amber-500",
-                        )}
-                      />
-                    </a>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {isDeploymentStale
-                    ? "Open latest preview deployment (building)"
-                    : "Open latest preview deployment"}
-                </TooltipContent>
-              </Tooltip>
-            )}
-          </div>,
-          headerActionsRef.current,
-        )}
+      {/* Migration indicator if server is moving */}
+      {isServerMigrating && (
+        <div className="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+          <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+          <span>Refreshing environment &mdash; moving session to a fresh sandbox. Work is preserved.</span>
+        </div>
+      )}
       <div className="flex h-full flex-col overflow-hidden">
         {/* Share dialog (triggered from header) */}
         <ShareDialog

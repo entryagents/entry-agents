@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Code2,
   FileCode,
   FolderGit2,
   GitCompare,
@@ -9,26 +8,41 @@ import {
   Globe,
   Maximize2,
   Minimize2,
+  Plus,
+  Search,
   Terminal as TerminalIcon,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DevServerControls } from "../hooks/use-dev-server";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { GitPanelProps } from "../git-panel";
 import { useGitPanel } from "../git-panel-context";
-import { DiffTabView } from "../diff-tab-view";
+import { WorkspaceReviewTab } from "./workspace-review-tab";
 import { WorkspacePreviewTab } from "./workspace-preview-tab";
 import { WorkspaceTerminalTab } from "./workspace-terminal-tab";
 import { WorkspaceFileTab } from "./workspace-file-tab";
-import { WorkspaceGitTab } from "./workspace-git-tab";
 
 export type WorkspacePanelProps = GitPanelProps & {
   devServer: DevServerControls;
@@ -37,6 +51,15 @@ export type WorkspacePanelProps = GitPanelProps & {
   refreshFiles?: () => void;
   isWorkspaceExpanded?: boolean;
   onToggleWorkspaceExpand?: () => void;
+};
+
+type WorkspaceTabItem = {
+  id: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badge?: string | null;
+  badgeColor?: string | null;
+  closeable?: boolean;
 };
 
 export function WorkspacePanel(props: WorkspacePanelProps) {
@@ -57,84 +80,169 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     changesCount,
     hasActionNeeded,
     openFiles,
+    setOpenFiles,
     activeWorkspaceTab,
     setActiveWorkspaceTab,
     closeWorkspaceFile,
     openDiffToFile,
+    openFileTab,
   } = useGitPanel();
+
+  // Dynamic tool tabs: which core tabs are open
+  const [openToolTabs, setOpenToolTabs] = useState<string[]>(["review", "preview"]);
+  const [fileSearchOpen, setFileSearchOpen] = useState(false);
+  const [fileSearchQuery, setFileSearchQuery] = useState("");
 
   const isDevServerReady = devServer.state.status === "ready";
 
-  // If activeWorkspaceTab is not set, initialize to preview or diff
+  // Ensure default active tab is valid
   useEffect(() => {
     if (!activeWorkspaceTab) {
-      setActiveWorkspaceTab(isDevServerReady ? "preview" : changesCount > 0 ? "diff" : "preview");
+      if (changesCount > 0) {
+        setActiveWorkspaceTab("review");
+      } else if (isDevServerReady) {
+        setActiveWorkspaceTab("preview");
+      } else {
+        setActiveWorkspaceTab("review");
+      }
     }
   }, [activeWorkspaceTab, changesCount, isDevServerReady, setActiveWorkspaceTab]);
 
-  const standardTabs = [
-    {
-      id: "preview",
-      label: "Preview",
-      icon: Globe,
-      badge: isDevServerReady ? "Live" : null,
-      badgeColor: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-    },
-    {
-      id: "diff",
-      label: "Changes",
-      icon: GitCompare,
-      badge: changesCount > 0 ? `+${changesCount}` : null,
-      badgeColor: hasActionNeeded
-        ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold"
-        : "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-    },
-    {
-      id: "git",
-      label: "Git",
-      icon: session.prNumber ? GitPullRequest : FolderGit2,
-      badge: session.prNumber ? `#${session.prNumber}` : null,
-      badgeColor:
-        session.prStatus === "merged"
-          ? "bg-purple-500/15 text-purple-600 dark:text-purple-400"
-          : "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-    },
-    {
-      id: "terminal",
-      label: "Terminal",
-      icon: TerminalIcon,
-    },
-  ];
+  // Keep review open if changes occur
+  useEffect(() => {
+    if (changesCount > 0 && !openToolTabs.includes("review")) {
+      setOpenToolTabs((prev) => ["review", ...prev]);
+    }
+  }, [changesCount, openToolTabs]);
 
-  const isStandardTab =
-    activeWorkspaceTab === "preview" ||
-    activeWorkspaceTab === "diff" ||
-    activeWorkspaceTab === "git" ||
-    activeWorkspaceTab === "terminal";
+  // Keep preview open if dev server is ready
+  useEffect(() => {
+    if (isDevServerReady && !openToolTabs.includes("preview")) {
+      setOpenToolTabs((prev) => (prev.includes("preview") ? prev : [...prev, "preview"]));
+    }
+  }, [isDevServerReady, openToolTabs]);
+
+  const closeToolTab = useCallback(
+    (tabId: string) => {
+      setOpenToolTabs((prev) => {
+        const next = prev.filter((id) => id !== tabId);
+        if (activeWorkspaceTab === tabId) {
+          const fallback = next[0] ?? openFiles[0] ?? "review";
+          setActiveWorkspaceTab(fallback);
+        }
+        return next;
+      });
+    },
+    [activeWorkspaceTab, openFiles, setActiveWorkspaceTab],
+  );
+
+  const openToolTab = useCallback(
+    (tabId: string) => {
+      setOpenToolTabs((prev) => (prev.includes(tabId) ? prev : [...prev, tabId]));
+      setActiveWorkspaceTab(tabId);
+    },
+    [setActiveWorkspaceTab],
+  );
+
+  // Filtered files for file picker dialog
+  const filteredFiles = useMemo(() => {
+    if (!files) return [];
+    const nonDirs = files.filter((f) => !f.isDirectory);
+    if (!fileSearchQuery.trim()) return nonDirs.slice(0, 40);
+    const q = fileSearchQuery.toLowerCase();
+    return nonDirs.filter((f) => f.value.toLowerCase().includes(q)).slice(0, 40);
+  }, [files, fileSearchQuery]);
+
+  // Construct dynamic tab list
+  const tabList: WorkspaceTabItem[] = useMemo(() => {
+    const list: WorkspaceTabItem[] = [];
+
+    if (openToolTabs.includes("review")) {
+      list.push({
+        id: "review",
+        label: "Review",
+        icon: GitCompare,
+        badge: changesCount > 0 ? `+${changesCount}` : null,
+        badgeColor: hasActionNeeded
+          ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold"
+          : "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+        closeable: openToolTabs.length > 1 || openFiles.length > 0,
+      });
+    }
+
+    if (openToolTabs.includes("preview")) {
+      list.push({
+        id: "preview",
+        label: "Preview",
+        icon: Globe,
+        badge: isDevServerReady ? "Live" : null,
+        badgeColor: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+        closeable: openToolTabs.length > 1 || openFiles.length > 0,
+      });
+    }
+
+    if (openToolTabs.includes("terminal")) {
+      list.push({
+        id: "terminal",
+        label: "Terminal",
+        icon: TerminalIcon,
+        closeable: true,
+      });
+    }
+
+    // Dynamic Open File Tabs
+    for (const filePath of openFiles) {
+      const fileName = filePath.split("/").pop() ?? filePath;
+      list.push({
+        id: filePath,
+        label: fileName,
+        icon: FileCode,
+        closeable: true,
+      });
+    }
+
+    return list;
+  }, [
+    openToolTabs,
+    openFiles,
+    changesCount,
+    hasActionNeeded,
+    isDevServerReady,
+  ]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
-      {/* Workspace Header Tab Bar */}
+      {/* Workspace Header Dynamic Tab Bar (Matching OpenCode side-region) */}
       <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-2 py-1 gap-1">
-        {/* Tab Strip: Standard Tool Tabs + Dynamic Open File Tabs */}
+        {/* Dynamic Tab Strip */}
         <div className="flex items-center gap-1 overflow-x-auto min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {standardTabs.map((tab) => {
+          {tabList.map((tab) => {
             const isActive = activeWorkspaceTab === tab.id;
             const Icon = tab.icon;
+            const isFile = openFiles.includes(tab.id);
+
             return (
-              <button
+              <div
                 key={tab.id}
-                type="button"
                 onClick={() => setActiveWorkspaceTab(tab.id)}
+                onAuxClick={(e) => {
+                  if (e.button === 1 && tab.closeable) {
+                    e.preventDefault();
+                    if (isFile) closeWorkspaceFile(tab.id);
+                    else closeToolTab(tab.id);
+                  }
+                }}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer shrink-0",
+                  "group flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer shrink-0 select-none",
+                  isFile && "font-mono max-w-[190px]",
                   isActive
-                    ? "bg-background text-foreground shadow-xs font-semibold border border-border/80"
+                    ? "bg-background text-foreground shadow-2xs font-semibold border border-border/80"
                     : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                 )}
+                title={tab.id}
               >
-                <Icon className="h-3.5 w-3.5" />
-                <span>{tab.label}</span>
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{tab.label}</span>
                 {tab.badge && (
                   <span
                     className={cn(
@@ -145,54 +253,84 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                     {tab.badge}
                   </span>
                 )}
-              </button>
-            );
-          })}
-
-          {/* Divider between standard tabs and open file tabs */}
-          {openFiles.length > 0 && (
-            <div className="h-4 w-[1px] bg-border mx-1 shrink-0" />
-          )}
-
-          {/* Dynamic Open File Tabs */}
-          {openFiles.map((filePath) => {
-            const isActive = activeWorkspaceTab === filePath;
-            const fileName = filePath.split("/").pop() ?? filePath;
-
-            return (
-              <div
-                key={filePath}
-                onClick={() => setActiveWorkspaceTab(filePath)}
-                onAuxClick={(e) => {
-                  if (e.button === 1) {
-                    e.preventDefault();
-                    closeWorkspaceFile(filePath);
-                  }
-                }}
-                className={cn(
-                  "group flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-mono transition-colors cursor-pointer shrink-0 max-w-[180px]",
-                  isActive
-                    ? "bg-background text-foreground shadow-xs font-medium border border-border/80"
-                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                {tab.closeable && (
+                  <button
+                    type="button"
+                    aria-label={`Close ${tab.label}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (isFile) closeWorkspaceFile(tab.id);
+                      else closeToolTab(tab.id);
+                    }}
+                    className="rounded p-0.5 text-muted-foreground opacity-40 hover:opacity-100 hover:bg-muted hover:text-foreground transition-opacity ml-0.5 cursor-pointer"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 )}
-                title={filePath}
-              >
-                <FileCode className="h-3 w-3 shrink-0 text-muted-foreground" />
-                <span className="truncate">{fileName}</span>
-                <button
-                  type="button"
-                  aria-label={`Close ${fileName}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    closeWorkspaceFile(filePath);
-                  }}
-                  className="rounded p-0.5 text-muted-foreground opacity-60 hover:opacity-100 hover:bg-muted hover:text-foreground transition-opacity"
-                >
-                  <X className="h-3 w-3" />
-                </button>
               </div>
             );
           })}
+
+          {/* OpenCode-style `+` Add Tab Menu */}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 rounded-md text-muted-foreground hover:text-foreground cursor-pointer shrink-0"
+                    aria-label="Add tab"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Add tab</TooltipContent>
+            </Tooltip>
+
+            <DropdownMenuContent align="start" className="w-48 text-xs">
+              {!openToolTabs.includes("review") && (
+                <DropdownMenuItem
+                  onClick={() => openToolTab("review")}
+                  className="cursor-pointer gap-2"
+                >
+                  <GitCompare className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span>Review</span>
+                </DropdownMenuItem>
+              )}
+              {!openToolTabs.includes("preview") && (
+                <DropdownMenuItem
+                  onClick={() => openToolTab("preview")}
+                  className="cursor-pointer gap-2"
+                >
+                  <Globe className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span>Preview</span>
+                </DropdownMenuItem>
+              )}
+              {!openToolTabs.includes("terminal") && (
+                <DropdownMenuItem
+                  onClick={() => openToolTab("terminal")}
+                  className="cursor-pointer gap-2"
+                >
+                  <TerminalIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span>Terminal</span>
+                </DropdownMenuItem>
+              )}
+
+              {(!openToolTabs.includes("review") ||
+                !openToolTabs.includes("preview") ||
+                !openToolTabs.includes("terminal")) && <DropdownMenuSeparator />}
+
+              <DropdownMenuItem
+                onClick={() => setFileSearchOpen(true)}
+                className="cursor-pointer gap-2"
+              >
+                <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Open File...</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Right Header Actions: Expand/Collapse & Close */}
@@ -203,7 +341,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
                   onClick={onToggleWorkspaceExpand}
                   aria-label={
                     isWorkspaceExpanded
@@ -231,7 +369,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
                 onClick={() => setGitPanelOpen(false)}
                 aria-label="Close workspace"
               >
@@ -243,12 +381,25 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         </div>
       </div>
 
-      {/* Tab Panels with State Preservation */}
+      {/* Tab Panels with State Preservation (block/hidden keeps terminal & dev server iframes live) */}
       <div className="relative flex-1 min-h-0 overflow-hidden">
-        {/* Preview Tab (Kept mounted via CSS display to preserve iframe runtime state) */}
+        {/* OpenCode Review Tab */}
         <div
           className={cn(
-            "h-full w-full",
+            "h-full w-full overflow-hidden",
+            activeWorkspaceTab === "review" ? "block" : "hidden",
+          )}
+        >
+          <WorkspaceReviewTab
+            {...gitPanelProps}
+            onOpenFile={openFileTab}
+          />
+        </div>
+
+        {/* Live Preview Tab */}
+        <div
+          className={cn(
+            "h-full w-full overflow-hidden",
             activeWorkspaceTab === "preview" ? "block" : "hidden",
           )}
         >
@@ -260,26 +411,6 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             isDeploymentFailed={gitPanelProps.isDeploymentFailed}
             canRun={gitPanelProps.hasSandbox}
           />
-        </div>
-
-        {/* Changes / Diff Tab */}
-        <div
-          className={cn(
-            "h-full w-full overflow-hidden",
-            activeWorkspaceTab === "diff" ? "block" : "hidden",
-          )}
-        >
-          <DiffTabView />
-        </div>
-
-        {/* Git & PR Tab */}
-        <div
-          className={cn(
-            "h-full w-full overflow-hidden",
-            activeWorkspaceTab === "git" ? "block" : "hidden",
-          )}
-        >
-          <WorkspaceGitTab {...gitPanelProps} />
         </div>
 
         {/* Terminal Tab */}
@@ -295,18 +426,86 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           />
         </div>
 
-        {/* Dynamic File Viewer Tab */}
-        {!isStandardTab && activeWorkspaceTab && (
-          <div className="h-full w-full overflow-hidden">
+        {/* Dynamic File Viewer Tabs */}
+        {openFiles.map((filePath) => (
+          <div
+            key={filePath}
+            className={cn(
+              "h-full w-full overflow-hidden",
+              activeWorkspaceTab === filePath ? "block" : "hidden",
+            )}
+          >
             <WorkspaceFileTab
               sessionId={session.id}
-              filePath={activeWorkspaceTab}
-              onClose={() => closeWorkspaceFile(activeWorkspaceTab)}
+              filePath={filePath}
+              onClose={() => closeWorkspaceFile(filePath)}
               onOpenDiff={openDiffToFile}
             />
           </div>
-        )}
+        ))}
       </div>
+
+      {/* File Search / Quick Open Dialog */}
+      <Dialog open={fileSearchOpen} onOpenChange={setFileSearchOpen}>
+        <DialogContent className="sm:max-w-lg p-0 gap-0 overflow-hidden">
+          <DialogHeader className="p-3 border-b border-border">
+            <DialogTitle className="text-sm font-medium flex items-center gap-2">
+              <Search className="h-4 w-4 text-muted-foreground" />
+              <span>Open File in Workspace</span>
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="p-3 border-b border-border bg-muted/20">
+            <Input
+              autoFocus
+              value={fileSearchQuery}
+              onChange={(e) => setFileSearchQuery(e.target.value)}
+              placeholder="Search files by path (e.g. app/page.tsx)..."
+              className="text-xs h-8"
+            />
+          </div>
+
+          <div className="max-h-80 overflow-y-auto p-1 divide-y divide-border/40">
+            {filteredFiles.length === 0 ? (
+              <div className="p-6 text-center text-xs text-muted-foreground">
+                No matching files found.
+              </div>
+            ) : (
+              filteredFiles.map((f) => {
+                const fileName = f.value.split("/").pop() ?? f.value;
+                const dir = f.value.includes("/")
+                  ? f.value.slice(0, f.value.lastIndexOf("/"))
+                  : null;
+
+                return (
+                  <button
+                    key={f.value}
+                    type="button"
+                    onClick={() => {
+                      openFileTab(f.value);
+                      setFileSearchOpen(false);
+                      setFileSearchQuery("");
+                    }}
+                    className="flex w-full items-center justify-between p-2 rounded text-left text-xs hover:bg-accent/60 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <FileCode className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" />
+                      <span className="font-medium font-mono truncate text-foreground">
+                        {fileName}
+                      </span>
+                      {dir && (
+                        <span className="text-[11px] font-mono text-muted-foreground truncate hidden sm:inline">
+                          ({dir})
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

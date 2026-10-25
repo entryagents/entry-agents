@@ -3,12 +3,9 @@
 import {
   ChevronDown,
   ExternalLink,
-  FolderGit2,
-  GitMerge,
-  GitPullRequest,
-  GitPullRequestClosed,
   Link2,
   PanelLeft,
+  PanelRight,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -25,35 +22,21 @@ import { useSessionLayout } from "@/app/sessions/[sessionId]/session-layout-cont
 /**
  * Session header that uses only layout-level data (persists across chat switches).
  * Sandbox-specific props are removed to prevent layout shift during navigation.
+ * OpenCode design: single right-side workspace panel toggle button (PanelRight).
  */
 export function SessionHeader() {
   const { toggleSidebar } = useSidebar();
   const {
     gitPanelOpen,
     setGitPanelOpen,
-    setGitPanelTab,
+    setActiveWorkspaceTab,
     hasActionNeeded,
     changesCount,
     hasCommittedChanges,
     setShareRequested,
     setChangeRepoRequested,
-    headerActionsRef,
   } = useGitPanel();
   const { session } = useSessionLayout();
-
-  // Determine the icon and color based on PR state
-  const prState = useMemo(() => {
-    if (!session.prNumber) return null;
-    const status = session.prStatus;
-    if (status === "merged")
-      return { icon: GitMerge, color: "text-purple-500" } as const;
-    if (status === "closed")
-      return { icon: GitPullRequestClosed, color: "text-red-500" } as const;
-    return { icon: GitPullRequest, color: "text-green-500" } as const;
-  }, [session.prNumber, session.prStatus]);
-
-  const GitIcon = prState?.icon ?? FolderGit2;
-  const iconColor = prState?.color ?? undefined;
 
   // Build contextual tooltip
   const tooltipText = useMemo(() => {
@@ -75,17 +58,17 @@ export function SessionHeader() {
     if (hasActionNeeded) {
       parts.push("Uncommitted changes");
     }
-    return parts.length > 0 ? parts.join(" · ") : "Git panel";
+    return parts.length > 0 ? parts.join(" · ") : "Workspace";
   }, [session.prNumber, session.prStatus, changesCount, hasActionNeeded]);
 
   const openGitPanel = useCallback(() => {
     const defaultTab = session.prNumber
-      ? "pr"
+      ? "review"
       : hasActionNeeded || hasCommittedChanges || changesCount > 0
-        ? "diff"
-        : "files";
+        ? "review"
+        : "preview";
 
-    setGitPanelTab(defaultTab);
+    setActiveWorkspaceTab(defaultTab);
     setGitPanelOpen(true);
   }, [
     session.prNumber,
@@ -93,7 +76,7 @@ export function SessionHeader() {
     hasCommittedChanges,
     changesCount,
     setGitPanelOpen,
-    setGitPanelTab,
+    setActiveWorkspaceTab,
   ]);
 
   const handleGitPanelToggle = useCallback(() => {
@@ -135,7 +118,7 @@ export function SessionHeader() {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 shrink-0"
+                className="h-7 w-7 shrink-0 cursor-pointer"
                 onClick={toggleSidebar}
               >
                 <PanelLeft className="h-4 w-4" />
@@ -176,7 +159,7 @@ export function SessionHeader() {
                     <button
                       type="button"
                       onClick={() => setChangeRepoRequested(true)}
-                      className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground"
+                      className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-foreground cursor-pointer"
                     >
                       <ChevronDown className="h-3.5 w-3.5" />
                     </button>
@@ -198,7 +181,7 @@ export function SessionHeader() {
                 <button
                   type="button"
                   onClick={() => setShareRequested(true)}
-                  className="ml-1 rounded p-1 text-muted-foreground/60 transition-colors hover:text-foreground"
+                  className="ml-1 rounded p-1 text-muted-foreground/60 transition-colors hover:text-foreground cursor-pointer"
                 >
                   <Link2 className="h-3.5 w-3.5" />
                 </button>
@@ -208,25 +191,21 @@ export function SessionHeader() {
           </div>
         </div>
 
-        {/* Right side: dev server / code editor actions + git panel toggle */}
+        {/* Right side: OpenCode side panel toggle */}
         <div className="flex items-center gap-1">
-          {/* Portal target for dev server / code editor buttons (rendered from per-chat content) */}
-          <div ref={headerActionsRef} className="flex items-center" />
-
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
                 className={cn(
-                  "relative h-7 w-7 shrink-0",
+                  "relative h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground cursor-pointer",
                   gitPanelOpen && "bg-accent text-accent-foreground",
                 )}
                 onClick={handleGitPanelToggle}
+                aria-label={gitPanelOpen ? "Close workspace" : "Open workspace"}
               >
-                <GitIcon
-                  className={cn("h-4 w-4", !gitPanelOpen && iconColor)}
-                />
+                <PanelRight className="h-4 w-4" />
                 {!gitPanelOpen && hasActionNeeded && (
                   <span className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-amber-500" />
                 )}
@@ -236,7 +215,7 @@ export function SessionHeader() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {`${tooltipText} · ⌘⇧B / Ctrl+Shift+B`}
+              {gitPanelOpen ? "Close workspace" : "Open workspace"} ({tooltipText}) · ⌘⇧B / Ctrl+Shift+B
             </TooltipContent>
           </Tooltip>
         </div>
