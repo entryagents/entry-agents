@@ -15,6 +15,7 @@ import {
   useSessionChats,
 } from "@/hooks/use-session-chats";
 import type { Session } from "@/lib/db/schema";
+import { cn } from "@/lib/utils";
 import {
   GitPanelProvider,
   useGitPanel,
@@ -34,7 +35,7 @@ type SessionLayoutShellProps = {
 
 /**
  * Inner component that reads panelContent from context and renders
- * the horizontal split: left column (header + tabs + page) | right panel.
+ * the horizontal split: left column (header + tabs + page) | third column workspace.
  */
 function SessionLayoutInner({
   activeChatId,
@@ -43,12 +44,26 @@ function SessionLayoutInner({
   activeChatId: string;
   children: ReactNode;
 }) {
-  const { panelPortalRef, gitPanelOpen, setGitPanelOpen } = useGitPanel();
+  const {
+    panelPortalRef,
+    gitPanelOpen,
+    setGitPanelOpen,
+    isWorkspaceExpanded,
+  } = useGitPanel();
 
   return (
     <div className="relative flex h-full overflow-hidden">
-      {/* Left column: header + tabs + page content */}
-      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      {/* Left column: header + tabs + chat content */}
+      <div
+        className={cn(
+          "flex min-w-0 flex-col overflow-hidden transition-all duration-200",
+          gitPanelOpen && isWorkspaceExpanded
+            ? "hidden"
+            : gitPanelOpen
+              ? "flex-1 lg:flex-none lg:w-[460px] xl:w-[500px] 2xl:w-[540px] shrink-0 border-r border-border"
+              : "flex-1",
+        )}
+      >
         <SessionHeader />
         {activeChatId && <ChatTabs activeChatId={activeChatId} />}
         <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
@@ -58,20 +73,23 @@ function SessionLayoutInner({
       {gitPanelOpen && (
         <button
           type="button"
-          aria-label="Close right sidebar"
-          className="absolute inset-0 z-20 bg-background/20 sm:hidden"
+          aria-label="Close workspace"
+          className="absolute inset-0 z-20 bg-background/40 backdrop-blur-sm lg:hidden"
           onClick={() => setGitPanelOpen(false)}
         />
       )}
 
-      {/* Portal target for the git panel — slideover on mobile, sidebar on larger screens */}
+      {/* Portal target for the third-column workspace — slideover on mobile, dedicated workspace panel on desktop */}
       <div
         ref={panelPortalRef}
-        className={`absolute right-0 top-0 z-30 flex h-full w-72 flex-col overflow-hidden border-l border-border bg-background shadow-lg transition-transform duration-200 ease-in-out sm:relative sm:right-auto sm:top-auto sm:z-0 sm:shrink-0 sm:translate-x-0 sm:shadow-none sm:transition-[width] ${
+        className={cn(
+          "absolute right-0 top-0 z-30 flex h-full flex-col overflow-hidden border-l border-border bg-background shadow-xl transition-all duration-200 ease-in-out lg:relative lg:right-auto lg:top-auto lg:z-0 lg:shadow-none",
           gitPanelOpen
-            ? "translate-x-0 sm:w-72 sm:border-l xl:w-80"
-            : "translate-x-full sm:w-0 sm:border-l-0"
-        }`}
+            ? isWorkspaceExpanded
+              ? "w-full translate-x-0"
+              : "w-[92vw] sm:w-[540px] lg:w-auto lg:flex-1 translate-x-0"
+            : "w-0 translate-x-full lg:translate-x-0 border-l-0 overflow-hidden pointer-events-none",
+        )}
       />
     </div>
   );

@@ -104,7 +104,7 @@ const mergeMethodDescriptions: Record<MergeMethod, string> = {
 /* Types                                                               */
 /* ------------------------------------------------------------------ */
 
-type GitPanelProps = {
+export type GitPanelProps = {
   session: Session;
   // Git state
   hasRepo: boolean;

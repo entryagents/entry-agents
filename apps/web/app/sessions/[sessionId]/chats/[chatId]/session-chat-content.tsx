@@ -193,6 +193,10 @@ const FileTabView = dynamic(
 const GitPanel = dynamic(() => import("./git-panel").then((m) => m.GitPanel), {
   ssr: false,
 });
+const WorkspacePanel = dynamic(
+  () => import("./workspace/workspace-panel").then((m) => m.WorkspacePanel),
+  { ssr: false },
+);
 
 const emptySubscribe = () => () => {};
 
@@ -1114,6 +1118,8 @@ export function SessionChatContent({
     setHasCommittedChanges,
     panelPortalRef,
     headerActionsRef,
+    isWorkspaceExpanded,
+    setIsWorkspaceExpanded,
   } = useGitPanel();
 
   // Header's "change repo" chevron sets changeRepoRequested; open the same
@@ -3534,9 +3540,10 @@ export function SessionChatContent({
     [archiveSession, router, updateSessionPullRequest],
   );
 
-  const gitPanelElement = gitPanelOpen ? (
-    <GitPanel
+  const workspaceElement = gitPanelOpen ? (
+    <WorkspacePanel
       session={session}
+      devServer={devServer}
       hasRepo={hasRepo}
       hasExistingPr={hasExistingPr}
       existingPrUrl={existingPrUrl}
@@ -3563,27 +3570,32 @@ export function SessionChatContent({
       onMerged={handleMerged}
       onCloseAndArchiveClick={() => setCloseDialogOpen(true)}
       onFixChecks={handleFixChecks}
-      onFixConflicts={(baseBranchRef) => handleFixConflicts(baseBranchRef)}
+      onFixConflicts={(baseBranchRef: string) => handleFixConflicts(baseBranchRef)}
       hasSandbox={sandboxInfo !== null}
       gitStatus={gitStatus}
       gitStatusLoading={gitStatusLoading}
       refreshGitStatus={refreshGitStatus}
       onCommitted={handleCommitted}
       isAgentWorking={hasPendingResponse || isChatInFlight}
-      onPrDetected={(pr) => {
+      onPrDetected={(pr: { prNumber: number; prStatus: "open" | "merged" | "closed" }) => {
         updateSessionPullRequest(pr);
         void refreshGitStatus().catch(() => {});
       }}
       onGitMessage={upsertSyntheticAssistantGitMessage}
+      files={files}
+      filesLoading={filesLoading}
+      refreshFiles={refreshFiles}
+      isWorkspaceExpanded={isWorkspaceExpanded}
+      onToggleWorkspaceExpand={() => setIsWorkspaceExpanded((prev) => !prev)}
     />
   ) : null;
 
   return (
     <>
-      {/* Git panel portaled to layout-level for full page height */}
+      {/* Third-column workspace portaled to layout-level for full page height */}
       {gitPanelOpen &&
         panelPortalRef.current &&
-        createPortal(gitPanelElement, panelPortalRef.current)}
+        createPortal(workspaceElement, panelPortalRef.current)}
 
       {/* Header actions portaled from chat-level state */}
       {headerActionsRef.current &&

@@ -17,9 +17,15 @@ export type ActiveView = "chat" | "diff" | "file";
 export type DiffScope = "uncommitted" | "branch";
 
 type GitPanelContextValue = {
-  /** Whether the right git panel is open */
+  /** Whether the right git / workspace panel is open */
   gitPanelOpen: boolean;
   setGitPanelOpen: (open: boolean) => void;
+
+  /** Whether the workspace is expanded full width */
+  isWorkspaceExpanded: boolean;
+  setIsWorkspaceExpanded: (
+    expanded: boolean | ((prev: boolean) => boolean),
+  ) => void;
 
   /** Active tab within the git panel */
   gitPanelTab: GitPanelTab;
@@ -92,6 +98,7 @@ const GitPanelContext = createContext<GitPanelContextValue | undefined>(
 export function GitPanelProvider({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
+  const [isWorkspaceExpanded, setIsWorkspaceExpanded] = useState(false);
   const [gitPanelTab, setGitPanelTab] = useState<GitPanelTab>("files");
   const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [focusedDiffFile, setFocusedDiffFile] = useState<string | null>(null);
@@ -133,6 +140,8 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
     () => ({
       gitPanelOpen,
       setGitPanelOpen,
+      isWorkspaceExpanded,
+      setIsWorkspaceExpanded,
       gitPanelTab,
       setGitPanelTab,
       activeView,
@@ -165,6 +174,7 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
     }),
     [
       gitPanelOpen,
+      isWorkspaceExpanded,
       gitPanelTab,
       activeView,
       changesTabDismissed,
