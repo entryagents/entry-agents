@@ -1,6 +1,6 @@
-import type { SandboxType } from "@/components/sandbox-selector-compact";
-("use client");
+"use client";
 
+import type { SandboxType } from "@/components/sandbox-selector-compact";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import useSWR, { useSWRConfig } from "swr";
