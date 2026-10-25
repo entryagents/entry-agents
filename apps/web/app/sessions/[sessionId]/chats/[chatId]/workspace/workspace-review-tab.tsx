@@ -9,7 +9,6 @@ import {
   FileCode,
   FolderGit2,
   GitBranch,
-  GitCommit,
   GitMerge,
   GitPullRequest,
   Github,
@@ -41,7 +40,6 @@ import {
 } from "@/components/ui/dialog";
 import { getDiffOptions } from "@/lib/diffs-config";
 import { useTheme } from "@/app/providers";
-import { commitChanges } from "@/lib/github/actions/commit";
 import { discardChanges } from "@/lib/git/actions/discard";
 import {
   openPullRequest,
@@ -118,11 +116,6 @@ export function WorkspaceReviewTab({
 
   // Track expanded files in accordion
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
-
-  // Direct commit input state
-  const [commitMessage, setCommitMessage] = useState("");
-  const [isCommitting, setIsCommitting] = useState(false);
-  const [commitError, setCommitError] = useState<string | null>(null);
 
   // Discard state
   const [discardFileTarget, setDiscardFileTarget] = useState<string | null>(
@@ -276,55 +269,6 @@ export function WorkspaceReviewTab({
     URL.revokeObjectURL(url);
     toast.success("Downloaded patch file");
   }, [uncommittedFiles, session.id]);
-
-  // Handle direct commit
-  const handleCommit = useCallback(async () => {
-    const trimmed = commitMessage.trim();
-    if (!trimmed) return;
-
-    setIsCommitting(true);
-    setCommitError(null);
-
-    try {
-      const result = await commitChanges({
-        sessionId: session.id,
-        sessionTitle: session.title,
-        baseBranch: session.branch ?? "main",
-        branchName,
-        commitTitle: trimmed,
-      });
-
-      if (!result.committed) {
-        setCommitError(result.error ?? "Failed to commit changes");
-        return;
-      }
-
-      setCommitMessage("");
-      toast.success(
-        result.pushed
-          ? "Changes committed and pushed to remote"
-          : "Changes committed locally in sandbox",
-      );
-      onCommitted?.();
-      void refreshDiff();
-      void refreshGitStatus().catch(() => {});
-    } catch (err) {
-      setCommitError(
-        err instanceof Error ? err.message : "An unexpected error occurred",
-      );
-    } finally {
-      setIsCommitting(false);
-    }
-  }, [
-    commitMessage,
-    session.id,
-    session.title,
-    session.branch,
-    branchName,
-    onCommitted,
-    refreshDiff,
-    refreshGitStatus,
-  ]);
 
   // AI-powered PR generator
   const handleGeneratePrSummary = useCallback(async () => {
@@ -540,6 +484,21 @@ export function WorkspaceReviewTab({
             </Button>
           )}
 
+          {hasRepo && !session.prNumber && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setPrTitle(session.title || "Feature implementation");
+                setCreatePrDialogOpen(true);
+              }}
+              className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
+            >
+              <GitPullRequest className="h-3.5 w-3.5 text-emerald-500" />
+              <span>Create PR</span>
+            </Button>
+          )}
+
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -724,10 +683,9 @@ export function WorkspaceReviewTab({
         )}
       </div>
 
-      {/* Bottom Action Bar */}
-      <div className="shrink-0 border-t border-border bg-muted/20 p-2.5 space-y-2">
-        {/* Active PR status badge if exists */}
-        {hasRepo && session.prNumber && (
+      {/* Bottom Action Bar: Only rendered when an active PR is present */}
+      {hasRepo && session.prNumber && (
+        <div className="shrink-0 border-t border-border bg-muted/20 p-2.5">
           <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-1.5 text-xs">
             <div className="flex items-center gap-2 min-w-0">
               <GitPullRequest
@@ -784,66 +742,8 @@ export function WorkspaceReviewTab({
               )}
             </div>
           </div>
-        )}
-
-        {/* Commit Input & Action Row */}
-        <div className="flex items-center gap-2">
-          <Input
-            value={commitMessage}
-            onChange={(e) => setCommitMessage(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void handleCommit();
-              }
-            }}
-            placeholder={
-              hasRepo
-                ? "Commit message..."
-                : "Save checkpoint in local sandbox..."
-            }
-            disabled={isCommitting || uncommittedFiles.length === 0}
-            className="h-8 text-xs font-mono bg-background focus-visible:ring-1"
-          />
-
-          <Button
-            size="sm"
-            onClick={handleCommit}
-            disabled={
-              !commitMessage.trim() ||
-              isCommitting ||
-              uncommittedFiles.length === 0
-            }
-            className="h-8 px-3 text-xs gap-1.5 shrink-0 cursor-pointer"
-          >
-            {isCommitting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <GitCommit className="h-3.5 w-3.5" />
-            )}
-            <span>{hasRepo ? "Commit & Push" : "Save Local"}</span>
-          </Button>
-
-          {hasRepo && !session.prNumber && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setPrTitle(session.title || "Feature implementation");
-                setCreatePrDialogOpen(true);
-              }}
-              className="h-8 px-2.5 text-xs gap-1.5 shrink-0 cursor-pointer"
-            >
-              <GitPullRequest className="h-3.5 w-3.5 text-emerald-500" />
-              <span>Create PR</span>
-            </Button>
-          )}
         </div>
-
-        {commitError && (
-          <p className="text-[11px] text-destructive">{commitError}</p>
-        )}
-      </div>
+      )}
 
       {/* Confirmation Dialog: Discard Single File */}
       <Dialog

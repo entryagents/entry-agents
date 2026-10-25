@@ -3688,6 +3688,7 @@ const runAgentStep = async (
     const { runWithCompactionSink } = await import("@entry-agents/agent");
     const { recordCompactionEvent } = await import("@/lib/db/compaction");
 
+    let activeModelId = modelId;
     const result = await runWithCompactionSink(
       (event) =>
         recordCompactionEvent(event, {
@@ -3739,46 +3740,138 @@ const runAgentStep = async (
 
         let stream: Awaited<ReturnType<typeof webAgent.stream>>;
         let streamAttempts = 0;
+        let currentMessages = compactImageVisionContext(messages);
+        let currentStreamOptions = spendCap.maxOutputTokens
+          ? {
+              ...fullAgentOptions,
+              maxOutputTokens: spendCap.maxOutputTokens,
+            }
+          : fullAgentOptions;
+        let fallbackTriggered = false;
+        let contextRecoveryTriggered = false;
+        const MAX_TRANSIENT_ATTEMPTS = 4;
+
         while (true) {
           try {
             stream = await webAgent.stream({
-              messages: compactImageVisionContext(messages),
-              options: spendCap.maxOutputTokens
-                ? {
-                    ...fullAgentOptions,
-                    maxOutputTokens: spendCap.maxOutputTokens,
-                  }
-                : fullAgentOptions,
+              messages: currentMessages,
+              options: currentStreamOptions,
               abortSignal: abortController.signal,
             });
             break;
           } catch (streamErr: unknown) {
             streamAttempts++;
+            if (abortController.signal.aborted) {
+              throw streamErr;
+            }
+
             const errSignal = String(
               (streamErr as Error)?.message || streamErr || "",
             ).toLowerCase();
+
+            // 1. Context length / maximum token overflow recovery:
+            // Intercept token limit errors, compact older tool call/result outputs,
+            // and retry the step without crashing the turn.
+            const isContextOverflow =
+              errSignal.includes("context_length_exceeded") ||
+              errSignal.includes("maximum context length") ||
+              errSignal.includes("context window") ||
+              errSignal.includes("token limit") ||
+              errSignal.includes("exceeded the maximum") ||
+              errSignal.includes("prompt is too long") ||
+              errSignal.includes("too many tokens") ||
+              errSignal.includes("max_tokens");
+
+            if (isContextOverflow && !contextRecoveryTriggered) {
+              contextRecoveryTriggered = true;
+              console.warn(
+                `[chat-workflow] Context window limit reached for model ${activeModelId}. Triggering auto-compaction recovery...`,
+              );
+              try {
+                const { maybeCompactMessages } =
+                  await import("@entry-agents/agent");
+                currentMessages = maybeCompactMessages({
+                  messages: currentMessages,
+                  model: activeModelId,
+                  compactionThresholdOverride: 0.4,
+                });
+                continue;
+              } catch (compactErr) {
+                console.warn(
+                  "[chat-workflow] Context auto-compaction recovery failed:",
+                  compactErr,
+                );
+              }
+            }
+
+            // 2. Comprehensive Transient Gateway & Provider Error Handling:
+            // Handle 500, 502 Bad Gateway, 503, 504 Gateway Timeout, 520-524, 429 rate limits,
+            // and socket/network drops with jittered exponential backoff.
             const isTransient =
               errSignal.includes("429") ||
               errSignal.includes("rate limit") ||
               errSignal.includes("too many requests") ||
+              errSignal.includes("500") ||
+              errSignal.includes("502") ||
               errSignal.includes("503") ||
+              errSignal.includes("504") ||
+              errSignal.includes("520") ||
+              errSignal.includes("521") ||
+              errSignal.includes("522") ||
+              errSignal.includes("524") ||
+              errSignal.includes("bad gateway") ||
+              errSignal.includes("service unavailable") ||
+              errSignal.includes("gateway timeout") ||
+              errSignal.includes("internal server error") ||
               errSignal.includes("temporarily unavailable") ||
-              errSignal.includes("fetch failed");
+              errSignal.includes("fetch failed") ||
+              errSignal.includes("econnreset") ||
+              errSignal.includes("etimedout") ||
+              errSignal.includes("econnrefused") ||
+              errSignal.includes("socket hang up") ||
+              errSignal.includes("broken pipe") ||
+              errSignal.includes("circuit") ||
+              errSignal.includes("overloaded") ||
+              errSignal.includes("at capacity") ||
+              errSignal.includes("no healthy upstream");
 
-            if (
-              isTransient &&
-              streamAttempts < 3 &&
-              !abortController.signal.aborted
-            ) {
+            if (isTransient && streamAttempts < MAX_TRANSIENT_ATTEMPTS) {
+              const backoffMs = Math.min(
+                6000,
+                1000 * 1.5 ** streamAttempts + Math.random() * 500,
+              );
               console.warn(
-                `[chat-workflow] Transient model error on attempt ${streamAttempts}, retrying in 1.5s...`,
-                streamErr,
+                `[chat-workflow] Transient model error on attempt ${streamAttempts} (${errSignal.slice(0, 100)}), retrying in ${Math.round(backoffMs)}ms...`,
               );
-              await new Promise((resolve) =>
-                setTimeout(resolve, 1500 * streamAttempts),
-              );
+              await new Promise((resolve) => setTimeout(resolve, backoffMs));
               continue;
             }
+
+            // 3. Graceful Model Fallback for Upstream Outages:
+            // If primary model fails permanently after retries (e.g. gateway 502/503 persists or model not found),
+            // dynamically pivot to APP_DEFAULT_MODEL_ID to keep turn crash-resistant.
+            // Fall back to default model
+            if (
+              !fallbackTriggered &&
+              activeModelId !== APP_DEFAULT_MODEL_ID &&
+              modelCostCatalog.some((m) => m.id === APP_DEFAULT_MODEL_ID)
+            ) {
+              fallbackTriggered = true;
+              console.warn(
+                `[chat-workflow] Model ${activeModelId} failed after ${streamAttempts} attempts (${errSignal.slice(0, 100)}). Falling back to ${APP_DEFAULT_MODEL_ID} to preserve turn continuity...`,
+              );
+              activeModelId = APP_DEFAULT_MODEL_ID;
+              currentStreamOptions = {
+                ...currentStreamOptions,
+                model: attachLiveModelContextWindow(
+                  { id: APP_DEFAULT_MODEL_ID as unknown as import("@entry-agents/agent").AgentModelSelection["id"] },
+                  modelCostCatalog,
+                ),
+              };
+              streamAttempts = 0;
+              continue;
+            }
+
             throw streamErr;
           }
         }
@@ -3974,7 +4067,7 @@ const runAgentStep = async (
       metadata: withModelMetadata(
         responseMessage.metadata,
         selectedModelId,
-        modelId,
+        activeModelId,
       ),
     };
 
@@ -4002,7 +4095,7 @@ const runAgentStep = async (
     const stepsCost = steps.reduce<number | undefined>((sum, step) => {
       const cost = estimateStepCost(
         step.providerMetadata,
-        modelId,
+        activeModelId,
         step.usage,
         modelCostCatalog,
       );
@@ -4017,13 +4110,13 @@ const runAgentStep = async (
     // model, token usage, estimated cost, and which tools it called.
     const newStepBreakdown: WebAgentStepCostBreakdown[] = steps.map((step) => ({
       stepNumber: existingStepBreakdown.length + step.stepNumber + 1,
-      modelId: step.model?.modelId ?? modelId,
+      modelId: step.model?.modelId ?? activeModelId,
       finishReason: step.finishReason,
       rawFinishReason: step.rawFinishReason,
       usage: step.usage,
       cost: estimateStepCost(
         step.providerMetadata,
-        modelId,
+        activeModelId,
         step.usage,
         modelCostCatalog,
       ),

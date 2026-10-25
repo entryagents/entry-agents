@@ -82,4 +82,5 @@ export type { CompactionEvent } from "./context-management/compaction-telemetry"
 export {
   AUTO_COMPACT_THRESHOLD,
   PROTECTED_RECENT_MESSAGES,
+  maybeCompactMessages,
 } from "./context-management/auto-compact";

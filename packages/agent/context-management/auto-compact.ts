@@ -86,7 +86,7 @@ export function estimateMessagesTokens(messages: ModelMessage[]): number {
   return Math.ceil(chars / 4);
 }
 
-function getModelId(model: LanguageModel): string {
+function getModelId(model: LanguageModel | string): string {
   return typeof model === "string" ? model : model.modelId;
 }
 
@@ -108,7 +108,7 @@ export function maybeCompactMessages({
   compactionThresholdOverride,
 }: {
   messages: ModelMessage[];
-  model: LanguageModel;
+  model: LanguageModel | string;
   /**
    * Live context_window supplied by the host's model catalog. This takes
    * precedence over the conservative fallback table so adding a model to

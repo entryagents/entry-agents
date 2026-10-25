@@ -3088,3 +3088,23 @@ The thinking panel was receiving live Gateway SSE, but the web chat hook throttl
   - Novita AI provides hardware-isolated Firecracker microVMs with sub-second cold starts, fast command execution via REST (`POST /v1/sandbox/create`, `POST /v1/sandbox/{id}/exec`), port forwarding (`https://{port}-{id}.sandbox.novita.ai`), and microVM pause/resume/kill lifecycle.
   - Registered `novita` in all required registry seams: `SandboxProviderId` union in `registry-types.ts`, `SandboxState` discriminated union in `state.ts`, `NOVITA_CAPABILITIES` and `SANDBOX_PROVIDER_METADATA` in `registry-types.ts`, `SANDBOX_TYPES` and `USER_SELECTABLE_SANDBOX_TYPES` in `registry-types.ts`, `novitaProvider` in `registry.ts`, and database schema enum `defaultSandboxType` in `schema.ts`.
   - Cleanly verified via monorepo typecheck and test suite.
+
+
+## 2026-10-25: Workspace Review Tab Commit Input Bar Removal, Full-Height Diff Canvas, and Multi-Tier Model Crash Resilience
+
+- **Workspace Review Tab UI De-Cluttering & Autonomous Git Workflow:**
+  - **Symptom:** In the third-column workspace Review/Changes tab (`workspace-review-tab.tsx`), a bottom manual commit bar with `<Input placeholder="Commit message..." />`, `Commit & Push / Save Local`, and an error banner occupied fixed vertical space, cramping the `@pierre/diffs` code view and forcing a manual commit workflow on users.
+  - **The Architectural Fix:**
+    1) *Complete Removal of Manual Commit Bar:* Removed `commitMessage`, `isCommitting`, `commitError`, `handleCommit`, `commitChanges` server action imports, and the bottom `<Input>` + `<Button>` container from `workspace-review-tab.tsx`.
+    2) *Full-Height Diff Canvas:* Diff accordions now expand to the full height of the viewport when no active PR exists.
+    3) *Non-Intrusive PR Creation:* Moved the "Create PR" button to the top header toolbar alongside "Patch" and "Discard all" when a repo is connected and no PR is active.
+    4) *Autonomous Agent Responsibility:* In autonomous coding agent workflows, commits and PR generation belong to the agent's autonomous tool loop (`commitAndPush`, `openPullRequest`, `github_api`), while users inspect high-fidelity, unobstructed split/unified diffs.
+
+- **Multi-Tier Model Crash Resilience & In-Turn Gateway Fallback (`apps/web/app/workflows/chat.ts`):**
+  - **Symptom:** Upstream gateway transient hiccups (HTTP 500, 502 Bad Gateway from reverse proxies/OpenCode Zen, 503 Service Unavailable, 504 Gateway Timeout, Cloudflare edge errors 520-524, and socket drops) or context window overflows previously threw unhandled exceptions that terminated the durable chat workflow mid-turn, rendering red error banners to the user.
+  - **The Architectural Fix:**
+    1) *Comprehensive Transient Error Detection:* Expanded `isTransient` to catch `500`, `502`, `503`, `504`, `520`-`524`, `bad gateway`, `gateway timeout`, `service unavailable`, `internal server error`, `econnreset`, `etimedout`, `econnrefused`, `socket hang up`, `broken pipe`, `circuit breaker`, `overloaded`, `at capacity`, and `no healthy upstream`.
+    2) *Jittered Exponential Backoff:* Increased stream retry attempts to 4 with randomized jitter (`Math.min(6000, 1000 * 1.5^attempt + Math.random() * 500)`), smoothing over gateway recovery spikes.
+    3) *Context Window Overflow Auto-Recovery:* Intercepts `context_length_exceeded` / token ceiling errors (`maximum context length`, `token limit`, `prompt is too long`), automatically invokes `maybeCompactMessages` from `@entry-agents/agent` to collapse older tool outputs/results down to placeholders, and immediately retries the model stream without aborting the conversation turn.
+    4) *In-Flight Dynamic Model Fallback:* If a primary model experiences a persistent hard outage or route deprecation (e.g. gateway 502/503 persists or model not found), the workflow dynamically pivots `currentStreamOptions.model` to `APP_DEFAULT_MODEL_ID` (or the healthiest live gateway model from `modelCostCatalog`), resets retry counters, and completes the turn seamlessly.
+    5) *Accurate Diagnostics & Cost Accounting:* Dynamically tracks `activeModelId` across fallbacks, ensuring metadata and `stepBreakdown` cost accounting accurately reflect the model that executed.
