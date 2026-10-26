@@ -46,10 +46,10 @@ export function FeatureWorkflow() {
   return (
     <div className="flex h-[280px] flex-col bg-(--l-code-bg)">
       <div className="flex-1 px-5 py-4">
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-(--l-panel-fg-3)">Durable workflow</span>
-          <span className="text-(--l-panel-fg-4)">/</span>
-          <span className="text-(--l-panel-fg-2)">session-orchestrator</span>
+        <div className="flex items-center gap-3 font-mono text-[12px]">
+          <span className="text-(--l-panel-fg-3)">workflow</span>
+          <span className="text-(--l-panel-fg-2)">chat</span>
+          <span className="text-(--l-panel-fg-4)">durable</span>
         </div>
 
         <div className="mt-5 space-y-[2px]">
@@ -60,22 +60,22 @@ export function FeatureWorkflow() {
             return (
               <div
                 key={step.label}
-                className="flex items-center gap-2.5 text-xs leading-[1.7] transition-opacity duration-300"
-                style={{ opacity: isActive ? 1 : isDone ? 0.65 : 0.18 }}
+                className="flex items-center gap-2.5 font-mono text-[12px] leading-[1.7] transition-opacity duration-300"
+                style={{ opacity: isActive ? 1 : isDone ? 0.55 : 0.15 }}
               >
                 <span
                   className="inline-flex size-1 shrink-0 rounded-full transition-colors duration-300"
                   style={{
                     backgroundColor: isActive
-                      ? "var(--l-accent)"
+                      ? "var(--l-panel-fg)"
                       : isDone
-                        ? "var(--color-success)"
+                        ? "var(--l-panel-fg-3)"
                         : "var(--l-panel-fg-5)",
                   }}
                 />
-                <code className="font-mono text-(--l-panel-fg-2)">{step.label}</code>
+                <span className="text-(--l-panel-fg-2)">{step.label}</span>
                 {isDone && (
-                  <span className="text-[10px] tabular-nums text-(--l-panel-fg-4)">
+                  <span className="text-(--l-panel-fg-4)">
                     {(step.ms / 1000).toFixed(1)}s
                   </span>
                 )}
@@ -85,12 +85,10 @@ export function FeatureWorkflow() {
         </div>
 
         <div
-          className="mt-5 flex items-center gap-3 text-xs text-(--l-panel-fg-3) transition-opacity duration-500"
+          className="mt-5 font-mono text-[11px] text-(--l-panel-fg-3) transition-opacity duration-500"
           style={{ opacity: done ? 1 : 0 }}
         >
-          <span className="text-(--color-success)">{steps.length} steps completed</span>
-          <span className="h-3 w-px bg-(--l-panel-border)" />
-          <span>Resumable checkpoint</span>
+          complete · {steps.length} steps · resumable
         </div>
       </div>
     </div>

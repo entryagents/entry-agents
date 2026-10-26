@@ -509,12 +509,12 @@ export function WorkspaceReviewTab({
                   void refreshGitStatus().catch(() => {});
                 }}
                 disabled={diffRefreshing || gitStatusLoading}
-                className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
               >
                 <RefreshCw
                   className={cn(
                     "h-3.5 w-3.5",
-                    (diffRefreshing || gitStatusLoading) && "motion-safe:animate-spin",
+                    (diffRefreshing || gitStatusLoading) && "animate-spin",
                   )}
                 />
               </Button>

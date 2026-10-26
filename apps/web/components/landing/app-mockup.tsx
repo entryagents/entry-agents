@@ -2,108 +2,70 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type AgentTask = {
-  readonly role: string;
-  readonly status: "done" | "running" | "idle";
-  readonly summary: string;
-};
-
 type FakeSession = {
   readonly title: string;
   readonly repo: string;
   readonly branch: string;
   readonly prompt: string;
-  readonly agentSummary: string;
-  readonly tasks: readonly AgentTask[];
+  readonly summary: string;
   readonly toolCount: number;
-  readonly testsPassed: number;
+  readonly todoTotal: number;
+  readonly todoDone: number;
   readonly elapsed: string;
   readonly files: readonly string[];
-  readonly terminalLogs: readonly string[];
 };
 
 const sessions: readonly FakeSession[] = [
   {
-    title: "Multi-agent orchestration",
+    title: "Auth flow",
     repo: "entry-agents",
-    branch: "feat/multi-agent",
-    prompt: "Implement parallel subagent coordination with isolated git worktrees",
-    agentSummary:
-      "Decomposed work across 3 subagents. Architect defined communication schemas, Executor wrote isolated worktrees, and QA verified tests pass clean.",
-    tasks: [
-      { role: "Architect", status: "done", summary: "Plan isolated worktree protocol" },
-      { role: "Executor", status: "done", summary: "Implement subagent runner" },
-      { role: "Verifier", status: "done", summary: "Run test suite: 47/47 passing" },
-    ],
-    toolCount: 18,
-    testsPassed: 47,
+    branch: "feat/auth-flow",
+    prompt: "Build the auth flow with GitHub OAuth",
+    summary:
+      "I\u2019ve set up the GitHub OAuth flow. Created the auth route handler, callback endpoint, and session middleware. Typecheck passes clean.",
+    toolCount: 12,
+    todoTotal: 4,
+    todoDone: 3,
     elapsed: "42s",
     files: [
-      "lib/agents/orchestrator.ts",
-      "lib/sandbox/worktree.ts",
-      "app/api/chat/route.ts",
-    ],
-    terminalLogs: [
-      "✓ git worktree add .worktrees/agent-exec feat/multi-agent",
-      "✓ subagent-1: schema contracts generated",
-      "✓ subagent-2: runtime execution loop wired",
-      "✓ pnpm test: 47 passed (0 failures)",
+      "app/api/auth/route.ts",
+      "app/api/auth/callback/route.ts",
+      "middleware.ts",
     ],
   },
   {
-    title: "Edge API migration",
+    title: "API refactor",
     repo: "entry-agents",
-    branch: "feat/edge-runtime",
-    prompt: "Refactor chat streaming endpoints for edge runtime execution",
-    agentSummary:
-      "Migrated chat routes to edge runtime. Replaced Node-only streams with Web Streams API and verified zero regressions across the CI suite.",
-    tasks: [
-      { role: "Analyzer", status: "done", summary: "Scan routes for Node APIs" },
-      { role: "Executor", status: "done", summary: "Convert to Web Streams API" },
-      { role: "Verifier", status: "done", summary: "Typecheck & integration suite" },
-    ],
-    toolCount: 11,
-    testsPassed: 38,
-    elapsed: "1m 12s",
-    files: [
-      "app/api/chat/route.ts",
-      "app/api/chat/[chatId]/stream/route.ts",
-    ],
-    terminalLogs: [
-      "✓ exported const runtime = 'edge'",
-      "✓ replaced node:stream with ReadableStream",
-      "✓ typecheck clean in 1.4s",
-    ],
+    branch: "feat/edge-api",
+    prompt: "Refactor the chat API routes to use edge runtime",
+    summary:
+      "Migrated 2 routes to edge runtime. Removed Node-only APIs, added runtime exports, and verified with the full CI suite.",
+    toolCount: 8,
+    todoTotal: 3,
+    todoDone: 3,
+    elapsed: "1m 18s",
+    files: ["app/api/chat/route.ts", "app/api/chat/[chatId]/stream/route.ts"],
   },
   {
-    title: "Automated test recovery",
+    title: "Fix tests",
     repo: "entry-agents",
-    branch: "fix/flaky-tests",
-    prompt: "Diagnose and resolve intermittent websocket timeouts in sandbox tests",
-    agentSummary:
-      "Isolated the race condition in the sandbox connection handshake. Added heartbeat retry logic and verified 50 consecutive runs with zero failures.",
-    tasks: [
-      { role: "Investigator", status: "done", summary: "Reproduce handshake timeout" },
-      { role: "Executor", status: "done", summary: "Implement exponential backoff" },
-      { role: "Verifier", status: "done", summary: "50-run stress test passed" },
-    ],
-    toolCount: 16,
-    testsPassed: 52,
-    elapsed: "54s",
+    branch: "fix/test-suite",
+    prompt: "Run the test suite and fix any failing tests",
+    summary:
+      "Found and fixed 4 failing tests across 3 files. All 47 tests pass now.",
+    toolCount: 14,
+    todoTotal: 4,
+    todoDone: 4,
+    elapsed: "56s",
     files: [
-      "lib/sandbox/client.ts",
-      "lib/sandbox/heartbeat.ts",
-      "tests/e2e/sandbox.test.ts",
-    ],
-    terminalLogs: [
-      "✓ isolated race condition in handshake ACK",
-      "✓ added jittered retry backoff (3 attempts)",
-      "✓ stress test: 50/50 passes",
+      "lib/chat-streaming-state.test.ts",
+      "lib/swr.test.ts",
+      "lib/db/sessions.test.ts",
     ],
   },
 ];
 
-function useTypewriter(text: string, active: boolean, speed = 12) {
+function useTypewriter(text: string, active: boolean, speed = 14) {
   const [displayed, setDisplayed] = useState("");
   const indexRef = useRef(0);
 
@@ -130,13 +92,35 @@ function useTypewriter(text: string, active: boolean, speed = 12) {
   return displayed;
 }
 
+function SummaryBar({ session: s }: { readonly session: FakeSession }) {
+  return (
+    <div className="flex items-center gap-1.5 overflow-hidden rounded-xl bg-(--l-panel-surface) px-2 py-1.5 text-[9px] sm:gap-2 sm:px-3 sm:py-2 sm:text-[10px]">
+      <span className="shrink-0 text-(--l-panel-fg-3)">
+        {s.toolCount} tools
+      </span>
+      <span className="h-3 w-px shrink-0 bg-(--l-panel-border)" />
+      <span className="shrink-0 text-(--l-panel-fg-3)">
+        {s.todoDone}/{s.todoTotal}
+      </span>
+      <div className="flex gap-0.5">
+        {Array.from({ length: s.todoTotal }).map((_, i) => (
+          <div
+            key={i}
+            className={`size-1 rounded-full ${i < s.todoDone ? "bg-(--l-panel-fg-2)" : "bg-(--l-panel-fg-5)"}`}
+          />
+        ))}
+      </div>
+      <span className="h-3 w-px bg-(--l-panel-border)" />
+      <span className="text-(--l-panel-fg-4)">{s.elapsed}</span>
+    </div>
+  );
+}
+
 export function AppMockup() {
   const [activeIndex, setActiveIndex] = useState(0);
-  const [activeTab, setActiveTab] = useState<"stream" | "terminal">("stream");
   const [justSwitched, setJustSwitched] = useState(false);
-
   const active = sessions[activeIndex]!;
-  const typedSummary = useTypewriter(active.agentSummary, justSwitched);
+  const typedSummary = useTypewriter(active.summary, justSwitched, 14);
 
   const handleSwitch = (index: number) => {
     if (index === activeIndex) return;
@@ -148,19 +132,18 @@ export function AppMockup() {
     if (!justSwitched) return;
     const timeout = setTimeout(
       () => setJustSwitched(false),
-      active.agentSummary.length * 12 + 150,
+      active.summary.length * 14 + 200,
     );
     return () => clearTimeout(timeout);
-  }, [justSwitched, active.agentSummary.length]);
+  }, [justSwitched, active.summary.length]);
 
   return (
     <div
-      className="overflow-hidden rounded-lg border border-(--l-panel-border) bg-(--l-panel) ring-1 ring-(--l-panel-border)"
+      className="overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-panel) ring-1 ring-(--l-panel-border)"
       style={{ boxShadow: "var(--l-window-shadow)" }}
     >
-      {/* Workbench top chrome */}
-      <div className="flex items-center justify-between border-b border-(--l-panel-border) px-3 py-2.5 sm:px-4">
-        <div className="flex min-w-0 items-center gap-2 text-xs">
+      <div className="flex items-center justify-between border-b border-(--l-panel-border) px-3 py-2 lg:px-4">
+        <div className="flex min-w-0 items-center gap-2 text-[11px]">
           <div className="flex items-center gap-1.5 text-(--l-panel-fg-3)">
             <svg
               viewBox="0 0 16 16"
@@ -168,10 +151,42 @@ export function AppMockup() {
               className="size-3.5"
               aria-hidden="true"
             >
-              <rect x="1" y="1" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-              <rect x="1" y="10" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-              <rect x="10" y="1" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-              <rect x="10" y="10" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
+              <rect
+                x="1"
+                y="1"
+                width="5"
+                height="5"
+                rx="1"
+                stroke="currentColor"
+                strokeWidth="1.2"
+              />
+              <rect
+                x="1"
+                y="10"
+                width="5"
+                height="5"
+                rx="1"
+                stroke="currentColor"
+                strokeWidth="1.2"
+              />
+              <rect
+                x="10"
+                y="1"
+                width="5"
+                height="5"
+                rx="1"
+                stroke="currentColor"
+                strokeWidth="1.2"
+              />
+              <rect
+                x="10"
+                y="10"
+                width="5"
+                height="5"
+                rx="1"
+                stroke="currentColor"
+                strokeWidth="1.2"
+              />
             </svg>
           </div>
           <span className="font-medium text-(--l-panel-fg)">{active.repo}</span>
@@ -180,38 +195,36 @@ export function AppMockup() {
             {active.branch}
           </span>
           <span className="hidden sm:inline text-(--l-panel-fg-4)">/</span>
-          <span className="hidden sm:inline text-(--l-panel-fg-3)">
+          <span className="hidden sm:inline text-(--l-panel-fg-2)">
             {active.title}
           </span>
+          <span className="size-2 rounded-full bg-(--l-panel-dot)" />
         </div>
-
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 rounded-full bg-(--l-panel-surface) px-2.5 py-0.5 text-[11px] text-(--l-panel-fg-2)">
-            <span className="size-1.5 rounded-full bg-(--l-accent) motion-safe:animate-pulse motion-reduce:opacity-80" />
-            3 agents live
+          <span className="hidden rounded-full bg-(--l-panel-surface) px-2 py-0.5 text-[10px] text-(--l-panel-fg-2) sm:inline">
+            active
           </span>
         </div>
       </div>
 
       <div className="flex">
-        {/* Left sidebar: Sessions in sentence case */}
-        <div className="hidden w-52 shrink-0 border-r border-(--l-panel-border) sm:block">
+        <div className="hidden w-48 shrink-0 border-r border-(--l-panel-border) sm:block">
           <div className="p-3">
-            <div className="mb-2.5 flex items-center justify-between px-1">
-              <span className="text-[11px] font-medium text-(--l-panel-fg-3)">
-                Active sessions
+            <div className="mb-2 flex items-center justify-between">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-(--l-panel-fg-4)">
+                Sessions
               </span>
-              <span className="text-[10px] tabular-nums text-(--l-panel-fg-4)">
-                {sessions.length}
-              </span>
+              <div className="flex size-5 items-center justify-center rounded-md bg-(--l-panel-surface) text-[10px] text-(--l-panel-fg-3)">
+                +
+              </div>
             </div>
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {sessions.map((s, i) => (
                 <button
                   key={s.title}
                   type="button"
                   onClick={() => handleSwitch(i)}
-                  className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg) active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left transition-colors ${
                     i === activeIndex
                       ? "bg-(--l-panel-active)"
                       : "hover:bg-(--l-panel-surface)"
@@ -219,7 +232,7 @@ export function AppMockup() {
                 >
                   <div className="min-w-0 flex-1">
                     <div
-                      className={`truncate text-xs ${
+                      className={`truncate text-[11px] ${
                         i === activeIndex
                           ? "font-medium text-(--l-panel-fg)"
                           : "text-(--l-panel-fg-3)"
@@ -229,13 +242,13 @@ export function AppMockup() {
                     </div>
                   </div>
                   <span
-                    className={`shrink-0 text-[10px] tabular-nums ${
+                    className={`shrink-0 text-[10px] ${
                       i === activeIndex
                         ? "text-(--l-panel-fg-3)"
                         : "text-(--l-panel-fg-4)"
                     }`}
                   >
-                    {s.elapsed}
+                    {i === 0 ? "3m" : i === 1 ? "2h" : "1d"}
                   </span>
                 </button>
               ))}
@@ -243,135 +256,82 @@ export function AppMockup() {
           </div>
         </div>
 
-        {/* Main session area */}
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* Subheader tabs: Stream vs Terminal */}
-          <div className="flex items-center justify-between border-b border-(--l-panel-border) px-4 py-2">
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setActiveTab("stream")}
-                className={`rounded px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg) active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
-                  activeTab === "stream"
-                    ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                    : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg)"
-                }`}
-              >
-                Agent coordination
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("terminal")}
-                className={`rounded px-2 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg) active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
-                  activeTab === "terminal"
-                    ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                    : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg)"
-                }`}
-              >
-                Terminal verification
-              </button>
-            </div>
-            <div className="flex items-center gap-2 text-[11px] tabular-nums text-(--l-panel-fg-3)">
-              <span>{active.toolCount} tools</span>
-              <span className="text-(--l-panel-fg-4)">·</span>
-              <span className="text-(--color-success)">{active.testsPassed} tests passed</span>
-            </div>
-          </div>
-
-          <div className="min-h-[300px] flex-1 overflow-hidden p-4 sm:min-h-[420px] sm:p-6">
-            <div className="mx-auto max-w-2xl space-y-4">
-              {/* User instruction bubble */}
+          <div className="min-h-[280px] flex-1 overflow-hidden sm:min-h-[420px]">
+            <div className="mx-auto max-w-2xl space-y-4 px-3 py-4 sm:space-y-5 sm:px-4 sm:py-6">
               <div className="flex justify-end">
-                <div className="max-w-[85%] rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-4 py-3">
-                  <p className="text-xs leading-relaxed text-(--l-panel-fg)">
+                <div className="max-w-[85%] rounded-3xl bg-(--l-panel-surface) px-3 py-2 sm:max-w-[80%] sm:px-4 sm:py-2.5">
+                  <p className="text-[12px] leading-relaxed text-(--l-panel-fg)">
                     {active.prompt}
                   </p>
                 </div>
               </div>
 
-              {activeTab === "stream" ? (
-                /* Multi-agent coordination view */
-                <div className="space-y-4">
-                  {/* Subagent team cards */}
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    {active.tasks.map((task) => (
-                      <div
-                        key={task.role}
-                        className="rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) p-2.5"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-medium text-(--l-panel-fg)">
-                            {task.role}
-                          </span>
-                          <span className="size-1.5 rounded-full bg-(--color-success)" />
-                        </div>
-                        <p className="mt-1 text-[11px] leading-snug text-(--l-panel-fg-3)">
-                          {task.summary}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+              <div className="space-y-3">
+                <SummaryBar session={active} />
 
-                  {/* Streaming agent summary */}
-                  <div className="rounded-lg border border-(--l-panel-border) bg-(--l-code-bg) p-4">
-                    <p className="text-xs leading-relaxed text-(--l-panel-fg-2)">
-                      {typedSummary}
-                      {justSwitched &&
-                        typedSummary.length < active.agentSummary.length && (
-                          <span className="ml-1 inline-block h-3.5 w-[2px] bg-(--l-accent) motion-safe:animate-pulse motion-reduce:opacity-80" />
-                        )}
-                    </p>
-                  </div>
+                <div className="max-w-[90%]">
+                  <p className="text-[12px] leading-[1.7] text-(--l-panel-fg-2)">
+                    {typedSummary}
+                    {justSwitched &&
+                      typedSummary.length < active.summary.length && (
+                        <span className="ml-0.5 inline-block h-3.5 w-[2px] animate-pulse bg-(--l-panel-fg-2)" />
+                      )}
+                  </p>
+                </div>
 
-                  {/* Affected files */}
-                  <div className="flex flex-wrap gap-1.5 pt-1">
-                    {active.files.map((name) => (
-                      <span
-                        key={name}
-                        className="inline-flex items-center gap-1.5 rounded border border-(--l-panel-border) bg-(--l-panel-surface) px-2 py-1 font-mono text-[11px] text-(--l-panel-fg-2)"
+                <div className="flex flex-wrap gap-1">
+                  {active.files.map((name) => (
+                    <span
+                      key={name}
+                      className="inline-flex max-w-full items-center gap-1 truncate rounded-md bg-(--l-panel-surface) px-1.5 py-0.5 font-mono text-[9px] text-(--l-panel-fg-3) sm:gap-1.5 sm:px-2 sm:py-1 sm:text-[10px]"
+                    >
+                      <svg
+                        viewBox="0 0 16 16"
+                        fill="currentColor"
+                        className="size-2.5 text-(--l-panel-fg-4)"
+                        aria-hidden="true"
                       >
-                        <svg
-                          viewBox="0 0 16 16"
-                          fill="currentColor"
-                          className="size-3 text-(--l-panel-fg-4)"
-                          aria-hidden="true"
-                        >
-                          <path d="M2 1.5A1.5 1.5 0 013.5 0h6.879a1.5 1.5 0 011.06.44l2.122 2.12A1.5 1.5 0 0114 3.622V14.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 14.5v-13z" />
-                        </svg>
-                        {name}
-                      </span>
-                    ))}
-                  </div>
+                        <path d="M2 1.5A1.5 1.5 0 013.5 0h6.879a1.5 1.5 0 011.06.44l2.122 2.12A1.5 1.5 0 0114 3.622V14.5a1.5 1.5 0 01-1.5 1.5h-9A1.5 1.5 0 012 14.5v-13z" />
+                      </svg>
+                      {name}
+                    </span>
+                  ))}
                 </div>
-              ) : (
-                /* Terminal verification view */
-                <div className="rounded-lg border border-(--l-panel-border) bg-(--l-code-bg) p-4 text-xs leading-relaxed text-(--l-panel-fg-2)">
-                  <div className="space-y-1.5 font-mono">
-                    {active.terminalLogs.map((log) => (
-                      <div key={log} className="text-(--color-success)">
-                        {log}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="pt-2 text-[11px] text-(--l-panel-fg-4)">
-                    Branch ready for review: <code className="font-mono text-(--l-panel-fg-3)">origin/{active.branch}</code>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
           </div>
 
-          {/* Workbench bottom prompt line */}
-          <div className="border-t border-(--l-panel-border) px-4 py-3">
-            <div className="mx-auto flex max-w-2xl items-center justify-between">
-              <span className="text-xs text-(--l-panel-fg-4)">
-                All checks passed. Type your next command…
-              </span>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-(--l-panel-fg-4)">
-                  Sandbox ready
-                </span>
-                <span className="size-2 rounded-full bg-(--color-success)" />
+          <div className="px-3 pb-2 pt-1 sm:px-4 sm:pb-3">
+            <div className="mx-auto max-w-2xl">
+              <div className="overflow-hidden rounded-2xl bg-(--l-panel-surface)">
+                <div className="px-3 py-2 sm:px-4 sm:py-2.5">
+                  <span className="text-[11px] text-(--l-panel-fg-4) sm:text-[12px]">
+                    Request changes or ask a question...
+                  </span>
+                </div>
+                <div className="flex items-center justify-between px-2.5 pb-1.5 sm:px-3 sm:pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-(--l-panel-fg-4)">
+                      Claude Opus 4.6
+                    </span>
+                    <span className="text-[10px] text-(--l-panel-fg-5)">
+                      1%
+                    </span>
+                  </div>
+                  <div className="flex size-6 items-center justify-center rounded-full bg-(--l-btn-bg) sm:size-7">
+                    <svg
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      className="size-3 text-(--l-btn-fg)"
+                      aria-hidden="true"
+                    >
+                      <path d="M8 12V4M8 4l-3 3M8 4l3 3" />
+                    </svg>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

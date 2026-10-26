@@ -63,7 +63,7 @@ export function ThemeToggle() {
             key={option.value}
             type="button"
             onClick={() => pick(option.value)}
-            className="flex size-7 items-center justify-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg) active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex size-7 items-center justify-center rounded-full transition-all duration-200"
             style={{
               backgroundColor: active ? "var(--l-surface)" : "transparent",
               boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
