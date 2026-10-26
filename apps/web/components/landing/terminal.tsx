@@ -35,9 +35,9 @@ const scenes: readonly Scene[] = [
       { tone: "ok", text: "reading app/api/chat/[chatId]/stream/route.ts" },
       {
         tone: "ok",
-        text: "editing route.ts \u2014 export const runtime = 'edge'",
+        text: "editing route.ts: export const runtime = 'edge'",
       },
-      { tone: "ok", text: "editing stream/route.ts \u2014 remove node apis" },
+      { tone: "ok", text: "editing stream/route.ts: remove node apis" },
       { tone: "ok", text: "running pnpm run ci" },
       { tone: "plain", text: "" },
       { tone: "plain", text: "migrated 2 routes to edge runtime." },
@@ -54,7 +54,7 @@ const scenes: readonly Scene[] = [
     name: "subagent",
     data: [
       { tone: "muted", text: "> find all unused exports and remove them" },
-      { tone: "dim", text: "delegating to explorer subagent..." },
+      { tone: "dim", text: "delegating to explorer subagent…" },
       { tone: "plain", text: "" },
       { tone: "ok", text: "glob **/*.ts (247 files)" },
       { tone: "ok", text: "grep export function|const across codebase" },
@@ -68,7 +68,7 @@ const scenes: readonly Scene[] = [
       { tone: "dim", text: "  hooks/use-theme.ts:5     useTheme" },
       { tone: "dim", text: "  components/badge.tsx:3    Badge" },
       { tone: "plain", text: "" },
-      { tone: "muted", text: "removing 6 dead exports across 5 files..." },
+      { tone: "muted", text: "removing 6 dead exports across 5 files…" },
     ],
   },
 ];
@@ -94,15 +94,15 @@ export function HeroTerminal() {
   const rows = useMemo(() => active.data, [active]);
 
   return (
-    <div className="group flex h-[420px] flex-col transition-all duration-300 md:h-[480px]">
+    <div className="group flex h-[420px] flex-col md:h-[480px]">
       <div className="flex items-center justify-between border-b border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2">
-        <div className="flex items-center gap-3 font-mono text-[11px] tabular-nums text-(--l-panel-fg-2)">
+        <div className="flex items-center gap-3 text-[11px] tabular-nums text-(--l-panel-fg-2)">
           <div>
-            mode <span className="text-(--l-panel-fg)">{active.name}</span>
+            mode <code className="font-mono text-(--l-panel-fg)">{active.name}</code>
           </div>
         </div>
-        <div className="flex items-center gap-2 font-mono text-[11px] text-(--l-panel-fg-2)">
-          <span className="inline-flex size-1.5 rounded-full bg-(--l-accent)/70" />
+        <div className="flex items-center gap-2 text-[11px] text-(--l-panel-fg-2)">
+          <span className="inline-flex size-1.5 rounded-full bg-(--l-accent)/70 motion-safe:animate-pulse motion-reduce:opacity-80" />
           running
         </div>
       </div>
@@ -119,7 +119,7 @@ export function HeroTerminal() {
       </div>
 
       <div className="border-t border-(--l-panel-border) bg-(--l-panel-surface) px-2 py-1.5">
-        <div className="terminal-scroll flex items-center gap-1 overflow-x-auto font-mono text-[11px] text-(--l-panel-fg-2)">
+        <div className="terminal-scroll flex items-center gap-1 overflow-x-auto text-[11px] text-(--l-panel-fg-2)">
           {scenes.map((scene, index) => {
             const current = index === slot;
             return (
@@ -127,7 +127,7 @@ export function HeroTerminal() {
                 key={scene.name}
                 type="button"
                 onClick={() => setSlot(index)}
-                className={`shrink-0 rounded-sm border px-2.5 py-1 transition-colors duration-150 ${
+                className={`shrink-0 rounded-sm border px-2.5 py-1 font-mono transition-colors duration-150 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg) active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed ${
                   current
                     ? "border-(--l-panel-border) bg-(--l-panel-active) text-(--l-panel-fg)"
                     : "border-transparent text-(--l-panel-fg-2) hover:border-(--l-panel-border) hover:text-(--l-panel-fg)"

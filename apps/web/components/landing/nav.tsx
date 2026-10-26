@@ -13,14 +13,6 @@ export function LandingNav({
   readonly showSignIn?: boolean;
 }) {
   const [scrolled, setScrolled] = useState(false);
-  // FIXED 2026-08-17: this nav used to render <SignInButton /> ("Sign in
-  // with Vercel") completely unconditionally on every marketing page
-  // that passes showSignIn (/, /pricing, /model) -- it never
-  // checked whether the visitor already had a session, so an already
-  // logged-in owner landing on the billing page (e.g. via the sidebar
-  // balance pill) still saw a "sign in" prompt instead of their own
-  // account menu. Now it checks the real session and swaps to an
-  // "Open Entry" link + the same avatar dropdown used inside the app.
   const { isAuthenticated, loading } = useSession();
 
   useEffect(() => {
@@ -37,35 +29,30 @@ export function LandingNav({
     >
       <div className="mx-auto max-w-[1320px]">
         <div
-          className={`flex h-16 items-center justify-between border-x bg-(--l-bg) pl-6 pr-4 transition-all duration-200 ${
+          className={`flex h-16 items-center justify-between border-x bg-(--l-bg) pl-6 pr-4 transition-colors duration-200 ${
             scrolled
               ? "border-x-(--l-border) shadow-[0_1px_0_0_var(--l-border)]"
-              : "shadow-none"
+              : "border-x-transparent shadow-none"
           }`}
         >
           <Logo className="h-[17px]" />
 
-          {/* Key product pages, linked from every marketing page. Google
-              builds sitelinks (the sub-links under a brand result) from
-              the pages a site links to most prominently, so the nav is
-              where these belong -- the footer alone was the only signal.
-              Hidden below md: the footer carries them on small screens. */}
           <div className="hidden items-center gap-6 text-sm text-(--l-fg-2) md:flex">
             <Link
               href="/ai-coding-agent"
-              className="transition-colors hover:text-(--l-fg)"
+              className="transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
             >
               AI coding agent
             </Link>
             <Link
               href="/pricing"
-              className="transition-colors hover:text-(--l-fg)"
+              className="transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
             >
               Pricing
             </Link>
             <Link
               href="/model"
-              className="transition-colors hover:text-(--l-fg)"
+              className="transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
             >
               Model
             </Link>
@@ -75,13 +62,13 @@ export function LandingNav({
             <div className="flex items-center gap-2">
               {!loading && isAuthenticated ? (
                 <>
-                  <Button asChild size="sm" variant="ghost">
+                  <Button asChild size="sm" variant="ghost" className="focus-visible:ring-1 focus-visible:ring-(--l-fg)">
                     <Link href="/">Open Entry</Link>
                   </Button>
                   <UserAvatarDropdown />
                 </>
               ) : (
-                <Button asChild size="sm" variant="ghost">
+                <Button asChild size="sm" variant="ghost" className="focus-visible:ring-1 focus-visible:ring-(--l-fg)">
                   <Link href="/login">Sign in</Link>
                 </Button>
               )}

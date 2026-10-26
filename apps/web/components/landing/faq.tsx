@@ -1,44 +1,35 @@
 import { SITE_URL } from "@/lib/site";
 
-/**
- * Answer-engine block: real, visible question/answer content that
- * matches the FAQPage JSON-LD below, so AI answer engines (ChatGPT,
- * Perplexity, AI Overviews) can quote both from the rendered page and
- * the structured data without any mismatch.
- *
- * Questions are written the way people actually ask ("What is...",
- * "Do I need..."), not as marketing fragments.
- */
 const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "What is Entry Agents?",
     answer:
-      "Entry Agents is a cloud platform for autonomous AI agents that can build software, investigate problems, create files, run commands, research the web, and work with or without a connected GitHub repository. Every session runs in a private Workspace with filesystem, outbound network and runtime access.",
+      "Entry Agents is a cloud platform for autonomous AI agents that build software, investigate issues, run tests, and coordinate across repositories. Every session runs in a private Workspace with filesystem, outbound network, and containerized runtime access.",
   },
   {
     question: "How does an Entry Agents session work?",
     answer:
-      "Each session provisions a private Workspace. Start from a blank workspace, attach a GitHub repository, or ask the agent to create something from scratch. The agent can explore files, run commands, build software, test it, and optionally commit or push the result through Git.",
+      "Each session provisions an isolated cloud worktree. Start from a blank workspace, attach a GitHub repository, or ask the agent team to implement a feature. Specialized subagents plan the architecture, execute changes, verify test suites, and create git commits for review.",
   },
   {
     question: "Which AI models does Entry Agents support?",
     answer:
-      "Entry Agents routes through Entry Gateway, supporting multiple AI models with per-token usage pricing. You can pick a default model and switch it per session.",
+      "Entry Agents routes through Entry Gateway, supporting frontier models from Anthropic, OpenAI, and Google with usage tracking and observability.",
   },
   {
     question: "Do I need to install anything to use Entry Agents?",
     answer:
-      "No. Entry Agents runs entirely in the cloud. Sign in with Vercel, Google or GitHub and start from a blank Workspace, a connected repository, an uploaded file, or a plain-language idea.",
+      "No. Entry Agents runs entirely in cloud sandboxes. Sign in and start working immediately without requiring local toolchains, Docker daemons, or dependencies on your machine.",
   },
   {
-    question: "How does Entry Agents keep my code safe?",
+    question: "How does Entry Agents keep code safe?",
     answer:
-      "Every session runs in a private Workspace that no other session can reach. Accounts connect through standard OAuth with encryption. If you connect a repository, the agent only receives the repository and access you authorize; blank Workspace work remains separate.",
+      "Every session runs in an isolated workspace with ephemeral containers. Repositories connect through encrypted OAuth scopes. Agents only touch the files and branches you explicitly authorize.",
   },
   {
     question: "What does Entry Agents cost?",
     answer:
-      "Usage is credit-based for model usage. Entry Agents does not charge a separate sandbox or Workspace fee. Subscriptions include bonus credits, and your balance is used for the model tokens consumed by your agent.",
+      "Usage is credit-based for model tokens. Subscriptions include monthly compute credits and direct observability over every run.",
   },
 ];
 
@@ -65,27 +56,23 @@ export function LandingFaq() {
       <div className="mx-auto max-w-[1320px] md:border-t md:border-(--l-border)">
         <div className="grid gap-10 px-6 py-16 sm:px-10 md:py-24 lg:grid-cols-[minmax(240px,340px)_1fr]">
           <div>
-            <div className="font-mono text-xs uppercase tracking-widest text-(--l-fg-3)">
-              FAQ
-            </div>
-            <h2 className="mt-3 text-balance text-2xl font-semibold tracking-tighter sm:text-3xl md:text-4xl">
+            <h2 className="text-balance text-2xl font-semibold tracking-tighter sm:text-3xl md:text-4xl">
               Questions,
               <br />
               answered.
             </h2>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">
-              What Entry Agents is, how sessions run, and what it costs. More on
-              the{" "}
+              Architecture, sandboxing, and session execution. More on the{" "}
               <a
                 href={`${SITE_URL}/pricing`}
-                className="underline underline-offset-4 hover:text-(--l-fg)"
+                className="underline underline-offset-4 transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
               >
                 pricing
               </a>{" "}
               and{" "}
               <a
                 href={`${SITE_URL}/model`}
-                className="underline underline-offset-4 hover:text-(--l-fg)"
+                className="underline underline-offset-4 transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
               >
                 model
               </a>{" "}
@@ -99,7 +86,7 @@ export function LandingFaq() {
                 key={f.question}
                 className="group border-b border-(--l-border-subtle)"
               >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 text-sm font-medium text-(--l-fg) marker:hidden [&::-webkit-details-marker]:hidden">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 text-sm font-medium text-(--l-fg) marker:hidden [&::-webkit-details-marker]:hidden focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)">
                   {f.question}
                   <span
                     aria-hidden="true"

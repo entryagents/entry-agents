@@ -7,48 +7,48 @@ export function LandingFooter() {
       <div className="mx-auto max-w-[1320px] md:border-t md:border-(--l-border)">
         <div className="grid sm:grid-cols-2 lg:grid-cols-3">
           <div className="px-6 pt-14 md:px-10 md:py-18">
-            <div className="font-mono text-xs uppercase tracking-widest text-(--l-fg-3)">
+            <div className="text-xs font-medium text-(--l-fg-3)">
               Entry Agents
             </div>
             <div className="mt-3 text-sm text-(--l-fg-2)">
-              Entry Agents for
+              Autonomous agent teams for
               <br />
-              shipping code.
+              shipping software.
             </div>
           </div>
 
           <div className="px-6 pt-14 md:px-10 md:py-18">
-            <div className="font-mono text-xs uppercase tracking-widest text-(--l-fg-3)">
+            <div className="text-xs font-medium text-(--l-fg-3)">
               Product
             </div>
             <div className="mt-4 flex flex-col gap-2">
               <Link
                 href="/ai-coding-agent"
-                className="font-sans text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
               >
                 AI coding agent
               </Link>
               <Link
                 href="/guide"
-                className="font-sans text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
               >
                 Beginner guide
               </Link>
               <Link
                 href="/pricing"
-                className="font-sans text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
               >
                 Pricing
               </Link>
               <Link
                 href="/model"
-                className="font-sans text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
               >
                 Model
               </Link>
               <Link
                 href="/"
-                className="font-sans text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
               >
                 Overview
               </Link>
@@ -56,29 +56,29 @@ export function LandingFooter() {
           </div>
 
           <div className="px-6 pt-14 md:px-10 md:py-18">
-            <div className="font-mono text-xs uppercase tracking-widest text-(--l-fg-3)">
-              Built with
+            <div className="text-xs font-medium text-(--l-fg-3)">
+              Integrations
             </div>
             <div className="mt-4 flex flex-col gap-2">
               <a
                 href="https://ai-sdk.dev/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-sans text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
               >
                 AI SDK
               </a>
-              <span className="font-sans text-sm text-(--l-fg-2)">
-                Workspace
+              <span className="text-sm text-(--l-fg-2)">
+                Workspace Sandboxes
               </span>
-              <span className="font-sans text-sm text-(--l-fg-2)">
+              <span className="text-sm text-(--l-fg-2)">
                 Entry Gateway
               </span>
               <a
                 href="https://useworkflow.dev/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-sans text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg) focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg)"
               >
                 Workflow SDK
               </a>

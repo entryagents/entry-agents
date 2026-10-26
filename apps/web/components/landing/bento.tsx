@@ -1,69 +1,72 @@
 import Link from "next/link";
 
 type BentoItem = {
-  readonly id: string;
+  readonly slug: string;
+  readonly tag: string;
   readonly title: string;
   readonly body: string;
 };
 
 const items: readonly BentoItem[] = [
   {
-    id: "001",
-    title: "AI SDK",
-    body: "Unified interface across models. Switch providers, stream responses, and call tools with a single API.",
+    slug: "coordination",
+    tag: "Coordination",
+    title: "Multi-agent teams",
+    body: "Divide engineering tasks across parallel specialized subagents: Architect for planning, Executor for implementation, Verifier for test passes.",
   },
   {
-    id: "002",
-    title: "Multiple AI models",
-    body: "Route requests across supported models with fallbacks, rate limiting, and usage observability.",
+    slug: "worktree",
+    tag: "Sandboxes",
+    title: "Isolated git worktrees",
+    body: "A dedicated cloud workspace for every session with filesystem, outbound network, and containerized runtime access. No local machine risk.",
   },
   {
-    id: "003",
-    title: "Workspace",
-    body: "A private machine for every session with filesystem, outbound network, and runtime access.",
+    slug: "durable",
+    tag: "Orchestration",
+    title: "Durable workflows",
+    body: "Agent execution loops run as resilient, state-persisted workflows that survive restarts, network disconnects, and long-running batch jobs.",
   },
   {
-    id: "004",
-    title: "Workflow SDK",
-    body: "Durable, resumable agent workflows that survive restarts and coordinate multi-step operations.",
+    slug: "verification",
+    tag: "Integrity",
+    title: "Automated verification",
+    body: "Every code change runs automated typechecks, lint passes, and test suites. Review unified git diffs before merging into your repository.",
   },
 ];
 
-function mark(index: number) {
-  if (index === 0) {
+function BentoIcon({ slug }: { readonly slug: string }) {
+  if (slug === "coordination") {
     return (
-      <div className="grid grid-cols-2 gap-1" aria-hidden="true">
-        <span className="size-2 border border-(--l-fg-4)" />
-        <span className="size-2 border border-(--l-fg-4)" />
-        <span className="size-2 border border-(--l-fg-4)" />
-        <span className="size-2 border border-(--l-fg-4)" />
-      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="size-5 text-(--l-accent)" aria-hidden="true">
+        <circle cx="6" cy="6" r="3" />
+        <circle cx="18" cy="6" r="3" />
+        <circle cx="12" cy="18" r="3" />
+        <path d="M8.5 7.5L10 16M15.5 7.5L14 16M9 6h6" strokeLinecap="round" />
+      </svg>
     );
   }
-  if (index === 1) {
+  if (slug === "worktree") {
     return (
-      <div className="flex items-center gap-1.5" aria-hidden="true">
-        <span className="h-px w-4 bg-(--l-fg-4)" />
-        <span className="h-px w-6 bg-(--l-fg-4)" />
-        <span className="h-px w-3 bg-(--l-fg-4)" />
-      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="size-5 text-(--l-accent)" aria-hidden="true">
+        <rect x="3" y="3" width="7" height="7" rx="1.5" />
+        <rect x="14" y="3" width="7" height="7" rx="1.5" />
+        <rect x="8" y="14" width="8" height="7" rx="1.5" />
+        <path d="M6.5 10v2a2 2 0 002 2h7a2 2 0 002-2v-2" strokeLinecap="round" />
+      </svg>
     );
   }
-  if (index === 2) {
+  if (slug === "durable") {
     return (
-      <div className="flex flex-col gap-1" aria-hidden="true">
-        <span className="h-1 w-8 border border-(--l-fg-4)" />
-        <span className="h-1 w-6 border border-(--l-fg-4)" />
-        <span className="h-1 w-4 border border-(--l-fg-4)" />
-      </div>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="size-5 text-(--l-accent)" aria-hidden="true">
+        <path d="M21 12a9 9 0 11-3-6.7L21 8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M21 3v5h-5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
     );
   }
   return (
-    <div className="relative h-6 w-8" aria-hidden="true">
-      <span className="absolute left-0 top-0 size-2 border border-(--l-fg-4)" />
-      <span className="absolute right-0 top-0 size-2 border border-(--l-fg-4)" />
-      <span className="absolute bottom-0 left-1/2 size-2 -translate-x-1/2 border border-(--l-fg-4)" />
-    </div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="size-5 text-(--l-accent)" aria-hidden="true">
+      <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 
@@ -71,23 +74,22 @@ export function LandingBento() {
   return (
     <section>
       <div className="mx-auto max-w-[1320px] border-t border-(--l-border-subtle)">
-        <div className="grid gap-6 border-b border-(--l-border) px-6 py-14 pb-10 sm:gap-10 sm:px-10 md:grid-cols-2 md:gap-0 md:pb-14 md:py-28">
+        <div className="grid gap-6 border-b border-(--l-border) px-6 py-14 pb-10 sm:gap-10 sm:px-10 md:grid-cols-2 md:gap-0 md:pb-14 md:py-24">
           <div>
-            <h2 className="text-balance text-3xl font-semibold leading-[1.05] tracking-tighter sm:text-4xl md:text-6xl">
-              Infrastructure
+            <h2 className="text-balance text-3xl font-semibold leading-[1.05] tracking-tighter sm:text-4xl md:text-5xl">
+              Engineered for
               <br />
-              that ships.
+              software delivery.
             </h2>
           </div>
           <div className="md:pl-10">
             <p className="max-w-md text-balance text-base leading-relaxed text-(--l-fg-2)">
-              Built for real software work: multiple models and private
-              Workspaces, and durable workflows for agents that ship code.
+              Built for real production codebases: coordinated agent teams, private cloud worktrees, and resilient background execution.
             </p>
             <div className="mt-6">
               <Link
                 href="/login"
-                className="inline-flex min-h-9 items-center rounded-md bg-(--l-fg) px-4 text-sm font-medium text-(--l-bg) transition-opacity hover:opacity-85"
+                className="inline-flex min-h-9 items-center rounded-md bg-(--l-fg) px-4 text-sm font-medium text-(--l-bg) transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-(--l-fg) active:scale-[0.98]"
               >
                 Get started
               </Link>
@@ -98,8 +100,8 @@ export function LandingBento() {
         <div className="grid md:grid-cols-2 lg:grid-cols-4">
           {items.map((item, index) => (
             <article
-              key={item.id}
-              className={`flex h-full flex-col border-b border-(--l-border) px-6 py-8 md:px-10 md:py-9 ${
+              key={item.slug}
+              className={`flex h-full flex-col border-b border-(--l-border) px-6 py-8 md:px-8 md:py-9 ${
                 index % 2 === 1 ? "md:border-l md:border-l-(--l-border)" : ""
               } ${index >= 2 ? "md:border-b-0" : ""} ${
                 index > 0
@@ -107,14 +109,16 @@ export function LandingBento() {
                   : "lg:border-l-0"
               } lg:border-b-0`}
             >
-              <div className="font-mono text-[11px] text-(--l-fg-4)">
-                {item.id}
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium text-(--l-fg-3)">
+                  {item.tag}
+                </span>
+                <BentoIcon slug={item.slug} />
               </div>
-              <div className="mt-7 flex h-10 items-center">{mark(index)}</div>
-              <h3 className="mt-7 text-balance text-2xl font-semibold tracking-tighter">
+              <h3 className="mt-6 text-balance text-xl font-semibold tracking-tighter">
                 {item.title}
               </h3>
-              <p className="mt-4 flex-1 text-pretty text-sm leading-relaxed text-(--l-fg-2)">
+              <p className="mt-3 flex-1 text-pretty text-sm leading-relaxed text-(--l-fg-2)">
                 {item.body}
               </p>
             </article>

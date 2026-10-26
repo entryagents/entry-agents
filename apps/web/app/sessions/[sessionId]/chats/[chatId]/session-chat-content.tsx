@@ -603,7 +603,7 @@ function CircularProgress({
   const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
   return (
-    <svg width={size} height={size} className="-rotate-90">
+    <svg width={size} height={size} className="-rotate-90" aria-hidden="true">
       {/* Background circle */}
       <circle
         cx={size / 2}
@@ -3828,7 +3828,7 @@ export function SessionChatContent({
                                                 setActiveMessageActionsId((current) => current === m.id ? null : m.id);
                                               }
                                             }}
-                                            className="w-full rounded-2xl bg-muted/40 dark:bg-[#18191f] border border-border/80 dark:border-white/10 p-4 text-xs font-mono text-foreground dark:text-neutral-200 leading-relaxed shadow-sm transition-all hover:border-border dark:hover:border-white/20 select-text cursor-text"
+                                            className="w-full rounded-2xl bg-muted/40 dark:bg-card border border-border/80 dark:border-white/10 p-4 text-xs font-mono text-foreground dark:text-neutral-200 leading-relaxed shadow-sm transition-colors hover:border-border dark:hover:border-white/20 select-text cursor-text"
                                           >
                                             <p className="whitespace-pre-wrap break-words">
                                               {p.text}
@@ -3876,7 +3876,7 @@ export function SessionChatContent({
                                                 className="rounded p-1 transition hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                                               >
                                                 {resendingMessageId === m.id ? (
-                                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                                  <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
                                                 ) : (
                                                   <RotateCcw className="h-4 w-4" />
                                                 )}
@@ -3896,7 +3896,7 @@ export function SessionChatContent({
                                                 className="rounded p-1 transition hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
                                               >
                                                 {deletingMessageId === m.id ? (
-                                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                                  <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
                                                 ) : (
                                                   <Trash2 className="h-4 w-4" />
                                                 )}
@@ -4006,7 +4006,7 @@ export function SessionChatContent({
                                                   >
                                                     {forkingAssistantMessageId ===
                                                     m.id ? (
-                                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                                      <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
                                                     ) : (
                                                       <GitBranch className="h-4 w-4" />
                                                     )}
@@ -4109,10 +4109,10 @@ export function SessionChatContent({
                                                 hasMessageActionInFlight
                                               }
                                               aria-label="Delete this message and everything after it"
-                                              className="absolute -left-10 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                              className="absolute -left-10 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition-opacity motion-safe:transition-transform hover:text-destructive group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
                                             >
                                               {deletingMessageId === m.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
                                               ) : (
                                                 <Trash2 className="h-4 w-4" />
                                               )}
@@ -4158,10 +4158,10 @@ export function SessionChatContent({
                                                 hasMessageActionInFlight
                                               }
                                               aria-label="Delete this message and everything after it"
-                                              className="absolute -left-10 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                              className="absolute -left-10 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground opacity-0 transition-opacity motion-safe:transition-transform hover:text-destructive group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
                                             >
                                               {deletingMessageId === m.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                <Loader2 className="h-4 w-4 motion-safe:animate-spin" />
                                               ) : (
                                                 <Trash2 className="h-4 w-4" />
                                               )}
@@ -4348,7 +4348,7 @@ export function SessionChatContent({
                     <PinnedTodoPanel todos={latestTodos} />
                     {/* Input form */}
                     <div
-                      className={`relative overflow-hidden rounded-2xl bg-card dark:bg-[#14151a] border border-border/80 dark:border-white/10 shadow-xl transition-all ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
+                      className={`relative overflow-hidden rounded-2xl bg-card border border-border/80 dark:border-white/10 shadow-xl transition-colors ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
                     >
                       <form
                         onSubmit={async (e) => {
