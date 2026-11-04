@@ -23,7 +23,14 @@ import {
   type VercelApiResult,
   type VercelCliToolResult,
 } from "@entry-agents/agent";
-import { FatalError, getWorkflowMetadata, getWritable } from "workflow";
+import {
+  FatalError,
+  defineHook,
+  getWorkflowMetadata,
+  getWritable,
+} from "workflow";
+import { z } from "zod";
+
 import { getRun } from "workflow/api";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
 import {
@@ -97,6 +104,10 @@ import {
   persistImageAttachmentsToSandbox,
   resolveChatSandboxRuntime,
 } from "./chat-sandbox-runtime";
+
+export const chatStopHook = defineHook({
+  schema: z.object({ reason: z.string().optional() }),
+});
 
 type AuthSessionContext = Pick<AuthSession, "authProvider" | "user"> | null;
 
@@ -2577,6 +2588,24 @@ export async function runAgentWorkflow(options: Options) {
       options.maxSteps === undefined || step < options.maxSteps;
       step++
     ) {
+      // Cooperative check: Stop if chat was cancelled in DB or workflow run was cancelled
+      try {
+        const { getChatById } = await import("@/lib/db/sessions");
+        const currentChat = await getChatById(options.chatId);
+        if (
+          currentChat?.status === "cancelled" ||
+          (currentChat && currentChat.activeStreamId !== workflowRunId)
+        ) {
+          console.warn(
+            `[chat-workflow] Chat ${options.chatId} was marked cancelled in database. Stopping workflow loop.`,
+          );
+          wasAborted = true;
+          break;
+        }
+      } catch {
+        // Ignore read failure
+      }
+
       if (Date.now() - turnStartedAt > MAX_WORKFLOW_TURN_DURATION_MS) {
         console.warn(
           `[chat-workflow] Turn exceeded maximum duration (${MAX_WORKFLOW_TURN_DURATION_MS}ms) for chat ${options.chatId}`,
@@ -2721,6 +2750,23 @@ export async function runAgentWorkflow(options: Options) {
         );
         wasAborted = true;
         break;
+      }
+
+      try {
+        const { getChatById } = await import("@/lib/db/sessions");
+        const currentChat = await getChatById(options.chatId);
+        if (
+          currentChat?.status === "cancelled" ||
+          (currentChat && currentChat.activeStreamId !== workflowRunId)
+        ) {
+          console.warn(
+            `[chat-workflow] Chat ${options.chatId} was marked cancelled in database after step. Stopping loop.`,
+          );
+          wasAborted = true;
+          break;
+        }
+      } catch {
+        // Ignore read failure
       }
 
       try {
@@ -3137,7 +3183,12 @@ const runAgentStep = async (
   const { webAgent } = await import("@/app/config");
 
   const abortController = new AbortController();
-  const stopMonitor = startStopMonitor(workflowRunId, abortController, userId);
+  const stopMonitor = startStopMonitor(
+    workflowRunId,
+    abortController,
+    userId,
+    chatId,
+  );
   // Workflow steps can spend minutes inside a model/tool call. Keep the
   // per-user billing lease alive so a legitimate long turn cannot be stolen,
   // while a crashed process still becomes reclaimable after the lease expires.
@@ -3845,7 +3896,6 @@ const runAgentStep = async (
               continue;
             }
 
-
             throw streamErr;
           }
         }
@@ -4301,6 +4351,7 @@ function startStopMonitor(
   runId: string,
   abortController: AbortController,
   userId: string,
+  chatId: string,
 ) {
   let shouldStop = false;
 
@@ -4311,20 +4362,44 @@ function startStopMonitor(
     // the dynamic import below, polled every tick for that reason).
     const { isUserAdmin } = await import("@/lib/db/users");
     const isAdminUser = await isUserAdmin(userId).catch(() => true);
+    const { getChatById } = await import("@/lib/db/sessions");
 
     while (!shouldStop && !abortController.signal.aborted) {
+      // 1. Cooperative DB Check: Check if user stopped this chat via Stop button
+      try {
+        const chat = await getChatById(chatId);
+        if (
+          chat &&
+          (chat.status === "cancelled" ||
+            (chat.activeStreamId !== null && chat.activeStreamId !== runId) ||
+            chat.activeStreamId === null)
+        ) {
+          console.warn(
+            `[chat-workflow] Stop requested via DB for chat ${chatId} (status: ${chat.status}, activeStreamId: ${chat.activeStreamId}). Aborting step controller.`,
+          );
+          abortController.abort();
+          const { releaseUserBillingTurn } =
+            await import("@/lib/billing/credit-ledger");
+          await releaseUserBillingTurn(userId, runId).catch(() => {});
+          return;
+        }
+      } catch {
+        // Ignore transient DB poll errors
+      }
+
+      // 2. Cooperative Workflow Status Check
       let runStatus:
         | "pending"
         | "running"
         | "completed"
         | "failed"
-        | "cancelled";
+        | "cancelled"
+        | undefined;
 
       try {
         runStatus = await run.status;
       } catch {
-        await delay(150);
-        continue;
+        // Continue loop even if run.status read fails
       }
 
       if (runStatus === "cancelled") {

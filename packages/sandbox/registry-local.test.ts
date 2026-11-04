@@ -74,26 +74,22 @@ describe("local provider discoverability", () => {
 describe("web vs desktop provider availability", () => {
   test("web context unchanged: local NOT selectable in the web app", () => {
     // The shared web selector list must not contain local.
-    expect(USER_SELECTABLE_SANDBOX_TYPES).toEqual(["boxd", "modal", "novita"]);
-    expect(listProvidersForContext("web")).toEqual(["boxd", "modal", "novita"]);
+    expect(USER_SELECTABLE_SANDBOX_TYPES).toEqual(["boxd"]);
+    expect(listProvidersForContext("web")).toEqual(["boxd"]);
     expect(isSelectableInContext("local", "web")).toBe(false);
-    expect(isSelectableInContext("modal", "web")).toBe(true);
+    expect(isSelectableInContext("boxd", "web")).toBe(true);
+    expect(isSelectableInContext("modal", "web")).toBe(false);
   });
 
   test("desktop context: local selectable, web providers still available", () => {
-    expect(listProvidersForContext("desktop")).toEqual([
-      "boxd",
-      "modal",
-      "novita",
-      "local",
-    ]);
+    expect(listProvidersForContext("desktop")).toEqual(["boxd", "local"]);
     expect(isSelectableInContext("local", "desktop")).toBe(true);
     expect(isSelectableInContext("nope", "desktop")).toBe(false);
   });
 
   test("unknown context defaults to the web (most restrictive) list", () => {
     expect(isSelectableInContext("local")).toBe(false);
-    expect(listProvidersForContext()).toEqual(["boxd", "modal"]);
+    expect(listProvidersForContext()).toEqual(["boxd"]);
   });
 
   test("context map only names known providers", () => {

@@ -68,7 +68,7 @@ describe("sandbox provider registry", () => {
       (provider) => provider.id,
     );
     // boxd is the production default and must lead the selector.
-    expect(selectable).toEqual(["boxd", "modal"]);
+    expect(selectable).toEqual(["boxd"]);
     expect(selectable).not.toContain("local");
 
     expect(isKnownSandboxType("modal")).toBe(true);
@@ -186,40 +186,30 @@ describe("provider selection reaches the runtime", () => {
 });
 
 describe("provider state shape and persistence", () => {
-  test("modal provision state derives a stable volume name from the session", () => {
+  test("retired modal provision state automatically migrates to boxd", () => {
     const state = requireSandboxProvider("modal").buildProvisionState({
       sessionId: "abc",
     });
 
-    expect(state).toEqual({
-      type: "modal",
-      volumeName: "entry-workspace-abc",
+    expect(state).toMatchObject({
+      type: "boxd",
     });
   });
 
-  test("modal provision state keeps the persisted volume across reconnects", () => {
+  test("retired modal provision state migrates existing sessions to boxd", () => {
     const provider = requireSandboxProvider("modal");
 
-    const first = provider.buildProvisionState({ sessionId: "abc" });
     const reopened = provider.buildProvisionState({
       sessionId: "abc",
       existing: { type: "modal", volumeName: "entry-workspace-abc" },
     });
 
-    expect(reopened).toEqual({
-      type: "modal",
-      volumeName: "entry-workspace-abc",
-    });
-    // The volume name is the durable identity, so it must never churn.
     expect(reopened).toMatchObject({
-      volumeName: (first as { volumeName: string }).volumeName,
+      type: "boxd",
     });
   });
 
-  test("fresh provision drops the sandbox id but keeps the volume", () => {
-    // Modal keeps the volume name even on a fresh provision: the volume is
-    // what holds the workspace, and dropping it would orphan the session's
-    // files. Only the (dead) sandbox id is discarded.
+  test("fresh provision of retired modal session migrates to fresh boxd", () => {
     const modal = requireSandboxProvider("modal").buildProvisionState({
       sessionId: "abc",
       fresh: true,
@@ -229,9 +219,8 @@ describe("provider state shape and persistence", () => {
         sandboxId: "sb-dead",
       },
     });
-    expect(modal).toEqual({
-      type: "modal",
-      volumeName: "entry-workspace-abc",
+    expect(modal).toMatchObject({
+      type: "boxd",
     });
   });
 
@@ -252,14 +241,14 @@ describe("provider state shape and persistence", () => {
     });
   });
 
-  test("source is carried through for modal", () => {
+  test("source is carried through when retired modal migrates to boxd", () => {
     const source = { repo: "https://github.com/o/r.git", branch: "main" };
 
     const state = requireSandboxProvider("modal").buildProvisionState({
       sessionId: "abc",
       source,
     });
-    expect(state).toMatchObject({ type: "modal", source });
+    expect(state).toMatchObject({ type: "boxd", source });
   });
 
   test("local drops source because it never clones a repository", () => {

@@ -22,17 +22,11 @@ import {
   type SandboxCapabilities,
   type SandboxProviderId,
 } from "./registry-types.ts";
-import { connectModal } from "./modal/connect.ts";
 import { connectBoxd } from "./boxd/connect.ts";
 import { isBoxdConfigured } from "./boxd/config.ts";
 import type { BoxdState } from "./boxd/state.ts";
-import { isModalConfigured } from "./modal/client.ts";
-import type { ModalState } from "./modal/state.ts";
 import { connectLocal } from "./local/sandbox.ts";
 import type { LocalSandboxConnectOptions } from "./local/sandbox.ts";
-import { connectNovita } from "./novita/connect.ts";
-import { isNovitaConfigured } from "./novita/config.ts";
-import type { NovitaState } from "./novita/state.ts";
 
 export class UnsupportedSandboxProviderError extends Error {
   readonly providerId: string;
@@ -82,17 +76,6 @@ export interface SandboxProvider {
    * error at connect time, never a silent substitution.
    */
   isAvailable(): boolean;
-}
-
-function carryForward(
-  state: SandboxState | undefined,
-  drop: readonly string[],
-): Record<string, unknown> {
-  const carried: Record<string, unknown> = { ...state };
-  for (const key of drop) {
-    delete carried[key];
-  }
-  return carried;
 }
 
 const boxdProvider: SandboxProvider = {
@@ -147,44 +130,18 @@ const modalProvider: SandboxProvider = {
   description: SANDBOX_PROVIDER_METADATA.modal.description,
   capabilities: SANDBOX_PROVIDER_METADATA.modal.capabilities,
 
-  async connect(state, options) {
-    if (state.type !== "modal") {
-      throw new UnsupportedSandboxProviderError(String(state.type));
-    }
-    return connectModal(
-      state as { type: "modal" } & ModalState & { sessionId: string },
-      options,
+  async connect(state, _options) {
+    throw new UnsupportedSandboxProviderError(
+      `${String(state.type)} is fully retired. All sandboxes now use Boxd workspace.`,
     );
   },
 
-  buildProvisionState({ existing, sessionId, source, fresh }) {
-    const current =
-      existing?.type === "modal"
-        ? (existing as { type: "modal" } & ModalState)
-        : undefined;
-
-    // The Volume is the durable identity, so it is carried across a
-    // fresh provision; the sandbox id is NOT (it is a handle on a live
-    // container and is always re-derived by connect()).
-    const carry = carryForward(
-      current,
-      fresh ? ["sandboxId", "expiresAt"] : ["expiresAt"],
-    );
-
-    const volumeName =
-      typeof carry.volumeName === "string" && carry.volumeName.length > 0
-        ? carry.volumeName
-        : `entry-workspace-${sessionId}`;
-
-    return {
-      type: "modal",
-      ...carry,
-      volumeName,
-      ...(source ? { source } : {}),
-    } as SandboxState;
+  buildProvisionState({ sessionId, source }) {
+    // Automatically migrate retired modal sessions to Boxd
+    return boxdProvider.buildProvisionState({ sessionId, source, fresh: true });
   },
 
-  isAvailable: () => isModalConfigured(),
+  isAvailable: () => false,
 };
 
 const localProvider: SandboxProvider = {
@@ -222,27 +179,18 @@ const novitaProvider: SandboxProvider = {
   description: SANDBOX_PROVIDER_METADATA.novita.description,
   capabilities: SANDBOX_PROVIDER_METADATA.novita.capabilities,
 
-  async connect(state, options) {
-    if (state.type !== "novita") {
-      throw new UnsupportedSandboxProviderError(String(state.type));
-    }
-    return connectNovita(state as { type: "novita" } & NovitaState, options);
+  async connect(state, _options) {
+    throw new UnsupportedSandboxProviderError(
+      `${String(state.type)} is fully retired. All sandboxes now use Boxd workspace.`,
+    );
   },
 
-  buildProvisionState({ existing, sessionId, source, fresh }) {
-    const current =
-      existing?.type === "novita"
-        ? (existing as { type: "novita" } & NovitaState)
-        : undefined;
-
-    return {
-      type: "novita",
-      ...(current?.sandboxId && !fresh ? { sandboxId: current.sandboxId } : {}),
-      ...(source ? { source } : {}),
-    } as SandboxState;
+  buildProvisionState({ sessionId, source }) {
+    // Automatically migrate retired novita sessions to Boxd
+    return boxdProvider.buildProvisionState({ sessionId, source, fresh: true });
   },
 
-  isAvailable: () => isNovitaConfigured(),
+  isAvailable: () => false,
 };
 
 export const SANDBOX_PROVIDERS: Record<SandboxProviderId, SandboxProvider> = {

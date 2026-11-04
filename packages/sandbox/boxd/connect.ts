@@ -208,7 +208,6 @@ export async function connectBoxd(
         if (!machine) throw error;
       }
     }
-    await client.machines.setAutoHibernateTimeout(machine.id, 1200);
   } else if (machine.status === "stopped") {
     await client.machines.start(machine.id);
   } else if (machine.status === "hibernated") {
@@ -216,6 +215,13 @@ export async function connectBoxd(
   } else if (machine.status === "suspended") {
     await client.machines.resume(machine.id);
   }
+
+  // Ensure every Boxd machine automatically pauses (suspends to RAM) after 5 minutes (300s)
+  // and hibernates (suspends to disk) after 20 minutes (1200s) of inactivity.
+  await Promise.allSettled([
+    client.machines.setAutoSuspendTimeout(machine.id, 300),
+    client.machines.setAutoHibernateTimeout(machine.id, 1200),
+  ]);
 
   try {
     await client.machines.waitUntilReady(machine.id);
@@ -245,7 +251,10 @@ export async function connectBoxd(
           ssh: true,
         },
       });
-      await client.machines.setAutoHibernateTimeout(machine.id, 1200);
+      await Promise.allSettled([
+        client.machines.setAutoSuspendTimeout(machine.id, 300),
+        client.machines.setAutoHibernateTimeout(machine.id, 1200),
+      ]);
       await client.machines.waitUntilReady(machine.id);
     } else {
       throw readyError;

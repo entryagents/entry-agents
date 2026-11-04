@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import type { UserPreferencesData } from "@/lib/db/user-preferences";
-import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import {
   filterModelsForSession,
   sanitizeSelectedModelIdForSession,
@@ -32,7 +31,7 @@ const requestUrl = "https://entry-agents.dev/api/test";
 const basePreferences: UserPreferencesData = {
   defaultModelId: "kimi-k3",
   defaultSubagentModelId: "kimi-k3",
-  defaultSandboxType: "modal",
+  defaultSandboxType: "boxd",
   defaultDiffMode: "unified",
   autoCommitPush: false,
   autoCreatePr: false,
@@ -46,38 +45,34 @@ const basePreferences: UserPreferencesData = {
 };
 
 describe("model access gating", () => {
-  test("filters Kimi K3 for managed trial users", () => {
+  test("allows all models for managed trial users", () => {
     const result = filterModelsForSession(
       [{ id: "kimi-k3" }, { id: "openai/gpt-5" }],
       managedTrialSession,
       requestUrl,
     );
 
-    expect(result).toEqual([{ id: "openai/gpt-5" }]);
+    expect(result).toEqual([{ id: "kimi-k3" }, { id: "openai/gpt-5" }]);
   });
 
-  test("falls back to the app default when a managed trial user selects Kimi K3", () => {
+  test("preserves model selection when a managed trial user selects Kimi K3", () => {
     const result = sanitizeSelectedModelIdForSession(
       "kimi-k3",
       managedTrialSession,
       requestUrl,
     );
 
-    expect(result).toBe(APP_DEFAULT_MODEL_ID);
+    expect(result).toBe("kimi-k3");
   });
 
-  test("sanitizes managed trial preferences without mutating the database shape", () => {
+  test("preserves managed trial preferences without mutating the database shape", () => {
     const result = sanitizeUserPreferencesForSession(
       basePreferences,
       managedTrialSession,
       requestUrl,
     );
 
-    expect(result).toMatchObject({
-      defaultModelId: APP_DEFAULT_MODEL_ID,
-      defaultSubagentModelId: APP_DEFAULT_MODEL_ID,
-      enabledModelIds: ["openai/gpt-5"],
-    });
+    expect(result).toEqual(basePreferences);
   });
 
   test("leaves Vercel users unchanged", () => {

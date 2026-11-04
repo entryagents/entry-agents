@@ -172,14 +172,54 @@ export class BoxdSandbox implements Sandbox {
     options?: { signal?: AbortSignal },
   ): Promise<ExecResult> {
     this.assertRunning();
-    if (options?.signal?.aborted) throw new Error("Command aborted");
-    const result = await this.client.machines.exec(this.machineId, {
+    if (options?.signal?.aborted) {
+      const err = new Error("Command aborted");
+      err.name = "AbortError";
+      throw err;
+    }
+
+    const execPromise = this.client.machines.exec(this.machineId, {
       command: ["bash", "-c", command],
       cwd,
       timeout: timeoutMs,
       env: this.commandEnv(),
     });
-    return mapExec(result);
+
+    if (!options?.signal) {
+      const result = await execPromise;
+      return mapExec(result);
+    }
+
+    let abortListener: (() => void) | undefined;
+    const abortPromise = new Promise<never>((_resolve, reject) => {
+      abortListener = () => {
+        const err = new Error("Command aborted");
+        err.name = "AbortError";
+        reject(err);
+      };
+      if (options.signal!.aborted) {
+        abortListener();
+      } else {
+        options.signal!.addEventListener("abort", abortListener, {
+          once: true,
+        });
+      }
+    });
+
+    try {
+      const result = await Promise.race([execPromise, abortPromise]);
+      return mapExec(result);
+    } finally {
+      if (abortListener && options.signal) {
+        options.signal.removeEventListener("abort", abortListener);
+      }
+    }
+  }
+
+  async pause(): Promise<void> {
+    if (this.stopped) return;
+    await this.hooks?.beforeStop?.(this);
+    await this.client.machines.pause(this.machineId);
   }
 
   async execDetached(

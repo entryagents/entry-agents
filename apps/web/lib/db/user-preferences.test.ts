@@ -13,9 +13,9 @@ describe("toUserPreferencesData", () => {
     const { toUserPreferencesData } = await userPreferencesModulePromise;
 
     expect(toUserPreferencesData()).toEqual({
-      defaultModelId: "gpt-5.6-sol",
+      defaultModelId: "step-5-preview",
       defaultSubagentModelId: null,
-      defaultSandboxType: "modal",
+      defaultSandboxType: "boxd",
       defaultDiffMode: "unified",
       autoCommitPush: false,
       autoCreatePr: false,
@@ -48,7 +48,7 @@ describe("toUserPreferencesData", () => {
       enabledModelIds: [],
     });
 
-    expect(result.defaultSandboxType).toBe("modal");
+    expect(result.defaultSandboxType).toBe("boxd");
     expect(result.defaultDiffMode).toBe("unified");
   });
 
@@ -71,7 +71,7 @@ describe("toUserPreferencesData", () => {
       enabledModelIds: [],
     });
 
-    expect(result.defaultSandboxType).toBe("modal");
+    expect(result.defaultSandboxType).toBe("boxd");
     expect(result.defaultDiffMode).toBe("unified");
   });
 
@@ -81,7 +81,7 @@ describe("toUserPreferencesData", () => {
     const result = toUserPreferencesData({
       defaultModelId: "openai/gpt-5",
       defaultSubagentModelId: null,
-      defaultSandboxType: "modal",
+      defaultSandboxType: "boxd",
       defaultDiffMode: "split",
       autoCommitPush: false,
       autoCreatePr: false,
@@ -105,7 +105,7 @@ describe("toUserPreferencesData", () => {
     const result = toUserPreferencesData({
       defaultModelId: "openai/gpt-5",
       defaultSubagentModelId: null,
-      defaultSandboxType: "modal",
+      defaultSandboxType: "boxd",
       defaultDiffMode: "split",
       autoCommitPush: false,
       autoCreatePr: false,
@@ -132,7 +132,7 @@ describe("toUserPreferencesData", () => {
     const result = toUserPreferencesData({
       defaultModelId: "openai/gpt-5",
       defaultSubagentModelId: null,
-      defaultSandboxType: "modal",
+      defaultSandboxType: "boxd",
       defaultDiffMode: "split",
       autoCommitPush: false,
       autoCreatePr: false,

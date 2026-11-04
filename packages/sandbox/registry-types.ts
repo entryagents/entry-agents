@@ -158,13 +158,15 @@ export const SANDBOX_PROVIDER_METADATA: Record<
   novita: {
     id: "novita",
     displayName: "Novita AI",
-    description: "Fast-booting Firecracker microVM cloud sandbox",
+    description:
+      "Retired sandbox provider. All cloud sandboxes now run on Boxd.",
     capabilities: NOVITA_CAPABILITIES,
   },
   modal: {
     id: "modal",
     displayName: "Modal",
-    description: "Cloud sandbox on a persistent volume",
+    description:
+      "Retired sandbox provider. All cloud sandboxes now run on Boxd.",
     capabilities: MODAL_CAPABILITIES,
   },
   local: {
@@ -192,8 +194,6 @@ export const SANDBOX_TYPES = [
  */
 export const USER_SELECTABLE_SANDBOX_TYPES = [
   "boxd",
-  "modal",
-  "novita",
 ] as const satisfies readonly SandboxProviderId[];
 
 /**
