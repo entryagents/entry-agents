@@ -930,8 +930,7 @@ function withModelMetadata(
 /**
  * Known upstream provider "we're out of capacity" messages that come back
  * as ordinary 200 response content instead of an HTTP error (e.g. a 429 or
- * 402). We saw this in production with DeepSeek-V4-Flash via the Opencode
- * Zen gateway: the provider's own monthly token allotment ran out and it
+ * 402). We saw this in production with DeepSeek-V4-Flash via the Entry Agents * Zen gateway: the provider's own monthly token allotment ran out and it
  * replied with a short Chinese string, which finished with the
  * non-standard `finishReason: "other"` yet otherwise looked like a normal
  * successful answer -- so it was rendered verbatim to the user as if it
@@ -946,7 +945,7 @@ function withModelMetadata(
  * "try a different model" affordance instead.
  */
 const PROVIDER_QUOTA_EXHAUSTED_PATTERNS = [
-  /每月token额度已不足/, // DeepSeek-V4-Flash / Opencode Zen: "monthly token quota insufficient"
+  /每月token额度已不足/, // DeepSeek-V4-Flash / Entry Gateway: "monthly token quota insufficient"
   /monthly (?:token )?(?:usage |quota )?limit (?:has been |is )?reached/i,
   /insufficient_quota/i,
   /you exceeded your current quota/i,
@@ -3728,6 +3727,9 @@ const runAgentStep = async (
     if (mcpToolSet?.tools && Object.keys(mcpToolSet.tools).length > 0) {
       fullAgentOptions.extraTools = mcpToolSet.tools;
     }
+    if (mcpToolSet?.instructions && mcpToolSet.instructions.length > 0) {
+      fullAgentOptions.mcpInstructions = mcpToolSet.instructions;
+    }
 
     // COMPACT TELEMETRY SCOPE (moved inside this "use step" function
     // 2026-09-17): every auto-compaction firing inside this step (main
@@ -3913,7 +3915,7 @@ const runAgentStep = async (
           generateMessageId: () => messageId,
           sendStart: false,
           sendFinish: false,
-          // Never let raw provider/gateway error text (Opencode Zen, upstream
+          // Never let raw provider/gateway error text (Entry Gateway, upstream
           // model APIs, etc.) reach the client as an in-stream "error" chunk --
           // route it through the same sanitizer used for setup/transport
           // failures below.

@@ -6,7 +6,7 @@ export const maxDuration = 300;
 // battery of candidate reasoning/thinking request-body shapes per model,
 // so we can empirically confirm (not just assume from vendor docs) which
 // reasoning controls each model's actual upstream route honors through
-// OUR resellers (iamhc / unimodel / opencode-zen), which may differ from
+// OUR resellers (iamhc / unimodel / entry-gateway), which may differ from
 // each model's canonical first-party API. Gated by the same one-off
 // AUDIT_ROUTE_SECRET as the other admin diagnostic routes. Delete once
 // the reasoning-support audit is done.

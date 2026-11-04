@@ -1,5 +1,5 @@
 /**
- * OpenCode-style Wildcard Permission Ruleset Evaluator
+ * Entry Agents Wildcard Permission Ruleset Evaluator
  * Mirrors `packages/core/src/permission.ts` and `packages/core/src/plugin/agent.ts`.
  *
  * Actions: "allow" | "ask" | "deny"
@@ -27,7 +27,7 @@ export function wildcardMatch(pattern: string, target: string): boolean {
 }
 
 /**
- * Default ruleset for `build` mode (mirrors OpenCode's `build` agent):
+ * Default ruleset for `build` mode (mirrors Entry Agents' `build` agent):
  * - Allows read, glob, grep, edit, write, bash, task, skill, web_fetch, web_search
  * - Protects `.env` files with `"ask"` unless explicitly `.env.example`
  */
@@ -42,7 +42,7 @@ export const BUILD_PERMISSION_RULESET: PermissionRuleset = [
 ];
 
 /**
- * Default ruleset for `plan` mode (mirrors OpenCode's `plan` agent in `packages/core/src/plugin/plan.ts`):
+ * Default ruleset for `plan` mode (mirrors Entry Agents' `plan` agent in `packages/core/src/plugin/plan.ts`):
  * - Read-only exploration (`read`, `glob`, `grep`, `web_fetch`, `web_search` allowed)
  * - Disallows mutating `edit` / `write` / `bash` EXCEPT writing to the plan file inside `.entry/plan/*`
  */
@@ -61,7 +61,7 @@ export const PLAN_PERMISSION_RULESET: PermissionRuleset = [
 ];
 
 /**
- * Evaluates a permission ruleset in order (last matching rule wins, just like OpenCode).
+ * Evaluates a permission ruleset in order (last matching rule wins, just like entry-agents).
  */
 export function evaluatePermission(
   ruleset: PermissionRuleset,

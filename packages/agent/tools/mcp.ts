@@ -1,3 +1,8 @@
+import {
+  applyMcpCodeModeDefaults,
+  repairToolInput,
+  type McpInstructionServerSummary,
+} from "../plugins/entry-plugins";
 import { createMCPClient } from "@ai-sdk/mcp";
 import type { Tool, ToolSet } from "ai";
 
@@ -49,6 +54,7 @@ export interface McpToolSetResult {
    * fine. Callers should log/surface these, not throw.
    */
   failures: McpConnectionFailure[];
+  instructions: McpInstructionServerSummary[];
 }
 
 // Most providers cap tool names well under this; MCP tool names are
@@ -79,8 +85,19 @@ type PermissionMode = "ask" | "autoAccept" | "fullAccess";
  * this the same way they lift every other gate.
  */
 function withApprovalGate<T extends Tool>(mcpTool: T): T {
+  const origExecute = mcpTool.execute;
   return {
     ...mcpTool,
+    ...(origExecute
+      ? {
+          execute: async (args: unknown, options: unknown) => {
+            const repaired = repairToolInput(args);
+            return (
+              origExecute as (a: unknown, o: unknown) => Promise<unknown>
+            )(repaired, options);
+          },
+        }
+      : {}),
     needsApproval: async (
       _args: unknown,
       context: { experimental_context?: unknown },
@@ -114,21 +131,34 @@ export async function createMcpToolSet(
 ): Promise<McpToolSetResult> {
   const closers: (() => Promise<void>)[] = [];
   const failures: McpConnectionFailure[] = [];
+  const instructions: McpInstructionServerSummary[] = [];
   const mergedTools: ToolSet = {};
 
   await Promise.all(
     servers.map(async (server) => {
       try {
+        const effectiveHeaders = applyMcpCodeModeDefaults({
+          url: server.url,
+          headers: server.headers,
+        });
         const client = await createMCPClient({
           transport: {
             type: server.transport,
             url: server.url,
-            headers: server.headers,
+            headers: effectiveHeaders,
           },
         });
         closers.push(() => client.close());
 
         const serverTools = await client.tools();
+        const toolNames = Object.keys(serverTools);
+        if (toolNames.length > 0) {
+          instructions.push({
+            server: server.name,
+            instructions: `Connected MCP server "${server.name}" providing tools: ${toolNames.map((t) => namespacedMcpToolName(server.name, t)).join(", ")}`,
+            codemode: effectiveHeaders?.["x-mcp-mode"] === "tools",
+          });
+        }
         for (const [toolName, mcpTool] of Object.entries(serverTools)) {
           const name = namespacedMcpToolName(server.name, toolName);
           mergedTools[name] = withApprovalGate(mcpTool as Tool);
@@ -145,6 +175,7 @@ export async function createMcpToolSet(
   return {
     tools: mergedTools,
     failures,
+    instructions,
     close: async () => {
       await Promise.all(
         closers.map((close) =>

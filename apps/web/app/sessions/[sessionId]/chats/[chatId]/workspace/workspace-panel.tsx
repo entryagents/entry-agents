@@ -236,7 +236,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
-      {/* Workspace Header Dynamic Tab Bar (Matching OpenCode side-region) */}
+      {/* Workspace Header Dynamic Tab Bar (Matching Entry Agents side-region) */}
       <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-2 py-1 gap-1">
         {/* Dynamic Tab Strip */}
         <div className="flex items-center gap-1 overflow-x-auto min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -295,7 +295,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             );
           })}
 
-          {/* OpenCode-style `+` Add Tab Menu */}
+          {/* Entry Agents `+` Add Tab Menu */}
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -413,7 +413,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
       {/* Tab Panels with State Preservation (block/hidden keeps terminal & dev server iframes live) */}
       <div className="relative flex-1 min-h-0 overflow-hidden">
-        {/* OpenCode Review / Changes Tab */}
+        {/* Entry Agents Review / Changes Tab */}
         <div
           className={cn(
             "h-full w-full overflow-hidden",

@@ -1,5 +1,5 @@
 /**
- * Entry Desktop Sidecar Entrypoint (`entry-agent-sidecar.exe`)
+ * Entry Agents Sidecar Entrypoint (`entry-agent-sidecar.exe`)
  * Can be spawned by `entry-desktop.exe` or invoked directly via CLI.
  */
 import { startSidecarServer } from "./server/server";

@@ -85,7 +85,7 @@ const DISABLED_OPENAI_PRO_SUFFIX = "-pro";
 // looking at the admin page.
 const DISABLED_NAME_SUBSTRINGS = ["mythos"];
 
-// kimi-k3 and grok-4.5 are routed via Opencode Zen but that workspace has
+// kimi-k3 and grok-4.5 are routed via Entry Gateway but that workspace has
 // no payment method on file, so real requests to either one fail with a
 // CreditsError. Hidden from the picker until billing is fixed upstream --
 // remove from this list (or just delete the list) once that's resolved.

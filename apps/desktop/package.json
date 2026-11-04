@@ -2,8 +2,8 @@
   "name": "@entry-agents/desktop",
   "version": "1.0.0",
   "private": true,
+  "description": "Entry Agents V1 — Native Core & Sidecar Runtime following Entry Agents architecture",
   "type": "module",
-  "description": "Entry Desktop V1 — Native Core & Sidecar Runtime following OpenCode architecture",
   "scripts": {
     "start": "bun run src/index.ts",
     "test": "bun test",

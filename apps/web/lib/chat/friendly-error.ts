@@ -2,7 +2,7 @@
  * Central place that decides what error text is safe to show a user in the
  * chat UI.
  *
- * Provider/gateway errors (Opencode Zen, any upstream model API, the
+ * Provider/gateway errors (Entry Gateway, any upstream model API, the
  * Vercel Workflow SDK's transport, plain network failures) can all carry
  * raw response bodies, HTML error pages, stack traces, or vendor-specific
  * text in `error.message`. None of that is safe or useful to show a user

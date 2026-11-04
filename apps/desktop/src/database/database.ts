@@ -1,8 +1,7 @@
 /**
- * Local SQLite persistence for Entry Desktop — follows OpenCode's
- * `packages/core/src/database/database.ts` & `schema.gen.ts`.
+ * Local SQLite persistence for Entry Agents — follows Entry Agents' * `packages/core/src/database/database.ts` & `schema.gen.ts`.
  *
- * Uses `bun:sqlite` with OpenCode's exact WAL & performance pragmas:
+ * Uses `bun:sqlite` with Entry Agents' exact WAL & performance pragmas:
  * - PRAGMA journal_mode = WAL
  * - PRAGMA synchronous = NORMAL
  * - PRAGMA busy_timeout = 5000

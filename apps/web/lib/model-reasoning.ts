@@ -210,7 +210,7 @@ export const reasoningEffortSchema = z
 //
 // NOTE: kimi-k3 is deliberately NOT included even though it's a capable
 // reasoning model -- it's currently in lib/model-availability.ts's
-// DISABLED_MODEL_IDS (Opencode Zen workspace has no payment method on file
+// DISABLED_MODEL_IDS (Entry Gateway workspace has no payment method on file
 // yet). Add it here once that's resolved.
 /**
  * Claude's low/medium/high effort selector doesn't map to Anthropic's
@@ -239,8 +239,8 @@ const ANTHROPIC_THINKING_BUDGETS: Record<string, number> = {
 const REASONING_CAPABLE_MODEL_IDS = new Set<string>([
   "deepseek-v4-pro",
   // NOTE 2026-08-12: glm-5.2 is currently DOWN end-to-end (iamhc route
-  // times out at 90s, opencode-zen fallback blocked -- no payment method
-  // on Opencode Zen workspace). Kept in this set since reasoning_effort
+  // times out at 90s, entry-gateway fallback blocked -- no payment method
+  // on Entry Gateway workspace). Kept in this set since reasoning_effort
   // was already wired before the outage and should resume working once
   // either upstream is back; this is an availability issue, not a param
   // issue.
@@ -254,7 +254,7 @@ const REASONING_CAPABLE_MODEL_IDS = new Set<string>([
   // tokens/136-char reasoning, none/xhigh -> rejected/ignored (StepFun
   // only supports low/medium/high, no xhigh -- matches their own docs).
   "step-3.7-flash",
-  // Confirmed 2026-08-12 via live probe (opencode-zen route): reasoning
+  // Confirmed 2026-08-12 via live probe (entry-gateway route): reasoning
   // length scales with effort (low < high). Same OpenAI-compatible param
   // shape as the others.
   "hy3",

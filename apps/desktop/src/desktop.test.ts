@@ -7,7 +7,7 @@ import {
 } from "./permission/permission";
 import { type RunningSidecarServer, startSidecarServer } from "./server/server";
 
-describe("Entry Desktop Core & OpenCode Architecture Parity", () => {
+describe("Entry Agents Core & Entry Agents Architecture Parity", () => {
   let server: RunningSidecarServer;
 
   beforeEach(() => {
@@ -30,7 +30,7 @@ describe("Entry Desktop Core & OpenCode Architecture Parity", () => {
     expect(data.service).toBe("entry-agent-sidecar");
   });
 
-  test("OpenCode permission evaluator enforces Plan mode read-only + .entry/plan/*.md exception", () => {
+  test("Entry Agents permission evaluator enforces Plan mode read-only + .entry/plan/*.md exception", () => {
     expect(
       evaluatePermission(PLAN_PERMISSION_RULESET, "read", "src/index.ts"),
     ).toBe("allow");
@@ -90,7 +90,7 @@ describe("Entry Desktop Core & OpenCode Architecture Parity", () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        text: "Design the 3-column Entry Desktop architecture",
+        text: "Design the 3-column Entry Agents architecture",
         agent: "plan",
         modelId: "anthropic/claude-sonnet-4.5",
       }),
@@ -136,4 +136,43 @@ describe("Entry Desktop Core & OpenCode Architecture Parity", () => {
     expect(Array.isArray(data.models)).toBe(true);
     expect(data.models.length).toBeGreaterThan(0);
   }, 15_000);
+
+  test("All 12 built-in entryagents.* plugins and /mcp endpoints are registered and functional", async () => {
+    const plugRes = await fetch(`${server.url}/plugin`);
+    expect(plugRes.status).toBe(200);
+    const { plugins } = (await plugRes.json()) as {
+      plugins: Array<{ id: string; enabled: boolean }>;
+    };
+    const ids = plugins.map((p) => p.id);
+    expect(ids).toContain("entryagents.agent");
+    expect(ids).toContain("entryagents.plan");
+    expect(ids).toContain("entryagents.goal");
+    expect(ids).toContain("entryagents.command");
+    expect(ids).toContain("entryagents.skill");
+    expect(ids).toContain("entryagents.prompt.optimize");
+    expect(ids).toContain("entryagents.prompt.identity");
+    expect(ids).toContain("entryagents.prompt.verbosity");
+    expect(ids).toContain("entryagents.tool.input.repair");
+    expect(ids).toContain("entryagents.mcp");
+    expect(ids).toContain("entryagents.warming");
+    expect(ids).toContain("entryagents.verification");
+
+    const mcpPost = await fetch(`${server.url}/mcp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "docs",
+        transport: "http",
+        url: "https://mcp.entry-agents.dev/mcp",
+      }),
+    });
+    expect(mcpPost.status).toBe(200);
+
+    const mcpGet = await fetch(`${server.url}/mcp`);
+    expect(mcpGet.status).toBe(200);
+    const { servers } = (await mcpGet.json()) as {
+      servers: Array<{ name: string; url: string }>;
+    };
+    expect(servers.some((s) => s.name === "docs")).toBe(true);
+  });
 });

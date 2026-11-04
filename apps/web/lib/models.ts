@@ -118,7 +118,7 @@ export interface AvailableModelCostTier {
 export interface AvailableModelCost extends AvailableModelCostTier {
   context_over_200k?: AvailableModelCostTier;
   // Generic tiered-context keys, e.g. `context_over_272k` for
-  // gpt-5.6-sol/terra/luna (their real threshold, per opencode.ai/docs/zen,
+  // gpt-5.6-sol/terra/luna (their real threshold, per entry-agents.dev/docs/models,
   // is 272K not 200K -- see resolveCostTier's fix below for why the
   // hardcoded `context_over_200k` field above was never enough on its
   // own). Declared as an index signature rather than adding named fields
@@ -136,7 +136,7 @@ export type AvailableModel = GatewayAvailableModel & {
 
 export function getModelDisplayName(model: AvailableModel): string {
   const raw = model.name ?? model.id;
-  // Cosmetic only: several Opencode Zen model ids carry a literal "-free"
+  // Cosmetic only: several Entry Gateway model ids carry a literal "-free"
   // suffix (mimo-v2.5-free, ling-3.0-flash-free, ...) baked into the id
   // itself for gateway routing purposes. The id must stay untouched
   // (routing, cost lookup, and the gateway config all key off it), but
@@ -164,7 +164,7 @@ export function getModelContextLimit(
 // FIXED 2026-08-19: this used to only ever check the single hardcoded
 // `context_over_200k` field (built for grok-4.5's threshold), so any
 // model with a *different* cutoff -- gpt-5.6-sol/terra/luna's is 272K,
-// per opencode.ai/docs/zen's own pricing table -- silently never got its
+// per entry-agents.dev/docs/models's own pricing table -- silently never got its
 // tiered rate applied at all, always billing (and displaying) the base
 // rate regardless of how large the request's context actually was.
 // entry-gateway's own tieredCost() in server.js already generalized this

@@ -1,8 +1,8 @@
 !include "MUI2.nsh"
 
-Name "Entry Desktop"
-OutFile "dist/Entry-Desktop-Setup.exe"
-InstallDir "$LOCALAPPDATA\Programs\EntryDesktop"
+Name "Entry Agents"
+OutFile "dist\Entry-Desktop-Setup.exe"
+InstallDir "$LOCALAPPDATA\Programs\EntryAgents"
 RequestExecutionLevel user
 
 !define MUI_ABORTWARNING
@@ -13,19 +13,17 @@ RequestExecutionLevel user
 
 !insertmacro MUI_LANGUAGE "English"
 
-Section "Entry Desktop" SecMain
+Section "Entry Agents" SecMain
   SetOutPath "$INSTDIR"
+  File "native-gui\target\x86_64-pc-windows-gnu\release\entry-desktop.exe"
+  File "dist\entry-agent-sidecar.exe"
+  File "README.md"
 
-  File "native-gui/target/x86_64-pc-windows-gnu/release/entry-desktop.exe"
-  File "dist/entry-agent-sidecar.exe"
+  CreateDirectory "$SMPROGRAMS\Entry Agents"
+  CreateShortcut "$SMPROGRAMS\Entry Agents\Entry Agents.lnk" "$INSTDIR\entry-desktop.exe"
+  CreateShortcut "$DESKTOP\Entry Agents.lnk" "$INSTDIR\entry-desktop.exe"
 
-  ; Create Start Menu & Desktop Shortcuts
-  CreateDirectory "$SMPROGRAMS\Entry Desktop"
-  CreateShortcut "$SMPROGRAMS\Entry Desktop\Entry Desktop.lnk" "$INSTDIR\entry-desktop.exe"
-  CreateShortcut "$DESKTOP\Entry Desktop.lnk" "$INSTDIR\entry-desktop.exe"
-
-  ; Register entry:// URL scheme for OAuth 2.0 Device Flow callback (entry://auth/complete)
-  WriteRegStr HKCU "Software\Classes\entry" "" "URL:Entry Desktop Protocol"
+  WriteRegStr HKCU "Software\Classes\entry" "" "URL:Entry Agents Protocol"
   WriteRegStr HKCU "Software\Classes\entry" "URL Protocol" ""
   WriteRegStr HKCU "Software\Classes\entry\shell\open\command" "" '"$INSTDIR\entry-desktop.exe" "%1"'
 
@@ -35,10 +33,10 @@ SectionEnd
 Section "Uninstall"
   Delete "$INSTDIR\entry-desktop.exe"
   Delete "$INSTDIR\entry-agent-sidecar.exe"
+  Delete "$INSTDIR\README.md"
   Delete "$INSTDIR\Uninstall.exe"
-  Delete "$SMPROGRAMS\Entry Desktop\Entry Desktop.lnk"
-  Delete "$DESKTOP\Entry Desktop.lnk"
-  RMDir "$SMPROGRAMS\Entry Desktop"
+  Delete "$SMPROGRAMS\Entry Agents\Entry Agents.lnk"
+  Delete "$DESKTOP\Entry Agents.lnk"
+  RMDir "$SMPROGRAMS\Entry Agents"
   RMDir "$INSTDIR"
-  DeleteRegKey HKCU "Software\Classes\entry"
 SectionEnd

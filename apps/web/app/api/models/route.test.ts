@@ -336,7 +336,7 @@ describe("/api/models context window enrichment", () => {
   // failure -- app code caught that shape to recover). Confirmed via
   // code read: fetchGatewayModels() in lib/models-with-context.ts (the
   // managed-gateway implementation that replaced the AI SDK gateway,
-  // see the "Opencode Zen" migration) has no such recovery path --
+  // see the "Entry Gateway" migration) has no such recovery path --
   // gatewayModelsResponseSchema.parse() either succeeds for the whole
   // response or throws, and a non-2xx HTTP response throws a plain
   // Error with no per-item fallback. Re-enabling this test as-is would

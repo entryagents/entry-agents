@@ -1,12 +1,12 @@
 /**
- * Entry Desktop Sidecar Server — Follows OpenCode's `packages/server/src/routes.ts`
+ * Entry Agents Sidecar Server — Follows Entry Agents' `packages/server/src/routes.ts`
  * and `packages/desktop/src/main/service/sidecar-credentials.ts` + `sidecar-probe.ts`.
  *
  * Exposes:
- * - GET  `/global/health` (OpenCode health probe)
+ * - GET  `/global/health` (Entry Agents health probe)
  * - GET  `/event` (SSE real-time event stream)
  * - GET  `/models` (Live models strictly from `https://entry-agents.dev/api/desktop/models` or `/api/models`)
- * - GET  `/agent` (OpenCode agent modes: `build`, `plan`, `general`, `explore`)
+ * - GET  `/agent` (Entry Agents agent modes: `build`, `plan`, `general`, `explore`)
  * - GET  `/auth/status`
  * - POST `/auth/device/start` (RFC 8628 device flow start)
  * - POST `/auth/device/poll` (RFC 8628 device flow token poll)
@@ -92,17 +92,17 @@ export function startSidecarServer(
     db.upsertArtifact({
       id: "art_initial_blueprint",
       session_id: initialSession.id,
-      title: "Entry Desktop Architecture Blueprint",
+      title: "Entry Agents Architecture Blueprint",
       kind: "architecture",
       file_path: "apps/desktop/src/server/server.ts",
-      content: `# Entry Desktop V1 — Five Promises & OpenCode Architecture
+      content: `# Entry Agents V1 — Five Promises & Entry Agents Architecture
 
 ## Core Product Principle
 The most capable AI development environment shouldn't be the one that consumes the most tokens, runs the most agents, or has the most features. It should be the one that gets the most **verified work** done with the least time, money, and human intervention.
 
 ## Architecture Layers
 - **L1 — Native 3-Column Workspace GUI (\`entry-desktop.exe\`)**: Pure native GPU-rendered Rust GUI (\`eframe\`/\`egui\`) with zero Electron or WebView overhead.
-- **L2 — Local Sidecar Runtime (\`entry-agent-sidecar.exe\`)**: HTTP + SSE Event Bus, SQLite WAL database (\`~/.entry/desktop/entry-desktop.sqlite\`), and OpenCode wildcard permission engine.
+- **L2 — Local Sidecar Runtime (\`entry-agent-sidecar.exe\`)**: HTTP + SSE Event Bus, SQLite WAL database (\`~/.entry/desktop/entry-desktop.sqlite\`), and Entry Agents wildcard permission engine.
 - **L3 — Dual Agent Modes (\`Build\` & \`Plan\`)**: \`Plan\` mode enforces read-only exploration and writes blueprints to \`.entry/plan/*.md\`; \`Build\` mode executes tools via \`@entry-agents/agent\` + \`LocalSandbox\` and runs the Verification Gate.
 - **L4 — Unified Entry Cloud Gateway (\`https://entry-agents.dev\`)**: OAuth 2.0 Device Flow (\`/desktop/approve\`), live model catalog (\`/api/desktop/models\`), and SSE model proxy (\`/v1/chat/completions\`).`,
     });
@@ -147,7 +147,7 @@ The most capable AI development environment shouldn't be the one that consumes t
       const path = url.pathname;
 
       try {
-        // 1. Health probe (OpenCode `/global/health` & `/health`)
+        // 1. Health probe (Entry Agents `/global/health` & `/health`)
         if (
           req.method === "GET" &&
           (path === "/global/health" || path === "/health")
@@ -335,7 +335,7 @@ The most capable AI development environment shouldn't be the one that consumes t
           /^\/session\/([^/]+)(?:\/(message|prompt_async|abort|diff|artifact))?$/,
         );
         if (sessionMatch) {
-          const sessionId = decodeURIComponent(sessionMatch[1]);
+          const sessionId = decodeURIComponent(sessionMatch[1] ?? "");
           const subroute = sessionMatch[2];
 
           if (!subroute && req.method === "GET") {
@@ -432,7 +432,7 @@ The most capable AI development environment shouldn't be the one that consumes t
 
         const permReplyMatch = path.match(/^\/permission\/([^/]+)\/reply$/);
         if (permReplyMatch && req.method === "POST") {
-          const permId = decodeURIComponent(permReplyMatch[1]);
+          const permId = decodeURIComponent(permReplyMatch[1] ?? "");
           const body = (await req.json()) as {
             approved?: boolean;
             reason?: string;
@@ -478,6 +478,32 @@ The most capable AI development environment shouldn't be the one that consumes t
         // 10. Plugins / Customizations (`/plugin`)
         if (req.method === "GET" && path === "/plugin") {
           return jsonResponse({ plugins: plugins.list() });
+        }
+
+        // 11. MCP Servers (`/mcp` — powered by `entryagents.mcp`)
+        if (req.method === "GET" && path === "/mcp") {
+          return jsonResponse({
+            servers: runner.listMcpServers(),
+          });
+        }
+
+        if (req.method === "POST" && path === "/mcp") {
+          const body = (await req.json()) as {
+            name?: string;
+            transport?: "http" | "sse";
+            url?: string;
+            headers?: Record<string, string>;
+          };
+          if (!body.name || !body.url) {
+            return jsonResponse({ error: "name and url required" }, 400);
+          }
+          const server = runner.upsertMcpServer({
+            name: body.name,
+            transport: body.transport ?? "http",
+            url: body.url,
+            headers: body.headers,
+          });
+          return jsonResponse({ server });
         }
 
         return jsonResponse({ error: `Route not found: ${path}` }, 404);

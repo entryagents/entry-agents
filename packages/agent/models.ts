@@ -16,7 +16,7 @@ import type { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
  * app go through Entry's own managed model gateway (OpenAI-compatible,
  * source in the separate `entry-gateway` service, deployed on Vercel) --
  * NOT Vercel's AI Gateway, and not a direct call to any upstream model
- * provider. The gateway owns upstream routing (Opencode Zen today, more
+ * provider. The gateway owns upstream routing (Entry Gateway today, more
  * later) behind a single API key, so adding/removing models is a config
  * change on the gateway only -- this app never needs a code change or
  * redeploy to pick up a new model.
@@ -25,7 +25,7 @@ import type { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
  *   GATEWAY_BASE_URL - the entry-gateway's base URL, e.g. https://entry-gateway-six.vercel.app/v1
  *   GATEWAY_API_KEY  - one of entry-gateway's GATEWAY_API_KEYS
  *
- * Model IDs are whatever entry-gateway routes (currently Opencode Zen's
+ * Model IDs are whatever entry-gateway routes (currently Entry Gateway's
  * flat catalog IDs, e.g. "grok-4.5", "kimi-k3"), not Vercel Gateway's old
  * "provider/model" namespaced IDs.
  */
@@ -379,7 +379,7 @@ export function sharedProvider(
   } else {
     // Use @ai-sdk/openai-compatible, NOT @ai-sdk/openai, even though this is
     // a standard OpenAI Chat Completions-shaped API. Reason (found 2026-08-11):
-    // Opencode Zen's reasoning models (deepseek-v4-pro, glm-5.2) return their
+    // Entry Gateway's reasoning models (deepseek-v4-pro, glm-5.2) return their
     // thinking text in a non-standard `reasoning_content` field on
     // choices[].delta / choices[].message -- a DeepSeek-style convention, not
     // part of real OpenAI's API. @ai-sdk/openai's chat-completions parser has
@@ -393,14 +393,14 @@ export function sharedProvider(
     // `name: "openai"` keeps the providerOptions namespace as `openai` so every
     // existing `providerOptions.openai.*` call site (reasoningEffort, GPT-5
     // defaults, etc.) keeps working unchanged.
-    const openCodeZen = createOpenAICompatible({
+    const entryGatewayProvider = createOpenAICompatible({
       name: "openai",
       baseURL,
       apiKey,
       headers: attributionHeaders,
     });
 
-    model = openCodeZen.chatModel(modelId);
+    model = entryGatewayProvider.chatModel(modelId);
   }
 
   const providerOptions = getProviderOptionsForModel(
@@ -421,5 +421,5 @@ export function sharedProvider(
 }
 
 // Backward-compat alias for the handful of call sites written before the
-// Vercel AI Gateway -> Opencode Zen shared-provider swap.
+// Vercel AI Gateway -> Entry Gateway shared-provider swap.
 export const gateway = sharedProvider;

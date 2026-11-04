@@ -1,8 +1,8 @@
 /**
- * Live Model Catalog Loader for Entry Desktop
+ * Live Model Catalog Loader for Entry Agents
  *
  * CRITICAL REQUIREMENT:
- * Strictly ZERO hardcoded or demo models! Every model displayed in Entry Desktop
+ * Strictly ZERO hardcoded or demo models! Every model displayed in Entry Agents
  * is fetched live from Entry's backend (`https://entry-agents.dev/api/desktop/models`
  * or `https://entry-agents.dev/api/models`).
  */
@@ -81,7 +81,9 @@ export async function fetchLiveEntryModels(options: {
         )
         .map((item) => {
           const id = String(item.id ?? "");
-          const providerPrefix = id.includes("/") ? id.split("/")[0] : "entry";
+          const providerPrefix = id.includes("/")
+            ? (id.split("/")[0] ?? "entry")
+            : "entry";
           return {
             id,
             name: String(item.name ?? id),

@@ -1,15 +1,24 @@
 /**
- * OpenCode-style Agent Registry (`build`, `plan`, `explore`, `general`, `title`, `summary`)
- * Mirrors `packages/core/src/plugin/agent.ts` and `packages/core/src/plugin/plan.ts`.
+ * Entry Agents Registry (`build`, `plan`, `explore`, `general`, `title`, `summary`)
+ * Powered by `entryagents.agent` and `entryagents.plan`.
  *
- * Embodies Entry Desktop's 5 Core Promises:
+ * Embodies Entry Agents' 5 Core Promises:
  * 1. Spend less: Get more useful work from every dollar.
- * 2. Move faster: Fast desktop, fast execution, efficient agents.
+ * 2. Move faster: Fast native app, fast execution, efficient agents.
  * 3. Trust the results: Agents must prove their work.
  * 4. Stay in control: Users own their models, projects, execution and data.
- * 5. Extend everything: Plugins make Entry capable of growing beyond its original developers.
+ * 5. Extend everything: Plugins make Entry Agents capable of growing beyond its original developers.
  */
 import { join } from "node:path";
+import {
+  buildPlanEnterReminder,
+  PLAN_LEAVE_REMINDER,
+  PROMPT_EXPLORE,
+  PROMPT_SUMMARY,
+  PROMPT_SYSTEM_HARNESS,
+  PROMPT_TITLE,
+  renderSessionSystemPrompt,
+} from "@entry-agents/agent";
 import {
   BUILD_PERMISSION_RULESET,
   PLAN_PERMISSION_RULESET,
@@ -26,17 +35,9 @@ export interface AgentInfo {
   systemInstructions: string;
 }
 
-export const PROMPT_EXPLORE = `You are a file search specialist for Entry Desktop. You excel at thoroughly navigating and exploring codebases with minimal token waste.
-- Use glob to find files by name/pattern
-- Use grep to search file contents with regex
-- Use read to inspect specific line ranges
-- Adapt your search approach based on the thoroughness requested by the caller.`;
+export const PROMPT_BUILD = `${renderSessionSystemPrompt(PROMPT_SYSTEM_HARNESS)}
 
-export const PROMPT_TITLE = `You are a title generator. Output ONLY a brief 2-5 word title for the conversation without quotes or punctuation.`;
-
-export const PROMPT_SUMMARY = `Summarize what was done in this conversation like a concise pull request description (2-4 bullet points).`;
-
-export const PROMPT_BUILD = `You are Entry Desktop in BUILD mode.
+# Entry Agents Build Mode
 Core Product Principle: Get the most verified work done with the least time, money, and human intervention.
 - Spend less: Avoid redundant file reads or noisy output.
 - Move faster: Execute changes directly and cleanly.
@@ -47,32 +48,19 @@ export function buildPlanModeReminder(
   projectDir: string,
   sessionSlug: string,
 ): string {
-  const planPath = join(
-    projectDir,
-    ".entry",
-    "plan",
-    `${sessionSlug}.md`,
-  ).replace(/\\/g, "/");
-  return `<system-reminder>
-Plan mode is active. The user indicated that they do not want you to execute mutating code changes yet — you MUST NOT make any edits (with the exception of the plan file mentioned below), run any non-readonly tools, or otherwise make any changes to the system.
-
-## Plan File Info:
-You should record your structured architectural blueprint and implementation plan at:
-${planPath}
-
-## Workflow:
-Phase 1: Initial Understanding — Explore the codebase using read, glob, and grep.
-Phase 2: Design & Architecture — Formulate a verified, minimal-token implementation plan.
-Phase 3: Synthesis — Write the markdown plan artifact to ${planPath} so it renders in the Right Workspace Column.
-</system-reminder>`;
+  const planDir = join(projectDir, ".entry", "plan").replace(/\\/g, "/");
+  const planPath = join(planDir, `${sessionSlug}.md`).replace(/\\/g, "/");
+  return `${buildPlanEnterReminder(planDir)}\n\nPrimary session plan file: ${planPath}`;
 }
+
+export { PLAN_LEAVE_REMINDER, PROMPT_EXPLORE, PROMPT_SUMMARY, PROMPT_TITLE };
 
 export const AGENTS: Record<AgentInfo["name"], AgentInfo> = {
   build: {
     name: "build",
     displayName: "Build",
     description:
-      "The default agent. Executes tools based on configured permissions and verifies work.",
+      "Default Entry Agents execution mode with full tools and automated verification.",
     mode: "primary",
     native: true,
     permission: BUILD_PERMISSION_RULESET,
@@ -82,18 +70,18 @@ export const AGENTS: Record<AgentInfo["name"], AgentInfo> = {
     name: "plan",
     displayName: "Plan",
     description:
-      "Plan mode. Disallows all edit tools except writing the structured markdown plan file.",
+      "Read-only architectural exploration mode. Disallows file edits except .entry/plan/*.md.",
     mode: "primary",
     native: true,
     permission: PLAN_PERMISSION_RULESET,
     systemInstructions:
-      "You are Entry Desktop in PLAN mode. Explore the codebase read-only and produce a clear, verifiable engineering blueprint.",
+      "You are Entry Agents in PLAN mode. Explore the codebase read-only and produce a clear, verifiable engineering blueprint.",
   },
   general: {
     name: "general",
     displayName: "General",
     description:
-      "General-purpose agent for researching complex questions and executing multi-step tasks.",
+      "General-purpose subagent for researching complex questions and executing multi-step tasks.",
     mode: "subagent",
     native: true,
     permission: BUILD_PERMISSION_RULESET,
@@ -102,7 +90,8 @@ export const AGENTS: Record<AgentInfo["name"], AgentInfo> = {
   explore: {
     name: "explore",
     displayName: "Explore",
-    description: "Fast agent specialized for exploring codebases.",
+    description:
+      "Fast read-only subagent specialized for exploring codebases with glob, grep, and read.",
     mode: "subagent",
     native: true,
     permission: PLAN_PERMISSION_RULESET,
@@ -111,7 +100,7 @@ export const AGENTS: Record<AgentInfo["name"], AgentInfo> = {
   title: {
     name: "title",
     displayName: "Title",
-    description: "Generates concise conversation titles.",
+    description: "Hidden conversation title generator.",
     mode: "hidden",
     native: true,
     permission: PLAN_PERMISSION_RULESET,
@@ -120,7 +109,7 @@ export const AGENTS: Record<AgentInfo["name"], AgentInfo> = {
   summary: {
     name: "summary",
     displayName: "Summary",
-    description: "Generates pull-request style session summaries.",
+    description: "Hidden pull-request style session summary generator.",
     mode: "hidden",
     native: true,
     permission: PLAN_PERMISSION_RULESET,
@@ -129,5 +118,5 @@ export const AGENTS: Record<AgentInfo["name"], AgentInfo> = {
 };
 
 export function listVisibleAgents(): AgentInfo[] {
-  return [AGENTS.build, AGENTS.plan, AGENTS.general, AGENTS.explore];
+  return Object.values(AGENTS).filter((a) => a.mode !== "hidden");
 }

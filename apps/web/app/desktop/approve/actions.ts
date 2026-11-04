@@ -7,7 +7,7 @@ import { getServerSession } from "@/lib/session/get-server-session";
 /**
  * Phase 10 — Desktop device sign-in approval.
  *
- * The signed-in Entry web user approves a code shown in Entry Desktop.
+ * The signed-in Entry web user approves a code shown in Entry Agents.
  * On approval, the row in `desktop_device_codes` (infrastructure table,
  * created idempotently — NOT a product schema change) is bound to the
  * user's current auth session token. The desktop client later polls

@@ -31,7 +31,7 @@ const C_GREEN: Color32 = Color32::from_rgb(0x30, 0xd1, 0x58);
 const C_AMBER: Color32 = Color32::from_rgb(0xff, 0x9f, 0x0a);
 
 // ============================================================================
-// Data Models (Mirrors OpenCode Sidecar + Entry Cloud Gateway)
+// Data Models (Mirrors Entry Agents Sidecar + Entry Cloud Gateway)
 // ============================================================================
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -127,9 +127,13 @@ struct ScheduleItem {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 struct PluginItem {
+    #[serde(default)]
+    id: String,
     name: String,
     version: String,
     description: String,
+    #[serde(default)]
+    domain: Vec<String>,
     enabled: bool,
 }
 
@@ -215,7 +219,7 @@ struct EntryDesktopApp {
     show_project_filter: bool,
     project_filter_query: String,
 
-    // Auth & Account State (OpenCode RFC 8628 Device Flow)
+    // Auth & Account State (Entry Agents RFC 8628 Device Flow)
     account: Option<AccountInfo>,
     device_auth_pending: Option<DeviceAuthStart>,
     last_device_poll: Instant,
@@ -863,7 +867,7 @@ impl EntryDesktopApp {
                     if approved {
                         self.device_auth_pending = None;
                         self.account = account;
-                        self.auth_status_text = "Signed in to Entry Desktop!".to_string();
+                        self.auth_status_text = "Signed in to Entry Agents!".to_string();
                         self.trigger_fetch_live_models();
                     } else if let Some(err) = error {
                         self.device_auth_pending = None;
@@ -1509,7 +1513,7 @@ impl EntryDesktopApp {
 
                             ui.add_space(6.0);
 
-                            // 2. OpenCode Dual Agent Mode Switcher: Build / Plan
+                            // 2. Entry Agents Dual Agent Mode Switcher: Build / Plan
                             let is_plan = self.agent_mode == "plan";
                             if ui
                                 .add(
@@ -1604,7 +1608,7 @@ impl EntryDesktopApp {
             .show(ui, |ui| {
                 ui.label(
                     RichText::new(
-                        "Build Entry Desktop V1 around the Five Core Promises and OpenCode's exact architecture: OAuth 2.0 Device Flow against entry-agents.dev, live models with zero hardcoded demo models, dual Build/Plan agent modes, local SQLite WAL persistence, and a fast native 3-column dark UI.",
+                        "Build Entry Agents V1 around the Five Core Promises and Entry Agents' exact architecture: OAuth 2.0 Device Flow against entry-agents.dev, live models with zero hardcoded demo models, dual Build/Plan agent modes, local SQLite WAL persistence, and a fast native 3-column dark UI.",
                     )
                     .size(14.0)
                     .color(C_TEXT),
@@ -1614,7 +1618,7 @@ impl EntryDesktopApp {
         ui.add_space(18.0);
 
         ui.label(
-            RichText::new("Entry Desktop V1 — Five Core Promises & OpenCode Parity")
+            RichText::new("Entry Agents V1 — Five Core Promises")
                 .size(19.0)
                 .color(C_TEXT)
                 .strong(),
@@ -1648,7 +1652,7 @@ impl EntryDesktopApp {
             ),
             (
                 "5. Extend everything",
-                "OpenCode-compatible plugin hooks (entry-verification-gate, entry-token-efficiency, entry-plan-architect) make Entry capable of growing beyond its original developers.",
+                "Entry Agents plugin hooks (entry-verification-gate, entry-token-efficiency, entry-plan-architect) make Entry capable of growing beyond its original developers.",
             ),
         ];
 
@@ -1862,7 +1866,7 @@ impl EntryDesktopApp {
 
     fn render_architecture_diagram_card(&self, ui: &mut egui::Ui) {
         ui.label(
-            RichText::new("Entry Desktop V1 — Multi-Layer Architecture Diagram")
+            RichText::new("Entry Agents V1 — Multi-Layer Architecture Diagram")
                 .size(18.0)
                 .color(C_TEXT)
                 .strong(),
@@ -1870,7 +1874,7 @@ impl EntryDesktopApp {
         ui.add_space(6.0);
         ui.label(
             RichText::new(
-                "Engineered after OpenCode's exact patterns (RFC 8628 Device Auth, SQLite WAL, Dual Build/Plan Modes, Wildcard Permissions, and Live Entry Models).",
+                "Engineered after Entry Agents' exact patterns (RFC 8628 Device Auth, SQLite WAL, Dual Build/Plan Modes, Wildcard Permissions, and Live Entry Models).",
             )
             .size(13.5)
             .color(C_TEXT_2),
@@ -1898,7 +1902,7 @@ impl EntryDesktopApp {
                 ],
             ),
             (
-                "L3 — OpenCode Agent & Permission Engine (@entry-agents/agent + LocalSandbox)",
+                "L3 — Entry Agents Agent & Permission Engine (@entry-agents/agent + LocalSandbox)",
                 "Dual Build & Plan Modes · Wildcard Permission Evaluator · Automated Verification Gate",
                 vec![
                     "Build Mode (Read/Write + Verify)",
@@ -2127,7 +2131,7 @@ impl EntryDesktopApp {
             .inner_margin(Margin::symmetric(28.0, 22.0))
             .show(ui, |ui| {
                 ui.label(
-                    RichText::new("Customizations & OpenCode Plugin Hooks")
+                    RichText::new("Customizations & Entry Agents Plugin Hooks")
                         .size(19.0)
                         .color(C_TEXT)
                         .strong(),
@@ -2151,6 +2155,14 @@ impl EntryDesktopApp {
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 ui.label(RichText::new(&plugin.name).size(14.0).strong());
+                                if !plugin.id.is_empty() {
+                                    ui.label(
+                                        RichText::new(format!("({})", plugin.id))
+                                            .size(12.0)
+                                            .monospace()
+                                            .color(C_ACCENT),
+                                    );
+                                }
                                 ui.label(
                                     RichText::new(format!("v{}", plugin.version))
                                         .size(11.5)
@@ -2185,7 +2197,7 @@ impl EntryDesktopApp {
             .inner_margin(Margin::symmetric(28.0, 22.0))
             .show(ui, |ui| {
                 ui.label(
-                    RichText::new("Entry Desktop Settings & Account Authentication")
+                    RichText::new("Entry Agents Settings & Account Authentication")
                         .size(19.0)
                         .color(C_TEXT)
                         .strong(),
@@ -2334,14 +2346,14 @@ impl Drop for EntryDesktopApp {
 fn main() -> eframe::Result<()> {
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("Entry Desktop")
+            .with_title("Entry Agents")
             .with_inner_size([1440.0, 900.0])
             .with_min_inner_size([960.0, 620.0]),
         ..Default::default()
     };
 
     eframe::run_native(
-        "Entry Desktop",
+        "Entry Agents",
         native_options,
         Box::new(|cc| Ok(Box::new(EntryDesktopApp::new(cc)))),
     )

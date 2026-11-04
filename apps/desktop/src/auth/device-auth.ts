@@ -1,6 +1,6 @@
 /**
- * OpenCode-style OAuth 2.0 Device Authorization Grant Client for Entry Desktop
- * Mirrors `packages/core/src/plugin/provider/opencode.ts`.
+ * Entry Agents OAuth 2.0 Device Authorization Grant Client for Entry Agents
+ * Mirrors `packages/core/src/plugin/provider/entry-agents.ts`.
  *
  * Connects exclusively to Entry's official domain (`https://entry-agents.dev`):
  * - POST `/api/desktop/device/code` (or `/api/desktop/device/start`)

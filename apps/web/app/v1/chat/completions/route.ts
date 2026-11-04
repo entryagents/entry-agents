@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
           Authorization: `Bearer ${gatewayKey}`,
           "http-referer":
             process.env.NEXT_PUBLIC_SITE_URL ?? "https://entry-agents.dev",
-          "x-title": "Entry Desktop",
+          "x-title": "Entry Agents",
         },
         body: JSON.stringify(body),
         signal: req.signal,

@@ -1,5 +1,5 @@
 /**
- * Entry Desktop Session Runner — OpenCode-style Session & Event Bus Engine
+ * Entry Agents Session Runner — Entry Agents Session & Event Bus Engine
  * Powered by Entry's real `@entry-agents/agent` (`openAgent`) and `@entry-agents/sandbox` (`LocalSandbox`),
  * with automatic fallback to Entry's `/v1/chat/completions` streaming gateway when needed.
  */
@@ -7,7 +7,12 @@ import { execSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { openAgent } from "@entry-agents/agent";
+import {
+  createMcpToolSet,
+  expandSlashCommandPrompt,
+  openAgent,
+  type McpServerConfig,
+} from "@entry-agents/agent";
 import {
   connectSandbox,
   type Sandbox,
@@ -51,12 +56,22 @@ export class EntrySessionRunner {
   private readonly activeSandboxes = new Map<string, Sandbox>();
   private readonly pendingPermissions = new Map<string, PendingPermission>();
   private readonly subscribers = new Set<(event: SidecarEvent) => void>();
+  private readonly mcpServers = new Map<string, McpServerConfig>();
 
   constructor(
     private readonly db: EntryDesktopDatabase,
     private readonly plugins: PluginRegistry,
     private readonly entryBaseUrl: string,
   ) {}
+
+  listMcpServers(): McpServerConfig[] {
+    return Array.from(this.mcpServers.values());
+  }
+
+  upsertMcpServer(config: McpServerConfig): McpServerConfig {
+    this.mcpServers.set(config.name, config);
+    return config;
+  }
 
   subscribe(listener: (event: SidecarEvent) => void): () => void {
     this.subscribers.add(listener);
@@ -239,11 +254,15 @@ export class EntrySessionRunner {
       const sessionToken =
         account?.access_token ?? process.env.ENTRY_SESSION_TOKEN ?? "";
 
-      // Prepare Plan mode <system-reminder> if in Plan mode (OpenCode pattern)
+      // Expand slash commands (`/init`, `/review`, `/goal`) via `entryagents.command` & `entryagents.goal`
+      const expanded = expandSlashCommandPrompt(input.text, session.directory);
+      const baseText = expanded.expandedPrompt;
+
+      // Prepare Plan mode <system-reminder> if in Plan mode (`entryagents.plan`)
       const promptWithModeReminder =
         agentMode === "plan"
-          ? `${input.text}\n\n${buildPlanModeReminder(session.directory, session.slug)}`
-          : input.text;
+          ? `${baseText}\n\n${buildPlanModeReminder(session.directory, session.slug)}`
+          : baseText;
 
       // Connect LocalSandbox rooted at session.directory
       const sandboxState: SandboxState = {
@@ -280,185 +299,199 @@ export class EntrySessionRunner {
           { role: "user", content: promptWithModeReminder },
         ];
 
-        for (let step = 0; step < 25; step++) {
-          if (abort.signal.aborted) break;
+        const configuredMcp = this.listMcpServers();
+        const mcpSet =
+          configuredMcp.length > 0
+            ? await createMcpToolSet(configuredMcp)
+            : null;
 
-          const stream = await openAgent.stream({
-            messages: messages as never,
-            abortSignal: abort.signal,
-            options: {
-              model: {
-                id: modelId,
-                gatewayConfig: {
-                  baseURL: `${this.entryBaseUrl}/v1`,
-                  apiKey: sessionToken,
-                  appName: "Entry Desktop",
-                  appUrl: this.entryBaseUrl,
+        try {
+          for (let step = 0; step < 25; step++) {
+            if (abort.signal.aborted) break;
+
+            const stream = await openAgent.stream({
+              messages: messages as never,
+              abortSignal: abort.signal,
+              options: {
+                model: {
+                  id: modelId,
+                  gatewayConfig: {
+                    baseURL: `${this.entryBaseUrl}/v1`,
+                    apiKey: sessionToken,
+                  },
+                },
+                customInstructions: agentDef.systemInstructions,
+                ...(mcpSet && Object.keys(mcpSet.tools).length > 0
+                  ? { extraTools: mcpSet.tools }
+                  : {}),
+                ...(mcpSet && mcpSet.instructions.length > 0
+                  ? { mcpInstructions: mcpSet.instructions }
+                  : {}),
+                permissionMode: agentMode === "plan" ? "ask" : "autoAccept",
+                sandbox: {
+                  state: sandboxState,
+                  workingDirectory: session.directory,
                 },
               },
-              customInstructions: agentDef.systemInstructions,
-              permissionMode: agentMode === "plan" ? "plan" : "default",
-              sandbox: {
-                sandboxState,
-                workingDirectory: session.directory,
-              },
-            },
-          });
+            });
 
-          let stepFinishReason = "stop";
-          for await (const chunk of stream.toUIMessageStream({
-            sendReasoning: true,
-          })) {
-            const c = chunk as Record<string, unknown>;
-            const cType = String(c.type ?? "");
-            if (cType === "text-delta") {
-              const delta = String(c.delta ?? c.textDelta ?? "");
-              if (delta) {
-                assistantText += delta;
+            let stepFinishReason = "stop";
+            for await (const chunk of stream.toUIMessageStream({
+              sendReasoning: true,
+            })) {
+              const c = chunk as Record<string, unknown>;
+              const cType = String(c.type ?? "");
+              if (cType === "text-delta") {
+                const delta = String(c.delta ?? c.textDelta ?? "");
+                if (delta) {
+                  assistantText += delta;
+                  this.db.insertPart({
+                    id: textPartId,
+                    message_id: assistantMessageId,
+                    session_id: session.id,
+                    part_type: "text",
+                    data: { type: "text", text: assistantText },
+                  });
+                  this.emit({
+                    type: "message.part.delta",
+                    properties: {
+                      sessionId: session.id,
+                      messageId: assistantMessageId,
+                      partId: textPartId,
+                      delta,
+                    },
+                  });
+                }
+              } else if (cType === "tool-input-available") {
+                const toolName = String(c.toolName ?? "");
+                const toolCallId = String(c.toolCallId ?? randomUUID());
+                const toolInput = (c.input ?? {}) as Record<string, unknown>;
+                const targetPath = String(
+                  toolInput.file_path ??
+                    toolInput.path ??
+                    toolInput.command ??
+                    "*",
+                );
+
+                // Evaluate Entry Agents permission ruleset
+                const permAction: PermissionAction = evaluatePermission(
+                  agentDef.permission,
+                  toolName,
+                  targetPath,
+                );
+
+                if (permAction === "ask") {
+                  const permId = `perm_${randomUUID()}`;
+                  this.emit({
+                    type: "permission.asked",
+                    properties: {
+                      id: permId,
+                      sessionId: session.id,
+                      toolName,
+                      target: targetPath,
+                      input: toolInput,
+                    },
+                  });
+                  const decision = await new Promise<{
+                    approved: boolean;
+                    reason?: string;
+                  }>((resolve) => {
+                    this.pendingPermissions.set(permId, {
+                      id: permId,
+                      sessionId: session.id,
+                      toolName,
+                      target: targetPath,
+                      input: toolInput,
+                      resolve,
+                    });
+                  });
+                  if (!decision.approved) {
+                    throw new Error(
+                      `Permission denied for ${toolName} on ${targetPath}`,
+                    );
+                  }
+                }
+
+                if (
+                  toolName === "edit" ||
+                  toolName === "write" ||
+                  toolName === "bash"
+                ) {
+                  hadFileEdits = true;
+                }
+
                 this.db.insertPart({
-                  id: textPartId,
+                  id: `part_${toolCallId}`,
                   message_id: assistantMessageId,
                   session_id: session.id,
-                  part_type: "text",
-                  data: { type: "text", text: assistantText },
+                  part_type: "tool",
+                  data: {
+                    type: "tool-call",
+                    toolCallId,
+                    toolName,
+                    input: toolInput,
+                    status: "running",
+                  },
                 });
                 this.emit({
-                  type: "message.part.delta",
+                  type: "message.part.updated",
                   properties: {
                     sessionId: session.id,
                     messageId: assistantMessageId,
-                    partId: textPartId,
-                    delta,
+                    toolCallId,
+                    toolName,
+                    status: "running",
+                    input: toolInput,
                   },
                 });
-              }
-            } else if (cType === "tool-input-available") {
-              const toolName = String(c.toolName ?? "");
-              const toolCallId = String(c.toolCallId ?? randomUUID());
-              const toolInput = (c.input ?? {}) as Record<string, unknown>;
-              const targetPath = String(
-                toolInput.file_path ??
-                  toolInput.path ??
-                  toolInput.command ??
-                  "*",
-              );
-
-              // Evaluate OpenCode-style permission ruleset
-              const permAction: PermissionAction = evaluatePermission(
-                agentDef.permission,
-                toolName,
-                targetPath,
-              );
-
-              if (permAction === "ask") {
-                const permId = `perm_${randomUUID()}`;
+              } else if (cType === "tool-output-available") {
+                const toolCallId = String(c.toolCallId ?? "");
+                this.db.insertPart({
+                  id: `part_${toolCallId}`,
+                  message_id: assistantMessageId,
+                  session_id: session.id,
+                  part_type: "tool",
+                  data: {
+                    type: "tool-result",
+                    toolCallId,
+                    output: c.output,
+                    status: "completed",
+                  },
+                });
                 this.emit({
-                  type: "permission.asked",
+                  type: "message.part.updated",
                   properties: {
-                    id: permId,
                     sessionId: session.id,
-                    toolName,
-                    target: targetPath,
-                    input: toolInput,
+                    messageId: assistantMessageId,
+                    toolCallId,
+                    status: "completed",
+                    output: c.output,
                   },
                 });
-                const decision = await new Promise<{
-                  approved: boolean;
-                  reason?: string;
-                }>((resolve) => {
-                  this.pendingPermissions.set(permId, {
-                    id: permId,
-                    sessionId: session.id,
-                    toolName,
-                    target: targetPath,
-                    input: toolInput,
-                    resolve,
-                  });
-                });
-                if (!decision.approved) {
-                  throw new Error(
-                    `Permission denied for ${toolName} on ${targetPath}`,
-                  );
-                }
+              } else if (cType.startsWith("finish")) {
+                stepFinishReason = String(c.finishReason ?? stepFinishReason);
               }
-
-              if (
-                toolName === "edit" ||
-                toolName === "write" ||
-                toolName === "bash"
-              ) {
-                hadFileEdits = true;
-              }
-
-              this.db.insertPart({
-                id: `part_${toolCallId}`,
-                message_id: assistantMessageId,
-                session_id: session.id,
-                part_type: "tool",
-                data: {
-                  type: "tool-call",
-                  toolCallId,
-                  toolName,
-                  input: toolInput,
-                  status: "running",
-                },
-              });
-              this.emit({
-                type: "message.part.updated",
-                properties: {
-                  sessionId: session.id,
-                  messageId: assistantMessageId,
-                  toolCallId,
-                  toolName,
-                  status: "running",
-                  input: toolInput,
-                },
-              });
-            } else if (cType === "tool-output-available") {
-              const toolCallId = String(c.toolCallId ?? "");
-              this.db.insertPart({
-                id: `part_${toolCallId}`,
-                message_id: assistantMessageId,
-                session_id: session.id,
-                part_type: "tool",
-                data: {
-                  type: "tool-result",
-                  toolCallId,
-                  output: c.output,
-                  status: "completed",
-                },
-              });
-              this.emit({
-                type: "message.part.updated",
-                properties: {
-                  sessionId: session.id,
-                  messageId: assistantMessageId,
-                  toolCallId,
-                  status: "completed",
-                  output: c.output,
-                },
-              });
-            } else if (cType.startsWith("finish")) {
-              stepFinishReason = String(c.finishReason ?? stepFinishReason);
             }
-          }
 
-          const totalUsage = (await stream.totalUsage) as {
-            inputTokens?: number;
-            outputTokens?: number;
-            cachedInputTokens?: number;
-          } | null;
-          if (totalUsage) {
-            inputTokens += totalUsage.inputTokens ?? 0;
-            outputTokens += totalUsage.outputTokens ?? 0;
-            cachedTokens += totalUsage.cachedInputTokens ?? 0;
-          }
+            const totalUsage = (await stream.totalUsage) as {
+              inputTokens?: number;
+              outputTokens?: number;
+              cachedInputTokens?: number;
+            } | null;
+            if (totalUsage) {
+              inputTokens += totalUsage.inputTokens ?? 0;
+              outputTokens += totalUsage.outputTokens ?? 0;
+              cachedTokens += totalUsage.cachedInputTokens ?? 0;
+            }
 
-          const response = await stream.response;
-          messages.push(
-            ...(response.messages as Array<Record<string, unknown>>),
-          );
-          if (stepFinishReason !== "tool-calls") break;
+            const response = await stream.response;
+            messages.push(
+              ...(response.messages as Array<Record<string, unknown>>),
+            );
+            if (stepFinishReason !== "tool-calls") break;
+          }
+        } finally {
+          await mcpSet?.close().catch(() => undefined);
         }
       } else {
         // Local synthesis when running offline / before sign-in or when creating a Plan blueprint directly
@@ -575,7 +608,7 @@ export class EntrySessionRunner {
 ## 1. Objective
 ${userPrompt}
 
-## 2. Entry Desktop Five Core Promises Alignment
+## 2. Entry Agents Five Core Promises Alignment
 1. **Spend less**: Targeted read-only inspection across \`${projectName}\` with zero redundant full-file dumps.
 2. **Move faster**: Direct execution through local SQLite WAL persistence and native sidecar IPC.
 3. **Trust the results**: Automated verification gate runs after implementation in Build mode.

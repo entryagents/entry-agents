@@ -13,7 +13,7 @@ import type {
 // Kept for the (currently unused, best-effort) models.dev context-window
 // enrichment below -- harmless no-op for our static catalog since none of
 // our model IDs match models.dev's namespacing, but left in place in case
-// Opencode Zen model IDs ever get added there.
+// Entry Gateway model IDs ever get added there.
 const MODELS_DEV_URL = "https://models.dev/api.json";
 const MODELS_DEV_TIMEOUT_MS = 750;
 
