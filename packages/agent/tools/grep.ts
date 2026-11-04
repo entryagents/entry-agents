@@ -72,7 +72,15 @@ EXAMPLES:
       },
       { experimental_context, abortSignal },
     ) => {
-      const sandbox = await getSandbox(experimental_context, "grep");
+      let sandbox;
+      try {
+        sandbox = await getSandbox(experimental_context, "grep");
+      } catch (error) {
+        return {
+          success: false,
+          error: `Sandbox is unavailable (${error instanceof Error ? error.message : String(error)}). Cannot search files.`,
+        };
+      }
       const workingDirectory = sandbox.workingDirectory;
 
       try {

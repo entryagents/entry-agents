@@ -171,8 +171,18 @@ EXAMPLES:
     inputSchema: bashInputSchema,
     execute: async (input, { experimental_context, abortSignal }) => {
       const { command, cwd, detached } = input;
-      const { sandbox, commandGate } =
-        await getSandboxForCommand(experimental_context);
+      let sandboxResult;
+      try {
+        sandboxResult = await getSandboxForCommand(experimental_context);
+      } catch (error) {
+        return {
+          success: false,
+          exitCode: 1,
+          stdout: "",
+          stderr: `Sandbox is unavailable (${error instanceof Error ? error.message : String(error)}). Cannot execute bash command.`,
+        };
+      }
+      const { sandbox, commandGate } = sandboxResult;
       const workingDirectory = sandbox.workingDirectory;
       const migrationNotice = commandGate.waitedForMigration
         ? {

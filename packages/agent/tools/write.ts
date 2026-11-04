@@ -112,7 +112,15 @@ EXAMPLES:
 - Replace a script after reading it: filePath: "scripts/build.sh", content: "<entire updated script>"`,
     inputSchema: writeInputSchema,
     execute: async ({ filePath, content }, { experimental_context }) => {
-      const sandbox = await getSandbox(experimental_context, "write");
+      let sandbox;
+      try {
+        sandbox = await getSandbox(experimental_context, "write");
+      } catch (error) {
+        return {
+          success: false,
+          error: `Sandbox is unavailable (${error instanceof Error ? error.message : String(error)}). Cannot write file.`,
+        };
+      }
       const workingDirectory = sandbox.workingDirectory;
 
       try {
@@ -267,7 +275,15 @@ EXAMPLES:
       { filePath, oldString, newString, replaceAll = false },
       { experimental_context },
     ) => {
-      const sandbox = await getSandbox(experimental_context, "edit");
+      let sandbox;
+      try {
+        sandbox = await getSandbox(experimental_context, "edit");
+      } catch (error) {
+        return {
+          success: false,
+          error: `Sandbox is unavailable (${error instanceof Error ? error.message : String(error)}). Cannot edit file.`,
+        };
+      }
       const workingDirectory = sandbox.workingDirectory;
 
       try {

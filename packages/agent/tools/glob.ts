@@ -56,7 +56,15 @@ EXAMPLES:
       { pattern, path: basePath, limit = 100 },
       { experimental_context, abortSignal },
     ) => {
-      const sandbox = await getSandbox(experimental_context, "glob");
+      let sandbox;
+      try {
+        sandbox = await getSandbox(experimental_context, "glob");
+      } catch (error) {
+        return {
+          success: false,
+          error: `Sandbox is unavailable (${error instanceof Error ? error.message : String(error)}). Cannot list files.`,
+        };
+      }
       const workingDirectory = sandbox.workingDirectory;
 
       try {

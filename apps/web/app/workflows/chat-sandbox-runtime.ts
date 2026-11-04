@@ -115,7 +115,12 @@ async function getReadySessionSandbox(params: {
 
   // Fire-and-forget: kick returns once the workflow run is claimed, without
   // waiting for the VM to finish provisioning.
-  await kickSandboxProvisioningWorkflow(params.sessionId);
+  await kickSandboxProvisioningWorkflow(params.sessionId).catch((err) => {
+    console.warn(
+      `[chat-sandbox-runtime] Failed to kick provisioning workflow:`,
+      err,
+    );
+  });
 
   return { session, didSetupWorkspace: true, liveSandbox: false };
 }
@@ -146,9 +151,12 @@ export async function resolveChatSandboxRuntime(params: {
       userId: params.userId,
     });
 
-  const sandboxState = session.sandboxState;
+  let sandboxState = session.sandboxState;
   if (!sandboxState) {
-    throw new Error("Workspace setup failed");
+    const { requireSandboxProvider } = await import("@entry-agents/sandbox");
+    sandboxState = requireSandboxProvider("boxd").buildProvisionState({
+      sessionId: params.sessionId,
+    });
   }
 
   const sessionContext = {
@@ -172,25 +180,60 @@ export async function resolveChatSandboxRuntime(params: {
     });
   }
 
-  const sandbox = await connectSandbox(sandboxState);
+  // AGENT-FIRST GUARANTEE: Never wait or block the turn if the sandbox
+  // is slow, sleeping, waking up, or refuses to start. Probe with a fast
+  // 1500ms budget; if it doesn't resolve immediately, return session context
+  // without workingDirectory so the agent turn streams instantly.
+  try {
+    const sandboxPromise = connectSandbox(sandboxState);
+    let timer: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        reject(new Error("Sandbox connect exceeded fast startup budget"));
+      }, 1500);
+    });
 
-  const skills = await loadSessionSkills({
-    sessionId: params.sessionId,
-    sandboxState,
-    sandbox,
-  });
+    const sandbox = await Promise.race([
+      sandboxPromise,
+      timeoutPromise,
+    ]).finally(() => {
+      if (timer) clearTimeout(timer);
+    });
 
-  return withoutUndefined({
-    ...sessionContext,
-    workingDirectory: sandbox.workingDirectory,
-    ...(sandbox.currentBranch !== undefined
-      ? { currentBranch: sandbox.currentBranch }
-      : {}),
-    ...(sandbox.environmentDetails !== undefined
-      ? { environmentDetails: sandbox.environmentDetails }
-      : {}),
-    skills,
-  });
+    const skills = await loadSessionSkills({
+      sessionId: params.sessionId,
+      sandboxState,
+      sandbox,
+    }).catch(() =>
+      cachedSessionSkills({
+        sessionId: params.sessionId,
+        sandboxState,
+      }),
+    );
+
+    return withoutUndefined({
+      ...sessionContext,
+      workingDirectory: sandbox.workingDirectory,
+      ...(sandbox.currentBranch !== undefined
+        ? { currentBranch: sandbox.currentBranch }
+        : {}),
+      ...(sandbox.environmentDetails !== undefined
+        ? { environmentDetails: sandbox.environmentDetails }
+        : {}),
+      skills,
+    });
+  } catch (error) {
+    console.warn(
+      `[chat-sandbox-runtime] Sandbox not immediately ready or refused to start (${error instanceof Error ? error.message : String(error)}). Starting agent immediately:`,
+    );
+    return withoutUndefined({
+      ...sessionContext,
+      skills: await cachedSessionSkills({
+        sessionId: params.sessionId,
+        sandboxState,
+      }),
+    });
+  }
 }
 
 // ── Image attachment offload ────────────────────────────────────────

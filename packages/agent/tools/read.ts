@@ -131,7 +131,15 @@ EXAMPLES:
       { filePath, offset = 1, limit = 2000 },
       { experimental_context },
     ) => {
-      const sandbox = await getSandbox(experimental_context, "read");
+      let sandbox;
+      try {
+        sandbox = await getSandbox(experimental_context, "read");
+      } catch (error) {
+        return {
+          success: false,
+          error: `Sandbox is unavailable (${error instanceof Error ? error.message : String(error)}). Cannot read file.`,
+        };
+      }
       const workingDirectory = sandbox.workingDirectory;
 
       try {

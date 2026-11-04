@@ -2333,15 +2333,23 @@ export async function runAgentWorkflow(options: Options) {
             // a workspace to write into.
             return convertMessages(options.messages);
           }
-          const paths = await persistImageAttachmentsToSandbox({
-            sandboxState: runtime.sandboxState,
-            images: pendingImageAttachments,
-          });
-          const messagesWithPaths = replaceImageAttachmentsWithPaths(
-            options.messages,
-            paths,
-          );
-          return convertMessages(messagesWithPaths);
+          try {
+            const paths = await persistImageAttachmentsToSandbox({
+              sandboxState: runtime.sandboxState,
+              images: pendingImageAttachments,
+            });
+            const messagesWithPaths = replaceImageAttachmentsWithPaths(
+              options.messages,
+              paths,
+            );
+            return convertMessages(messagesWithPaths);
+          } catch (err) {
+            console.warn(
+              "[workflow] Failed to persist image attachments to sandbox; falling back to direct conversion:",
+              err,
+            );
+            return convertMessages(options.messages);
+          }
         });
 
   // Self-register this workflow's runId onto the chat as the very first step.
