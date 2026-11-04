@@ -1,0 +1,6 @@
+dist/
+node_modules/
+native-gui/target/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
