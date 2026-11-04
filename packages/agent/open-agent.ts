@@ -1,7 +1,3 @@
-import {
-  supportsLowVerbosity,
-  type McpInstructionServerSummary,
-} from "./plugins/entry-plugins";
 import type { SandboxState } from "@entry-agents/sandbox";
 import { stepCountIs, ToolLoopAgent, type ToolSet } from "ai";
 import { z } from "zod";
@@ -136,10 +132,6 @@ const callOptionsSchema = z.object({
   // that injects the Guided Frontend Workflow section into the system
   // prompt. See system-prompt.ts's GUIDED_FRONTEND_WORKFLOW_PROMPT.
   guidedFrontendWorkflow: z.boolean().optional(),
-  mcpInstructions: z
-    .custom<ReadonlyArray<McpInstructionServerSummary>>()
-    .optional(),
-  planModeReminder: z.string().optional(),
   // Host-injected real-time budget enforcement for subagents
   // (apps/web, 2026-09-15 -- see SubagentBudgetGuard in ./types).
   // Undefined in hosts without billing (tests, local dev) -- the task
@@ -156,7 +148,7 @@ const callOptionsSchema = z.object({
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
 
-// Free-tier model -- kept working regardless of Entry Gateway billing
+// Free-tier model -- kept working regardless of Opencode Zen billing
 // status (see apps/web/lib/model-availability.ts, which currently hides
 // kimi-k3/grok-4.5 from the picker for the same reason). This value is
 // only ever used as the ToolLoopAgent constructor's placeholder model;
@@ -261,19 +253,8 @@ export const openAgent = new ToolLoopAgent({
       ? normalizeAgentModelSelection(options.subagentModel, defaultModelLabel)
       : undefined;
 
-    const verbosityOverrides: ProviderOptionsByProvider | undefined =
-      supportsLowVerbosity(mainSelection.id)
-        ? {
-            openai: {
-              textVerbosity: "low",
-              ...mainSelection.providerOptionsOverrides?.openai,
-            },
-            ...mainSelection.providerOptionsOverrides,
-          }
-        : mainSelection.providerOptionsOverrides;
-
     const callModel = sharedProvider(mainSelection.id, {
-      providerOptionsOverrides: verbosityOverrides,
+      providerOptionsOverrides: mainSelection.providerOptionsOverrides,
       // Desktop (Phase 6): per-call transport/auth config — keeps the
       // session token out of the process environment entirely. Web hosts
       // omit it and keep the env-var path.
@@ -301,8 +282,6 @@ export const openAgent = new ToolLoopAgent({
       skills,
       modelId: mainSelection.id,
       guidedFrontendWorkflow: options.guidedFrontendWorkflow,
-      mcpInstructions: options.mcpInstructions,
-      planModeReminder: options.planModeReminder,
     });
 
     return {

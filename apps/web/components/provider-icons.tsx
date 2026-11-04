@@ -180,7 +180,7 @@ const providerLabelPrefixes: Record<string, string[]> = {
 };
 
 /**
- * Entry's model gateway (entry-gateway, wrapping Entry Gateway) returns flat
+ * Entry's model gateway (entry-gateway, wrapping Opencode Zen) returns flat
  * catalog IDs with no "provider/model" namespace, e.g. "grok-4.5",
  * "kimi-k3", "mimo-v2.5-free", "ling-3.0-flash-free", "hy3-free" -- so we
  * can't just split on "/" for those. Infer the vendor from the model's

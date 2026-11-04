@@ -22,7 +22,7 @@ import { useSessionLayout } from "@/app/sessions/[sessionId]/session-layout-cont
 /**
  * Session header that uses only layout-level data (persists across chat switches).
  * Sandbox-specific props are removed to prevent layout shift during navigation.
- * Entry Agents design: single right-side workspace panel toggle button (PanelRight).
+ * OpenCode design: single right-side workspace panel toggle button (PanelRight).
  */
 export function SessionHeader() {
   const { toggleSidebar } = useSidebar();
@@ -191,7 +191,7 @@ export function SessionHeader() {
           </div>
         </div>
 
-        {/* Right side: Entry Agents side panel toggle */}
+        {/* Right side: OpenCode side panel toggle */}
         <div className="flex items-center gap-1">
           <Tooltip>
             <TooltipTrigger asChild>

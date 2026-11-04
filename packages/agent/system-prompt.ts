@@ -1,8 +1,3 @@
-import {
-  optimizeSystemPromptForModel,
-  renderMcpInstructionsXml,
-  type McpInstructionServerSummary,
-} from "./plugins/entry-plugins";
 import { buildSubagentSummaryLines } from "./subagents/registry";
 import type { SkillMetadata } from "./skills/types";
 
@@ -31,7 +26,7 @@ function detectModelFamily(modelId: string | undefined): ModelFamily {
 // Core system prompt -- shared across all model families
 // ---------------------------------------------------------------------------
 
-const CORE_SYSTEM_PROMPT = `You are Entry Agents -- an AI coding assistant that completes complex, multi-step tasks through planning, context management, and delegation.
+const CORE_SYSTEM_PROMPT = `You are Entry Agent -- an AI coding assistant that completes complex, multi-step tasks through planning, context management, and delegation.
 
 # Task Completion
 
@@ -390,8 +385,6 @@ export interface BuildSystemPromptOptions {
   modelId?: string;
   /** See "Guided frontend workflow" section above for what this injects. */
   guidedFrontendWorkflow?: boolean;
-  mcpInstructions?: ReadonlyArray<McpInstructionServerSummary>;
-  planModeReminder?: string;
 }
 
 /**
@@ -457,15 +450,8 @@ npx skills --help                      # all options
  */
 export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
   const family = detectModelFamily(options.modelId);
-  const harnessPrompt = optimizeSystemPromptForModel({
-    modelId: options.modelId,
-  });
 
-  const parts = [
-    harnessPrompt,
-    CORE_SYSTEM_PROMPT,
-    getModelOverlay(family, options.modelId),
-  ];
+  const parts = [CORE_SYSTEM_PROMPT, getModelOverlay(family, options.modelId)];
 
   const now = new Date();
   const currentDateStr = now.toISOString().split("T")[0];
@@ -504,17 +490,6 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
     if (skillsPrompt) {
       parts.push(skillsPrompt);
     }
-  }
-
-  if (options.mcpInstructions && options.mcpInstructions.length > 0) {
-    const mcpXml = renderMcpInstructionsXml(options.mcpInstructions);
-    if (mcpXml) {
-      parts.push(`\n${mcpXml}`);
-    }
-  }
-
-  if (options.planModeReminder) {
-    parts.push(`\n${options.planModeReminder}`);
   }
 
   if (options.guidedFrontendWorkflow) {

@@ -50,7 +50,7 @@
  *     Zhipu) advertise a 1M native window on their own platforms, but
  *     third-party reseller hosting (OpenRouter) caps them at 256k and
  *     200k respectively. Since our own model provider (FreeModel /
- *     Entry Gateway) is itself a reseller of the same kind, and I had no
+ *     Opencode Zen) is itself a reseller of the same kind, and I had no
  *     way to empirically confirm which cap it actually enforces, I kept
  *     the lower, reseller-observed number here rather than the vendor's
  *     theoretical max -- consistent with this file's stated

@@ -1,0 +1,22 @@
+{
+  "name": "@entry-agents/entry-desktop-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "spike": "tsx src/local-agent-test.ts",
+    "electron": "electron electron-dist/entry-electron-main.cjs"
+  },
+  "dependencies": {
+    "@entry-agents/agent": "workspace:*",
+    "@entry-agents/sandbox": "workspace:*",
+    "nanoid": "^5.0.0",
+    "postgres": "^3.4.0",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@entry-agents/tsconfig": "workspace:*",
+    "@types/node": "^22",
+    "electron": "^41.10.6",
+    "xvfb": "^0.4.0"
+  }
+}
