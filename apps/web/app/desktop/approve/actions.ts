@@ -1,20 +1,14 @@
 "use server";
 
+import { headers } from "next/headers";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { getServerSession } from "@/lib/session/get-server-session";
+import { auth } from "@/lib/auth/config";
+import {
+  approveDeviceAuthorization as approveInMemory,
+  getPendingDeviceAuthorization as getPendingInMemory,
+} from "@/lib/desktop/device-codes";
 
-/**
- * Phase 10 — Desktop device sign-in approval.
- *
- * The signed-in Entry web user approves a code shown in Entry Desktop.
- * On approval, the row in `desktop_device_codes` (infrastructure table,
- * created idempotently — NOT a product schema change) is bound to the
- * user's current auth session token. The desktop client later polls
- * Project-B (which shares this same production database) to receive the
- * token. The web browser never sends the token to the desktop directly;
- * the desktop must present the matching device_code.
- */
 export async function ensureDeviceTable(): Promise<void> {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS desktop_device_codes (
@@ -30,50 +24,103 @@ export async function ensureDeviceTable(): Promise<void> {
 }
 
 export type ApproveResult =
-  | { ok: true }
-  | { error: "unauthorized" | "invalid_code" | "not_found" | "expired" };
+  | { ok: true; user?: { id: string; email?: string | null; name?: string | null } }
+  | { ok: false; error: string };
 
-export async function approveDesktopDevice(
-  code: string,
-): Promise<ApproveResult> {
-  const session = await getServerSession();
-  if (!session?.user?.id) return { error: "unauthorized" };
+export async function checkDeviceCode(code: string): Promise<{ valid: boolean; error?: string }> {
+  if (!code || typeof code !== "string") {
+    return { valid: false, error: "Code is required" };
+  }
+  const cleanCode = code.replace(/\D/g, "").slice(0, 6);
+  if (!/^\d{6}$/.test(cleanCode)) {
+    return { valid: false, error: "Invalid code format (expected 6 digits)" };
+  }
 
-  if (!/^\d{6}$/.test(code)) return { error: "invalid_code" };
-  await ensureDeviceTable();
+  // Check in-memory first
+  const memRecord = getPendingInMemory(cleanCode);
+  if (memRecord) {
+    return { valid: true };
+  }
 
-  const rows = await db.execute(sql`
-    SELECT device_code, status, expires_at
-    FROM desktop_device_codes
-    WHERE code = ${code}
-    LIMIT 1`);
+  // Check database table
+  try {
+    await ensureDeviceTable();
+    const rows = await db.execute(sql`
+      SELECT device_code, status, expires_at
+      FROM desktop_device_codes
+      WHERE code = ${cleanCode}
+      LIMIT 1`);
+    const row = (rows as unknown as { device_code: string; status: string; expires_at: Date | string }[])[0];
+    if (!row) return { valid: false, error: "Code not found" };
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      return { valid: false, error: "Code has expired" };
+    }
+    return { valid: true };
+  } catch {
+    return { valid: false, error: "Could not verify code" };
+  }
+}
 
-  const row = (
-    rows as unknown as {
-      device_code: string;
-      status: string;
-      expires_at: Date | string;
-    }[]
-  )[0];
-  if (!row) return { error: "not_found" };
-  if (new Date(row.expires_at).getTime() < Date.now())
-    return { error: "expired" };
+export async function approveDesktopDevice(code: string): Promise<ApproveResult> {
+  const cleanCode = code.replace(/\D/g, "").slice(0, 6);
+  if (!/^\d{6}$/.test(cleanCode)) {
+    return { ok: false, error: "Invalid confirmation code format." };
+  }
 
-  // Bind the approving user's live Better Auth session token to the device row.
-  const tokenRes = await db.execute(sql`
-    SELECT token FROM auth_sessions
-    WHERE user_id = ${session.user.id}
-    ORDER BY expires_at DESC
-    LIMIT 1`);
-  const tokenRow = (tokenRes as unknown as { token: string }[])[0];
-  if (!tokenRow?.token) return { error: "unauthorized" };
+  // Tie approval explicitly to the active authenticated browser session
+  const reqHeaders = await headers();
+  const session = await auth.api.getSession({ headers: reqHeaders });
 
-  if (row.status === "approved") return { ok: true };
+  if (!session?.user?.id) {
+    return { ok: false, error: "You must be signed in to authorize Desktop." };
+  }
 
-  await db.execute(sql`
-    UPDATE desktop_device_codes
-    SET status = 'approved', session_token = ${tokenRow.token}, user_id = ${session.user.id}, approved_at = now()
-    WHERE device_code = ${row.device_code}`);
+  const sessionToken = session.session?.token;
+  if (!sessionToken) {
+    return { ok: false, error: "Active browser session token could not be verified." };
+  }
 
-  return { ok: true };
+  // Update in-memory store if active
+  approveInMemory(cleanCode, session.user.id, sessionToken, session.user.email ?? undefined);
+
+  // Update database table for desktop-backend polling
+  try {
+    await ensureDeviceTable();
+    const rows = await db.execute(sql`
+      SELECT device_code, status, expires_at
+      FROM desktop_device_codes
+      WHERE code = ${cleanCode}
+      LIMIT 1`);
+
+    const row = (rows as unknown as { device_code: string; status: string; expires_at: Date | string }[])[0];
+    if (!row) {
+      // If code was found in-memory, that's fine; otherwise return error
+      if (!getPendingInMemory(cleanCode)) {
+        return { ok: false, error: "Authorization code not found or expired." };
+      }
+    } else {
+      if (new Date(row.expires_at).getTime() < Date.now()) {
+        return { ok: false, error: "Authorization code has expired." };
+      }
+
+      await db.execute(sql`
+        UPDATE desktop_device_codes
+        SET status = 'approved',
+            session_token = ${sessionToken},
+            user_id = ${session.user.id},
+            approved_at = now()
+        WHERE device_code = ${row.device_code}`);
+    }
+
+    return {
+      ok: true,
+      user: {
+        id: session.user.id,
+        email: session.user.email,
+        name: session.user.name,
+      },
+    };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message || "Database update failed during approval." };
+  }
 }
