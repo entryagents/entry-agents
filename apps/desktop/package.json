@@ -11,20 +11,18 @@
     "url": "https://github.com/entryagents/entry-agents.git"
   },
   "scripts": {
+    "tauri": "tauri",
+    "build:tauri": "tauri build",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "release:beta": "bash scripts/release-beta.sh"
   },
   "dependencies": {
-    "@entry-agents/agent": "workspace:*",
-    "@entry-agents/sandbox": "workspace:*",
-    "electron-log": "^5.2.0",
-    "electron-updater": "^6.3.9"
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-opener": "^2.0.0"
   },
   "devDependencies": {
-    "electron": "^34.2.0",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^3.0.0",
+    "@tauri-apps/cli": "^2.0.0",
     "typescript": "^5.7.0"
   }
 }

@@ -1,0 +1,19 @@
+[package]
+name = "entry-agents-desktop"
+version = "1.0.0"
+description = "Entry Agents Desktop — Autonomous AI Coding Workspace"
+authors = ["Entry Agents"]
+edition = "2021"
+
+[lib]
+name = "entry_agents_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = [] }
+tauri-plugin-opener = "2.0.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

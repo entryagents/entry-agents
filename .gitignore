@@ -55,4 +55,8 @@ apps/desktop-spike/.env
 apps/desktop-backend/.next/
 apps/desktop-spike/electron-dist/
 apps/desktop-spike/*.tmp.*
+# Rust / Tauri build artifacts
+target/
+**/src-tauri/target/
+
 PLAN.md

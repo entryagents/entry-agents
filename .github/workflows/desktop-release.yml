@@ -16,27 +16,20 @@ on:
 permissions:
   contents: write
 
-defaults:
-  run:
-    shell: bash
-
 jobs:
   build-and-publish:
-    name: Build & Publish (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: Build & Publish Tauri 2 (${{ matrix.platform }})
+    runs-on: ${{ matrix.platform }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: linux
-            builder_args: "--linux AppImage deb"
-          - os: macos-latest
-            target: mac
-            builder_args: "--mac dmg zip -c.mac.identity=null"
-          - os: windows-latest
-            target: win
-            builder_args: "--win nsis zip"
+          - platform: "macos-latest"
+            target_name: "macOS"
+          - platform: "ubuntu-22.04"
+            target_name: "Linux"
+          - platform: "windows-latest"
+            target_name: "Windows"
 
     steps:
       - name: Checkout Repository
@@ -49,63 +42,23 @@ jobs:
         with:
           node-version: 22
 
-      - name: Setup Linux Tools
-        if: runner.os == 'Linux'
+      - name: Install Rust Stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux Build Dependencies
+        if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libarchive-tools desktop-file-utils
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
-      - name: Install Dependencies
-        working-directory: apps/desktop
-        run: |
-          npm install electron@34.2.0 electron-builder@25.1.8 --no-save
-
-      - name: Build Desktop Binaries (${{ matrix.target }})
-        working-directory: apps/desktop
-        run: |
-          npx electron-builder ${{ matrix.builder_args }} --publish never
-
-      - name: Inspect Generated Artifacts
-        working-directory: apps/desktop
-        run: |
-          ls -la dist/
-
-      - name: Upload Binaries to GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          files: |
-            apps/desktop/dist/*.AppImage
-            apps/desktop/dist/*.deb
-            apps/desktop/dist/*.dmg
-            apps/desktop/dist/*.exe
-            apps/desktop/dist/*.zip
-            apps/desktop/dist/*.blockmap
-            apps/desktop/dist/*.yml
-          fail_on_unmatched_files: false
+      - name: Build Tauri 2 Application & Upload Release Assets
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  checksums:
-    name: Generate Release Checksums
-    needs: build-and-publish
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.tag || github.ref_name }}
-
-      - name: Download Release Assets
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p release-assets
-          gh release download "${{ inputs.tag || github.ref_name }}" --dir release-assets --pattern "*.*" || true
-          cd release-assets
-          rm -f SHA256SUMS.txt
-          if [ $(ls -1 | wc -l) -gt 0 ]; then
-            sha256sum * > SHA256SUMS.txt
-            cat SHA256SUMS.txt
-            gh release upload "${{ inputs.tag || github.ref_name }}" SHA256SUMS.txt --clobber
-          fi
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: "Entry Agents Desktop ${{ inputs.tag || github.ref_name }}"
+          releaseBody: "Entry Agents Desktop pre-release built with Tauri 2."
+          releaseDraft: false
+          prerelease: true
+          projectPath: "apps/desktop"
