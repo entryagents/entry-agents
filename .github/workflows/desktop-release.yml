@@ -1,0 +1,111 @@
+name: Desktop Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach binaries to (e.g. v1.0.0-beta.1)"
+        required: true
+        default: "v1.0.0-beta.1"
+  push:
+    tags:
+      - "v*"
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-and-publish:
+    name: Build & Publish (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            builder_args: "--linux AppImage deb"
+          - os: macos-latest
+            target: mac
+            builder_args: "--mac dmg zip -c.mac.identity=null"
+          - os: windows-latest
+            target: win
+            builder_args: "--win nsis zip"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Linux Tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libarchive-tools desktop-file-utils
+
+      - name: Install Dependencies
+        working-directory: apps/desktop
+        run: |
+          npm install electron@34.2.0 electron-builder@25.1.8 --no-save
+
+      - name: Build Desktop Binaries (${{ matrix.target }})
+        working-directory: apps/desktop
+        run: |
+          npx electron-builder ${{ matrix.builder_args }} --publish never
+
+      - name: Inspect Generated Artifacts
+        working-directory: apps/desktop
+        run: |
+          ls -la dist/
+
+      - name: Upload Binaries to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: |
+            apps/desktop/dist/*.AppImage
+            apps/desktop/dist/*.deb
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.yml
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  checksums:
+    name: Generate Release Checksums
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - name: Download Release Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p release-assets
+          gh release download "${{ inputs.tag || github.ref_name }}" --dir release-assets --pattern "*.*" || true
+          cd release-assets
+          rm -f SHA256SUMS.txt
+          if [ $(ls -1 | wc -l) -gt 0 ]; then
+            sha256sum * > SHA256SUMS.txt
+            cat SHA256SUMS.txt
+            gh release upload "${{ inputs.tag || github.ref_name }}" SHA256SUMS.txt --clobber
+          fi

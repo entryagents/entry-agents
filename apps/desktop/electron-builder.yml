@@ -6,7 +6,8 @@ directories:
   output: dist
   buildResources: build
 files:
-  - out/**/*
+  - src/**/*
+  - resources/**/*
   - icons/**/*
   - package.json
 

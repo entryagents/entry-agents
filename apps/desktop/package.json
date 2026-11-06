@@ -4,17 +4,15 @@
   "description": "Entry Agents Desktop — Autonomous AI Coding Agent Workspace",
   "private": true,
   "type": "module",
-  "main": "./out/main/index.js",
+  "main": "./src/main.js",
   "homepage": "https://entry-agents.dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/entryagents/entry-agents.git"
   },
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "preview": "electron-vite preview",
     "pack": "electron-builder --dir",
+    "dist": "electron-builder",
     "release:beta": "bash scripts/release-beta.sh"
   },
   "dependencies": {
