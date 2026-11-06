@@ -1,4 +1,6 @@
-# Entry Desktop — Phase 6: Real OAgent Electron Shell Integration + Provider Hardening
+# **[DEPRECATED]** Entry Desktop — Phase 6: Real OAgent Electron Shell Integration + Provider Hardening
+
+> **DEPRECATED**: This Electron spike document is **DEPRECATED** and retained for historical reference only.
 
 **Date:** 2026-10-01 · **Result: PASS WITH LIMITATIONS**
 

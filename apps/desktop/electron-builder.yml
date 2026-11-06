@@ -1,0 +1,63 @@
+appId: dev.entryagents.desktop
+productName: Entry Agents
+copyright: Copyright © 2026 Entry Agents
+artifactName: entry-desktop-${os}-${arch}-${version}.${ext}
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - icons/**/*
+  - package.json
+
+publish:
+  provider: generic
+  url: https://entry-agents.dev/files/desktop/beta/
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: icons/beta/icon.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  icon: icons/beta/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+
+linux:
+  category: Development
+  target:
+    - target: AppImage
+      arch:
+        - x64
+        - arm64
+    - target: deb
+      arch:
+        - x64
+        - arm64
+  icon: icons/beta/icon.png

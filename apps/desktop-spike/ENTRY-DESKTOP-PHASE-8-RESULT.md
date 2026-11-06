@@ -1,4 +1,6 @@
-# Entry Desktop — Phase 8 Result: Code Review + Security Hardening + Live E2E Closure
+# **[DEPRECATED]** Entry Desktop — Phase 8 Result: Code Review + Security Hardening + Live E2E Closure
+
+> **DEPRECATED**: This Electron spike document is **DEPRECATED** and retained for historical reference only.
 
 Date: 2026-10-01 (Phase 8)
 Scope: review of the Phase 7 implementation, security hardening, live deployed
