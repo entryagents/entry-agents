@@ -33,10 +33,6 @@ import { z } from "zod";
 
 import { getRun } from "workflow/api";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
-import {
-  heartbeatUserBillingTurn,
-  recordBillableUsage,
-} from "@/lib/billing/credit-ledger";
 import { addLanguageModelUsage } from "./usage-utils";
 import { estimateStepCost } from "./gateway-metadata";
 import {
@@ -84,8 +80,6 @@ import {
   serializeErrorForDiagnostics,
   toFriendlyChatErrorText,
 } from "@/lib/chat/friendly-error";
-import { getChatById, getSessionById } from "@/lib/db/sessions";
-import { getUserPreferences } from "@/lib/db/user-preferences";
 import {
   sanitizeSelectedModelIdForSession,
   sanitizeUserPreferencesForSession,
@@ -538,9 +532,13 @@ async function resolveCurrentPermissionMode(params: {
 }): Promise<"ask" | "autoAccept" | "fullAccess"> {
   "use step";
 
+  const [sessions, prefs] = await Promise.all([
+    import("@/lib/db/sessions"),
+    import("@/lib/db/user-preferences"),
+  ]);
   const [sessionRecord, rawPreferences] = await Promise.all([
-    getSessionById(params.sessionId),
-    getUserPreferences(params.userId).catch((error) => {
+    sessions.getSessionById(params.sessionId),
+    prefs.getUserPreferences(params.userId).catch((error) => {
       console.error(
         "Failed to load user preferences for live permission mode check:",
         error,
@@ -577,10 +575,15 @@ async function resolveChatModelRuntime(params: {
   const { resolveChatModelSelection } =
     await import("../api/chat/_lib/model-selection");
 
+  const [sessions, chats, prefs] = await Promise.all([
+    import("@/lib/db/sessions"),
+    import("@/lib/db/sessions"),
+    import("@/lib/db/user-preferences"),
+  ]);
   const [sessionRecord, chat, rawPreferences] = await Promise.all([
-    getSessionById(params.sessionId),
-    getChatById(params.chatId),
-    getUserPreferences(params.userId).catch((error) => {
+    sessions.getSessionById(params.sessionId),
+    chats.getChatById(params.chatId),
+    prefs.getUserPreferences(params.userId).catch((error) => {
       console.error("Failed to load user preferences:", error);
       return null;
     }),
@@ -3223,9 +3226,12 @@ const runAgentStep = async (
   // per-user billing lease alive so a legitimate long turn cannot be stolen,
   // while a crashed process still becomes reclaimable after the lease expires.
   const billingHeartbeat = setInterval(() => {
-    void heartbeatUserBillingTurn(userId, workflowRunId).catch((error) => {
-      console.error("[workflow] billing lease heartbeat failed:", error);
-    });
+    // dynamic: keeps postgres out of the static workflow graph
+    void import("@/lib/billing/credit-ledger")
+      .then((m) => m.heartbeatUserBillingTurn(userId, workflowRunId))
+      .catch((error) => {
+        console.error("[workflow] billing lease heartbeat failed:", error);
+      });
   }, 30_000);
 
   // Real-time per-step billing: debited immediately after each model
@@ -3577,7 +3583,7 @@ const runAgentStep = async (
               ) {
                 const { requireSandboxProvider } =
                   await import("@entry-agents/sandbox");
-                repairedSandboxState = requireSandboxProvider(
+                repairedSandboxState = await requireSandboxProvider(
                   "boxd",
                 ).buildProvisionState({
                   existing: current.sandboxState,
@@ -3989,11 +3995,15 @@ const runAgentStep = async (
                 lastStepCost = liveStepCostUsd;
                 totalMessageCost = (totalMessageCost ?? 0) + liveStepCostUsd;
                 pendingDebits.push(
-                  recordBillableUsage(userId, liveStepCostUsd, {
-                    billingReference: `${workflowRunId}:main-step:${stepNumber}`,
-                    modelId,
-                    description: `Usage: ${modelId}`,
-                  }).then(() => undefined),
+                  import("@/lib/billing/credit-ledger")
+                    .then((m) =>
+                      m.recordBillableUsage(userId, liveStepCostUsd, {
+                        billingReference: `${workflowRunId}:main-step:${stepNumber}`,
+                        modelId,
+                        description: `Usage: ${modelId}`,
+                      }),
+                    )
+                    .then(() => undefined),
                 );
                 if (enforceCreditBlock) {
                   remainingBalanceCents -= liveStepCostCents;
@@ -4048,11 +4058,13 @@ const runAgentStep = async (
                 // this process, so durable replay cannot miss or double-charge.
                 const stepCostCents = Math.max(1, Math.ceil(stepCost * 100));
                 pendingDebits.push(
-                  recordBillableUsage(userId, stepCost, {
-                    billingReference: `${workflowRunId}:main-step:${stepNumber}`,
-                    modelId,
-                    description: `Usage: ${modelId}`,
-                  }).then(() => undefined),
+                  import("@/lib/billing/credit-ledger").then((m) =>
+                    m.recordBillableUsage(userId, stepCost, {
+                      billingReference: `${workflowRunId}:main-step:${stepNumber}`,
+                      modelId,
+                      description: `Usage: ${modelId}`,
+                    }),
+                  ).then(() => undefined),
                 );
 
                 if (enforceCreditBlock) {

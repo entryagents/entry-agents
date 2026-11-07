@@ -1,20 +1,12 @@
-import { drizzle } from "drizzle-orm/postgres-js";
-import postgres from "postgres";
-import * as schema from "./schema";
+import type { DrizzleClient } from "./client-impl";
+import { getClient } from "./client-impl";
 
-type DrizzleClient = ReturnType<typeof drizzle<typeof schema>>;
-
-let _db: DrizzleClient | null = null;
-
-export const db = new Proxy({} as DrizzleClient, {
+// The drizzle client is created lazily on first property access and lives in
+// client-impl.ts, which is marked "use step" (the workflow bundler requires
+// the postgres client to sit in the Node step bundle). This facade keeps the
+// `db.select` shape every call site uses.
+export const db: DrizzleClient = new Proxy({} as DrizzleClient, {
   get(_, prop) {
-    if (!_db) {
-      if (!process.env.POSTGRES_URL) {
-        throw new Error("POSTGRES_URL environment variable is required");
-      }
-      const client = postgres(process.env.POSTGRES_URL);
-      _db = drizzle(client, { schema });
-    }
-    return Reflect.get(_db, prop);
+    return Reflect.get(getClient(), prop);
   },
 });

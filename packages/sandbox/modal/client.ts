@@ -1,3 +1,5 @@
+"use step";
+
 /**
  * Modal client construction + error classification.
  *
@@ -14,7 +16,9 @@ import { ModalClient } from "modal";
 import type { App, Image, Sandbox as ModalSandbox, Volume } from "modal";
 
 /** Modal's App name for Entry. One App holds every Entry sandbox. */
-export const MODAL_APP_NAME = "entry-agents";
+export function MODAL_APP_NAME() {
+  return "entry-agents";
+}
 
 let cachedApp: App | undefined;
 
@@ -51,7 +55,7 @@ export async function getModalApp(client: ModalClient): Promise<App> {
   if (cachedApp) {
     return cachedApp;
   }
-  cachedApp = await client.apps.fromName(MODAL_APP_NAME, {
+  cachedApp = await client.apps.fromName(MODAL_APP_NAME(), {
     createIfMissing: true,
   });
   return cachedApp;

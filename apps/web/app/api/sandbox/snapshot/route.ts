@@ -186,10 +186,10 @@ export async function PUT(req: Request) {
     );
   }
 
-  const restoreLegacySnapshot = () =>
+  const restoreLegacySnapshot = async () =>
     connectSandbox(
       {
-        state: sandboxProvider.buildProvisionState({
+        state: await sandboxProvider.buildProvisionState({
           sessionId,
           existing: {
             type: sandboxProvider.id,
@@ -217,7 +217,7 @@ export async function PUT(req: Request) {
             restoredFrom = persistentSandboxName;
             return await connectSandbox(
               {
-                state: sandboxProvider.buildProvisionState({
+                state: await sandboxProvider.buildProvisionState({
                   sessionId,
                   existing: {
                     type: sandboxProvider.id,
@@ -247,7 +247,7 @@ export async function PUT(req: Request) {
 
     const newState = sandbox.getState?.();
     const restoredState = (newState ??
-      sandboxProvider.buildProvisionState({
+      await sandboxProvider.buildProvisionState({
         sessionId,
         existing: {
           type: sandboxProvider.id,
