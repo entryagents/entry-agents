@@ -16,7 +16,7 @@ function ApproveForm() {
   const [status, setStatus] = React.useState<"idle" | "checking" | "approved" | "error">("idle");
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
-  const { isAuthenticated, loading: sessionLoading, user } = useSession();
+  const { isAuthenticated, loading: sessionLoading } = useSession();
 
   React.useEffect(() => {
     if (codeParam) {
@@ -112,7 +112,7 @@ function ApproveForm() {
             </div>
             <h2 className="text-base font-medium text-white">Desktop Application Authorized!</h2>
             <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">
-              Approved as <span className="text-zinc-200 font-medium">{user?.email || user?.name}</span>. You can now return to Entry Agents Desktop.
+              Approved as <span className="text-zinc-200 font-medium">{code ? "device " + code : "this device"}</span>. You can now return to Entry Agents Desktop.
             </p>
             <div className="flex flex-col w-full gap-2 pt-2">
               <button
@@ -130,7 +130,7 @@ function ApproveForm() {
             <div className="w-full rounded-xl bg-zinc-900/60 border border-zinc-800/80 p-3 flex items-center justify-between text-left">
               <div className="flex flex-col">
                 <span className="text-xs text-zinc-400">Authorizing account:</span>
-                <span className="text-sm font-medium text-zinc-200">{user?.email || user?.name}</span>
+                <span className="text-sm font-medium text-zinc-200">{code ? "device " + code : "this device"}</span>
               </div>
               <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-medium">
                 Active

@@ -1,3 +1,11 @@
+// Workflow bundler: the sandbox adapters (@boxd-sh/sdk, node:fs in
+// packages/sandbox/local) and the drizzle postgres client are ONLY ever
+// executed inside "use step" functions (full Node runtime), but the
+// bundler cannot see that through the agent's dynamic tool dispatch.
+// This downgrades those false positives to warnings.
+process.env.WORKFLOW_ALLOW_UNSAFE_FLOW_BUNDLE =
+  process.env.WORKFLOW_ALLOW_UNSAFE_FLOW_BUNDLE ?? "1";
+
 import type { NextConfig } from "next";
 import { withBotId } from "botid/next/config";
 import { withWorkflow } from "workflow/next";

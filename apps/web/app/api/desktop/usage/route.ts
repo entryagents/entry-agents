@@ -25,7 +25,7 @@ export async function GET(req: Request) {
         expiresAt: authSessions.expiresAt,
         userEmail: users.email,
         userName: users.name,
-        userImage: users.image,
+        userImage: users.avatarUrl,
       })
       .from(authSessions)
       .innerJoin(users, eq(authSessions.userId, users.id))
@@ -50,7 +50,7 @@ export async function GET(req: Request) {
       plan: plan.id,
       planName: plan.name,
       creditBalanceCents: billingState?.creditBalanceCents ?? 0,
-      monthlyGrantCents: plan.monthlyGrantCents ?? 0,
+      monthlyGrantCents: billingState?.planGrantBalanceCents ?? 0,
     });
   } catch (err) {
     return NextResponse.json(

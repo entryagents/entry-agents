@@ -235,7 +235,7 @@ export async function POST(req: Request) {
       : undefined;
 
     sandbox = await connectSandbox({
-      state: provider.buildProvisionState({
+      state: await provider.buildProvisionState({
         sessionId,
         source,
         existing: existingState,
