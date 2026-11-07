@@ -1,3 +1,7 @@
+/**
+ * DEPRECATED — Project B is no longer used by Entry Desktop.
+ * Desktop clients call the main web API (entry-agents.dev).
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { getSql } from "@/lib/sql";
 import { ensureDeviceTable } from "@/lib/device-codes";
