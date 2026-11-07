@@ -785,9 +785,110 @@ export async function runAutoCreatePrStep(params: {
     console.error("[workflow] Auto-PR failed:", error);
     return {
       created: false,
+      pushed: false,
       syncedExisting: false,
       skipped: false,
       error: error instanceof Error ? error.message : "Auto-PR failed",
-    };
+    } as AutoCreatePrResult;
+  }
+}
+
+export async function dequeueNextQueuedUserMessageStep(
+  chatId: string,
+): Promise<WebAgentUIMessage | null> {
+  "use step";
+
+  try {
+    const { eq } = await import("drizzle-orm");
+    const { db } = await import("@/lib/db/client");
+    const { chats } = await import("@/lib/db/schema");
+
+    const popped = await db.transaction(async (tx) => {
+      const rows = await tx
+        .select({ queuedPrompts: chats.queuedPrompts })
+        .from(chats)
+        .where(eq(chats.id, chatId))
+        .limit(1);
+
+      const rawQueue = rows[0]?.queuedPrompts;
+      if (!Array.isArray(rawQueue) || rawQueue.length === 0) {
+        return null;
+      }
+
+      const [first, ...rest] = rawQueue as Array<{
+        id?: unknown;
+        text?: unknown;
+        payload?: unknown;
+      }>;
+
+      if (
+        !first ||
+        typeof first !== "object" ||
+        typeof first.id !== "string" ||
+        typeof first.text !== "string"
+      ) {
+        return null;
+      }
+
+      await tx
+        .update(chats)
+        .set({ queuedPrompts: rest.length > 0 ? rest : null })
+        .where(eq(chats.id, chatId));
+
+      const payload =
+        first.payload && typeof first.payload === "object"
+          ? (first.payload as {
+              text?: unknown;
+              files?: unknown;
+              parts?: unknown;
+            })
+          : null;
+
+      let parts: WebAgentUIMessage["parts"] = [];
+      if (payload && Array.isArray(payload.parts)) {
+        parts = payload.parts as WebAgentUIMessage["parts"];
+      } else {
+        const text =
+          payload && typeof payload.text === "string"
+            ? payload.text
+            : first.text;
+        if (text.trim()) {
+          parts.push({ type: "text", text });
+        }
+        if (payload && Array.isArray(payload.files)) {
+          for (const filePart of payload.files) {
+            if (filePart && typeof filePart === "object") {
+              parts.push(filePart as WebAgentUIMessage["parts"][number]);
+            }
+          }
+        }
+      }
+
+      if (parts.length === 0 && first.text.trim()) {
+        parts = [{ type: "text", text: first.text }];
+      }
+
+      if (parts.length === 0) {
+        return null;
+      }
+
+      const userMessage: WebAgentUIMessage = {
+        id: first.id,
+        role: "user",
+        parts,
+      };
+
+      return userMessage;
+    });
+
+    if (!popped) {
+      return null;
+    }
+
+    await persistUserMessage(chatId, popped);
+    return popped;
+  } catch (error) {
+    console.error("[workflow] Failed to dequeue next queued prompt:", error);
+    return null;
   }
 }

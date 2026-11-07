@@ -3,6 +3,7 @@ import * as realAiModule from "ai";
 import * as realChatCreateCancelableReadableStream from "@/lib/chat/create-cancelable-readable-stream";
 import * as realSessionGetServerSession from "@/lib/session/get-server-session";
 import * as realDbSessions from "@/lib/db/sessions";
+import * as realDbWorkflowRuns from "@/lib/db/workflow-runs";
 
 // ── Mutable state ──────────────────────────────────────────────────
 
@@ -30,9 +31,12 @@ let workflowRunStatus: string = "running";
 let getRunShouldThrow = false;
 let getRunErrorName = "Error";
 let lastStartIndex: number | undefined;
+let latestCompletedRunId: string | null = null;
 
 const spies = {
-  updateChatActiveStreamId: mock(() => Promise.resolve()),
+  updateChatActiveStreamId: mock((_chatId?: unknown, _next?: unknown) =>
+    Promise.resolve(),
+  ),
 };
 
 // ── Module mocks ───────────────────────────────────────────────────
@@ -98,6 +102,19 @@ mock.module("@/lib/db/sessions", () => ({
   getChatById: async () => chatRecord,
   getSessionById: async () => sessionRecord,
   updateChatActiveStreamId: spies.updateChatActiveStreamId,
+  compareAndSetChatActiveStreamId: async (
+    chatId: string,
+    _expected: string | null,
+    next: string | null,
+  ) => {
+    await spies.updateChatActiveStreamId(chatId, next);
+    return true;
+  },
+}));
+
+mock.module("@/lib/db/workflow-runs", () => ({
+  ...realDbWorkflowRuns,
+  getLatestCompletedWorkflowRunIdForChat: async () => latestCompletedRunId,
 }));
 
 const routeModulePromise = import("./route");
@@ -141,6 +158,7 @@ beforeEach(() => {
   workflowRunStatus = "running";
   getRunShouldThrow = false;
   lastStartIndex = undefined;
+  latestCompletedRunId = null;
   Object.values(spies).forEach((s) => s.mockClear());
 });
 
@@ -176,6 +194,20 @@ describe("GET /api/chat/[chatId]/stream", () => {
     const response = await GET(createStreamRequest(), routeContext);
     expect(response.status).toBe(204);
     expect(spies.updateChatActiveStreamId).not.toHaveBeenCalled();
+  });
+
+  test("replays completed run tail when activeStreamId is null and startIndex > 0", async () => {
+    chatRecord = { sessionId: "session-1", activeStreamId: null };
+    latestCompletedRunId = "wrun_completed-999";
+    const { GET } = await routeModulePromise;
+
+    const response = await GET(
+      createStreamRequestWithStartIndex("10"),
+      routeContext,
+    );
+    expect(response.status).toBe(200);
+    expect(lastStartIndex).toBe(10);
+    expect(response.headers.get("x-workflow-stream-tail-index")).toBe("12");
   });
 
   test("returns stream response when workflow is running", async () => {

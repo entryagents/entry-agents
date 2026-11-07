@@ -1,22 +1,25 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { UIMessageChunk } from "ai";
-// Import the real module first so the mock below can spread its other
-// exports through untouched -- chat.ts (and other modules it loads)
-// import additional named exports (e.g. APICallError,
+
+mock.module("server-only", () => ({}));
+
+// Import the real module after mocking server-only so the mock below can
+// spread its other exports through untouched -- chat.ts (and other modules
+// it loads) import additional named exports (e.g. APICallError,
 // defaultSettingsMiddleware, wrapLanguageModel) from "ai" beyond the
 // few this test intentionally stubs, and mock.module replaces the
 // whole module namespace for every consumer, not just this file's own
 // import.
-import * as realAiModule from "ai";
-import * as realWorkflowModule from "workflow";
-import * as realWorkflowApiModule from "workflow/api";
-import * as realChatPostFinish from "./chat-post-finish";
-import * as realDbWorkflowRuns from "@/lib/db/workflow-runs";
-import * as realAppConfig from "@/app/config";
-import * as realDbSessions from "@/lib/db/sessions";
-import * as realDbUserPreferences from "@/lib/db/user-preferences";
-import * as realDbUsers from "@/lib/db/users";
-import * as realChatSandboxRuntime from "./chat-sandbox-runtime";
+const realAiModule = await import("ai");
+const realWorkflowModule = await import("workflow");
+const realWorkflowApiModule = await import("workflow/api");
+const realChatPostFinish = await import("./chat-post-finish");
+const realDbWorkflowRuns = await import("@/lib/db/workflow-runs");
+const realAppConfig = await import("@/app/config");
+const realDbSessions = await import("@/lib/db/sessions");
+const realDbUserPreferences = await import("@/lib/db/user-preferences");
+const realDbUsers = await import("@/lib/db/users");
+const realChatSandboxRuntime = await import("./chat-sandbox-runtime");
 
 // ── Spy state ──────────────────────────────────────────────────────
 
@@ -64,6 +67,13 @@ const spies = {
   persistUserMessage: mock(() => Promise.resolve()),
   persistAssistantMessageWithToolResults: mock(() => Promise.resolve()),
   persistAssistantMessage: mock((_chatId?: unknown, _message?: unknown) =>
+    Promise.resolve(),
+  ),
+  persistFinalAssistantMessage: mock(
+    (chatId?: unknown, message?: unknown, _workflowRunId?: unknown) =>
+      spies.persistAssistantMessage(chatId, message),
+  ),
+  reconcileSessionStatusStep: mock((_sessionId?: unknown, _reason?: unknown) =>
     Promise.resolve(),
   ),
   persistSandboxState: mock((_sessionId?: unknown, _sandboxState?: unknown) =>
@@ -128,6 +138,7 @@ const spies = {
   // Defaults to "no prior failures" -- most tests don't care about the
   // repeat-failure note, only the dedicated test below overrides this.
   countRecentFailuresWithCategory: mock(() => Promise.resolve(0)),
+  dequeueNextQueuedUserMessageStep: mock(() => Promise.resolve(null)),
 };
 
 let testSessionRecord: {
@@ -405,7 +416,9 @@ mock.module("@/lib/db/platform-settings", () => ({
   setFreeTierModelId: mock(() => Promise.resolve()),
 }));
 
+const realCreditLedger = await import("@/lib/billing/credit-ledger");
 mock.module("@/lib/billing/credit-ledger", () => ({
+  ...realCreditLedger,
   getUserBillingState: mock(() =>
     Promise.resolve({
       plan: "pro",
@@ -416,6 +429,9 @@ mock.module("@/lib/billing/credit-ledger", () => ({
     }),
   ),
   claimUserBillingTurn: mock(() => Promise.resolve(true)),
+  heartbeatUserBillingTurn: mock(() => Promise.resolve()),
+  recordBillableUsage: mock(() => Promise.resolve({ debitedCents: 0 })),
+  releaseUserBillingTurn: mock(() => Promise.resolve()),
 }));
 
 // lib/billing/plans.ts is pure (no DB import) -- no mock needed, the
@@ -1678,6 +1694,30 @@ describe("runAgentWorkflow", () => {
     );
 
     expect(spies.runAutoCommitStep).not.toHaveBeenCalled();
+  });
+
+  test("auto-drains queued user prompt on the server when turn finishes naturally", async () => {
+    spies.dequeueNextQueuedUserMessageStep
+      .mockImplementationOnce(() =>
+        Promise.resolve({
+          id: "queued-user-2",
+          role: "user" as const,
+          parts: [{ type: "text" as const, text: "Run the tests next" }],
+        }),
+      )
+      .mockImplementationOnce(() => Promise.resolve(null));
+
+    await runAgentWorkflow(makeOptions({ maxSteps: 2 }));
+
+    expect(spies.dequeueNextQueuedUserMessageStep).toHaveBeenCalledTimes(1);
+    expect(spies.persistAssistantMessage).toHaveBeenCalledTimes(4);
+    expect(
+      writtenChunks.filter(
+        (chunk) =>
+          chunk.type === "data-user-message" &&
+          (chunk as { data?: { id?: string } }).data?.id === "queued-user-2",
+      ),
+    ).toHaveLength(1);
   });
 
   test("still clears stream and sends finish even on step error", async () => {

@@ -2892,6 +2892,7 @@ export function SessionChatContent({
       }
 
       const refreshCompletedTurnState = async () => {
+        await refreshCurrentChatSnapshot().catch(() => undefined);
         await requestStatusSync("force").catch(() => undefined);
         await refreshGitStatus().catch(() => undefined);
         await refreshDiff().catch(() => undefined);
@@ -2920,6 +2921,7 @@ export function SessionChatContent({
     chatInfo.id,
     setChatStreaming,
     clearChatTitle,
+    refreshCurrentChatSnapshot,
     requestStatusSync,
     refreshGitStatus,
     refreshDiff,
