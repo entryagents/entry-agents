@@ -51,6 +51,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      - name: Install Tauri CLI & Desktop Dependencies
+        working-directory: apps/desktop
+        run: |
+          npm install -g @tauri-apps/cli@^2
+          npm install --no-save
+
       - name: Build Tauri 2 Application & Upload Release Assets
         uses: tauri-apps/tauri-action@v0
         env:
