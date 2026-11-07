@@ -110,3 +110,21 @@ export async function countRecentFailuresWithCategory(
       row.errorMessage && classifyChatError(row.errorMessage) === category,
   ).length;
 }
+
+export async function getLatestCompletedWorkflowRunIdForChat(
+  chatId: string,
+): Promise<string | null> {
+  const rows = await db
+    .select({ id: workflowRuns.id })
+    .from(workflowRuns)
+    .where(
+      and(
+        eq(workflowRuns.chatId, chatId),
+        eq(workflowRuns.status, "completed"),
+      ),
+    )
+    .orderBy(desc(workflowRuns.finishedAt), desc(workflowRuns.startedAt))
+    .limit(1);
+
+  return rows[0]?.id ?? null;
+}

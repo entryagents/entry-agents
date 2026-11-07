@@ -5,7 +5,11 @@ import {
   requireOwnedChatById,
 } from "@/app/api/chat/_lib/chat-context";
 import type { WebAgentUIMessage } from "@/app/types";
-import { updateChatActiveStreamId } from "@/lib/db/sessions";
+import {
+  compareAndSetChatActiveStreamId,
+  updateChatActiveStreamId,
+} from "@/lib/db/sessions";
+import { getLatestCompletedWorkflowRunIdForChat } from "@/lib/db/workflow-runs";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
 import { verifyRunState } from "@/lib/workflow-run-recovery";
 
@@ -42,6 +46,30 @@ function parseStartIndex(request: Request): ParseStartIndexResult {
   return { ok: true, startIndex };
 }
 
+async function openReadableStreamResponse(
+  runId: string,
+  startIndex: number | undefined,
+): Promise<Response | null> {
+  try {
+    const readable = getRun(runId).getReadable<WebAgentUIMessageChunk>({
+      startIndex,
+    });
+    const tailIndex = await readable.getTailIndex();
+    const stream = createCancelableReadableStream(readable);
+
+    return createUIMessageStreamResponse({
+      stream,
+      headers: {
+        "x-workflow-run-id": runId,
+        "x-workflow-stream-tail-index": String(tailIndex),
+      },
+    });
+  } catch (error) {
+    console.error("[chat-stream] readable open failed:", error);
+    return null;
+  }
+}
+
 export async function GET(request: Request, context: RouteContext) {
   const authResult = await requireAuthenticatedUser("text");
   if (!authResult.ok) {
@@ -65,8 +93,28 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const { chat } = chatContext;
+  const { startIndex } = parsedStartIndex;
+  const isMidStreamReconnect = typeof startIndex === "number" && startIndex > 0;
 
   if (!chat.activeStreamId) {
+    // When a client was already reading a live stream (startIndex > 0) and
+    // lost connectivity while the workflow finished and cleared activeStreamId,
+    // replay the remaining chunks (startIndex..end) from the completed run so
+    // the client receives the tail and real finish event without truncation.
+    if (isMidStreamReconnect) {
+      const completedRunId = await getLatestCompletedWorkflowRunIdForChat(
+        chatId,
+      ).catch(() => null);
+      if (completedRunId) {
+        const tailResponse = await openReadableStreamResponse(
+          completedRunId,
+          startIndex,
+        );
+        if (tailResponse) {
+          return tailResponse;
+        }
+      }
+    }
     return new Response(null, { status: 204 });
   }
 
@@ -75,10 +123,18 @@ export async function GET(request: Request, context: RouteContext) {
   const outcome = await verifyRunState(runId);
 
   // "gone" covers both terminal runs and definitive not-found/expired:
-  // the workflow is done — clear the stale activeStreamId. A reconnecting
-  // client hydrates the persisted messages instead of a resumed stream.
+  // the workflow is done — clear the stale activeStreamId using CAS so we
+  // never clobber a newly claimed runId.
   if (outcome === "gone") {
-    await updateChatActiveStreamId(chatId, null);
+    await compareAndSetChatActiveStreamId(chatId, runId, null).catch(() =>
+      updateChatActiveStreamId(chatId, null),
+    );
+    if (isMidStreamReconnect) {
+      const tailResponse = await openReadableStreamResponse(runId, startIndex);
+      if (tailResponse) {
+        return tailResponse;
+      }
+    }
     return new Response(null, { status: 204 });
   }
   // "unknown" (the probe itself kept failing transiently) hands back 204
@@ -88,24 +144,10 @@ export async function GET(request: Request, context: RouteContext) {
     return new Response(null, { status: 204 });
   }
 
-  try {
-    const readable = getRun(runId).getReadable<WebAgentUIMessageChunk>({
-      startIndex: parsedStartIndex.startIndex,
-    });
-    const tailIndex = await readable.getTailIndex();
-    const stream = createCancelableReadableStream(readable);
-
-    return createUIMessageStreamResponse({
-      stream,
-      headers: {
-        "x-workflow-stream-tail-index": String(tailIndex),
-      },
-    });
-  } catch (error) {
-    // The verify step above already filtered out an alive run; a lookup
-    // hiccup here is momentary, so hand back 204 (no state cleared) and let
-    // the client's recovevery loop retry rather than dropping the id.
-    console.error("[chat-stream] readable open failed:", error);
-    return new Response(null, { status: 204 });
+  const liveResponse = await openReadableStreamResponse(runId, startIndex);
+  if (liveResponse) {
+    return liveResponse;
   }
+
+  return new Response(null, { status: 204 });
 }

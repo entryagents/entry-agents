@@ -296,7 +296,16 @@ export function useSessionChatRuntime({
             chatInstance.status !== "streaming" &&
             chatInstance.status !== "submitted";
 
-          if (resumeAttachedToNothing) {
+          // Also reconcile with the server snapshot when `resumeStream()` was a
+          // no-op because `chatInstance.status` was still `"streaming"` or
+          // `"submitted"` (e.g. AbortableChatTransport was still inside its
+          // offline retry loop when the turn already completed on the server).
+          const shouldReconcileSnapshot =
+            resumeAttachedToNothing ||
+            chatInstance.status === "streaming" ||
+            chatInstance.status === "submitted";
+
+          if (shouldReconcileSnapshot) {
             // Reconcile with latest server snapshot if turn completed while client was away
             try {
               const res = await fetch(
@@ -310,23 +319,46 @@ export function useSessionChatRuntime({
                   messages?: WebAgentUIMessage[];
                   isStreaming?: boolean;
                 };
-                if (data?.messages) {
-                  chat.setMessages(dedupeMessageList(data.messages));
-                }
                 if (!data?.isStreaming) {
+                  // Server confirms the workflow run has finished. If local
+                  // transport is still stuck in a reconnect loop, tear it down
+                  // and hydrate the authoritative persisted messages from DB.
+                  if (
+                    chatInstance.status === "streaming" ||
+                    chatInstance.status === "submitted"
+                  ) {
+                    try {
+                      await chatInstance.stop();
+                    } catch {
+                      // Ignore stop failure
+                    }
+                    abortChatInstanceTransport(chatId);
+                  }
+                  if (data?.messages) {
+                    chat.setMessages(dedupeMessageList(data.messages));
+                  }
                   clearChatWorkspaceStatus(chatId);
                   triggerBillingSync();
                   return;
                 }
-                // Server is actively streaming (e.g. turn started on another
-                // device or reconnected after network loss) -- reset local
-                // transport and attach to the live stream.
-                abortChatInstanceTransport(chatId);
-                await chat.resumeStream();
-                return;
+                if (resumeAttachedToNothing) {
+                  if (data?.messages) {
+                    chat.setMessages(dedupeMessageList(data.messages));
+                  }
+                  // Server is actively streaming (e.g. turn started on another
+                  // device or reconnected after network loss) -- reset local
+                  // transport and attach to the live stream.
+                  abortChatInstanceTransport(chatId);
+                  await chat.resumeStream();
+                  return;
+                }
               }
             } catch {
               // Ignore network failure during hydration attempt
+            }
+
+            if (!resumeAttachedToNothing) {
+              return;
             }
 
             if (userStoppedRef.current) {

@@ -59,6 +59,7 @@ import {
   claimActiveStream,
   closeStream,
   clearActiveStream,
+  dequeueNextQueuedUserMessageStep,
   releaseUserBillingTurnStep,
   reconcileSessionStatusStep,
   hasAutoCommitChangesStep,
@@ -2226,30 +2227,10 @@ export async function runAgentWorkflow(options: Options) {
     throw new Error("runAgentWorkflow requires at least one message");
   }
 
-  const assistantId =
+  let assistantId =
     latestMessage.role === "assistant"
       ? latestMessage.id
       : (options.assistantId ?? generateIdAi());
-
-  // Phase 2b: put the user's message into the run stream before any step
-  // runs, so a viewer replaying the stream sees the turn's opening rather
-  // than an assistant response with no visible cause. see
-  // sendUserMessageMarker for why this cannot be implicit.
-  if (latestMessage.role === "user") {
-    const userText = (latestMessage.parts ?? [])
-      .map((part) =>
-        part.type === "text" && "text" in part ? String(part.text) : "",
-      )
-      .filter(Boolean)
-      .join("\n")
-      // Bound it: the marker exists to restore ordering, not to duplicate
-      // the whole prompt into a second place in the stream.
-      .slice(0, 4000);
-    await sendUserMessageMarker(writable, {
-      id: latestMessage.id,
-      text: userText,
-    });
-  }
 
   const inputMessagesPersistPromise = options.inputMessagesPersisted
     ? Promise.resolve()
@@ -2378,6 +2359,24 @@ export async function runAgentWorkflow(options: Options) {
     ]);
     await closeStream(writable);
     return;
+  }
+
+  // Phase 2b: put the user's message into the run stream after claiming the
+  // stream slot (so conflicting runs emit zero chunks and `start` is chunk 0),
+  // so a viewer replaying the stream sees the turn's user prompt alongside the
+  // assistant response.
+  if (latestMessage.role === "user") {
+    const userText = (latestMessage.parts ?? [])
+      .map((part) =>
+        part.type === "text" && "text" in part ? String(part.text) : "",
+      )
+      .filter(Boolean)
+      .join("\n")
+      .slice(0, 4000);
+    await sendUserMessageMarker(writable, {
+      id: latestMessage.id,
+      text: userText,
+    });
   }
 
   let selectedModelId = APP_DEFAULT_MODEL_ID;
@@ -2582,11 +2581,7 @@ export async function runAgentWorkflow(options: Options) {
     sandboxState = runtime?.sandboxState;
 
     const turnStartedAt = Date.now();
-    const { isHobbyResourceProfile } =
-      await import("@/lib/deployment/resource-profile");
-    const MAX_WORKFLOW_TURN_DURATION_MS = isHobbyResourceProfile()
-      ? 60 * 60 * 1000 // 1 hour max for Hobby plan
-      : 60 * 60 * 1000; // 1 hour max standard
+    const MAX_WORKFLOW_TURN_DURATION_MS = 60 * 60 * 1000; // 1 hour max
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
@@ -2596,22 +2591,13 @@ export async function runAgentWorkflow(options: Options) {
       options.maxSteps === undefined || step < options.maxSteps;
       step++
     ) {
-      // Cooperative check: Stop if chat was cancelled in DB or workflow run was cancelled
-      try {
-        const { getChatById } = await import("@/lib/db/sessions");
-        const currentChat = await getChatById(options.chatId);
-        if (
-          currentChat?.status === "cancelled" ||
-          (currentChat && currentChat.activeStreamId !== workflowRunId)
-        ) {
-          console.warn(
-            `[chat-workflow] Chat ${options.chatId} was marked cancelled in database. Stopping workflow loop.`,
-          );
-          wasAborted = true;
-          break;
-        }
-      } catch {
-        // Ignore read failure
+      // Cooperative check: Stop if chat was cancelled in DB or superseded by a newer run
+      if (await checkChatCancelledStep(options.chatId, workflowRunId)) {
+        console.warn(
+          `[chat-workflow] Chat ${options.chatId} was marked cancelled or superseded in database. Stopping workflow loop.`,
+        );
+        wasAborted = true;
+        break;
       }
 
       if (Date.now() - turnStartedAt > MAX_WORKFLOW_TURN_DURATION_MS) {
@@ -2760,35 +2746,12 @@ export async function runAgentWorkflow(options: Options) {
         break;
       }
 
-      try {
-        const { getChatById } = await import("@/lib/db/sessions");
-        const currentChat = await getChatById(options.chatId);
-        if (
-          currentChat?.status === "cancelled" ||
-          (currentChat && currentChat.activeStreamId !== workflowRunId)
-        ) {
-          console.warn(
-            `[chat-workflow] Chat ${options.chatId} was marked cancelled in database after step. Stopping loop.`,
-          );
-          wasAborted = true;
-          break;
-        }
-      } catch {
-        // Ignore read failure
-      }
-
-      try {
-        const currentRun = getRun(workflowRunId);
-        const currentStatus = await currentRun.status;
-        if (currentStatus === "cancelled") {
-          console.warn(
-            `[chat-workflow] Workflow run ${workflowRunId} was cancelled for chat ${options.chatId}. Stopping loop.`,
-          );
-          wasAborted = true;
-          break;
-        }
-      } catch {
-        // Ignore status read failure
+      if (await checkChatCancelledStep(options.chatId, workflowRunId)) {
+        console.warn(
+          `[chat-workflow] Chat ${options.chatId} was marked cancelled or superseded after step. Stopping loop.`,
+        );
+        wasAborted = true;
+        break;
       }
 
       const shouldContinue =
@@ -2798,6 +2761,65 @@ export async function runAgentWorkflow(options: Options) {
         );
 
       if (!shouldContinue) {
+        // Server-side queue auto-drain: if the current turn finished naturally
+        // (not paused on a tool approval and not aborted) and the user queued
+        // follow-up prompts on the chat row, pop and execute the next queued
+        // prompt immediately inside this durable workflow run so queued tasks
+        // continue even when the user's phone/browser is completely offline.
+        const canDrainServerQueue =
+          !wasAborted &&
+          result.finishReason !== "tool-calls" &&
+          (options.maxSteps === undefined || step + 1 < options.maxSteps);
+
+        if (canDrainServerQueue) {
+          const nextQueuedUserMsg = await dequeueNextQueuedUserMessageStep(
+            options.chatId,
+          );
+          if (nextQueuedUserMsg) {
+            if (totalUsage) {
+              pendingAssistantResponse = {
+                ...pendingAssistantResponse,
+                metadata: {
+                  ...pendingAssistantResponse.metadata,
+                  totalMessageUsage: totalUsage,
+                },
+              };
+            }
+            await persistAssistantMessage(
+              options.chatId,
+              pendingAssistantResponse,
+            );
+
+            const nextUserModelMessages = await convertMessages([
+              nextQueuedUserMsg,
+            ]);
+            modelMessages.push(...nextUserModelMessages);
+            assistantId = generateIdAi();
+            pendingAssistantResponse = {
+              role: "assistant",
+              id: assistantId,
+              parts: [],
+              metadata: withModelMetadata(undefined, selectedModelId, modelId),
+            };
+            originalMessagesForStep = [nextQueuedUserMsg];
+            lastConsecutiveToolSignature = undefined;
+            consecutiveIdenticalToolCount = 0;
+
+            await sendStart(writable, assistantId);
+            const nextUserText = (nextQueuedUserMsg.parts ?? [])
+              .map((part) =>
+                part.type === "text" && "text" in part ? String(part.text) : "",
+              )
+              .filter(Boolean)
+              .join("\n")
+              .slice(0, 4000);
+            await sendUserMessageMarker(writable, {
+              id: nextQueuedUserMsg.id,
+              text: nextUserText,
+            });
+            continue;
+          }
+        }
         break;
       }
 
@@ -3271,6 +3293,8 @@ const runAgentStep = async (
   // try block would be out of scope in the `finally` below, where it
   // needs to be closed regardless of which branch ran.
   let mcpToolSet: Awaited<ReturnType<typeof createMcpToolSet>> | undefined;
+  let streamWriter: WritableStreamDefaultWriter<UIMessageChunk> | undefined;
+  let streamWriteFailed = false;
 
   try {
     let responseMessage: WebAgentUIMessage | undefined;
@@ -3908,6 +3932,8 @@ const runAgentStep = async (
           }
         }
 
+        streamWriter = writable.getWriter();
+
         for await (const part of stream.toUIMessageStream<WebAgentUIMessage>({
           originalMessages,
           generateMessageId: () => messageId,
@@ -4082,9 +4108,22 @@ const runAgentStep = async (
             responseMessage = finishedResponseMessage;
           },
         })) {
-          const writer = writable.getWriter();
-          await writer.write(part);
-          writer.releaseLock();
+          if (!streamWriteFailed) {
+            try {
+              await streamWriter.write(part);
+            } catch (writeError) {
+              streamWriteFailed = true;
+              const errorName = (writeError as { name?: unknown })?.name;
+              const isDisconnect =
+                errorName === "AbortError" || errorName === "ResponseAborted";
+              if (!isDisconnect) {
+                console.warn(
+                  "[workflow] Writable stream sink error in runAgentStep; continuing step execution and DB checkpointing:",
+                  writeError,
+                );
+              }
+            }
+          }
         }
         return stream;
       },
@@ -4340,6 +4379,11 @@ const runAgentStep = async (
 
     throw errorWithStepTiming;
   } finally {
+    try {
+      streamWriter?.releaseLock();
+    } catch {
+      // Ignore lock release errors
+    }
     clearInterval(billingHeartbeat);
     try {
       // Billing failures must fail the durable step so Workflow retries the
@@ -4354,6 +4398,40 @@ const runAgentStep = async (
     }
   }
 };
+
+async function checkChatCancelledStep(
+  chatId: string,
+  workflowRunId: string,
+): Promise<boolean> {
+  "use step";
+
+  try {
+    const { getChatById } = await import("@/lib/db/sessions");
+    const currentChat = await getChatById(chatId);
+    if (
+      currentChat &&
+      (currentChat.status === "cancelled" ||
+        (typeof currentChat.activeStreamId === "string" &&
+          currentChat.activeStreamId !== workflowRunId))
+    ) {
+      return true;
+    }
+  } catch {
+    // Ignore transient DB read failure
+  }
+
+  try {
+    const currentRun = getRun(workflowRunId);
+    const currentStatus = await currentRun.status;
+    if (currentStatus === "cancelled") {
+      return true;
+    }
+  } catch {
+    // Ignore transient status read failure
+  }
+
+  return false;
+}
 
 function startStopMonitor(
   runId: string,
@@ -4374,13 +4452,16 @@ function startStopMonitor(
 
     while (!shouldStop && !abortController.signal.aborted) {
       // 1. Cooperative DB Check: Check if user stopped this chat via Stop button
+      // or a newer workflow run took ownership of activeStreamId. Never abort
+      // merely because activeStreamId is null/undefined (e.g. when
+      // claimActiveStream degraded gracefully on a transient DB blip).
       try {
         const chat = await getChatById(chatId);
         if (
           chat &&
           (chat.status === "cancelled" ||
-            (chat.activeStreamId !== null && chat.activeStreamId !== runId) ||
-            chat.activeStreamId === null)
+            (typeof chat.activeStreamId === "string" &&
+              chat.activeStreamId !== runId))
         ) {
           console.warn(
             `[chat-workflow] Stop requested via DB for chat ${chatId} (status: ${chat.status}, activeStreamId: ${chat.activeStreamId}). Aborting step controller.`,
@@ -4511,6 +4592,16 @@ function isNonRetryableApiCallError(error: unknown): boolean {
     return data.error.type === "invalid_request_error";
   }
   return false;
+}
+
+async function sendStart(writable: Writable, messageId: string) {
+  "use step";
+  const writer = writable.getWriter();
+  try {
+    await writer.write({ type: "start", messageId });
+  } finally {
+    writer.releaseLock();
+  }
 }
 
 async function sendTextMessage(writable: Writable, id: string, text: string) {

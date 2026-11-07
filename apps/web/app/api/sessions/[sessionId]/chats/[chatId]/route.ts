@@ -4,6 +4,7 @@ import {
 } from "@/app/api/sessions/_lib/session-context";
 import type { WebAgentUIMessage } from "@/app/types";
 import {
+  compareAndSetChatActiveStreamId,
   deleteChat,
   getChatMessages,
   getChatsBySessionId,
@@ -110,7 +111,9 @@ export async function GET(req: Request, context: RouteContext) {
   if (activeStreamId) {
     const outcome = await verifyRunState(activeStreamId);
     if (outcome === "gone") {
-      await updateChatActiveStreamId(chatId, null);
+      await compareAndSetChatActiveStreamId(chatId, activeStreamId, null).catch(
+        () => updateChatActiveStreamId(chatId, null),
+      );
       await setChatRunStatus(chatId, "idle");
       activeStreamId = null;
       chatStatus = "idle";
