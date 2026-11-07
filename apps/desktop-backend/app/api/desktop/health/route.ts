@@ -1,3 +1,7 @@
+/**
+ * DEPRECATED — Project B is no longer used by Entry Desktop.
+ * Desktop clients call the main web API (entry-agents.dev).
+ */
 export const dynamic = "force-dynamic";
 
 /** Health probe: confirms Project-B is deployed and booted. No secrets. */
