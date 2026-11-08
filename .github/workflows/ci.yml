@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
     branches: ["*"]
+  push:
+    branches: ["main"]
 
 jobs:
   lint-and-typecheck:
@@ -18,10 +20,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
 
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Setup pnpm
+        # Installs the pnpm version pinned in the root package.json `packageManager`
+        # field (pnpm@11.5.1). Replaces `corepack enable`, which fails on GitHub
+        # runners when the pinned integrity hash cannot be verified.
+        uses: pnpm/action-setup@v4
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -35,6 +40,10 @@ jobs:
         run: pnpm check
 
       - name: Typecheck
+        # Blocking gate. `turbo typecheck` runs `tsc --noEmit` in every workspace
+        # that defines a typecheck script (apps/web, packages/agent,
+        # packages/sandbox, packages/shared) in dependency order — the same set
+        # `pnpm -r typecheck` would run for this repo.
         run: pnpm typecheck
 
       - name: Test
@@ -42,3 +51,40 @@ jobs:
 
       - name: DB Check
         run: pnpm --dir apps/web db:check
+
+  workflow-tests:
+    name: Workflow unit tests (bun)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Setup pnpm
+        # Version from the root package.json `packageManager` field (pnpm@11.5.1).
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.14"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # TODO: 14 tests in apps/web/app/workflows currently fail on main due to
+      # mock leakage between bun test files (bun's mock.module is process-global,
+      # so tests only pass when run in isolation). Once
+      # `cd apps/web && bun test app/workflows/` is green, remove the
+      # `continue-on-error` below so this gate blocks merges.
+      - name: Workflow unit tests
+        continue-on-error: true
+        run: cd apps/web && bun test app/workflows/
