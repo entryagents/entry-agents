@@ -8,7 +8,6 @@ import type { ExecResult, Sandbox, SandboxHooks } from "../interface.ts";
 import { LocalSandboxPathError } from "./path-error";
 import type { LocalState } from "./state.ts";
 
-export { LocalSandboxPathError };
 
 export interface LocalSandboxConnectOptions {
   env?: Record<string, string>;
@@ -74,7 +73,7 @@ function isWithin(root: string, candidate: string): boolean {
  * Intentionally NOT used for real user sessions by the web app -- see
  * state.ts. It IS the intended desktop execution layer.
  */
-export class LocalSandbox implements Sandbox {
+class LocalSandboxImpl implements Sandbox {
   readonly type = "cloud" as const; // matches the interface's SandboxType union
   readonly workingDirectory: string;
   readonly env?: Record<string, string>;
@@ -531,9 +530,18 @@ export async function connectLocal(
   options?: LocalSandboxConnectOptions,
 ): Promise<Sandbox> {
   await fs.mkdir(state.rootDir, { recursive: true });
-  const sandbox = new LocalSandbox(state.rootDir, options);
+  const sandbox = new LocalSandboxImpl(state.rootDir, options);
   if (options?.hooks?.afterStart) {
     await options.hooks.afterStart(sandbox);
   }
   return sandbox;
+}
+
+/** Factory: `new LocalSandboxImpl(...)` keeps working (constructor returning an
+ *  object replaces the constructed one). Kept out of the 'use step' export
+ *  rule (only functions may be exported from step files). */
+export function LocalSandbox(
+  ...args: ConstructorParameters<typeof LocalSandboxImpl>
+): LocalSandboxImpl {
+  return new LocalSandboxImpl(...args);
 }
