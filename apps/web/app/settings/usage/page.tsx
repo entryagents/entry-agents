@@ -9,10 +9,7 @@ import {
   Clock,
   CheckCircle2,
   ArrowUpRight,
-  Zap,
   Calendar,
-  Layers,
-  Sparkles,
 } from "lucide-react";
 import {
   useBillingMe,
@@ -25,7 +22,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { fetcher } from "@/lib/swr";
 import { UsageInsightsSection } from "./usage-insights-section";
 import type { UsageInsights } from "@/lib/usage/types";
-import { formatTokens } from "@entry-agents/shared";
 
 interface DailyUsageRow {
   date: string;
@@ -55,8 +51,7 @@ function getUsageWindowPercent(usedCents: number, limitCents: number): number {
 
 export default function SettingsUsagePage() {
   const { data: billing, isLoading: isBillingLoading } = useBillingMe();
-  const { data: usageData, isLoading: isUsageLoading } =
-    useSWR<UsageApiResponse>("/api/usage", fetcher);
+  const { data: usageData } = useSWR<UsageApiResponse>("/api/usage", fetcher);
   const [isCheckingOut, setIsCheckingOut] = useState<number | null>(null);
 
   const handleTopup = async (amountCents: number) => {
@@ -95,7 +90,6 @@ export default function SettingsUsagePage() {
   const windows = billing.usageWindows;
   const isFixed = windows?.mode === "fixed";
   const topUpBalance = billing.topUpBalanceCents ?? 0;
-  const hasTopUp = topUpBalance > 0;
 
   return (
     <div className="space-y-8">
@@ -239,7 +233,7 @@ export default function SettingsUsagePage() {
         </div>
       </div>
 
-      {/* Windows Telemetry Card (For Entry / GOAT and X tiers) */}
+      {/* Windows Telemetry Card (For Entry / GOAT tier) */}
       {windows && (
         <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
           <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-4">
@@ -253,7 +247,9 @@ export default function SettingsUsagePage() {
             </div>
             <span className="inline-flex items-center gap-1.5 font-mono text-xs rounded-full border border-border/60 px-2.5 py-1 text-muted-foreground">
               <Clock className="h-3.5 w-3.5" />
-              {isFixed ? "Fixed Refill Cycles" : "Rolling Sliding Windows"}
+              {isFixed
+                ? "Fixed Refill Cycles (Locked for Cycle)"
+                : "Rolling Sliding Windows (Locked for Cycle)"}
             </span>
           </div>
 
@@ -263,22 +259,28 @@ export default function SettingsUsagePage() {
                 label: "5 Hours",
                 win: windows.fiveHour,
                 desc: isFixed
-                  ? "Fixed 5h refill period"
+                  ? windows.fiveHour.resetsAt
+                    ? `Fixed 5h block · resets ${new Date(windows.fiveHour.resetsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                    : "Fixed 5h refill period"
                   : "Trailing 5-hour rolling window",
               },
               {
                 label: "7 Days",
                 win: windows.weekly,
                 desc: isFixed
-                  ? "Fixed 7-day refill period"
+                  ? windows.weekly.resetsAt
+                    ? `Fixed 7-day block · resets ${formatExpirationDate(windows.weekly.resetsAt)}`
+                    : "Fixed 7-day refill period"
                   : "Trailing 7-day rolling window",
               },
               {
                 label: "Monthly Cycle",
                 win: windows.monthly,
-                desc: billing.expiresAt
-                  ? `Cycle renewal on ${formatExpirationDate(billing.expiresAt)}`
-                  : "Monthly subscription allowance",
+                desc: isFixed
+                  ? windows.monthly.resetsAt
+                    ? `Cycle renewal on ${formatExpirationDate(windows.monthly.resetsAt)}`
+                    : "Monthly subscription allowance"
+                  : "Trailing 1-month rolling window",
               },
             ].map(({ label, win, desc }) => {
               const pct = getUsageWindowPercent(win.usedCents, win.limitCents);

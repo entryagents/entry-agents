@@ -5,6 +5,7 @@ import { createInertPlaceholderModel, sharedProvider } from "../models";
 import { defaultModelLabel } from "../default-model";
 import { z } from "zod";
 import { bashTool } from "../tools/bash";
+import { dirListTool } from "../tools/dir-list";
 import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
@@ -103,6 +104,7 @@ export const reviewerSubagent = new ToolLoopAgent({
   instructions: REVIEWER_SYSTEM_PROMPT,
   tools: {
     read: readFileTool(),
+    dir_list: dirListTool(),
     grep: grepTool(),
     glob: globTool(),
     bash: bashTool(),

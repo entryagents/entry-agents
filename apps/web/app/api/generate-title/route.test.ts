@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-// Import the real modules first so the mocks below can spread their
-// other exports through untouched -- other code loaded transitively
-// via route.ts (e.g. packages/agent/models.ts) imports additional
-// named exports like defaultSettingsMiddleware/wrapLanguageModel from
-// "ai", and mock.module replaces the whole module namespace for every
-// consumer in this test file, not just this file's own import.
-import * as realAiModule from "ai";
 import * as realAgentModule from "@entry-agents/agent";
+import * as realAiModule from "ai";
 import * as realSessionGetServerSession from "@/lib/session/get-server-session";
+
+mock.module("server-only", () => ({}));
+mock.module("@/lib/db/platform-settings", () => ({
+  getTitleModelId: async () => null,
+}));
 
 const generateTextCalls: Array<{
   prompt: string;
@@ -139,18 +138,18 @@ describe("/api/generate-title", () => {
     // qwen3.8-flash model (api.b.ai via gateway), NOT the app default
     // -- and always with a hard abort signal so a hung upstream call
     // can never pin a serverless slot.
-    expect(generateTextCalls[0]?.model).toBe("qwen3.8-flash");
+    expect(generateTextCalls[0]?.model).toBe("step-5-preview");
     expect(generateTextCalls[0]?.hasAbortSignal).toBe(true);
   });
 
-  test("returns 500 when title generation fails", async () => {
+  test("falls back to clean prompt title when model title generation fails", async () => {
     generateTextResult = new Error("failed");
     const { POST } = await routeModulePromise;
 
     const response = await POST(createJsonRequest({ message: "hello" }));
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as { title: string };
 
-    expect(response.status).toBe(500);
-    expect(body.error).toBe("Failed to generate title");
+    expect(response.status).toBe(200);
+    expect(body.title).toBe("Hello");
   });
 });

@@ -69,7 +69,6 @@ import { MessageAttachmentChip } from "@/components/message-attachment-chip";
 import { ImageAttachmentsPreview } from "@/components/image-attachments-preview";
 import { TextAttachmentsPreview } from "@/components/text-attachments-preview";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
-import { FREE_TIER_ALLOWED_MODEL_IDS } from "@/lib/billing/plans";
 import { ReasoningEffortSelector } from "@/components/reasoning-effort-selector";
 import { PermissionModeSelector } from "@/components/permission-mode-selector";
 import {
@@ -1313,6 +1312,7 @@ export function SessionChatContent({
     creditGate,
     userPlan,
     freePlanModelId,
+    freeTierAllowedModelIds,
   } = useSessionChatMetadataContext();
   // Two independent block reasons can both apply: freeTierGate is the
   // admin-controlled capacity kill-switch (all non-admin users, plan
@@ -1323,15 +1323,18 @@ export function SessionChatContent({
   // text differs.
   const isPaidModelBlockedForFreeUser = useMemo(() => {
     if (userPlan?.modelAccess !== "luna-only") return false;
-    const allowed =
-      freePlanModelId ?? "moonshotai/moonlight-16b-a3b-instruct:free";
     const currentModel = chatInfo.modelId;
     if (!currentModel) return false;
-    return (
-      currentModel !== allowed &&
-      !FREE_TIER_ALLOWED_MODEL_IDS.includes(currentModel)
-    );
-  }, [userPlan?.modelAccess, freePlanModelId, chatInfo.modelId]);
+    const isUnlockedByAdmin =
+      (freePlanModelId !== null && currentModel === freePlanModelId) ||
+      freeTierAllowedModelIds.includes(currentModel);
+    return !isUnlockedByAdmin;
+  }, [
+    userPlan?.modelAccess,
+    freePlanModelId,
+    freeTierAllowedModelIds,
+    chatInfo.modelId,
+  ]);
 
   const paidModelGate = isPaidModelBlockedForFreeUser
     ? {
@@ -2401,7 +2404,7 @@ export function SessionChatContent({
   // (via sendMessageWithPendingState) before this effect can re-run, so
   // this only ever dequeues a single item per "became ready" transition.
   useEffect(() => {
-    if (isChatInFlight || hasPendingResponse) {
+    if (userStopped || isChatInFlight || hasPendingResponse) {
       return;
     }
     if (queuedMessages.length === 0) {
@@ -2434,7 +2437,7 @@ export function SessionChatContent({
         drainingQueueIdRef.current = null;
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- submitBuiltMessage/buildComposerMessagePayload close over the latest render's state; only the gating signals and queue contents should retrigger this drain.
-  }, [isChatInFlight, hasPendingResponse, queuedMessages]);
+  }, [userStopped, isChatInFlight, hasPendingResponse, queuedMessages]);
 
   const handleFixChecks = useCallback(
     async (failedRuns: CheckRun[]) => {
@@ -4592,7 +4595,7 @@ export function SessionChatContent({
                                   }
                                   freePlanModelId={freePlanModelId}
                                   freeTierUnlockedModelIds={
-                                    FREE_TIER_ALLOWED_MODEL_IDS
+                                    freeTierAllowedModelIds
                                   }
                                   onUpgradeRequired={() =>
                                     router.push("/pricing")

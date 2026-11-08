@@ -35,7 +35,7 @@ describe("Web Device Authorization Flow", () => {
       auth.userCode,
       "user_12345",
       "ba_session_token_xyz987",
-      "developer@entry.dev"
+      "developer@entry.dev",
     );
     expect(approved.success).toBe(true);
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import * as realDbSessions from "@/lib/db/sessions";
+import * as realSandbox from "@entry-agents/sandbox";
 
 mock.module("server-only", () => ({}));
 
@@ -15,8 +15,9 @@ interface TestSessionRecord {
     | "archived"
     | "failed";
   sandboxState: {
-    type: "vercel";
-    sandboxName: string;
+    type: "modal";
+    sandboxId: string;
+    volumeName: string;
     expiresAt: number;
   };
   hibernateAfter: Date | null;
@@ -38,20 +39,27 @@ const spies = {
   updateSession: mock(
     async (_sessionId: string, patch: Record<string, unknown>) => patch,
   ),
+  compareAndSetChatActiveStreamId: mock(async () => true),
   connectSandbox: mock(async () => ({
     stop: stopSpy,
   })),
   stop: stopSpy,
+  verifyRunState: mock(async () => "alive" as const),
 };
 
 mock.module("@/lib/db/sessions", () => ({
-  ...realDbSessions,
   getChatsBySessionId: spies.getChatsBySessionId,
   getSessionById: spies.getSessionById,
   updateSession: spies.updateSession,
+  compareAndSetChatActiveStreamId: spies.compareAndSetChatActiveStreamId,
+}));
+
+mock.module("@/lib/workflow-run-recovery", () => ({
+  verifyRunState: spies.verifyRunState,
 }));
 
 mock.module("@entry-agents/sandbox", () => ({
+  ...realSandbox,
   connectSandbox: spies.connectSandbox,
 }));
 
@@ -65,13 +73,9 @@ function makeDueSession(): TestSessionRecord {
     status: "running",
     lifecycleState: "active",
     sandboxState: {
-      type: "vercel",
-      sandboxName: "session_session-1",
-      // 8 min out, clearly outside SANDBOX_MIGRATION_LEAD_MS (5 min) --
-      // was exactly 5 min, which raced Date.now() against the lead
-      // threshold and flaked pre-existing on clean main (confirmed
-      // 2026-08-28, unrelated to the lifecycle due-time fix in this
-      // same file's module).
+      type: "modal",
+      sandboxId: "sb_session-1",
+      volumeName: "entry-workspace-session-1",
       expiresAt: nowMs + 8 * 60_000,
     },
     hibernateAfter: new Date(nowMs - 1_000),
@@ -197,8 +201,8 @@ describe("evaluateSandboxLifecycle", () => {
         snapshotUrl: null,
         snapshotCreatedAt: null,
         sandboxState: {
-          type: "vercel",
-          sandboxName: "session_session-1",
+          type: "modal",
+          volumeName: "entry-workspace-session-1",
         },
       }),
     );

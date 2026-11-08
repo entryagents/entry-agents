@@ -186,8 +186,8 @@ describe("provider selection reaches the runtime", () => {
 });
 
 describe("provider state shape and persistence", () => {
-  test("retired modal provision state automatically migrates to boxd", () => {
-    const state = requireSandboxProvider("modal").buildProvisionState({
+  test("retired modal provision state automatically migrates to boxd", async () => {
+    const state = await requireSandboxProvider("modal").buildProvisionState({
       sessionId: "abc",
     });
 
@@ -196,7 +196,7 @@ describe("provider state shape and persistence", () => {
     });
   });
 
-  test("retired modal provision state migrates existing sessions to boxd", () => {
+  test("retired modal provision state migrates existing sessions to boxd", async () => {
     const provider = requireSandboxProvider("modal");
 
     const reopened = await provider.buildProvisionState({
@@ -209,8 +209,8 @@ describe("provider state shape and persistence", () => {
     });
   });
 
-  test("fresh provision of retired modal session migrates to fresh boxd", () => {
-    const modal = requireSandboxProvider("modal").buildProvisionState({
+  test("fresh provision of retired modal session migrates to fresh boxd", async () => {
+    const modal = await requireSandboxProvider("modal").buildProvisionState({
       sessionId: "abc",
       fresh: true,
       existing: {
@@ -224,7 +224,7 @@ describe("provider state shape and persistence", () => {
     });
   });
 
-  test("boxd provision state always has a stable non-undefined machine name", () => {
+  test("boxd provision state always has a stable non-undefined machine name", async () => {
     const provider = requireSandboxProvider("boxd");
     const first = await provider.buildProvisionState({ sessionId: "abc-123" });
     expect(first).toMatchObject({ type: "boxd" });
@@ -241,21 +241,21 @@ describe("provider state shape and persistence", () => {
     });
   });
 
-  test("source is carried through when retired modal migrates to boxd", () => {
+  test("source is carried through when retired modal migrates to boxd", async () => {
     const source = { repo: "https://github.com/o/r.git", branch: "main" };
 
-    const state = requireSandboxProvider("modal").buildProvisionState({
+    const state = await requireSandboxProvider("modal").buildProvisionState({
       sessionId: "abc",
       source,
     });
     expect(state).toMatchObject({ type: "boxd", source });
   });
 
-  test("local drops source because it never clones a repository", () => {
+  test("local drops source because it never clones a repository", async () => {
     // The local adapter only owns a rootDir; a git workspace is the cloud
     // provider's job. Pinning it here documents the asymmetry instead of
     // leaving the local state to silently drift.
-    const state = requireSandboxProvider("local").buildProvisionState({
+    const state = await requireSandboxProvider("local").buildProvisionState({
       sessionId: "abc",
       source: { repo: "https://github.com/o/r.git" },
     });

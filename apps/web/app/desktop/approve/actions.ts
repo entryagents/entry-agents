@@ -24,10 +24,15 @@ export async function ensureDeviceTable(): Promise<void> {
 }
 
 export type ApproveResult =
-  | { ok: true; user?: { id: string; email?: string | null; name?: string | null } }
+  | {
+      ok: true;
+      user?: { id: string; email?: string | null; name?: string | null };
+    }
   | { ok: false; error: string };
 
-export async function checkDeviceCode(code: string): Promise<{ valid: boolean; error?: string }> {
+export async function checkDeviceCode(
+  code: string,
+): Promise<{ valid: boolean; error?: string }> {
   if (!code || typeof code !== "string") {
     return { valid: false, error: "Code is required" };
   }
@@ -50,7 +55,13 @@ export async function checkDeviceCode(code: string): Promise<{ valid: boolean; e
       FROM desktop_device_codes
       WHERE code = ${cleanCode}
       LIMIT 1`);
-    const row = (rows as unknown as { device_code: string; status: string; expires_at: Date | string }[])[0];
+    const row = (
+      rows as unknown as {
+        device_code: string;
+        status: string;
+        expires_at: Date | string;
+      }[]
+    )[0];
     if (!row) return { valid: false, error: "Code not found" };
     if (new Date(row.expires_at).getTime() < Date.now()) {
       return { valid: false, error: "Code has expired" };
@@ -61,7 +72,9 @@ export async function checkDeviceCode(code: string): Promise<{ valid: boolean; e
   }
 }
 
-export async function approveDesktopDevice(code: string): Promise<ApproveResult> {
+export async function approveDesktopDevice(
+  code: string,
+): Promise<ApproveResult> {
   const cleanCode = code.replace(/\D/g, "").slice(0, 6);
   if (!/^\d{6}$/.test(cleanCode)) {
     return { ok: false, error: "Invalid confirmation code format." };
@@ -77,11 +90,19 @@ export async function approveDesktopDevice(code: string): Promise<ApproveResult>
 
   const sessionToken = session.session?.token;
   if (!sessionToken) {
-    return { ok: false, error: "Active browser session token could not be verified." };
+    return {
+      ok: false,
+      error: "Active browser session token could not be verified.",
+    };
   }
 
   // Update in-memory store if active
-  approveInMemory(cleanCode, session.user.id, sessionToken, session.user.email ?? undefined);
+  approveInMemory(
+    cleanCode,
+    session.user.id,
+    sessionToken,
+    session.user.email ?? undefined,
+  );
 
   // Update database table for desktop-backend polling
   try {
@@ -92,7 +113,13 @@ export async function approveDesktopDevice(code: string): Promise<ApproveResult>
       WHERE code = ${cleanCode}
       LIMIT 1`);
 
-    const row = (rows as unknown as { device_code: string; status: string; expires_at: Date | string }[])[0];
+    const row = (
+      rows as unknown as {
+        device_code: string;
+        status: string;
+        expires_at: Date | string;
+      }[]
+    )[0];
     if (!row) {
       // If code was found in-memory, that's fine; otherwise return error
       if (!getPendingInMemory(cleanCode)) {
@@ -121,6 +148,10 @@ export async function approveDesktopDevice(code: string): Promise<ApproveResult>
       },
     };
   } catch (err) {
-    return { ok: false, error: (err as Error).message || "Database update failed during approval." };
+    return {
+      ok: false,
+      error:
+        (err as Error).message || "Database update failed during approval.",
+    };
   }
 }

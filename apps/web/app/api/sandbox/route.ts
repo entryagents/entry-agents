@@ -5,6 +5,7 @@ import {
 } from "@entry-agents/sandbox";
 import {
   DEFAULT_SANDBOX_PROVIDER,
+  isKnownSandboxType,
   isUserSelectableSandboxType,
   type SandboxProviderId,
 } from "@entry-agents/sandbox/registry.js";
@@ -206,9 +207,10 @@ export async function POST(req: Request) {
 
   let sandbox: Awaited<ReturnType<typeof connectSandbox>>;
   const activeProviderId =
-    sessionRecord?.sandboxState?.type ??
-    body.sandboxType ??
-    DEFAULT_SANDBOX_PROVIDER;
+    (sessionRecord?.sandboxState &&
+    isKnownSandboxType(sessionRecord.sandboxState.type)
+      ? sessionRecord.sandboxState.type
+      : body.sandboxType) ?? DEFAULT_SANDBOX_PROVIDER;
   try {
     const ghProfile = await getGitHubUserProfile(session.user.id);
     const githubNoreplyEmail =

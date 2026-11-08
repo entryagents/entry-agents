@@ -25,7 +25,7 @@ export async function GET(req: Request) {
         expiresAt: authSessions.expiresAt,
         userEmail: users.email,
         userName: users.name,
-        userImage: users.avatarUrl,
+        userAvatar: users.avatarUrl,
       })
       .from(authSessions)
       .innerJoin(users, eq(authSessions.userId, users.id))
@@ -35,27 +35,31 @@ export async function GET(req: Request) {
     if (!foundSession || foundSession.expiresAt < new Date()) {
       return NextResponse.json(
         { error: "Invalid or expired session token" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
-    const billingState = await getUserBillingState(foundSession.userId).catch(() => null);
+    const billingState = await getUserBillingState(foundSession.userId).catch(
+      () => null,
+    );
     const plan = getPlanDefinition(billingState?.plan);
 
     return NextResponse.json({
       userId: foundSession.userId,
       email: foundSession.userEmail,
       name: foundSession.userName,
-      avatar: foundSession.userImage,
+      avatar: foundSession.userAvatar,
+      image: foundSession.userAvatar,
       plan: plan.id,
       planName: plan.name,
       creditBalanceCents: billingState?.creditBalanceCents ?? 0,
-      monthlyGrantCents: billingState?.planGrantBalanceCents ?? 0,
+      monthlyGrantCents:
+        billingState?.planGrantBalanceCents ?? plan.creditGrantCents ?? 0,
     });
   } catch (err) {
     return NextResponse.json(
       { error: (err as Error).message || "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

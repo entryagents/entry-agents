@@ -1,6 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { todoItemSchema } from "../types";
+import { todoItemSchema, type TodoItem } from "../types";
+
+export type { TodoItem };
 
 export const todoWriteTool = tool({
   description: `Create and manage a structured task list for the current session.
@@ -18,8 +20,8 @@ WHEN NOT TO USE:
 - Purely conversational or informational queries
 
 TASK STATES:
-- "todo": Task not yet started
-- "in-progress": Currently being worked on (ONLY ONE todo should be in this state at a time)
+- "pending": Task not yet started
+- "in_progress": Currently being worked on (ONLY ONE todo should be in this state at a time)
 - "completed": Task finished successfully
 
 USAGE:
@@ -43,6 +45,47 @@ IMPORTANT:
       success: true,
       message: `Updated task list with ${todos.length} items`,
       todos,
+    };
+  },
+});
+
+export const todoReadTool = tool({
+  description: `Read the current task/todo list for this session.
+
+WHEN TO USE:
+- Reviewing what tasks remain before choosing the next action
+- Checking which todo is currently marked in-progress
+- Inspecting completed tasks when resuming or planning next steps`,
+  inputSchema: z.object({}),
+  execute: async (_input, { experimental_context }) => {
+    const todos =
+      (
+        experimental_context as
+          | { currentTodos?: Array<z.infer<typeof todoItemSchema>> }
+          | undefined
+      )?.currentTodos ?? [];
+
+    const completed = todos.filter((t) => t.status === "completed").length;
+    const inProgress = todos.filter((t) => t.status === "in_progress").length;
+    const pending = todos.filter((t) => t.status === "pending").length;
+
+    return {
+      success: true,
+      count: todos.length,
+      completed,
+      inProgress,
+      pending,
+      todos,
+      summary:
+        todos.length === 0
+          ? "No todos currently registered. Use todo_write to create tasks."
+          : `Current todos (${completed}/${todos.length} completed, ${inProgress} in-progress, ${pending} pending):\n` +
+            todos
+              .map(
+                (t, idx) =>
+                  `${idx + 1}. [${t.status === "completed" ? "x" : t.status === "in_progress" ? "~" : " "}] ${t.content}`,
+              )
+              .join("\n"),
     };
   },
 });

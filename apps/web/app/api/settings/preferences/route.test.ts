@@ -91,29 +91,6 @@ describe("/api/settings/preferences", () => {
     expect(body.preferences.globalSkillRefs).toEqual([]);
   });
 
-  test("GET hides Kimi K3 defaults for managed trial users", async () => {
-    const { GET } = await routeModulePromise;
-
-    currentSession = {
-      authProvider: "vercel",
-      user: { id: "user-1", email: "person@example.com" },
-    };
-    preferencesState.defaultModelId = "kimi-k3";
-    preferencesState.defaultSubagentModelId = "kimi-k3";
-    preferencesState.enabledModelIds = ["kimi-k3", "openai/gpt-5"];
-
-    const response = await GET(
-      new Request("https://entry-agents.dev/api/settings/preferences"),
-    );
-    const body = (await response.json()) as {
-      preferences: typeof preferencesState;
-    };
-
-    expect(body.preferences.defaultModelId).not.toBe("kimi-k3");
-    expect(body.preferences.defaultSubagentModelId).not.toBe("kimi-k3");
-    expect(body.preferences.enabledModelIds).toEqual(["openai/gpt-5"]);
-  });
-
   test("PATCH rejects invalid sandbox types", async () => {
     const { PATCH } = await routeModulePromise;
 

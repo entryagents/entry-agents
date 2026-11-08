@@ -1,4 +1,4 @@
-import { getRun, resumeHook } from "workflow/api";
+import { getRun } from "workflow/api";
 import {
   requireAuthenticatedUser,
   requireOwnedChatById,
@@ -7,9 +7,12 @@ import type { WebAgentUIMessage } from "@/app/types";
 import {
   compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists,
+  getSessionById,
   setChatRunStatus,
   updateChatAssistantActivity,
+  updateSession,
 } from "@/lib/db/sessions";
+import { canOperateOnSandbox } from "@/lib/sandbox/utils";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
@@ -72,14 +75,30 @@ export async function POST(request: Request, context: RouteContext) {
     },
   );
 
-  // 3. Resume stop hooks if active (official workflow agent cancellation pattern)
+  // 3. If a sandbox bash command is currently running for this session,
+  // terminate the remote process immediately so it doesn't outlive the stop.
   try {
-    await Promise.allSettled([
-      resumeHook(`chat-stop:${chatId}`, { reason: "user_stop" }),
-      resumeHook(`stop:${activeStreamId}`, { reason: "user_stop" }),
-    ]);
-  } catch {
-    // Best effort — hook might not be waiting
+    const session = await getSessionById(chat.sessionId);
+    const activeCommand = session?.activeSandboxCommand;
+    if (
+      session &&
+      activeCommand?.cmdId &&
+      canOperateOnSandbox(session.sandboxState)
+    ) {
+      const { connectSandbox } = await import("@entry-agents/sandbox");
+      const sandbox = await connectSandbox(session.sandboxState);
+      if (sandbox.killCommand) {
+        await sandbox.killCommand(activeCommand.cmdId).catch(() => {});
+      }
+      await updateSession(session.id, { activeSandboxCommand: null }).catch(
+        () => {},
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `[workflow] Failed to kill active sandbox command on stop for chat ${chatId}:`,
+      error,
+    );
   }
 
   // 4. Cancel the workflow run at the next suspension point
@@ -87,9 +106,13 @@ export async function POST(request: Request, context: RouteContext) {
     const run = getRun(activeStreamId);
     await run.cancel();
   } catch (error) {
-    console.warn(
-      `[workflow] run.cancel non-fatal warning for chat ${chatId} (stream ${activeStreamId}):`,
+    console.error(
+      `[workflow] Failed to cancel workflow run for chat ${chatId}:`,
       error,
+    );
+    return Response.json(
+      { error: "Failed to cancel workflow run" },
+      { status: 500 },
     );
   }
 

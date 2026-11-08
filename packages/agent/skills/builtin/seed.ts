@@ -1,5 +1,7 @@
 import * as path from "path";
 import type { Sandbox } from "@entry-agents/sandbox";
+import { parseSkillFrontmatter } from "../discovery";
+import { frontmatterToOptions } from "../types";
 import { BUILTIN_SKILLS } from "./generated";
 
 /**
@@ -39,4 +41,22 @@ export async function seedBuiltinSkills(
       );
     }),
   );
+}
+
+/**
+ * Returns static SkillMetadata for all builtin skills (e.g. agent-browser, sandbox)
+ * without requiring any network calls or sandbox filesystem operations.
+ */
+export function getBuiltinSkillsMetadata() {
+  return BUILTIN_SKILLS.map((skill) => {
+    const content = skill.files["SKILL.md"] ?? "";
+    const parsed = parseSkillFrontmatter(content);
+    return {
+      name: skill.name,
+      description: parsed.success ? parsed.data.description : skill.name,
+      path: path.posix.join("/root/.agents/skills", skill.name),
+      filename: "SKILL.md",
+      options: parsed.success ? frontmatterToOptions(parsed.data) : {},
+    };
+  });
 }

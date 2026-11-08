@@ -72,6 +72,7 @@ export function triggerBillingSync(): void {
   if (typeof window !== "undefined" && "BroadcastChannel" in window) {
     try {
       const bc = new BroadcastChannel(BILLING_SYNC_CHANNEL);
+      // oxlint-disable-next-line unicorn/require-post-message-target-origin
       bc.postMessage({ type: "sync", at: Date.now() });
       bc.close();
     } catch {
@@ -114,11 +115,6 @@ export const PLAN_STYLES: Record<
     card: "border-amber-400/20 bg-gradient-to-b from-amber-400/[0.06] to-transparent",
     segmentActive: "bg-amber-400",
   },
-  x: {
-    badge: "bg-fuchsia-500/15 text-fuchsia-400 border-fuchsia-500/30",
-    card: "border-fuchsia-500/20 bg-gradient-to-b from-fuchsia-500/[0.06] to-transparent",
-    segmentActive: "bg-fuchsia-400",
-  },
 };
 
 export function useBillingMe() {
@@ -141,16 +137,18 @@ export function useBillingMe() {
     let bc: BroadcastChannel | null = null;
     try {
       bc = new BroadcastChannel(BILLING_SYNC_CHANNEL);
-      bc.onmessage = () => {
+      bc.addEventListener("message", () => {
         void swr.mutate();
-      };
+      });
     } catch {
       // Ignore if unsupported
     }
     return () => {
       try {
         bc?.close();
-      } catch {}
+      } catch {
+        // Ignore close error
+      }
     };
   }, [swr]);
 
@@ -204,7 +202,7 @@ export function DesktopBalanceBox() {
   const { isMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
 
-  if (isLoading || !data || data.plan === "goat" || data.plan === "x") {
+  if (isLoading || !data || data.plan === "goat") {
     return null;
   }
 
@@ -267,7 +265,7 @@ export function DesktopCodexBillingStatus() {
   const { isMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
 
-  if (isLoading || !data || (data.plan !== "goat" && data.plan !== "x")) {
+  if (isLoading || !data || data.plan !== "goat") {
     return null;
   }
 
@@ -291,22 +289,21 @@ export function DesktopCodexBillingStatus() {
       : 0;
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={() => {
         if (isMobile) setOpenMobile(false);
         router.push("/settings/usage");
       }}
       title="Click to view detailed Usage & Balance"
       className={cn(
-        "space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors cursor-pointer hover:border-foreground/30",
+        "w-full text-left space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors cursor-pointer hover:border-foreground/30",
         PLAN_STYLES[data.plan]?.card ?? PLAN_STYLES.goat.card,
       )}
     >
       <div className="flex items-center justify-between gap-1.5 px-0.5">
         <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          {windows.mode === "fixed" ? "Fixed Windows" : "Usage Windows"}
+          {windows.mode === "fixed" ? "Fixed Windows" : "Sliding Windows"}
         </span>
 
         <div className="flex items-baseline gap-1 font-mono text-[11px] tabular-nums">
@@ -334,7 +331,7 @@ export function DesktopCodexBillingStatus() {
               title={
                 label === "30d"
                   ? `Monthly Limit: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`
-                  : `Rolling ${label}: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`
+                  : `${windows.mode === "fixed" ? "Fixed" : "Sliding"} ${label}: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`
               }
               className="rounded-lg border border-border/60 bg-background/75 px-1.5 py-1"
             >
@@ -382,6 +379,6 @@ export function DesktopCodexBillingStatus() {
           </span>
         </div>
       ) : null}
-    </div>
+    </button>
   );
 }

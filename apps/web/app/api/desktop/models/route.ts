@@ -28,7 +28,7 @@ export async function GET(req: Request) {
   } catch (err) {
     return NextResponse.json(
       { error: (err as Error).message || "Failed to fetch desktop models" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

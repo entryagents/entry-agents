@@ -6,7 +6,10 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const origin = req.headers.get("origin") || req.headers.get("host") || "https://entry-agents.dev";
+    const origin =
+      req.headers.get("origin") ||
+      req.headers.get("host") ||
+      "https://entry-agents.dev";
     const baseUrl = origin.startsWith("http") ? origin : `https://${origin}`;
 
     const authData = createDeviceAuthorization();
@@ -25,8 +28,11 @@ export async function POST(req: Request) {
     });
   } catch (err) {
     return NextResponse.json(
-      { error: (err as Error).message || "Failed to initiate device authorization" },
-      { status: 500 }
+      {
+        error:
+          (err as Error).message || "Failed to initiate device authorization",
+      },
+      { status: 500 },
     );
   }
 }

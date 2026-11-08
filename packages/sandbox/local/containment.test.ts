@@ -320,7 +320,9 @@ describe("LocalSandbox workspace containment", () => {
     const { base, root, outside } = await makeLandscape();
     const sandbox = new LocalSandbox(root);
 
-    const result = await sandbox.exec("pwd", outside, 5000).catch((e) => e);
+    const result = await sandbox
+      .exec("pwd", outside, 5000)
+      .catch((e: unknown) => e);
     expect(result).toBeInstanceOf(LocalSandboxPathError);
     await expectRejected(
       sandbox.exec("pwd", "../outside", 5000),

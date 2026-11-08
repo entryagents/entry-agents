@@ -1,6 +1,4 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import * as realDbSessions from "@/lib/db/sessions";
-import * as realModalVolume from "./modal-volume";
 
 mock.module("server-only", () => ({}));
 
@@ -130,7 +128,6 @@ const spies = {
 };
 
 mock.module("@/lib/db/sessions", () => ({
-  ...realDbSessions,
   getSessionById: spies.getSessionById,
   updateSession: spies.updateSession,
 }));
@@ -140,7 +137,6 @@ mock.module("@entry-agents/sandbox", () => ({
 }));
 
 mock.module("./modal-volume", () => ({
-  ...realModalVolume,
   deleteModalSessionVolume: spies.deleteModalSessionVolume,
 }));
 

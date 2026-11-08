@@ -1,7 +1,7 @@
 import { connectSandbox, type Sandbox } from "@entry-agents/sandbox";
 import type { LanguageModel, ModelMessage } from "ai";
 import * as path from "path";
-import type { AgentContext } from "../types";
+import type { AgentContext, SandboxCommandGateResult } from "../types";
 
 export function isAgentContext(value: unknown): value is AgentContext {
   // `model` only -- NOT `sandbox`. A turn can legitimately start with no
@@ -83,6 +83,30 @@ async function resolveSandboxForOperation(
   experimental_context: unknown,
   toolName?: string,
 ) {
+  if (
+    experimental_context &&
+    typeof experimental_context === "object" &&
+    "sandbox" in experimental_context
+  ) {
+    const directSandbox = (experimental_context as { sandbox?: unknown })
+      .sandbox;
+    if (
+      directSandbox &&
+      typeof directSandbox === "object" &&
+      typeof (directSandbox as { stat?: unknown }).stat === "function"
+    ) {
+      const commandGate: SandboxCommandGateResult = {
+        sandboxState: ((directSandbox as { state?: unknown }).state ?? {
+          type: "local" as const,
+        }) as SandboxCommandGateResult["sandboxState"],
+      };
+      return {
+        sandbox: directSandbox as Sandbox,
+        commandGate,
+      };
+    }
+  }
+
   const context = isAgentContext(experimental_context)
     ? experimental_context
     : undefined;
@@ -100,11 +124,12 @@ async function resolveSandboxForOperation(
   // host's live session state: the moment provisioning finishes, the very
   // next tool call connects to a real workspace with no extra work and no
   // retry bookkeeping from the model.
-  const commandGate = context?.sandboxLifecycleHooks
-    ? await context.sandboxLifecycleHooks.beforeCommand()
-    : context?.sandbox
-      ? { sandboxState: context.sandbox.state }
-      : undefined;
+  const commandGate: SandboxCommandGateResult | undefined =
+    context?.sandboxLifecycleHooks
+      ? await context.sandboxLifecycleHooks.beforeCommand()
+      : context?.sandbox
+        ? { sandboxState: context.sandbox.state }
+        : undefined;
 
   if (!commandGate) {
     // No host hooks AND no snapshot sandbox: this context predates the

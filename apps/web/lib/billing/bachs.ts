@@ -240,6 +240,7 @@ export interface CheckoutSessionSnapshot {
   chargeStatus: string | null;
   paymentStatus: string | null;
   subscriptionId: string | null;
+  productId: string | null;
 }
 
 /**
@@ -260,8 +261,22 @@ export async function getCheckoutSession(
     customer: { id: string | null; email: string | null } | null;
     customer_details: { email: string | null } | null;
     payment_status: string | null;
-    charge: { status: string | null; subscription_id?: string | null } | null;
+    product_id?: string | null;
+    product?: { id?: string | null } | null;
+    product_cart?: Array<{ product_id?: string | null }> | null;
+    charge: {
+      status: string | null;
+      subscription_id?: string | null;
+      product_id?: string | null;
+    } | null;
   }>(`/v1/checkout-sessions/${encodeURIComponent(checkoutId)}`);
+
+  const productId =
+    data.product_id ??
+    data.product?.id ??
+    data.product_cart?.[0]?.product_id ??
+    data.charge?.product_id ??
+    null;
 
   return {
     checkoutId: data.checkout_id,
@@ -275,6 +290,7 @@ export async function getCheckoutSession(
     chargeStatus: data.charge?.status ?? null,
     paymentStatus: data.payment_status ?? null,
     subscriptionId: data.charge?.subscription_id ?? null,
+    productId,
   };
 }
 
@@ -286,34 +302,14 @@ export interface UpdateSubscriptionResult {
 }
 
 /**
- * Changes an existing subscription's plan IN PLACE.
- *
- * This is the correct way to move a subscriber between plans, and the
- * reason it matters: buying plan B through a brand-new checkout creates a
- * SECOND subscription while plan A is still live, and nothing cancels A.
- * Both then renew independently -- each renewal re-grants its own plan's
- * credit and flips users.plan back, so the plan ping-pongs and the user
- * is billed twice. Bachs has no create-subscription endpoint, but it does
- * have this: PATCH /v1/subscriptions/{id} with a target product_id.
- *
- * Proration (Bachs proration guide):
- * - invoice_now  -- settle immediately: an upgrade is charged to the saved
- *   card now, a downgrade becomes customer credit applied to future
- *   invoices (never refunded to the card).
- * - next_cycle   -- apply now, roll the difference into the next renewal.
- * - none         -- change terms with no charge or credit.
- * We pass invoice_now explicitly rather than relying on the documented
- * default, so the outcome is pinned even if that default ever changes.
- *
- * Bachs requires the target product to bill at the same interval and
- * currency -- every Entry plan is monthly USD, so any plan can move to
- * any other.
+ * Changes an existing subscription's plan IN PLACE via PATCH /v1/subscriptions/{id}.
  */
 export async function updateSubscription(
   subscriptionId: string,
   params: {
     productId: string;
     prorationBehavior?: "invoice_now" | "next_cycle" | "none";
+    metadata?: Record<string, string>;
   },
 ): Promise<UpdateSubscriptionResult> {
   const data = await bachsRequest<{
@@ -327,6 +323,7 @@ export async function updateSubscription(
     body: JSON.stringify({
       product_id: params.productId,
       proration_behavior: params.prorationBehavior ?? "invoice_now",
+      ...(params.metadata ? { metadata: params.metadata } : {}),
     }),
   });
 

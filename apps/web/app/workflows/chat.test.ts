@@ -70,8 +70,8 @@ const spies = {
     Promise.resolve(),
   ),
   persistFinalAssistantMessage: mock(
-    (chatId?: unknown, message?: unknown, _workflowRunId?: unknown) =>
-      spies.persistAssistantMessage(chatId, message),
+    (_chatId?: unknown, _message?: unknown, _workflowRunId?: unknown) =>
+      Promise.resolve(),
   ),
   reconcileSessionStatusStep: mock((_sessionId?: unknown, _reason?: unknown) =>
     Promise.resolve(),
@@ -138,7 +138,13 @@ const spies = {
   // Defaults to "no prior failures" -- most tests don't care about the
   // repeat-failure note, only the dedicated test below overrides this.
   countRecentFailuresWithCategory: mock(() => Promise.resolve(0)),
-  dequeueNextQueuedUserMessageStep: mock(() => Promise.resolve(null)),
+  dequeueNextQueuedUserMessageStep: mock(
+    (): Promise<{
+      id: string;
+      role: "user";
+      parts: Array<{ type: "text"; text: string }>;
+    } | null> => Promise.resolve(null),
+  ),
 };
 
 let testSessionRecord: {
@@ -408,7 +414,9 @@ mock.module("@/lib/db/users", () => ({
   isUserAdmin: mock(() => Promise.resolve(false)),
 }));
 
+const realPlatformSettings = await import("@/lib/db/platform-settings");
 mock.module("@/lib/db/platform-settings", () => ({
+  ...realPlatformSettings,
   getFreeTierGateStatus: mock(() =>
     Promise.resolve({ enabled: true, reason: null }),
   ),
@@ -428,6 +436,16 @@ mock.module("@/lib/billing/credit-ledger", () => ({
       billingSubscriptionCode: null,
     }),
   ),
+  enforcePlanExpiry: mock(() =>
+    Promise.resolve({
+      plan: "pro",
+      creditBalanceCents: 100_000,
+      billingCycleAnchor: null,
+      billingCustomerCode: null,
+      billingSubscriptionCode: null,
+    }),
+  ),
+  expireStaleTopUps: mock(() => Promise.resolve({ expiredCents: 0 })),
   claimUserBillingTurn: mock(() => Promise.resolve(true)),
   heartbeatUserBillingTurn: mock(() => Promise.resolve()),
   recordBillableUsage: mock(() => Promise.resolve({ debitedCents: 0 })),
@@ -435,8 +453,7 @@ mock.module("@/lib/billing/credit-ledger", () => ({
 }));
 
 // lib/billing/plans.ts is pure (no DB import) -- no mock needed, the
-// real getPlanDefinition/FREE_PLAN_MODEL_ID/FREE_TIER_ALLOWED_MODEL_IDS
-// run as-is.
+// real getPlanDefinition runs as-is.
 
 mock.module("@/lib/vercel/token", () => ({
   hasVercelAccountLinked: mock(() => Promise.resolve(false)),
@@ -465,6 +482,10 @@ mock.module("@/lib/model-availability", () => ({
   filterDisabledModels: mock(<T extends { id: string }>(models: T[]) =>
     Promise.resolve(models),
   ),
+}));
+
+mock.module("@/lib/db/mcp-servers", () => ({
+  getEnabledMcpServersForRequest: mock(() => Promise.resolve([])),
 }));
 
 mock.module("./chat-sandbox-runtime", () => ({
@@ -707,7 +728,7 @@ describe("runAgentWorkflow", () => {
           type: "text-delta",
           id: "setup-error",
           delta:
-            "Something went wrong while generating a response. Please try again -- if this keeps happening, try switching models. This looks like a repeating issue rather than a one-off, so retrying probably won't help -- try switching models, or let us know if it keeps happening.",
+            "The response was interrupted. Click Retry to continue where you left off, or switch models if the issue persists. This looks like a repeating issue rather than a one-off, so retrying probably won't help -- try switching models, or let us know if it keeps happening.",
         },
       ]),
     );
@@ -1710,7 +1731,8 @@ describe("runAgentWorkflow", () => {
     await runAgentWorkflow(makeOptions({ maxSteps: 2 }));
 
     expect(spies.dequeueNextQueuedUserMessageStep).toHaveBeenCalledTimes(1);
-    expect(spies.persistAssistantMessage).toHaveBeenCalledTimes(4);
+    expect(spies.persistAssistantMessage).toHaveBeenCalledTimes(3);
+    expect(spies.persistFinalAssistantMessage).toHaveBeenCalledTimes(1);
     expect(
       writtenChunks.filter(
         (chunk) =>

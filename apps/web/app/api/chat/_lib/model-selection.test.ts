@@ -1,6 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
+mock.module("@/lib/models-with-context", () => ({
+  fetchAvailableLanguageModels: mock(async () => [
+    { id: "anthropic/claude-sonnet-4.6" },
+  ]),
+}));
 mock.module("@/lib/db/model-overrides", () => ({
   getDisabledModelIdSet: mock(async () => new Set<string>()),
 }));
@@ -51,19 +56,25 @@ describe("resolveChatModelSelection", () => {
     });
   });
 
-  // Changed 2026-08-17: silent substitution was removed entirely (owner
-  // instruction -- a user was invisibly moved off their selected model
-  // onto a disabled default and just saw a generic error). Disabled
-  // models must now throw a clear, specific error instead of resolving
-  // to APP_DEFAULT_MODEL_ID.
-  test("throws a clear error instead of silently falling back when the model is hard-blocked", async () => {
-    await expect(
-      resolveChatModelSelection({
-        selectedModelId: "kimi-k3",
-        reasoningEffort: null,
-        missingModelLabel: "Selected model",
-      }),
-    ).rejects.toThrow(/kimi-k3.*currently unavailable/);
+  test("self-heals to a live model when the requested model is hard-blocked", async () => {
+    const { fetchAvailableLanguageModels } =
+      await import("@/lib/models-with-context");
+    (
+      fetchAvailableLanguageModels as unknown as ReturnType<typeof mock>
+    ).mockImplementationOnce(async () => [
+      { id: APP_DEFAULT_MODEL_ID },
+      { id: "openai/gpt-5" },
+    ]);
+
+    const selection = await resolveChatModelSelection({
+      selectedModelId: "kimi-k3",
+      reasoningEffort: null,
+      missingModelLabel: "Selected model",
+    });
+
+    expect(selection).toEqual({
+      id: APP_DEFAULT_MODEL_ID,
+    });
   });
 
   test("uses the default model when no model id is provided", async () => {
@@ -78,18 +89,42 @@ describe("resolveChatModelSelection", () => {
     });
   });
 
-  test("throws a clear error for an admin-disabled model from the DB override table", async () => {
+  test("self-heals to live gateway model for an admin-disabled model from DB override table", async () => {
     const { getDisabledModelIdSet } = await import("@/lib/db/model-overrides");
     (
       getDisabledModelIdSet as unknown as ReturnType<typeof mock>
     ).mockImplementationOnce(async () => new Set(["deepseek-v4-pro"]));
 
+    const { fetchAvailableLanguageModels } =
+      await import("@/lib/models-with-context");
+    (
+      fetchAvailableLanguageModels as unknown as ReturnType<typeof mock>
+    ).mockImplementationOnce(async () => [{ id: "openai/gpt-5" }]);
+
+    const selection = await resolveChatModelSelection({
+      selectedModelId: "deepseek-v4-pro",
+      reasoningEffort: null,
+      missingModelLabel: "Selected model",
+    });
+
+    expect(selection).toEqual({
+      id: "openai/gpt-5",
+    });
+  });
+
+  test("throws a clear error when model is disabled and no live models are reachable", async () => {
+    const { fetchAvailableLanguageModels } =
+      await import("@/lib/models-with-context");
+    (
+      fetchAvailableLanguageModels as unknown as ReturnType<typeof mock>
+    ).mockImplementationOnce(async () => []);
+
     await expect(
       resolveChatModelSelection({
-        selectedModelId: "deepseek-v4-pro",
+        selectedModelId: "kimi-k3",
         reasoningEffort: null,
         missingModelLabel: "Selected model",
       }),
-    ).rejects.toThrow(/deepseek-v4-pro.*currently unavailable/);
+    ).rejects.toThrow(/no AI models are reachable right now/);
   });
 });

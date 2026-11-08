@@ -54,7 +54,10 @@ ipcMain.handle("entry:get-info", () => ({
 
 // External URL Opening (Billing, Docs, External OAuth)
 ipcMain.handle("entry:open-external", async (_event, url) => {
-  if (typeof url === "string" && (url.startsWith("https://") || url.startsWith("http://"))) {
+  if (
+    typeof url === "string" &&
+    (url.startsWith("https://") || url.startsWith("http://"))
+  ) {
     await shell.openExternal(url);
     return { success: true };
   }

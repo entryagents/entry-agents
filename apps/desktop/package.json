@@ -1,15 +1,15 @@
 {
   "name": "@entry-agents/desktop",
   "version": "1.0.0-beta.1",
-  "description": "Entry Agents Desktop — Autonomous AI Coding Agent Workspace",
   "private": true,
-  "type": "module",
-  "main": "./src/main.js",
+  "description": "Entry Agents Desktop — Autonomous AI Coding Agent Workspace",
   "homepage": "https://entry-agents.dev",
   "repository": {
     "type": "git",
     "url": "https://github.com/entryagents/entry-agents.git"
   },
+  "type": "module",
+  "main": "./src/main.js",
   "scripts": {
     "tauri": "npx --yes @tauri-apps/cli",
     "build:tauri": "npx --yes @tauri-apps/cli build",

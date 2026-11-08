@@ -11,6 +11,7 @@ import { LandingFooter } from "@/components/landing/footer";
 import { UsageSection } from "@/app/settings/usage-section";
 import { Button } from "@/components/ui/button";
 import { ArrowUpRight, CheckCircle2, Clock, Sparkles } from "lucide-react";
+import Link from "next/link";
 
 export function UsageClient() {
   const { data: billing, isLoading } = useBillingMe();
@@ -61,10 +62,10 @@ export function UsageClient() {
                 variant="outline"
                 className="rounded-full border-(--l-border)"
               >
-                <a href="/pricing">
+                <Link href="/pricing">
                   Pricing Plans
                   <ArrowUpRight className="ml-1.5 h-4 w-4" />
-                </a>
+                </Link>
               </Button>
             </div>
           </div>
@@ -121,7 +122,7 @@ export function UsageClient() {
 
               <div className="mt-6 pt-4 border-t border-(--l-border)">
                 <Button asChild className="w-full rounded-xl">
-                  <a href="/pricing">Change Plan or Add Credit</a>
+                  <Link href="/pricing">Change Plan or Add Credit</Link>
                 </Button>
               </div>
             </div>

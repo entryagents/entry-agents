@@ -125,8 +125,48 @@ export async function setTitleModelId(
 const FREE_TIER_MODEL_SETTINGS_ID = "free_tier_model";
 
 /**
- * Returns the admin-configured free tier model ID, "__all__" if all models are
- * unlocked for free users, or null if using the code fallback (FREE_PLAN_MODEL_ID).
+ * Parses the admin-configured free tier model setting into structured access rules.
+ * - "__all__": all live models are unlocked for Free-plan users
+ * - null / "" / "__none__": no free tier models are unlocked (until admin configures one)
+ * - otherwise: one or more comma-separated model IDs unlocked by admin
+ */
+export function parseAdminFreeTierModels(
+  configured: string | null | undefined,
+): {
+  allowAll: boolean;
+  allowedModelIds: string[];
+  primaryModelId: string | null;
+} {
+  const trimmed = configured?.trim() ?? "";
+  if (!trimmed || trimmed === "__none__") {
+    return {
+      allowAll: false,
+      allowedModelIds: [],
+      primaryModelId: null,
+    };
+  }
+  if (trimmed === "__all__") {
+    return {
+      allowAll: true,
+      allowedModelIds: [],
+      primaryModelId: null,
+    };
+  }
+  const allowedModelIds = trimmed
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  return {
+    allowAll: false,
+    allowedModelIds,
+    primaryModelId: allowedModelIds[0] ?? null,
+  };
+}
+
+/**
+ * Returns the admin-configured free tier model ID (or comma-separated IDs),
+ * "__all__" if all models are unlocked for free users, or null if no free
+ * model is unlocked. There is no hardcoded code fallback.
  */
 export async function getFreeTierModelId(): Promise<string | null> {
   const [row] = await db
@@ -142,7 +182,8 @@ export async function setFreeTierModelId(
   modelId: string | null,
   updatedBy: string,
 ): Promise<void> {
-  const normalized = modelId?.trim() || null;
+  const trimmed = modelId?.trim() || null;
+  const normalized = trimmed === "__none__" ? null : trimmed;
 
   await db
     .insert(platformSettings)

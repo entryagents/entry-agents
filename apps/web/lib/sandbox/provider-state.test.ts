@@ -1,13 +1,16 @@
-import { describe, expect, test } from "bun:test";
-import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
+import { describe, expect, mock, test } from "bun:test";
 import { getSandboxProvider } from "@entry-agents/sandbox";
+import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
 import { SANDBOX_MIGRATION_LEAD_MS } from "./config";
-import { isSandboxMigrationDue } from "./lifecycle";
 import {
   isSandboxState,
   isSandboxUnavailableError,
   type ModalSandboxState,
 } from "./utils";
+
+mock.module("server-only", () => ({}));
+
+const { isSandboxMigrationDue } = await import("./lifecycle");
 
 describe("provider-neutral sandbox state guards", () => {
   test("accepts every registered provider", () => {

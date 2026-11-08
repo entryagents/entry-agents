@@ -18,7 +18,7 @@ interface TestSessionRecord {
   id: string;
   userId: string;
   lifecycleVersion: number;
-  sandboxState: { type: "vercel" };
+  sandboxState: { type: "boxd"; machineName?: string } | null;
   vercelProjectId: string | null;
   vercelProjectName: string | null;
   vercelTeamId: string | null;
@@ -38,8 +38,8 @@ interface KickCall {
 
 interface ConnectConfig {
   state: {
-    type: "vercel";
-    sandboxName?: string;
+    type: "boxd";
+    machineName?: string;
     source?: {
       repo?: string;
       branch?: string;
@@ -213,10 +213,10 @@ mock.module("@entry-agents/sandbox", () => ({
 
     return {
       currentBranch: "main",
-      workingDirectory: "/vercel/sandbox",
+      workingDirectory: "/workspace",
       getState: () => ({
-        type: "vercel" as const,
-        sandboxName: config.state.sandboxName ?? "session_session-1",
+        type: "boxd" as const,
+        machineName: config.state.machineName ?? "entry-session",
         expiresAt: Date.now() + 120_000,
       }),
       exec: async (command: string, cwd: string, timeoutMs: number) => {
@@ -268,7 +268,7 @@ describe("/api/sandbox lifecycle kicks", () => {
       id: "session-1",
       userId: "user-1",
       lifecycleVersion: 3,
-      sandboxState: { type: "vercel" },
+      sandboxState: null,
       vercelProjectId: "project-1",
       vercelProjectName: "entry-agents-web",
       vercelTeamId: "team-1",
@@ -276,7 +276,7 @@ describe("/api/sandbox lifecycle kicks", () => {
     };
   });
 
-  test("uses session_<sessionId> as the persistent sandbox name", async () => {
+  test("uses deterministic hash as the persistent sandbox machineName", async () => {
     const { POST } = await routeModulePromise;
 
     currentDotenvContent = "";
@@ -289,7 +289,7 @@ describe("/api/sandbox lifecycle kicks", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sessionId: "session-1",
-        sandboxType: "vercel",
+        sandboxType: "boxd",
       }),
     });
 
@@ -304,8 +304,8 @@ describe("/api/sandbox lifecycle kicks", () => {
     ]);
     expect(connectConfigs[0]).toMatchObject({
       state: {
-        type: "vercel",
-        sandboxName: "session_session-1",
+        type: "boxd",
+        machineName: expect.any(String),
       },
       options: {
         timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
@@ -333,7 +333,7 @@ describe("/api/sandbox lifecycle kicks", () => {
           sessionId: "session-1",
           repoUrl: "https://github.com/acme/private-repo",
           branch: "main",
-          sandboxType: "vercel",
+          sandboxType: "boxd",
         }),
       }),
     );
@@ -341,8 +341,8 @@ describe("/api/sandbox lifecycle kicks", () => {
     expect(response.ok).toBe(true);
     expect(connectConfigs[0]).toMatchObject({
       state: {
-        type: "vercel",
-        sandboxName: "session_session-1",
+        type: "boxd",
+        machineName: expect.any(String),
         source: {
           repo: "https://github.com/acme/private-repo",
           branch: "main",
@@ -366,7 +366,7 @@ describe("/api/sandbox lifecycle kicks", () => {
           sessionId: "session-1",
           repoUrl: "https://attacker.example/github.com/acme/private-repo",
           branch: "main",
-          sandboxType: "vercel",
+          sandboxType: "boxd",
         }),
       }),
     );
@@ -377,7 +377,7 @@ describe("/api/sandbox lifecycle kicks", () => {
     expect(connectConfigs).toHaveLength(0);
   });
 
-  test("new vercel sandbox does not sync linked Development env vars while code is commented out", async () => {
+  test("new boxd sandbox does not sync linked Development env vars while code is commented out", async () => {
     const { POST } = await routeModulePromise;
 
     const request = new Request("http://localhost/api/sandbox", {
@@ -385,7 +385,7 @@ describe("/api/sandbox lifecycle kicks", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         sessionId: "session-1",
-        sandboxType: "vercel",
+        sandboxType: "boxd",
       }),
     });
 
@@ -424,7 +424,7 @@ describe("/api/sandbox lifecycle kicks", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: "session-1",
-          sandboxType: "vercel",
+          sandboxType: "boxd",
         }),
       }),
     );
@@ -453,7 +453,7 @@ describe("/api/sandbox lifecycle kicks", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sessionId: "session-1",
-          sandboxType: "vercel",
+          sandboxType: "boxd",
         }),
       }),
     );

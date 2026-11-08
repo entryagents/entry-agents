@@ -4,10 +4,11 @@ import { getServerSession } from "@/lib/session/get-server-session";
 import {
   getFreeTierGateStatus,
   getFreeTierModelId,
+  parseAdminFreeTierModels,
 } from "@/lib/db/platform-settings";
 import { isUserAdmin } from "@/lib/db/users";
 import { getUserBillingState } from "@/lib/billing/credit-ledger";
-import { getPlanDefinition, FREE_PLAN_MODEL_ID } from "@/lib/billing/plans";
+import { getPlanDefinition } from "@/lib/billing/plans";
 
 const CACHE_CONTROL = "private, no-store";
 
@@ -27,16 +28,14 @@ export async function GET(req: Request) {
       fetchAvailableLanguageModelsWithContext(),
     ]);
 
-    // Surfaced so the selector/composer can show the block proactively
-    // instead of only erroring once a turn is actually sent -- the real
-    // enforcement lives server-side in resolveChatModelRuntime and
-    // startStopMonitor / runAgentStep (app/workflows/chat.ts); this is
-    // UX only. Admins always get `null` for both gates so their UI
-    // never changes.
     const isAdminUser = session?.user?.id
       ? await isUserAdmin(session.user.id).catch(() => false)
       : false;
-    const freeTierGate = isAdminUser ? null : await getFreeTierGateStatus();
+    const [freeTierGate, configuredFreeModelId] = await Promise.all([
+      isAdminUser ? Promise.resolve(null) : getFreeTierGateStatus(),
+      getFreeTierModelId(),
+    ]);
+    const freeModelConfig = parseAdminFreeTierModels(configuredFreeModelId);
 
     let creditGate: CreditGateStatus | null = null;
     let userPlan: { id: string; modelAccess: "luna-only" | "all" } | null =
@@ -45,11 +44,11 @@ export async function GET(req: Request) {
       const billingState = await getUserBillingState(session.user.id).catch(
         () => null,
       );
-      const configuredFreeModelId = await getFreeTierModelId();
       const plan = getPlanDefinition(billingState?.plan);
       const balanceCents = billingState?.creditBalanceCents ?? 0;
-      const effectiveModelAccess =
-        configuredFreeModelId === "__all__" ? "all" : plan.modelAccess;
+      const effectiveModelAccess = freeModelConfig.allowAll
+        ? "all"
+        : plan.modelAccess;
       userPlan = { id: plan.id, modelAccess: effectiveModelAccess };
       if (balanceCents <= 0) {
         creditGate = {
@@ -63,21 +62,20 @@ export async function GET(req: Request) {
       }
     }
 
-    const configuredFreeModelId = await getFreeTierModelId();
+    const isPaidUser = Boolean(userPlan?.id && userPlan.id !== "free");
+    const effectiveFreeTierGate =
+      !isAdminUser && !isPaidUser && freeTierGate && !freeTierGate.enabled
+        ? { enabled: false, reason: freeTierGate.reason }
+        : null;
 
     return Response.json(
       {
         models: filterModelsForSession(models, session, req.url),
-        freeTierGate:
-          freeTierGate && !freeTierGate.enabled
-            ? { enabled: false, reason: freeTierGate.reason }
-            : null,
+        freeTierGate: effectiveFreeTierGate,
         creditGate,
         userPlan,
-        freePlanModelId:
-          configuredFreeModelId && configuredFreeModelId !== "__all__"
-            ? configuredFreeModelId
-            : FREE_PLAN_MODEL_ID,
+        freePlanModelId: freeModelConfig.primaryModelId,
+        freeTierAllowedModelIds: freeModelConfig.allowedModelIds,
       },
       {
         headers: {

@@ -1,10 +1,6 @@
 import { createHash } from "node:crypto";
-import { discoverSkills } from "@entry-agents/agent";
-import {
-  connectSandbox,
-  type Sandbox,
-  type SandboxState,
-} from "@entry-agents/sandbox";
+import type { discoverSkills } from "@entry-agents/agent";
+import { connectSandbox, type SandboxState } from "@entry-agents/sandbox";
 import { getSessionById } from "@/lib/db/sessions";
 import {
   ensureUploadsGitignored,
@@ -13,8 +9,7 @@ import {
 import { kickSandboxProvisioningWorkflow } from "@/lib/sandbox/provisioning-kick";
 import { withoutUndefined } from "@/app/workflows/serialization";
 import { isSandboxActive } from "@/lib/sandbox/utils";
-import { getSandboxSkillDirectories } from "@/lib/skills/directories";
-import { getCachedSkills, setCachedSkills } from "@/lib/skills-cache";
+import { getCachedSkills } from "@/lib/skills-cache";
 
 type SessionRecord = NonNullable<Awaited<ReturnType<typeof getSessionById>>>;
 type DiscoveredSkills = Awaited<ReturnType<typeof discoverSkills>>;
@@ -37,34 +32,16 @@ export type ResolvedChatSandboxRuntime = {
   repoName?: string;
 };
 
-async function loadSessionSkills(params: {
-  sessionId: string;
-  sandboxState: SandboxState;
-  sandbox: Sandbox;
-}): Promise<DiscoveredSkills> {
-  const cachedSkills = await getCachedSkills(
-    params.sessionId,
-    params.sandboxState,
-  );
-  if (cachedSkills !== null) {
-    return cachedSkills;
-  }
-
-  const skillDirs = await getSandboxSkillDirectories(params.sandbox);
-  const discoveredSkills = await discoverSkills(params.sandbox, skillDirs);
-  await setCachedSkills(
-    params.sessionId,
-    params.sandboxState,
-    discoveredSkills,
-  );
-  return discoveredSkills;
-}
-
 async function cachedSessionSkills(params: {
   sessionId: string;
   sandboxState: SandboxState;
 }): Promise<DiscoveredSkills> {
-  return (await getCachedSkills(params.sessionId, params.sandboxState)) ?? [];
+  const cached = await getCachedSkills(params.sessionId, params.sandboxState);
+  if (cached !== null && cached.length > 0) {
+    return cached;
+  }
+  const { getBuiltinSkillsMetadata } = await import("@entry-agents/agent");
+  return getBuiltinSkillsMetadata();
 }
 
 type ReadySessionSandbox = {
@@ -167,73 +144,36 @@ export async function resolveChatSandboxRuntime(params: {
     ...(session.repoName ? { repoName: session.repoName } : {}),
   };
 
+  const skills = await cachedSessionSkills({
+    sessionId: params.sessionId,
+    sandboxState,
+  });
+
   if (!liveSandbox) {
     // No VM yet: hand back session context plus whatever skills were
-    // already discovered on a previous turn. Omitting workingDirectory is
+    // already discovered or built in. Omitting workingDirectory is
     // what tells the caller to run this turn without a workspace attached.
+    // Provisioning was already kicked in the background without blocking.
     return withoutUndefined({
       ...sessionContext,
-      skills: await cachedSessionSkills({
-        sessionId: params.sessionId,
-        sandboxState,
-      }),
-    });
-  }
-
-  // AGENT-FIRST GUARANTEE: Never wait or block the turn if the sandbox
-  // is slow, sleeping, waking up, or refuses to start. Probe with a fast
-  // 1500ms budget; if it doesn't resolve immediately, return session context
-  // without workingDirectory so the agent turn streams instantly.
-  try {
-    const sandboxPromise = connectSandbox(sandboxState);
-    let timer: NodeJS.Timeout | undefined;
-    const timeoutPromise = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        reject(new Error("Sandbox connect exceeded fast startup budget"));
-      }, 1500);
-    });
-
-    const sandbox = await Promise.race([
-      sandboxPromise,
-      timeoutPromise,
-    ]).finally(() => {
-      if (timer) clearTimeout(timer);
-    });
-
-    const skills = await loadSessionSkills({
-      sessionId: params.sessionId,
-      sandboxState,
-      sandbox,
-    }).catch(() =>
-      cachedSessionSkills({
-        sessionId: params.sessionId,
-        sandboxState,
-      }),
-    );
-
-    return withoutUndefined({
-      ...sessionContext,
-      workingDirectory: sandbox.workingDirectory,
-      ...(sandbox.currentBranch !== undefined
-        ? { currentBranch: sandbox.currentBranch }
-        : {}),
-      ...(sandbox.environmentDetails !== undefined
-        ? { environmentDetails: sandbox.environmentDetails }
-        : {}),
+      ...(session.branch ? { currentBranch: session.branch } : {}),
       skills,
     });
-  } catch (error) {
-    console.warn(
-      `[chat-sandbox-runtime] Sandbox not immediately ready or refused to start (${error instanceof Error ? error.message : String(error)}). Starting agent immediately:`,
-    );
-    return withoutUndefined({
-      ...sessionContext,
-      skills: await cachedSessionSkills({
-        sessionId: params.sessionId,
-        sandboxState,
-      }),
-    });
   }
+
+  // AGENT-FIRST GUARANTEE: Never wait or block the turn on a slow sandbox
+  // connect or container skills discovery before the model can start.
+  // The sandbox is marked active in DB, so return immediately with the
+  // standard workspace directory and branch. Container connection and
+  // execution happen lazily when a tool is called via
+  // sandboxLifecycleHooks.beforeCommand(), allowing the model to start
+  // streaming tokens immediately upon message send.
+  return withoutUndefined({
+    ...sessionContext,
+    workingDirectory: "/workspace",
+    ...(session.branch ? { currentBranch: session.branch } : {}),
+    skills,
+  });
 }
 
 // ── Image attachment offload ────────────────────────────────────────

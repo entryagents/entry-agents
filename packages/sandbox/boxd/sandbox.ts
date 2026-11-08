@@ -178,40 +178,68 @@ export class BoxdSandbox implements Sandbox {
       throw err;
     }
 
+    const cmdId = `boxd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const pidFile = `/tmp/.entry_pid_${cmdId}`;
+    const wrappedCommand = `echo $$ > ${pidFile}; trap 'rm -f ${pidFile}' EXIT; ${command}`;
+
+    if (this.hooks?.onCommandStart) {
+      try {
+        await this.hooks.onCommandStart({
+          cmdId,
+          command,
+          cwd,
+          startedAt: Date.now(),
+        });
+      } catch (error) {
+        console.warn("[BoxdSandbox] onCommandStart hook failed:", error);
+      }
+    }
+
     const execPromise = this.client.machines.exec(this.machineId, {
-      command: ["bash", "-c", command],
+      command: ["bash", "-c", wrappedCommand],
       cwd,
       timeout: timeoutMs,
       env: this.commandEnv(),
     });
 
-    if (!options?.signal) {
-      const result = await execPromise;
-      return mapExec(result);
-    }
-
     let abortListener: (() => void) | undefined;
-    const abortPromise = new Promise<never>((_resolve, reject) => {
-      abortListener = () => {
-        const err = new Error("Command aborted");
-        err.name = "AbortError";
-        reject(err);
-      };
-      if (options.signal!.aborted) {
-        abortListener();
-      } else {
-        options.signal!.addEventListener("abort", abortListener, {
-          once: true,
-        });
-      }
-    });
+    const abortPromise = options?.signal
+      ? new Promise<never>((_resolve, reject) => {
+          abortListener = () => {
+            const err = new Error("Command aborted");
+            err.name = "AbortError";
+            reject(err);
+          };
+          if (options.signal!.aborted) {
+            abortListener();
+          } else {
+            options.signal!.addEventListener("abort", abortListener, {
+              once: true,
+            });
+          }
+        })
+      : null;
 
     try {
-      const result = await Promise.race([execPromise, abortPromise]);
+      const result = abortPromise
+        ? await Promise.race([execPromise, abortPromise])
+        : await execPromise;
       return mapExec(result);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        await this.killCommand(cmdId).catch(() => {});
+      }
+      throw error;
     } finally {
-      if (abortListener && options.signal) {
+      if (abortListener && options?.signal) {
         options.signal.removeEventListener("abort", abortListener);
+      }
+      if (this.hooks?.onCommandEnd) {
+        try {
+          await this.hooks.onCommandEnd(cmdId);
+        } catch (error) {
+          console.warn("[BoxdSandbox] onCommandEnd hook failed:", error);
+        }
       }
     }
   }
@@ -264,16 +292,34 @@ export class BoxdSandbox implements Sandbox {
   }
 
   async killCommand(cmdId: string): Promise<void> {
-    if (this.stopped || !/^[1-9][0-9]*$/.test(cmdId.trim())) {
+    if (this.stopped) {
       return;
     }
-    const pid = cmdId.trim();
+    const trimmed = cmdId.trim();
+    if (/^boxd_[0-9]+_[a-z0-9]+$/.test(trimmed)) {
+      const pidFile = `/tmp/.entry_pid_${trimmed}`;
+      await this.client.machines
+        .exec(this.machineId, {
+          command: [
+            "bash",
+            "-c",
+            `if [ -f ${pidFile} ]; then PID=$(cat ${pidFile} 2>/dev/null); if [ -n "$PID" ]; then pkill -TERM -P "$PID" 2>/dev/null || true; kill -TERM -"$PID" "$PID" 2>/dev/null || true; sleep 0.5; pkill -KILL -P "$PID" 2>/dev/null || true; kill -KILL -"$PID" "$PID" 2>/dev/null || true; fi; rm -f ${pidFile}; fi`,
+          ],
+          cwd: BOXD_WORKING_DIRECTORY,
+          timeout: 5_000,
+        })
+        .catch(() => undefined);
+      return;
+    }
+    if (!/^[1-9][0-9]*$/.test(trimmed)) {
+      return;
+    }
     await this.client.machines
       .exec(this.machineId, {
         command: [
           "bash",
           "-c",
-          `kill -TERM -${pid} ${pid} 2>/dev/null || true`,
+          `kill -TERM -${trimmed} ${trimmed} 2>/dev/null || true`,
         ],
         cwd: BOXD_WORKING_DIRECTORY,
         timeout: 5_000,

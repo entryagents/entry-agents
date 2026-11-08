@@ -132,28 +132,72 @@ export async function POST(req: Request) {
     // the saved card now; a downgrade becomes customer credit applied to
     // future invoices).
     const billingState = await getUserBillingState(session.user.id);
-    if (
+    const chosenWindowMode =
       plan.id === "goat" &&
       (body.windowMode === "rolling" || body.windowMode === "fixed")
-    ) {
-      const { setUserGoatWindowMode } =
+        ? body.windowMode
+        : undefined;
+
+    // Permanent 1-month cycle lock: if the user is ALREADY in an active GOAT
+    // cycle, they cannot use /api/billing/checkout to flip their windowMode
+    // mid-cycle without paying.
+    if (plan.id === "goat" && billingState?.plan === "goat") {
+      const { shouldAutoRevertToFree } = await import("@/lib/billing/plans");
+      const { getUserGoatWindowModeState } =
         await import("@/lib/billing/credit-ledger");
-      await setUserGoatWindowMode(
-        session.user.id,
-        body.windowMode,
-        billingState?.billingCycleAnchor ?? new Date(),
-      );
+      const modeState = await getUserGoatWindowModeState(session.user.id);
+      const isActiveCycle =
+        billingState.billingCycleAnchor !== null &&
+        !shouldAutoRevertToFree("goat", billingState.billingCycleAnchor);
+      if (
+        isActiveCycle &&
+        chosenWindowMode &&
+        modeState.lockedAnchorIso ===
+          billingState.billingCycleAnchor?.toISOString() &&
+        chosenWindowMode !== modeState.mode
+      ) {
+        return Response.json(
+          {
+            error: `Your Entry plan window mode (${modeState.mode === "fixed" ? "Fixed Boundary" : "Sliding"}) is locked for the current 1-month billing cycle and can only be changed on renewal.`,
+          },
+          { status: 400 },
+        );
+      }
     }
 
     const existingSubscriptionId =
       billingState?.billingSubscriptionCode ?? null;
+
+    const subscriptionMetadata: Record<string, string> = {
+      userId: session.user.id,
+      kind: "subscription",
+      planId: plan.id,
+      usdAmountCents: String(plan.priceUsdCents),
+      ...(chosenWindowMode ? { windowMode: chosenWindowMode } : {}),
+    };
 
     if (existingSubscriptionId && billingState?.plan !== plan.id) {
       try {
         const updated = await updateSubscription(existingSubscriptionId, {
           productId,
           prorationBehavior: "invoice_now",
+          metadata: subscriptionMetadata,
         });
+
+        const { syncSubscriptionPlan, setUserGoatWindowMode } =
+          await import("@/lib/billing/credit-ledger");
+        await syncSubscriptionPlan(
+          session.user.id,
+          plan.id,
+          updated.id || existingSubscriptionId,
+        );
+        if (plan.id === "goat" && chosenWindowMode) {
+          await setUserGoatWindowMode(
+            session.user.id,
+            chosenWindowMode,
+            billingState?.billingCycleAnchor ?? new Date(),
+          );
+        }
 
         return Response.json({
           updated: true,
@@ -164,11 +208,6 @@ export async function POST(req: Request) {
           currency: "USD",
         });
       } catch (error) {
-        // The stored id can be stale (cancelled at Bachs out of band, or
-        // never written). Falling through to a fresh checkout still ends
-        // with exactly one live subscription, which is the invariant that
-        // matters -- stranding the user with no way to change plan would
-        // be worse than the retry.
         console.warn(
           "[billing] in-place plan change failed; falling back to a new checkout:",
           error,
@@ -183,12 +222,7 @@ export async function POST(req: Request) {
       productId,
       successUrl,
       cancelUrl,
-      metadata: {
-        userId: session.user.id,
-        kind: "subscription",
-        planId: plan.id,
-        usdAmountCents: String(plan.priceUsdCents),
-      },
+      metadata: subscriptionMetadata,
     });
 
     return Response.json({

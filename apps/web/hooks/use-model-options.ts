@@ -35,7 +35,8 @@ interface ModelsResponse {
   freeTierGate?: FreeTierGateStatus | null;
   creditGate?: CreditGateStatus | null;
   userPlan?: UserPlanInfo | null;
-  freePlanModelId?: string;
+  freePlanModelId?: string | null;
+  freeTierAllowedModelIds?: string[];
 }
 
 interface UseModelOptionsConfig {
@@ -44,6 +45,7 @@ interface UseModelOptionsConfig {
 
 const EMPTY_MODELS: AvailableModel[] = [];
 const EMPTY_MODEL_OPTIONS: ModelOption[] = [];
+const EMPTY_FREE_ALLOWED_MODELS: string[] = [];
 
 export function useModelOptions(config: UseModelOptionsConfig = {}) {
   const {
@@ -69,15 +71,12 @@ export function useModelOptions(config: UseModelOptionsConfig = {}) {
   return {
     modelOptions,
     models,
-    // Proactive UX signal only -- the real enforcement lives server-side
-    // in resolveChatModelRuntime/startStopMonitor. Defaults to null while
-    // loading so the composer never flashes a false-positive block.
     freeTierGate: modelsData?.freeTierGate ?? null,
-    // Same deal: UX-only. Real enforcement is resolveChatModelRuntime's
-    // hard balance<=0 throw plus runAgentStep's real-time mid-turn abort.
     creditGate: modelsData?.creditGate ?? null,
     userPlan: modelsData?.userPlan ?? null,
-    freePlanModelId: modelsData?.freePlanModelId ?? "step-5-preview",
+    freePlanModelId: modelsData?.freePlanModelId ?? null,
+    freeTierAllowedModelIds:
+      modelsData?.freeTierAllowedModelIds ?? EMPTY_FREE_ALLOWED_MODELS,
     loading:
       initialModelOptions.length === 0 &&
       !hasCompleteFetchedData &&

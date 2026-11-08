@@ -6,22 +6,27 @@ import { db } from "@/lib/db/client";
 import {
   billingWebhookEvents,
   creditTransactions,
+  platformSettings,
   users,
 } from "@/lib/db/schema";
 import {
   getPlanDefinition,
   isPlanId,
+  normalizeGoatWindowMode,
   resolvePlanForProductId,
+  type GoatWindowMode,
 } from "@/lib/billing/plans";
 import { findUserIdByBillingCustomerCode } from "@/lib/billing/credit-ledger";
 
 export interface ChargeOutcome {
   reference: string;
   customerId: string | null;
+  subscriptionId?: string | null;
   metadataUserId: string | null;
   metadataKind: string | null;
   metadataPlanId: string | null;
   metadataUsdAmountCents: number | null;
+  metadataWindowMode?: GoatWindowMode | string | null;
   productId: string | null;
   fallbackAmountCents: number | null;
 }
@@ -48,10 +53,15 @@ export async function processChargeSuccess(
   const isTopup = outcome.metadataKind === "topup";
   const topupCents =
     outcome.metadataUsdAmountCents ?? outcome.fallbackAmountCents;
+  // Prefer resolving from the live productId first so an in-place subscription
+  // upgrade (PATCH /v1/subscriptions/{id}) never reverts to a stale
+  // metadata.planId copied from the original subscription creation.
+  const planFromProduct = resolvePlanForProductId(outcome.productId);
   const planId =
-    outcome.metadataPlanId && isPlanId(outcome.metadataPlanId)
+    planFromProduct ??
+    (outcome.metadataPlanId && isPlanId(outcome.metadataPlanId)
       ? outcome.metadataPlanId
-      : resolvePlanForProductId(outcome.productId);
+      : null);
 
   if (isTopup && (topupCents == null || topupCents <= 0)) {
     throw new Error(`Unpriced top-up charge ${outcome.reference}`);
@@ -92,12 +102,14 @@ export async function processChargeSuccess(
       });
     } else {
       const plan = getPlanDefinition(planId!);
+      const newAnchor = new Date();
       const [updated] = await tx
         .update(users)
         .set({
           billingCustomerCode: outcome.customerId ?? undefined,
+          billingSubscriptionCode: outcome.subscriptionId ?? undefined,
           plan: planId!,
-          billingCycleAnchor: new Date(),
+          billingCycleAnchor: newAnchor,
           creditBalanceCents: sql`${users.creditBalanceCents} + ${plan.creditGrantCents}`,
           planGrantBalanceCents: sql`${users.planGrantBalanceCents} + ${plan.creditGrantCents}`,
         })
@@ -105,6 +117,38 @@ export async function processChargeSuccess(
         .returning({ creditBalanceCents: users.creditBalanceCents });
       if (!updated)
         throw new Error(`User ${userId} not found for subscription`);
+
+      if (plan.id === "goat") {
+        // Lock the GOAT window mode to this new 1-month billingCycleAnchor.
+        // If metadata carried an explicit windowMode, apply it; otherwise
+        // preserve the user's existing mode and lock it to the new anchor.
+        const [existingModeRow] = await tx
+          .select({ titleModelId: platformSettings.titleModelId })
+          .from(platformSettings)
+          .where(eq(platformSettings.id, `goat_window_mode:${userId}`))
+          .limit(1);
+        const modeToLock = outcome.metadataWindowMode
+          ? normalizeGoatWindowMode(outcome.metadataWindowMode)
+          : normalizeGoatWindowMode(existingModeRow?.titleModelId);
+        const anchorIso = newAnchor.toISOString();
+
+        await tx
+          .insert(platformSettings)
+          .values({
+            id: `goat_window_mode:${userId}`,
+            titleModelId: modeToLock,
+            disabledReason: anchorIso,
+            updatedAt: newAnchor,
+          })
+          .onConflictDoUpdate({
+            target: platformSettings.id,
+            set: {
+              titleModelId: modeToLock,
+              disabledReason: anchorIso,
+              updatedAt: newAnchor,
+            },
+          });
+      }
 
       await tx.insert(creditTransactions).values({
         id: nanoid(),

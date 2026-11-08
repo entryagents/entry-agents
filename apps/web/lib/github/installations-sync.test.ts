@@ -1,14 +1,17 @@
 import { describe, expect, mock, test } from "bun:test";
-import * as realUsers from "./users";
 
-// ./sync also exports syncUserInstallationsWithRetry, which imports
-// getGitHubUsernameStrict from ./users -- and users.ts has a top-level
-// `import "server-only"`, which throws outside Next's RSC test condition.
-// Mock it out since none of the tests below need real GitHub/DB access.
 mock.module("server-only", () => ({}));
 mock.module("./users", () => ({
-  ...realUsers,
   getGitHubUsernameStrict: async () => null,
+  getGitHubUserProfile: async () => null,
+  getGitHubUsername: async () => null,
+  hasGitHubAccount: async () => false,
+}));
+mock.module("@/lib/github/users", () => ({
+  getGitHubUsernameStrict: async () => null,
+  getGitHubUserProfile: async () => null,
+  getGitHubUsername: async () => null,
+  hasGitHubAccount: async () => false,
 }));
 
 const { GitHubInstallationsSyncError, isGitHubInstallationsAuthError } =

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { formatUsdCents } from "@/lib/format-usd";
 import { LandingNav } from "@/components/landing/nav";
 import { LandingFooter } from "@/components/landing/footer";
@@ -173,12 +174,12 @@ export function PlansCatalog() {
                   </span>{" "}
                   plan.
                 </p>
-                <a
-                  href="/usage"
+                <Link
+                  href="/settings/usage"
                   className="inline-flex items-center text-sm font-medium text-(--l-fg) underline decoration-(--l-fg-3) underline-offset-4 transition-colors hover:decoration-(--l-fg)"
                 >
                   View balance &amp; usage windows &rarr;
-                </a>
+                </Link>
               </div>
             )}
 

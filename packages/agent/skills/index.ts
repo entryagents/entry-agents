@@ -7,3 +7,6 @@ export { discoverSkills, parseSkillFrontmatter } from "./discovery";
 
 // Loader
 export { extractSkillBody, substituteArguments } from "./loader";
+
+// Builtin
+export { getBuiltinSkillsMetadata, seedBuiltinSkills } from "./builtin/seed";
