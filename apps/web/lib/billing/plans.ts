@@ -1,67 +1,47 @@
 /**
- * The four subscription plans Entry offers, backed by Bachs for
- * checkout/renewal (see lib/billing/bachs.ts) and a per-user credit
+ * The four paid subscription plans + Free tier Entry offers, backed by Bachs
+ * for checkout/renewal (see lib/billing/bachs.ts) and a per-user credit
  * ledger (see lib/billing/credit-ledger.ts) for enforcement.
  *
- * Design (owner-confirmed 2026-08-16):
- * - Free: $0, one-time $1 trial credit, restricted to a single model
- *   (FREE_PLAN_MODEL_ID -- GPT-5.6 Luna). When the trial credit hits
- *   zero, the user is hard-blocked (composer blurred, "Free tier ended,
- *   upgrade your account to use Entry") -- see resolveChatModelRuntime in
- *   app/workflows/chat.ts, which reuses the existing free-tier-gate error
- *   marker/UI for this.
- * - GOAT (added 2026-09-15, owner request; publicly NAMED "Entry" since
- *   same-day owner request -- the id stays "goat" forever): the Command
- *   Code GOAT-plan
- *   model integrated into Entry -- a $13/mo tier that grants $50 of
- *   credit per renewal (a 3.8x bonus, deliberately breaking the flat 2x
- *   rule the other tiers use; it's the volume bait tier that gets users
- *   to upgrade from Plus). Still a single spendable balance: no
- *   Command-Code-style 5h/weekly sub-windows -- Entry's existing
- *   per-turn spend cap and hard stop-at-zero already bound worst-case
- *   exposure to the same class as the Max tier.
- * - Plus/GOAT("Entry")/Pro/Max: paid, full access to every model in the live catalog
- *   (including all FreeModel-sourced GPT-5.6 + Claude models once those
- *   routes are enabled on the gateway). They differ only by price and
- *   how much credit each renewal grants. Retuned 2026-09-15 (owner
- *   approved): GOAT's bonus broke the old flat-2x rule -- the ladder
- *   is now Plus $5->$10 (2x), GOAT $13->$50, Pro $20->$100 (5x),
- *   Max $40->$180 (4.5x), strictly increasing in absolute credit. If a paid user's balance hits
- *   zero mid-cycle, they are hard-blocked exactly like the free plan
- *   (composer locked, "You're out of credit") until they top up
- *   ($1 = $1) or the next renewal grants fresh credit. Soft-cutoff
- *   (silently downgrading to a cheap fallback model instead of
- *   blocking) was REMOVED per owner instruction on 2026-08-17.
+ * Design:
+ * - Free: $0, one-time $1 trial credit, restricted exclusively to models
+ *   unlocked by the Admin in Platform Settings (getFreeTierModelId). When
+ *   the trial credit hits zero, the user is hard-blocked (composer blurred,
+ *   "Free tier ended, upgrade your account to use Entry") -- see
+ *   resolveChatModelRuntime in app/workflows/chat.ts.
+ * - GOAT (publicly named "Entry"; internal id "goat"): a $13/mo tier that
+ *   grants $50 of credit per renewal with 5h / weekly / monthly usage
+ *   windows in either sliding ("rolling") or fixed boundary ("fixed") mode,
+ *   locked for the 1-month billing cycle.
+ * - Plus/GOAT("Entry")/Pro/Max: paid, full access to every model in the live
+ *   catalog. Each subscription cycle lasts 1 calendar month from the Bachs
+ *   charge anchor (matching Bachs billing_cycle: { interval: "month", frequency: 1 }).
  */
 
-export type PlanId = "free" | "plus" | "goat" | "pro" | "max" | "x";
+export type PlanId = "free" | "plus" | "goat" | "pro" | "max";
 
 /**
- * Rolling usage windows -- exclusive to the "Entry" plan, id goat
- * (owner request 2026-09-15).
- * A plan with usageWindows can spend at most
- * fiveHourLimitCents in any trailing 5-hour stretch, weeklyLimitCents in
- * any trailing 7 days, and monthlyLimitCents in any trailing 30 days --
- * enforced at the pre-turn billing gate in resolveChatModelRuntime by
- * summing usage_debit rows from credit_transactions (one indexed
- * aggregate query). The monthly window equals the plan's grant, so a
- * fresh cycle always starts clean; the 5h/weekly windows pace the spend
- * at 20%/50% of the grant.
+ * Usage windows -- exclusive to the "Entry" plan, id "goat".
+ * A plan with usageWindows can spend at most fiveHourLimitCents in a 5-hour
+ * window, weeklyLimitCents in a 7-day window, and monthlyLimitCents in a
+ * 1-month cycle -- enforced at the pre-turn billing gate in
+ * resolveChatModelRuntime by summing usage_debit rows from credit_transactions.
  */
 export interface PlanUsageWindows {
-  /** Max spend in any trailing 5-hour window, USD cents. */
+  /** Max spend in a 5-hour window, USD cents. */
   fiveHourLimitCents: number;
-  /** Max spend in any trailing 7-day window, USD cents. */
+  /** Max spend in a 7-day window, USD cents. */
   weeklyLimitCents: number;
-  /** Max spend in any trailing 30-day window, USD cents. */
+  /** Max spend in a 1-month window, USD cents. */
   monthlyLimitCents: number;
 }
 
 export type ExceededUsageWindow = "fiveHour" | "weekly" | "monthly" | null;
 
 /**
- * Sums of trailing usage_debit spend, produced by
- * getUsageWindowTotals() in credit-ledger.ts.
+ * GOAT ("Entry") window mode:
+ * - "rolling": sliding trailing 5h / 7d / 1-month windows
+ * - "fixed": fixed 5h / 7d / 1-month boundaries anchored to billingCycleAnchor
  */
 export type GoatWindowMode = "rolling" | "fixed";
 
@@ -69,6 +49,58 @@ export function normalizeGoatWindowMode(
   value: string | null | undefined,
 ): GoatWindowMode {
   return value === "fixed" ? "fixed" : "rolling";
+}
+
+/**
+ * Adds exactly 1 calendar month in UTC to the given anchor date, matching
+ * Bachs' `billing_cycle: { interval: "month", frequency: 1 }` calculation.
+ * End-of-month dates clamp to the last day of the target month (e.g.,
+ * Jan 31 -> Feb 28/29) while preserving the exact UTC time-of-day.
+ */
+export function addOneCalendarMonth(anchor: Date | string | number): Date {
+  const start = new Date(anchor);
+  const year = start.getUTCFullYear();
+  const month = start.getUTCMonth();
+  const day = start.getUTCDate();
+  const hours = start.getUTCHours();
+  const minutes = start.getUTCMinutes();
+  const seconds = start.getUTCSeconds();
+  const ms = start.getUTCMilliseconds();
+
+  const targetMonth = month + 1;
+  const lastDayOfTargetMonth = new Date(
+    Date.UTC(year, targetMonth + 1, 0),
+  ).getUTCDate();
+  const clampedDay = Math.min(day, lastDayOfTargetMonth);
+
+  return new Date(
+    Date.UTC(year, targetMonth, clampedDay, hours, minutes, seconds, ms),
+  );
+}
+
+/**
+ * Subtracts 1 calendar month in UTC from the given date (used for trailing
+ * 1-month window calculations when no billing cycle anchor is present).
+ */
+export function subtractOneCalendarMonth(from: Date | string | number): Date {
+  const ref = new Date(from);
+  const year = ref.getUTCFullYear();
+  const month = ref.getUTCMonth();
+  const day = ref.getUTCDate();
+  const hours = ref.getUTCHours();
+  const minutes = ref.getUTCMinutes();
+  const seconds = ref.getUTCSeconds();
+  const ms = ref.getUTCMilliseconds();
+
+  const targetMonth = month - 1;
+  const lastDayOfTargetMonth = new Date(
+    Date.UTC(year, targetMonth + 1, 0),
+  ).getUTCDate();
+  const clampedDay = Math.min(day, lastDayOfTargetMonth);
+
+  return new Date(
+    Date.UTC(year, targetMonth, clampedDay, hours, minutes, seconds, ms),
+  );
 }
 
 export interface FixedWindowBoundaries {
@@ -86,7 +118,6 @@ export function computeFixedWindowBoundaries(
 ): FixedWindowBoundaries {
   const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
   const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
   const cycleStart5hMs =
     anchorMs +
@@ -94,8 +125,10 @@ export function computeFixedWindowBoundaries(
   const cycleStart7dMs =
     anchorMs +
     Math.max(0, Math.floor((nowMs - anchorMs) / SEVEN_DAYS_MS)) * SEVEN_DAYS_MS;
-  // The monthly cycle is fixed to the billing cycle anchor and resets at renewal
+  // The monthly cycle is fixed to the billing cycle anchor and expires/resets
+  // exactly 1 calendar month after the anchor (matching Bachs monthly billing).
   const cycleStart30dMs = anchorMs;
+  const nextMonthDate = addOneCalendarMonth(anchorMs);
 
   return {
     cycleStart5hMs,
@@ -103,8 +136,85 @@ export function computeFixedWindowBoundaries(
     cycleStart30dMs,
     resetsAt5h: new Date(cycleStart5hMs + FIVE_HOURS_MS).toISOString(),
     resetsAt7d: new Date(cycleStart7dMs + SEVEN_DAYS_MS).toISOString(),
-    resetsAt30d: new Date(anchorMs + THIRTY_DAYS_MS).toISOString(),
+    resetsAt30d: nextMonthDate.toISOString(),
   };
+}
+
+export interface RollingWindowBoundaries {
+  cutoff5hMs: number;
+  cutoff7dMs: number;
+  cutoff30dMs: number;
+  resetsAt30d: string;
+}
+
+/**
+ * Computes cutoffs for rolling/sliding windows.
+ * A new subscription is a whole new cycle, so rolling windows cannot look back
+ * before the active subscription cycle anchor (Math.max). This guarantees that
+ * on renewal (anchorMs = now), all usage windows immediately reset to 100% capacity.
+ */
+export function computeRollingWindowBoundaries(
+  anchorMs: number,
+  nowMs: number = Date.now(),
+): RollingWindowBoundaries {
+  const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+  const cutoff5hMs = Math.max(nowMs - FIVE_HOURS_MS, anchorMs);
+  const cutoff7dMs = Math.max(nowMs - SEVEN_DAYS_MS, anchorMs);
+  const cutoff30dMs = anchorMs;
+
+  return {
+    cutoff5hMs,
+    cutoff7dMs,
+    cutoff30dMs,
+    resetsAt30d: addOneCalendarMonth(anchorMs).toISOString(),
+  };
+}
+
+/**
+ * Calculates the exact reset/refill timestamp for a sliding window.
+ * - If total spend >= limit (blocked): returns the exact timestamp when
+ *   aging-out older transactions drops spend below the limit.
+ * - If total spend > 0 and < limit: returns the timestamp when the oldest
+ *   transaction in the window slides out and starts refilling.
+ * - If total spend === 0: returns null (window is already 100% available).
+ */
+export function computeRollingResetTimestamp(
+  txsAsc: { createdAt: Date | number; amountCents: number }[],
+  totalSpendCents: number,
+  limitCents: number,
+  windowMs: number,
+): string | null {
+  if (totalSpendCents <= 0 || txsAsc.length === 0) {
+    return null;
+  }
+
+  if (totalSpendCents >= limitCents) {
+    let remaining = totalSpendCents;
+    for (const tx of txsAsc) {
+      const debitCost = Math.abs(tx.amountCents);
+      remaining -= debitCost;
+      if (remaining < limitCents) {
+        const txTime =
+          typeof tx.createdAt === "number"
+            ? tx.createdAt
+            : new Date(tx.createdAt).getTime();
+        return new Date(txTime + windowMs).toISOString();
+      }
+    }
+    const firstTxTime =
+      typeof txsAsc[0].createdAt === "number"
+        ? txsAsc[0].createdAt
+        : new Date(txsAsc[0].createdAt).getTime();
+    return new Date(firstTxTime + windowMs).toISOString();
+  }
+
+  const oldestTime =
+    typeof txsAsc[0].createdAt === "number"
+      ? txsAsc[0].createdAt
+      : new Date(txsAsc[0].createdAt).getTime();
+  return new Date(oldestTime + windowMs).toISOString();
 }
 
 export interface UsageWindowTotals {
@@ -112,7 +222,7 @@ export interface UsageWindowTotals {
   last5HoursCents: number;
   /** Total usage_debit spend in the current 7-day window, USD cents. */
   last7DaysCents: number;
-  /** Total usage_debit spend in the current 30-day window, USD cents. */
+  /** Total usage_debit spend in the current 1-month window, USD cents. */
   last30DaysCents: number;
   /** Whether the user selected sliding ("rolling") or fixed boundary ("fixed") refill mode. */
   mode?: GoatWindowMode;
@@ -121,32 +231,6 @@ export interface UsageWindowTotals {
   resetsAt30d?: string | null;
 }
 
-/**
- * Pure decision helper for the pre-turn gate: returns which (if any)
- * rolling window is already at its limit, nearest-reset window first so
- * the error message matches the soonest refill.
- */
-/**
- * OWN plan-expiry enforcement (owner 2026-09-15: "no need to rely on
- * paystack build our own"): paid plans revert to Free when the last
- * successful renewal charge is older than this grace. grantSubscriptionRenewal
- * refreshes users.billingCycleAnchor on EVERY successful subscription
- * charge, so a healthy monthly subscriber's anchor is never older than
- * ~31 days. 35 days = one cycle + a few days of Paystack retry slack.
- * Independent of webhook delivery entirely -- enforced inline at the
- * chat pre-turn gate and /api/billing/me, so it cannot be missed.
- */
-export const PLAN_EXPIRY_GRACE_MS = 35 * 24 * 60 * 60 * 1000;
-
-/**
- * Should this paid plan auto-revert to Free? Pure policy (bun-testable,
- * same server-only split as the other billing policies).
- * - Free (or no plan) never reverts -- nothing to revert.
- * - A NULL anchor means we never saw a renewal charge for this plan
- *   (manually set, or pre-feature data) -- do NOT act on data we
- *   can't interpret; the disable webhook covers Paystack-known ends.
- * - Strictly older than the grace reverts; exactly-at-grace does not.
- */
 /**
  * Grant-pool math (owner 2026-09-15: "when monthly subscription
  * expires, user credit expires along with it"). The pool tracks
@@ -177,6 +261,16 @@ export function expiredGrantCentsOnPlanEnd(
   return Math.min(balanceCents, grantPoolCents);
 }
 
+/**
+ * Should this paid plan auto-revert to Free? Pure policy (bun-testable).
+ * Every paid plan expires exactly 1 calendar month after `billingCycleAnchor`
+ * (matching Bachs' `billing_cycle: { interval: "month", frequency: 1 }`).
+ * - Free (or no plan) never reverts -- nothing to revert.
+ * - A NULL anchor means we never saw a renewal charge for this plan -- do NOT
+ *   act on data we can't interpret.
+ * - Strictly older than the 1-calendar-month expiry (`nowMs > expiresAtMs`)
+ *   reverts; at or before `expiresAtMs` does not.
+ */
 export function shouldAutoRevertToFree(
   planId: string | null | undefined,
   billingCycleAnchor: Date | string | null | undefined,
@@ -188,26 +282,17 @@ export function shouldAutoRevertToFree(
   if (!billingCycleAnchor) {
     return false;
   }
-  const anchorMs = new Date(billingCycleAnchor).getTime();
-  if (Number.isNaN(anchorMs)) {
+  const anchorDate = new Date(billingCycleAnchor);
+  if (Number.isNaN(anchorDate.getTime())) {
     return false;
   }
-  return nowMs - anchorMs > PLAN_EXPIRY_GRACE_MS;
+  const expiresAtMs = addOneCalendarMonth(anchorDate).getTime();
+  return nowMs > expiresAtMs;
 }
 
 /**
- * Pure policy for the subscription.disable webhook: should this user be
- * downgraded to Free? Lives here (not credit-ledger) so it's testable
- * in bun -- credit-ledger has a server-only import that breaks bun
- * test runs (same reason findExceededUsageWindow lives here).
- *
- * Guards:
- * - The disabled subscription_code must match the code currently
- *   stored on the user -- Paystack fires .disable for EVERY ended
- *   subscription, including a previous one after the user already
- *   re-subscribed on a new code; that must never kick them off.
- * - A user already on Free (or with no plan) is a no-op (repeat
- *   webhook delivery, or a manual change in between).
+ * Pure policy for the subscription.disable / subscription.cancelled webhook:
+ * should this user be downgraded to Free?
  */
 export function shouldDowngradeOnSubscriptionDisable(
   currentPlan: string | null | undefined,
@@ -243,22 +328,16 @@ export interface PlanDefinition {
   priceUsdCents: number;
   /** Credit granted on signup (free) or each successful renewal (paid), in USD cents. */
   creditGrantCents: number;
-  /** "luna-only" hard-restricts to FREE_PLAN_MODEL_ID; "all" is unrestricted. */
+  /** "luna-only" restricts to admin-configured free tier models; "all" is unrestricted. */
   modelAccess: "luna-only" | "all";
   /**
-   * Optional rolling usage windows (see PlanUsageWindows). Currently
-   * Entry-plan-only (id "goat"): every other plan keeps simple
-   * stop-at-zero balance billing; the Entry plan additionally paces
-   * usage over sliding 5-hour / weekly / monthly windows -- the limit
-   * style that makes it different from every other plan.
+   * Optional usage windows (see PlanUsageWindows). Exclusive to the Entry
+   * plan (id "goat").
    */
   usageWindows?: PlanUsageWindows;
   /**
    * Bachs product id (prod_...), created once from this catalog and then
-   * pinned here. A product needs a billing_cycle for its checkout to
-   * become a subscription checkout -- Bachs has no create-subscription
-   * endpoint. Null means "not configured yet": the checkout route refuses
-   * to sell the plan rather than charging a one-off that never renews.
+   * pinned here.
    */
   bachsProductId: string | null;
 }
@@ -282,21 +361,14 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
   },
   goat: {
     id: "goat",
-    // Owner request 2026-09-15: this plan is publicly named "Entry"
-    // (the flagship plan of the app). The internal id stays "goat"
-    // forever -- users.plan rows in the DB, Paystack plan codes and the
-    // checkout flow all key on the id, never the display name.
     name: "Entry",
     priceUsdCents: 1300, // $13/mo
-    creditGrantCents: 5000, // $50 credit (3.8x -- 50/13, was mislabelled 5x) -- Command Code GOAT-style
-    // tier; grant tuned from $70 (7x) to $50 on owner request 2026-09-15
+    creditGrantCents: 5000, // $50 credit
     modelAccess: "all",
-    // Entry Windows (2026-09-15, owner request): rolling usage pacing,
-    // GOAT-exclusive. 20% / 50% / 100% of the $50 grant.
     usageWindows: {
-      fiveHourLimitCents: 1000, // $10 per trailing 5 hours
-      weeklyLimitCents: 2500, // $25 per trailing 7 days
-      monthlyLimitCents: 5000, // $50 per trailing 30 days
+      fiveHourLimitCents: 1000, // $10 per 5 hours
+      weeklyLimitCents: 2500, // $25 per 7 days
+      monthlyLimitCents: 5000, // $50 per 1-month cycle
     },
     bachsProductId: "prod_bf5c08cc52e447ecacdc",
   },
@@ -304,9 +376,7 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
     id: "pro",
     name: "Pro",
     priceUsdCents: 2000, // $20/mo
-    creditGrantCents: 10000, // $100 credit (5x) -- retuned 2026-09-15 so the
-    // ladder stays ordered above GOAT ($13 buys $50); the old 2x $30 grant
-    // was strictly dominated by GOAT at two-thirds of the price.
+    creditGrantCents: 10000, // $100 credit (5x)
     modelAccess: "all",
     bachsProductId: "prod_7db0c6044eb54e9497e3",
   },
@@ -314,23 +384,9 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
     id: "max",
     name: "Max",
     priceUsdCents: 4000, // $40/mo
-    creditGrantCents: 18000, // $180 credit (4.5x) -- retuned 2026-09-15,
-    // same reason as Pro: the old flat-2x grant at $35 was dominated by GOAT.
+    creditGrantCents: 18000, // $180 credit (4.5x)
     modelAccess: "all",
     bachsProductId: "prod_7436be95761d4ab5a071",
-  },
-  x: {
-    id: "x",
-    name: "X",
-    priceUsdCents: 5000, // $50/mo
-    creditGrantCents: 5000, // $50 credit
-    modelAccess: "all",
-    usageWindows: {
-      fiveHourLimitCents: 2000, // $20 per trailing 5 hours
-      weeklyLimitCents: 3500, // $35 per trailing 7 days
-      monthlyLimitCents: 5000, // $50 max spend per month (monthly rolling or fixed allowance)
-    },
-    bachsProductId: "prod_x_monthly_50",
   },
 };
 
@@ -338,20 +394,6 @@ export const PLAN_IDS = Object.keys(PLAN_CATALOG) as PlanId[];
 
 /**
  * Rates used to lock exact local-currency prices for ONE-TIME top-ups.
- *
- * Sourced from open.er-api.com "latest/USD", fetched 2026-09-27T00:02Z:
- *   NGN 1328.77796, GHS 11.632012, KES 129.660848
- *
- * These are a price list, not a live feed -- deliberately. A top-up price
- * that moved with the rate between page load and payment would make
- * "$1 = $1" unverifiable, and Bachs' own currency_options exist to pin
- * exactly this. Revisit when rates move materially; the values are
- * echoed onto the checkout as decimal strings, so they never round below
- * the currency's precision.
- *
- * Only used for one-time pricing: Bachs refuses a non-USD
- * billing_currency on a recurring checkout (subscriptions are USD-card
- * only), so plan checkouts never see these.
  */
 export const LOCAL_CURRENCY_RATES: Record<string, number> = {
   NGN: 1328.77796,
@@ -372,21 +414,6 @@ export function localCurrencyOptionsFor(
   );
 }
 
-/**
- * Product ids are per-environment: Bachs sandbox and production are
- * completely isolated, so the four ids created in the sandbox are NOT the
- * ids of the same-named products in production.
- *
- * The catalog holds the sandbox ids as the default. BACHS_PRODUCT_IDS
- * overrides them so going live is an env swap -- the same reason
- * BACHS_BASE_URL exists. Without this, changing only the base URL would
- * make checkout fail with "product not found" because the catalog would
- * be quoting sandbox ids to the production API.
- *
- * Shape: {"plus":"prod_...","goat":"prod_...","pro":"prod_...","max":"prod_..."}
- * Unset (and in the browser, where this is never defined) falls back to
- * the catalog, so the pricing page keeps rendering without it.
- */
 let cachedProductIds: Record<string, string> | null | undefined;
 
 function environmentProductIds(): Record<string, string> | null {
@@ -407,9 +434,6 @@ function environmentProductIds(): Record<string, string> | null {
         ? (parsed as Record<string, string>)
         : null;
   } catch {
-    // A malformed override must not take checkout down: fall back to the
-    // catalog and let the (very visible) product-not-found error tell the
-    // operator their JSON is wrong, rather than failing silently.
     cachedProductIds = null;
   }
 
@@ -442,52 +466,6 @@ export function resolvePlanForProductId(
     )?.id ?? null
   );
 }
-
-/**
- * The only model a Free-plan user may select. Gateway route id.
- *
- * Changed 2026-09-22 (owner request): gpt-5.6-luna -> qwen3.8-flash.
- *
- * Luna is gone deliberately. Its upstream FreeModel pool went down
- * repeatedly (2026-08-21, 2026-08-26, 2026-08-29), and it is retired here
- * rather than merely deprioritised, so no code path still treats it as
- * the free-tier model.
- *
- * IMPORTANT -- this is a SELECTION gate only, not a price. It does not
- * make qwen3.8-flash free. Cost comes from the gateway's route config
- * (`EXTRA_MODEL_ROUTES_JSON_*` in entry-gateway, a separate deployment),
- * and qwen3.8-flash is billed at its real rate: a Free-plan user spends
- * their $1 trial credit against actual token cost and is hard-blocked at
- * zero, exactly like a paid user. The previous owner-sponsored $0 model
- * pattern (Luna, ling-3.0-flash-free) is intentionally NOT applied here.
- */
-export const FREE_PLAN_MODEL_ID = "step-5-preview";
-
-/**
- * Free-plan model selection.
- *
- * Originally this held owner-sponsored $0 models: routes whose
- * cost.input/output entry-gateway set to 0 in `EXTRA_MODEL_ROUTES_JSON_4`,
- * with the owner paying the tokens directly. That arrangement was removed
- * 2026-09-22 ("the free model cost should be zero, I don't like it").
- *
- * It is now an explicit allow-list on top of FREE_PLAN_MODEL_ID --
- * Free-plan users may pick any of these WITHOUT being force-swapped by the
- * luna-only gate in app/workflows/chat.ts. These are the ":free" gateway
- * route ids (a colon suffix, e.g. `qwen3.8-flash:free`), which is a
- * different convention from the older `-free` hyphen suffix.
- *
- * NOT VERIFIED AGAINST THE LIVE GATEWAY: entry-gateway-six.vercel.app
- * returns 401 (GATEWAY_API_KEY is stale), so GET /v1/debug/routes could not
- * be dumped to confirm these ids exist. lessons-learned.md 2026-08-21
- * records dead ids producing a deterministic 0/N with no useful signal, so
- * re-verify once the gateway key is working.
- */
-export const FREE_TIER_ALLOWED_MODEL_IDS: readonly string[] = [
-  FREE_PLAN_MODEL_ID,
-  "glm-5.3-flash",
-  "deepseek-v4.1-flash",
-];
 
 export function getPlanDefinition(
   planId: string | null | undefined,

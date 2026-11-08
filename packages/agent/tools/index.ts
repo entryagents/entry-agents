@@ -1,9 +1,21 @@
-export { todoWriteTool } from "./todo";
+export { todoWriteTool, todoReadTool } from "./todo";
 export { readFileTool } from "./read";
 export { writeFileTool, editFileTool } from "./write";
+export {
+  dirListTool,
+  type DirEntry,
+  type DirListInput,
+  type DirListResult,
+} from "./dir-list";
 export { grepTool } from "./grep";
 export { globTool } from "./glob";
 export { bashTool, commandNeedsApproval } from "./bash";
+export {
+  gitStatusTool,
+  type GitFileChange,
+  type GitStatusInput,
+  type GitStatusResult,
+} from "./git-status";
 export {
   taskTool,
   type TaskPendingToolCall,

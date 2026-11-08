@@ -313,10 +313,14 @@ export interface SubagentBudgetGuardCallbacks {
   getEnforceCreditBlock(): boolean;
   /**
    * Apply a spend to the live counters (mirrors the main-model
-   * finish-step mutation, including tripping the exhausted flags).
-   * Returns the post-spend budget state.
+   * finish-step mutation, including tripping the exhausted flags) and
+   * optionally queue a real-time ledger debit for the subagent step.
    */
-  spendCents(costCents: number): ReturnType<typeof applySpendToBudgets>;
+  spendCents(
+    costCents: number,
+    costUsd?: number,
+    modelId?: string,
+  ): ReturnType<typeof applySpendToBudgets>;
   getCost(modelId: string): AvailableModelCost | undefined;
 }
 
@@ -351,14 +355,7 @@ export function buildSubagentBudgetGuard(
       if (!binding) {
         return { stop: false };
       }
-      // FAIL CLOSED on unpriced models. computeAffordableOutputTokens
-      // returns { stop: false } when it has no price, which used to mean a
-      // subagent running on a model the gateway no longer catalogues got
-      // NO output cap -- and noteSubagentStepUsage below also skipped the
-      // spend, while chat-post-finish skips an undefined cost too. All
-      // three together meant an unpriced model could spend against a
-      // rolling window without ever decrementing it. No price means the
-      // budget cannot be honoured, so the subagent does not start.
+      // FAIL CLOSED on unpriced models.
       if (callbacks.getCost(modelId) === undefined) {
         return {
           stop: true,
@@ -382,9 +379,6 @@ export function buildSubagentBudgetGuard(
 
     noteSubagentStepUsage(modelId: string, usage: LanguageModelUsage) {
       const binding = bindingBudget();
-      if (!binding) {
-        return { stop: false };
-      }
       const costUsd = estimateModelUsageCost(
         {
           inputTokens: usage.inputTokens ?? 0,
@@ -397,14 +391,13 @@ export function buildSubagentBudgetGuard(
         callbacks.getCost(modelId),
       );
       if (costUsd === undefined) {
-        // FAIL CLOSED. The old comment here claimed "the post-finish debit
-        // still lands durably", but chat-post-finish.ts skips an undefined
-        // cost as well -- so unmetered spend was neither capped in real
-        // time nor recorded afterwards. We cannot price it, so we stop.
+        if (!binding) {
+          return { stop: false };
+        }
         return { stop: true, reason: binding.reason };
       }
       const costCents = Math.max(0, Math.round(costUsd * 100));
-      const state = callbacks.spendCents(costCents);
+      const state = callbacks.spendCents(costCents, costUsd, modelId);
       if (state.exhaustedReason) {
         return { stop: true, reason: state.exhaustedReason };
       }

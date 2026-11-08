@@ -5,8 +5,9 @@ import * as realDbSessions from "@/lib/db/sessions";
 mock.module("server-only", () => ({}));
 
 type TestSandboxState = {
-  type: "vercel";
-  sandboxName?: string;
+  type: "boxd";
+  machineId?: string;
+  machineName?: string;
   expiresAt?: number;
 };
 
@@ -82,34 +83,38 @@ mock.module("@/lib/sandbox/lifecycle-kick", () => ({
 
 mock.module("@entry-agents/sandbox", () => ({
   connectSandbox: async (
-    state: Record<string, unknown>,
+    stateOrConfig: Record<string, unknown>,
     options?: Record<string, unknown>,
   ) => {
-    connectCalls.push({ state, options });
+    const state =
+      (stateOrConfig.state as Record<string, unknown> | undefined) ??
+      stateOrConfig;
+    const effectiveOptions =
+      (stateOrConfig.options as Record<string, unknown> | undefined) ?? options;
+    connectCalls.push({ state, options: effectiveOptions });
 
-    if (
-      connectSandboxResumeError &&
-      options?.resume === true &&
-      typeof state.sandboxName === "string" &&
-      state.snapshotId === undefined
-    ) {
+    if (connectSandboxResumeError && effectiveOptions?.resume === true) {
       throw connectSandboxResumeError;
     }
 
-    const sandboxName =
-      typeof state.sandboxName === "string"
-        ? state.sandboxName
-        : "session_session-1";
+    const machineId =
+      typeof state.machineId === "string" ? state.machineId : "bx_123";
+    const machineName =
+      typeof state.machineName === "string"
+        ? state.machineName
+        : "entry-session-1";
+
     return {
       id: "runtime-1",
       expiresAt: Date.now() + 120_000,
-      workingDirectory: "/vercel/sandbox",
+      workingDirectory: "/workspace",
       stop: async () => {
         stopCallCount += 1;
       },
       getState: () => ({
-        type: "vercel" as const,
-        sandboxName,
+        type: "boxd" as const,
+        machineId,
+        machineName,
         expiresAt: Date.now() + 120_000,
       }),
     };
@@ -125,9 +130,9 @@ function makeSessionRecord(
     id: "session-1",
     userId: "user-1",
     sandboxState: {
-      type: "vercel",
-      sandboxName: "session_session-1",
-      expiresAt: Date.now() + 60_000,
+      type: "boxd",
+      machineId: "bx_123",
+      machineName: "entry-session-1",
     },
     snapshotUrl: null,
     snapshotCreatedAt: null,
@@ -166,11 +171,11 @@ describe("/api/sandbox/snapshot", () => {
 
     expect(response.ok).toBe(true);
     expect(stopCallCount).toBe(1);
-    expect(payload.snapshotId).toBe("session_session-1");
+    expect(payload.snapshotId).toBe("bx_123");
     expect(connectCalls[0]).toMatchObject({
       state: {
-        type: "vercel",
-        sandboxName: "session_session-1",
+        type: "boxd",
+        machineId: "bx_123",
       },
     });
     expect(updateCalls[0]).toEqual(
@@ -178,8 +183,9 @@ describe("/api/sandbox/snapshot", () => {
         snapshotUrl: null,
         snapshotCreatedAt: null,
         sandboxState: {
-          type: "vercel",
-          sandboxName: "session_session-1",
+          type: "boxd",
+          machineId: "bx_123",
+          machineName: "entry-session-1",
         },
         lifecycleVersion: 3,
         lifecycleState: "hibernated",
@@ -192,8 +198,9 @@ describe("/api/sandbox/snapshot", () => {
 
     sessionRecord = makeSessionRecord({
       sandboxState: {
-        type: "vercel",
-        sandboxName: "session_session-1",
+        type: "boxd",
+        machineId: "bx_123",
+        machineName: "entry-session-1",
       },
       lifecycleState: "hibernated",
       sandboxExpiresAt: null,
@@ -211,8 +218,7 @@ describe("/api/sandbox/snapshot", () => {
     expect(response.ok).toBe(true);
     expect(connectCalls[0]).toMatchObject({
       state: {
-        type: "vercel",
-        sandboxName: "session_session-1",
+        type: "boxd",
       },
       options: {
         resume: true,
@@ -221,8 +227,8 @@ describe("/api/sandbox/snapshot", () => {
     expect(updateCalls[0]).toEqual(
       expect.objectContaining({
         sandboxState: expect.objectContaining({
-          type: "vercel",
-          sandboxName: "session_session-1",
+          type: "boxd",
+          machineId: "bx_123",
         }),
         snapshotUrl: null,
         snapshotCreatedAt: null,
@@ -239,8 +245,9 @@ describe("/api/sandbox/snapshot", () => {
 
     sessionRecord = makeSessionRecord({
       sandboxState: {
-        type: "vercel",
-        sandboxName: "session_session-1",
+        type: "boxd",
+        machineId: "bx_123",
+        machineName: "entry-session-1",
       },
       snapshotUrl: null,
       lifecycleState: "hibernated",
@@ -263,7 +270,7 @@ describe("/api/sandbox/snapshot", () => {
     expect(updateCalls[0]).toEqual(
       expect.objectContaining({
         sandboxState: {
-          type: "vercel",
+          type: "boxd",
         },
         lifecycleState: "hibernated",
       }),
@@ -271,18 +278,13 @@ describe("/api/sandbox/snapshot", () => {
   });
 
   test("PUT clears a dead-snapshot handle after a 400 'no snapshot available' resume", async () => {
-    // Found 2026-08-30 in production: a session whose saved sandbox
-    // snapshot expired/cleaned-up comes back as 400 "Cannot resume sandbox:
-    // no snapshot available", NOT 404. That shape only matched
-    // isSandboxNotFoundError historically, so it fell through to a generic
-    // 500 "Failed to restore snapshot" on every retry. It must be treated
-    // like a gone sandbox: clear the handle and return the friendly 404.
     const { PUT } = await routeModulePromise;
 
     sessionRecord = makeSessionRecord({
       sandboxState: {
-        type: "vercel",
-        sandboxName: "session_session-1",
+        type: "boxd",
+        machineId: "bx_123",
+        machineName: "entry-session-1",
       },
       snapshotUrl: null,
       lifecycleState: "hibernated",
@@ -306,7 +308,7 @@ describe("/api/sandbox/snapshot", () => {
     expect(payload.error).toContain("Saved sandbox is no longer available");
     expect(updateCalls[0]).toEqual(
       expect.objectContaining({
-        sandboxState: { type: "vercel" },
+        sandboxState: { type: "boxd" },
         lifecycleState: "hibernated",
       }),
     );
@@ -316,7 +318,7 @@ describe("/api/sandbox/snapshot", () => {
     const { PUT } = await routeModulePromise;
 
     sessionRecord = makeSessionRecord({
-      sandboxState: { type: "vercel" },
+      sandboxState: { type: "boxd" },
       snapshotUrl: "snap-legacy-1",
       lifecycleState: "hibernated",
       sandboxExpiresAt: null,
@@ -334,9 +336,7 @@ describe("/api/sandbox/snapshot", () => {
     expect(response.ok).toBe(true);
     expect(connectCalls[0]).toMatchObject({
       state: {
-        type: "vercel",
-        sandboxName: "session_session-1",
-        snapshotId: "snap-legacy-1",
+        type: "boxd",
       },
       options: {
         resume: true,
@@ -347,8 +347,7 @@ describe("/api/sandbox/snapshot", () => {
     expect(updateCalls[0]).toEqual(
       expect.objectContaining({
         sandboxState: expect.objectContaining({
-          type: "vercel",
-          sandboxName: "session_session-1",
+          type: "boxd",
         }),
         snapshotUrl: null,
         snapshotCreatedAt: null,

@@ -6,6 +6,7 @@ import {
 import {
   DEFAULT_SANDBOX_PROVIDER,
   getSandboxCapabilities,
+  isKnownSandboxType,
 } from "@entry-agents/sandbox/registry.js";
 import {
   requireAuthenticatedUser,
@@ -144,7 +145,10 @@ export async function PUT(req: Request) {
 
   const { sessionRecord } = sessionContext;
   const sandboxType =
-    sessionRecord.sandboxState?.type ?? DEFAULT_SANDBOX_PROVIDER;
+    sessionRecord.sandboxState &&
+    isKnownSandboxType(sessionRecord.sandboxState.type)
+      ? sessionRecord.sandboxState.type
+      : DEFAULT_SANDBOX_PROVIDER;
   const sandboxProvider = requireSandboxProvider(String(sandboxType));
 
   if (!getSandboxCapabilities(String(sandboxType)).snapshots) {
@@ -156,7 +160,10 @@ export async function PUT(req: Request) {
     );
   }
 
-  if (hasRuntimeSandboxState(sessionRecord.sandboxState)) {
+  if (
+    sessionRecord.lifecycleState !== "hibernated" &&
+    hasRuntimeSandboxState(sessionRecord.sandboxState)
+  ) {
     const restoredFrom =
       getResumableSandboxName(sessionRecord.sandboxState) ??
       sessionRecord.snapshotUrl ??
@@ -219,10 +226,15 @@ export async function PUT(req: Request) {
               {
                 state: sandboxProvider.buildProvisionState({
                   sessionId,
-                  existing: {
-                    type: sandboxProvider.id,
-                    sandboxName: persistentSandboxName,
-                  } as SandboxState,
+                  existing:
+                    sessionRecord.sandboxState &&
+                    isKnownSandboxType(sessionRecord.sandboxState.type)
+                      ? sessionRecord.sandboxState
+                      : ({
+                          type: sandboxProvider.id,
+                          sandboxName: persistentSandboxName,
+                          machineId: persistentSandboxName,
+                        } as SandboxState),
                 }),
               },
               {

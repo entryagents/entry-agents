@@ -28,7 +28,9 @@ import { buildSystemPrompt } from "./system-prompt";
 import {
   askUserQuestionTool,
   bashTool,
+  dirListTool,
   editFileTool,
+  gitStatusTool,
   githubCliTool,
   globTool,
   grepTool,
@@ -36,6 +38,7 @@ import {
   sandboxControlTool,
   skillTool,
   taskTool,
+  todoReadTool,
   todoWriteTool,
   vercelApiTool,
   vercelCliTool,
@@ -176,11 +179,35 @@ function normalizeAgentModelSelection(
   return typeof selection === "string" ? { id: selection } : selection;
 }
 
+function extractLatestTodos(messages: unknown[]): unknown[] {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i] as { role?: string; content?: unknown };
+    if (msg?.role === "assistant" && Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (
+          part &&
+          typeof part === "object" &&
+          (part as { type?: string }).type === "tool-call" &&
+          (part as { toolName?: string }).toolName === "todo_write"
+        ) {
+          const args = (part as { args?: { todos?: unknown[] } }).args;
+          if (Array.isArray(args?.todos)) {
+            return args.todos;
+          }
+        }
+      }
+    }
+  }
+  return [];
+}
+
 const tools = {
   todo_write: todoWriteTool,
+  todo_read: todoReadTool,
   read: readFileTool(),
   write: writeFileTool(),
   edit: editFileTool(),
+  dir_list: dirListTool(),
   grep: grepTool(),
   glob: globTool(),
   bash: bashTool(),
@@ -189,6 +216,7 @@ const tools = {
   skill: skillTool,
   web_fetch: webFetchTool,
   web_search: webSearchTool,
+  git_status: gitStatusTool(),
   github_cli: githubCliTool(),
   vercel_cli: vercelCliTool(),
   vercel_api: vercelApiTool(),
@@ -223,6 +251,7 @@ export const openAgent = new ToolLoopAgent({
       readFileState = createReadFileState();
     }
     rebuildReadFileState(messages, readFileState);
+    const currentTodos = extractLatestTodos(messages);
 
     return {
       messages: addCacheControl({
@@ -237,6 +266,7 @@ export const openAgent = new ToolLoopAgent({
       experimental_context: {
         ...context,
         readFileState,
+        currentTodos,
       },
     };
   },

@@ -259,7 +259,7 @@ export function AdminModelsSection() {
   }
 
   async function handleFreeTierModelChange(next: string) {
-    const value = next === "__default__" ? null : next;
+    const value = next === "__none__" ? null : next;
     const previous = freeTierModelId;
     setFreeTierModelState(value);
     setFreeTierPending(true);
@@ -270,7 +270,7 @@ export function AdminModelsSection() {
           ? "Free tier unlocked for all models"
           : value
             ? `Free tier model set to ${value}`
-            : "Free tier model back to default",
+            : "No free tier model selected (all models locked on Free plan)",
       );
     } catch (err) {
       setFreeTierModelState(previous);
@@ -329,12 +329,13 @@ export function AdminModelsSection() {
           <div className="min-w-0 max-w-xl">
             <p className="text-sm font-semibold">Free tier model</p>
             <p className="text-xs text-muted-foreground">
-              Controls what model users on the Free plan have access to. Select
-              any model on the gateway, allow all models, or use the default.
+              Controls what model users on the Free plan have access to. Every
+              free tier model comes exclusively from this admin setting — select
+              any model on the gateway, allow all models, or lock all models.
             </p>
           </div>
           <Select
-            value={freeTierModelId ?? "__default__"}
+            value={freeTierModelId ?? "__none__"}
             onValueChange={handleFreeTierModelChange}
             disabled={freeTierPending || !data}
           >
@@ -342,8 +343,8 @@ export function AdminModelsSection() {
               <SelectValue placeholder="Select a model" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__default__">
-                Default (step-5-preview)
+              <SelectItem value="__none__">
+                None (lock all models on Free plan)
               </SelectItem>
               <SelectItem value="__all__">All models (unrestricted)</SelectItem>
               {(data ?? []).map((row) => (

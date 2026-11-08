@@ -1,5 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { isVercelAuthFailure } from "./token";
+import { describe, expect, mock, test } from "bun:test";
+
+mock.module("server-only", () => ({}));
+
+const { isVercelAuthFailure } = await import("./token");
 
 describe("isVercelAuthFailure", () => {
   test("detects HTTP 401 and 403 auth status codes", () => {

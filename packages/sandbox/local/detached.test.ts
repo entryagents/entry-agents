@@ -31,6 +31,14 @@ async function waitGone(pid: number, timeoutMs = 5_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
+      if (process.platform === "linux") {
+        const status = await fs
+          .readFile(`/proc/${pid}/status`, "utf-8")
+          .catch(() => null);
+        if (status && /State:\s+Z\s+\(zombie\)/i.test(status)) {
+          return true;
+        }
+      }
       process.kill(pid, 0); // signal 0 = liveness probe only
       await new Promise((resolve) => setTimeout(resolve, 25));
     } catch {
@@ -38,6 +46,14 @@ async function waitGone(pid: number, timeoutMs = 5_000): Promise<boolean> {
     }
   }
   try {
+    if (process.platform === "linux") {
+      const status = await fs
+        .readFile(`/proc/${pid}/status`, "utf-8")
+        .catch(() => null);
+      if (status && /State:\s+Z\s+\(zombie\)/i.test(status)) {
+        return true;
+      }
+    }
     process.kill(pid, 0);
     return false; // still alive
   } catch {

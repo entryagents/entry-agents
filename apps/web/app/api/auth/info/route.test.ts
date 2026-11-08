@@ -109,7 +109,6 @@ describe("GET /api/auth/info", () => {
       user: session?.user,
       authProvider: "vercel",
       isAdmin: false,
-      isManagedTemplateTrialUser: false,
       hasGitHub: true,
       hasGitHubAccount: true,
       hasGitHubInstallations: true,
@@ -126,44 +125,6 @@ describe("GET /api/auth/info", () => {
       user: session?.user,
       authProvider: "vercel",
       isAdmin: false,
-      isManagedTemplateTrialUser: false,
-      hasGitHub: false,
-      hasGitHubAccount: false,
-      hasGitHubInstallations: false,
-    });
-  });
-
-  test("reports managed template trial users", async () => {
-    const { GET } = await routeModulePromise;
-
-    const response = await GET(
-      createRequest("https://entry-agents.dev/api/auth/info"),
-    );
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      user: session?.user,
-      authProvider: "vercel",
-      isAdmin: false,
-      isManagedTemplateTrialUser: true,
-      hasGitHub: false,
-      hasGitHubAccount: false,
-      hasGitHubInstallations: false,
-    });
-  });
-
-  test("reports local development managed template trial users", async () => {
-    Object.assign(process.env, { NODE_ENV: "development" });
-    const { GET } = await routeModulePromise;
-
-    const response = await GET(createRequest());
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      user: session?.user,
-      authProvider: "vercel",
-      isAdmin: false,
-      isManagedTemplateTrialUser: true,
       hasGitHub: false,
       hasGitHubAccount: false,
       hasGitHubInstallations: false,

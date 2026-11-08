@@ -13,18 +13,28 @@ import {
 import { isUniqueConstraintViolation } from "./is-unique-constraint";
 
 interface BachsCollectionSucceededData {
+  id?: string | null;
+  invoice_id?: string | null;
   checkout_id: string | null;
+  subscription_id?: string | null;
   reference: string | null;
   status: string;
   amount: string;
   currency: string;
-  customer: { id: string | null; email?: string | null } | null;
+  product_id?: string | null;
+  product?: { id?: string | null } | null;
+  lines?: Array<{ product_id?: string | null }> | null;
+  customer: {
+    id?: string | null;
+    customer_id?: string | null;
+    email?: string | null;
+  } | null;
   metadata: Record<string, unknown> | null;
 }
 
 interface BachsSubscriptionEventData {
   subscription_id: string;
-  customer: { customer_id?: string | null } | null;
+  customer: { customer_id?: string | null; id?: string | null } | null;
   status?: string;
 }
 
@@ -101,7 +111,8 @@ export async function POST(req: Request) {
 
   try {
     switch (type) {
-      case "collection.succeeded": {
+      case "collection.succeeded":
+      case "invoice.paid": {
         const data = event.data as unknown as BachsCollectionSucceededData;
         const metadata = data.metadata ?? {};
 
@@ -111,6 +122,8 @@ export async function POST(req: Request) {
           typeof metadata.kind === "string" ? metadata.kind : null;
         const metadataPlanId =
           typeof metadata.planId === "string" ? metadata.planId : null;
+        const metadataWindowMode =
+          typeof metadata.windowMode === "string" ? metadata.windowMode : null;
         const metadataUsdAmountCents =
           typeof metadata.usdAmountCents === "number"
             ? metadata.usdAmountCents
@@ -119,17 +132,32 @@ export async function POST(req: Request) {
               ? Number(metadata.usdAmountCents)
               : null;
 
+        const productId =
+          data.product_id ??
+          data.product?.id ??
+          data.lines?.[0]?.product_id ??
+          null;
+
+        const customerId =
+          data.customer?.id ?? data.customer?.customer_id ?? null;
+
         const reference =
-          data.reference ?? data.checkout_id ?? `evt_${event.id ?? "unknown"}`;
+          data.reference ??
+          data.checkout_id ??
+          data.invoice_id ??
+          data.id ??
+          `evt_${event.id ?? "unknown"}`;
 
         await processChargeSuccess({
           reference,
-          customerId: data.customer?.id ?? null,
+          customerId,
+          subscriptionId: data.subscription_id ?? null,
           metadataUserId,
           metadataKind,
           metadataPlanId,
           metadataUsdAmountCents,
-          productId: null,
+          metadataWindowMode,
+          productId,
           fallbackAmountCents: usdDecimalToCents(data.amount, data.currency),
         });
         break;

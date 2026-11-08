@@ -237,12 +237,13 @@ type SessionChatContextValue = {
    * are an admin. UX-only signal, distinct from freeTierGate above --
    * real enforcement is resolveChatModelRuntime + runAgentStep. */
   creditGate: CreditGateStatus | null;
-  /** This user's plan (for gating the model picker to Luna-only on
-   * Free), or null while loading / for admins. */
+  /** This user's plan (for gating the model picker on Free), or null
+   * while loading / for admins. */
   userPlan: UserPlanInfo | null;
-  /** The one model ID Free-plan users can still pick (GPT-5.6 Luna) --
-   * used to know which option in the picker should NOT render locked. */
-  freePlanModelId: string;
+  /** The primary model ID unlocked by the admin for Free-plan users (or null if none). */
+  freePlanModelId: string | null;
+  /** Model IDs unlocked by the admin for Free-plan users. */
+  freeTierAllowedModelIds: string[];
 };
 
 type SessionChatRuntimeContextValue = Pick<
@@ -315,6 +316,7 @@ type SessionChatMetadataContextValue = Pick<
   | "creditGate"
   | "userPlan"
   | "freePlanModelId"
+  | "freeTierAllowedModelIds"
 >;
 
 const SessionChatRuntimeContext = createContext<
@@ -368,6 +370,7 @@ export function SessionChatProvider({
     creditGate,
     userPlan,
     freePlanModelId,
+    freeTierAllowedModelIds,
   } = useModelOptions({
     initialModelOptions,
   });
@@ -1291,6 +1294,7 @@ export function SessionChatProvider({
       creditGate,
       userPlan,
       freePlanModelId,
+      freeTierAllowedModelIds,
     }),
     [
       sessionRecord,
@@ -1325,6 +1329,7 @@ export function SessionChatProvider({
       creditGate,
       userPlan,
       freePlanModelId,
+      freeTierAllowedModelIds,
     ],
   );
 

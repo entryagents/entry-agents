@@ -65,8 +65,9 @@ mock.module("@/lib/sandbox/lifecycle", () => ({
 
 mock.module("@entry-agents/sandbox", () => ({
   connectSandbox: async (state: {
-    type: "modal";
+    type: "modal" | "boxd";
     volumeName?: string;
+    machineId?: string;
     expiresAt?: number;
   }) => {
     const expiresAt = Date.now() + 2 * 60_000;
@@ -172,6 +173,10 @@ describe("/api/sandbox/reconnect", () => {
     const { GET } = await routeModulePromise;
 
     sessionRecord.snapshotUrl = null;
+    sessionRecord.sandboxState = {
+      type: "boxd",
+      machineId: "entry-machine-1",
+    } as unknown as typeof sessionRecord.sandboxState;
     probeResult = {
       success: false,
       stdout: "",
@@ -197,7 +202,7 @@ describe("/api/sandbox/reconnect", () => {
     expect(updateCalls[0]?.patch.lifecycleState).toBe("hibernated");
     expect(updateCalls[0]?.patch.lifecycleError).toBeNull();
     expect(updateCalls[0]?.patch.sandboxState).toEqual({
-      type: "modal",
+      type: "boxd",
     });
   });
 });

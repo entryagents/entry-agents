@@ -1,62 +1,86 @@
 import { describe, test, expect } from "bun:test";
 import {
+  addOneCalendarMonth,
   consumedFromGrantPool,
   expiredGrantCentsOnPlanEnd,
   shouldAutoRevertToFree,
-  PLAN_EXPIRY_GRACE_MS,
+  subtractOneCalendarMonth,
 } from "./plans";
 
 const DAY = 24 * 60 * 60 * 1000;
-const NOW = Date.parse("2026-09-15T12:00:00Z");
+const ANCHOR = new Date("2026-08-15T12:00:00Z");
+const EXPIRES_AT = new Date("2026-09-15T12:00:00Z").getTime();
 
-describe("shouldAutoRevertToFree (own expiry enforcement, no Paystack reliance)", () => {
-  test("paid plan whose last renewal is older than the grace -> revert", () => {
-    expect(shouldAutoRevertToFree("plus", new Date(NOW - 36 * DAY), NOW)).toBe(
-      true,
+describe("addOneCalendarMonth / subtractOneCalendarMonth", () => {
+  test("adds 1 UTC calendar month preserving time of day", () => {
+    expect(addOneCalendarMonth("2026-01-15T12:34:56.789Z").toISOString()).toBe(
+      "2026-02-15T12:34:56.789Z",
     );
-    expect(shouldAutoRevertToFree("goat", new Date(NOW - 40 * DAY), NOW)).toBe(
-      true,
-    );
-    expect(
-      shouldAutoRevertToFree(
-        "max",
-        new Date(NOW - PLAN_EXPIRY_GRACE_MS - 1),
-        NOW,
-      ),
-    ).toBe(true);
-  });
-
-  test("healthy monthly subscriber (anchor < 31 days) -> keep", () => {
-    expect(shouldAutoRevertToFree("plus", new Date(NOW - 30 * DAY), NOW)).toBe(
-      false,
-    );
-    expect(shouldAutoRevertToFree("max", new Date(NOW - 2 * DAY), NOW)).toBe(
-      false,
+    expect(addOneCalendarMonth("2026-12-10T00:00:00.000Z").toISOString()).toBe(
+      "2027-01-10T00:00:00.000Z",
     );
   });
 
-  test("exactly at the grace boundary -> NOT reverted (strictly greater)", () => {
+  test("clamps end-of-month dates to last day of next month (e.g. Jan 31 -> Feb 28)", () => {
+    expect(addOneCalendarMonth("2026-01-31T08:00:00.000Z").toISOString()).toBe(
+      "2026-02-28T08:00:00.000Z",
+    );
+    expect(addOneCalendarMonth("2028-01-31T08:00:00.000Z").toISOString()).toBe(
+      "2028-02-29T08:00:00.000Z",
+    );
+  });
+
+  test("subtracts 1 UTC calendar month clamping end-of-month", () => {
     expect(
-      shouldAutoRevertToFree("plus", new Date(NOW - PLAN_EXPIRY_GRACE_MS), NOW),
+      subtractOneCalendarMonth("2026-03-31T08:00:00.000Z").toISOString(),
+    ).toBe("2026-02-28T08:00:00.000Z");
+  });
+});
+
+describe("shouldAutoRevertToFree (1 calendar month expiry matching Bachs)", () => {
+  test("paid plan whose last renewal is older than 1 calendar month -> revert", () => {
+    expect(shouldAutoRevertToFree("plus", ANCHOR, EXPIRES_AT + 1)).toBe(true);
+    expect(shouldAutoRevertToFree("goat", ANCHOR, EXPIRES_AT + 5 * DAY)).toBe(
+      true,
+    );
+    expect(shouldAutoRevertToFree("max", ANCHOR, EXPIRES_AT + 1)).toBe(true);
+  });
+
+  test("healthy monthly subscriber (within 1 calendar month) -> keep", () => {
+    expect(shouldAutoRevertToFree("plus", ANCHOR, EXPIRES_AT - DAY)).toBe(
+      false,
+    );
+    expect(
+      shouldAutoRevertToFree("max", ANCHOR, ANCHOR.getTime() + 2 * DAY),
     ).toBe(false);
   });
 
+  test("exactly at the 1-calendar-month boundary -> NOT reverted (strictly greater)", () => {
+    expect(shouldAutoRevertToFree("plus", ANCHOR, EXPIRES_AT)).toBe(false);
+  });
+
   test("free plan never reverts", () => {
-    expect(shouldAutoRevertToFree("free", new Date(NOW - 90 * DAY), NOW)).toBe(
-      false,
-    );
-    expect(shouldAutoRevertToFree(null, new Date(NOW - 90 * DAY), NOW)).toBe(
-      false,
-    );
+    expect(
+      shouldAutoRevertToFree(
+        "free",
+        new Date(EXPIRES_AT - 90 * DAY),
+        EXPIRES_AT,
+      ),
+    ).toBe(false);
+    expect(
+      shouldAutoRevertToFree(null, new Date(EXPIRES_AT - 90 * DAY), EXPIRES_AT),
+    ).toBe(false);
   });
 
   test("null anchor -> no-op (never saw a renewal charge; can't interpret)", () => {
-    expect(shouldAutoRevertToFree("plus", null, NOW)).toBe(false);
-    expect(shouldAutoRevertToFree("goat", undefined, NOW)).toBe(false);
+    expect(shouldAutoRevertToFree("plus", null, EXPIRES_AT)).toBe(false);
+    expect(shouldAutoRevertToFree("goat", undefined, EXPIRES_AT)).toBe(false);
   });
 
   test("unparseable anchor -> no-op, never crash", () => {
-    expect(shouldAutoRevertToFree("plus", "not-a-date", NOW)).toBe(false);
+    expect(shouldAutoRevertToFree("plus", "not-a-date", EXPIRES_AT)).toBe(
+      false,
+    );
   });
 });
 

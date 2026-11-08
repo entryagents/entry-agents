@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     if (!deviceCode || typeof deviceCode !== "string") {
       return NextResponse.json(
         { error: "device_code is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -35,12 +35,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json(
       { status: "expired", error: "Device code expired or invalid" },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (err) {
     return NextResponse.json(
       { error: (err as Error).message || "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

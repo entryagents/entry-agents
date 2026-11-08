@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realLibSessionContext from "@/app/api/sessions/_lib/session-context";
 import * as realSessionGetServerSession from "@/lib/session/get-server-session";
 
+mock.module("server-only", () => ({}));
+
 const CODE_EDITOR_PID_FILE = "/tmp/entry-agents-code-server.pid";
 const CODE_EDITOR_LOCK_DIR = "/tmp/entry-agents-code-server.lock";
 const RUNNING_CODE_SERVER_PID = "9001";

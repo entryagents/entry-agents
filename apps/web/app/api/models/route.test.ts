@@ -34,6 +34,8 @@ function getRequestUrl(input: RequestInfo | URL): string {
 
 mock.module("server-only", () => ({}));
 
+const realPlatformSettings = await import("@/lib/db/platform-settings");
+
 mock.module("@/lib/session/get-server-session", () => ({
   ...realSessionGetServerSession,
   getServerSession: async () => currentSession,
@@ -51,23 +53,29 @@ mock.module("@/lib/db/users", () => ({
   ...realDbUsers,
   isUserAdmin: mock(() => Promise.resolve(false)),
 }));
+
+const mockGetFreeTierGateStatus = mock(() =>
+  Promise.resolve({ enabled: true, reason: null as string | null }),
+);
+const mockGetUserBillingState = mock(() =>
+  Promise.resolve({
+    plan: "pro",
+    creditBalanceCents: 100_000,
+    planGrantBalanceCents: 0,
+    billingCycleAnchor: null as Date | null,
+    billingCustomerCode: null as string | null,
+    billingSubscriptionCode: null as string | null,
+  }),
+);
+
 mock.module("@/lib/db/platform-settings", () => ({
-  getFreeTierGateStatus: mock(() =>
-    Promise.resolve({ enabled: true, reason: null }),
-  ),
-  getFreeTierModelId: mock(() => Promise.resolve("openai/gpt-5.6-luna")),
+  ...realPlatformSettings,
+  getFreeTierGateStatus: mockGetFreeTierGateStatus,
+  getFreeTierModelId: mock(() => Promise.resolve(null)),
   setFreeTierModelId: mock(() => Promise.resolve()),
 }));
 mock.module("@/lib/billing/credit-ledger", () => ({
-  getUserBillingState: mock(() =>
-    Promise.resolve({
-      plan: "pro",
-      creditBalanceCents: 100_000,
-      billingCycleAnchor: null,
-      billingCustomerCode: null,
-      billingSubscriptionCode: null,
-    }),
-  ),
+  getUserBillingState: mockGetUserBillingState,
 }));
 // filterDisabledModels/isModelDisabled (real logic, kept as-is) both
 // read the admin kill-switch table through this leaf -- mocked to "no
@@ -391,5 +399,86 @@ describe("/api/models context window enrichment", () => {
         modelType: "language",
       },
     ]);
+  });
+
+  test("exempts paid subscribers from free tier capacity gate when disabled", async () => {
+    gatewayModels.push({
+      id: "anthropic/claude-haiku-4.5",
+      modelType: "language",
+    });
+    currentSession = {
+      authProvider: "vercel",
+      user: { id: "paid-user", email: "subscriber@example.com" },
+    };
+    mockGetFreeTierGateStatus.mockImplementation(() =>
+      Promise.resolve({
+        enabled: false,
+        reason: "Free tier is currently at capacity.",
+      }),
+    );
+    mockGetUserBillingState.mockImplementation(() =>
+      Promise.resolve({
+        plan: "pro",
+        creditBalanceCents: 50_000,
+        planGrantBalanceCents: 0,
+        billingCycleAnchor: new Date(),
+        billingCustomerCode: "cust_1",
+        billingSubscriptionCode: "sub_1",
+      }),
+    );
+
+    const { GET } = await routeModulePromise;
+    const response = await GET(
+      new Request("https://entry-agents.dev/api/models"),
+    );
+    const body = (await response.json()) as {
+      freeTierGate: unknown;
+      userPlan: { id: string } | null;
+    };
+
+    expect(body.userPlan?.id).toBe("pro");
+    expect(body.freeTierGate).toBeNull();
+  });
+
+  test("blocks free tier users when capacity gate is disabled", async () => {
+    gatewayModels.push({
+      id: "anthropic/claude-haiku-4.5",
+      modelType: "language",
+    });
+    currentSession = {
+      authProvider: "vercel",
+      user: { id: "free-user", email: "free@example.com" },
+    };
+    mockGetFreeTierGateStatus.mockImplementation(() =>
+      Promise.resolve({
+        enabled: false,
+        reason: "Free tier is currently at capacity.",
+      }),
+    );
+    mockGetUserBillingState.mockImplementation(() =>
+      Promise.resolve({
+        plan: "free",
+        creditBalanceCents: 100,
+        planGrantBalanceCents: 100,
+        billingCycleAnchor: null,
+        billingCustomerCode: null,
+        billingSubscriptionCode: null,
+      }),
+    );
+
+    const { GET } = await routeModulePromise;
+    const response = await GET(
+      new Request("https://entry-agents.dev/api/models"),
+    );
+    const body = (await response.json()) as {
+      freeTierGate: { enabled: boolean; reason: string } | null;
+      userPlan: { id: string } | null;
+    };
+
+    expect(body.userPlan?.id).toBe("free");
+    expect(body.freeTierGate).toEqual({
+      enabled: false,
+      reason: "Free tier is currently at capacity.",
+    });
   });
 });

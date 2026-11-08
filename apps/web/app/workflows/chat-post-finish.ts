@@ -27,10 +27,7 @@ import {
   type WorkflowRunStepTiming,
 } from "@/lib/db/workflow-runs";
 import { recordUsage } from "@/lib/db/usage";
-import {
-  recordBillableUsage,
-  releaseUserBillingTurn,
-} from "@/lib/billing/credit-ledger";
+import { releaseUserBillingTurn } from "@/lib/billing/credit-ledger";
 
 const cachedInputTokensFor = (usage: LanguageModelUsage) =>
   usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
@@ -538,37 +535,7 @@ export async function recordWorkflowUsage(
     // kill-switch DB query.
     const { fetchModelCostCatalog } = await import("@/lib/models-with-context");
     const { estimateModelUsageCost } = await import("@/lib/models");
-    // Pricing is required for billing. If the catalog is temporarily
-    // unavailable, fail this durable step so the workflow retries instead
-    // of silently recording unbilled model usage.
     const billingCatalog = await fetchModelCostCatalog();
-
-    const billingRunId = workflowRun?.workflowRunId ?? responseMessage.id;
-
-    const debitForModelUsage = async (
-      billedModelId: string,
-      usage: {
-        inputTokens: number;
-        cachedInputTokens: number;
-        outputTokens: number;
-      },
-    ) => {
-      const catalogEntry = billingCatalog.find((m) => m.id === billedModelId);
-      const costUsd = estimateModelUsageCost(usage, catalogEntry?.cost);
-      if (costUsd === undefined || costUsd <= 0) {
-        return;
-      }
-      try {
-        await recordBillableUsage(userId, costUsd, {
-          billingReference: `${billingRunId}:subagent:${billedModelId}`,
-          modelId: billedModelId,
-          description: `Usage: ${billedModelId}`,
-        });
-      } catch (error) {
-        console.error("[workflow] Failed to debit credit ledger:", error);
-        throw error;
-      }
-    };
 
     // Record main agent usage (analytics only -- billing already
     // happened in real time during the stream, see comment above).
@@ -594,7 +561,8 @@ export async function recordWorkflowUsage(
       });
     }
 
-    // Record subagent usage (aggregated by model)
+    // Record subagent usage (aggregated by model for analytics; billing
+    // already happened in real time per subagent step in runAgentStep).
     const baselineSubagentUsageEvents = previousResponseMessage
       ? collectTaskToolUsageEvents(previousResponseMessage)
       : [];
@@ -656,12 +624,10 @@ export async function recordWorkflowUsage(
           },
           toolCallCount: modelUsage.toolCallCount,
         });
-        await debitForModelUsage(eventModelId, subagentUsage);
       }
     }
   } catch (error) {
     console.error("[workflow] Failed to record usage:", error);
-    throw error;
   }
 }
 

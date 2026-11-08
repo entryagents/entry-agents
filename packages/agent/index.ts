@@ -17,7 +17,10 @@ export type {
 export { defaultModel, defaultModelLabel, openAgent } from "./open-agent";
 // Skills exports
 export { discoverSkills, parseSkillFrontmatter } from "./skills/discovery";
-export { seedBuiltinSkills } from "./skills/builtin/seed";
+export {
+  getBuiltinSkillsMetadata,
+  seedBuiltinSkills,
+} from "./skills/builtin/seed";
 export { extractSkillBody, substituteArguments } from "./skills/loader";
 export type {
   SkillFrontmatter,

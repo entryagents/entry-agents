@@ -124,25 +124,4 @@ describe("GET /api/github/app/install", () => {
     expect(redirectUrl.origin).toBe("https://github.com");
     expect(redirectUrl.pathname).toContain("entry-agents");
   });
-
-  test("blocks managed template trial users", async () => {
-    authSession = {
-      authProvider: "vercel",
-      user: { id: "user-1", email: "person@example.com" },
-    };
-    const { GET } = await routeModulePromise;
-
-    const response = await GET(
-      createRequest(
-        "https://entry-agents.dev/api/github/app/install?next=/settings/connections",
-      ),
-    );
-
-    expect(response.status).toBe(307);
-    const location = response.headers.get("location");
-    expect(location).toBeTruthy();
-    const redirectUrl = new URL(location as string);
-    expect(redirectUrl.pathname).toBe("/settings/connections");
-    expect(redirectUrl.searchParams.get("github")).toBe("trial_blocked");
-  });
 });

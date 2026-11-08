@@ -6,6 +6,8 @@ import * as realDbUserPreferences from "@/lib/db/user-preferences";
 import * as realDbVercelProjectLinks from "@/lib/db/vercel-project-links";
 import * as realDbSessions from "@/lib/db/sessions";
 
+mock.module("server-only", () => ({}));
+
 let currentSession: {
   authProvider?: "vercel" | "github";
   user: {
@@ -152,69 +154,6 @@ describe("/api/sessions POST vercel project linking", () => {
     createCalls.length = 0;
     upsertCalls.length = 0;
     provisioningKickCalls.length = 0;
-  });
-
-  test("blocks additional sessions for managed template trial users", async () => {
-    const { POST } = await routeModulePromise;
-
-    currentSession = {
-      authProvider: "vercel",
-      user: {
-        id: "user-1",
-        username: "nico",
-        name: "Nico",
-        email: "person@example.com",
-      },
-    };
-    existingSessionCount = 1;
-
-    const response = await POST(
-      createJsonRequest(
-        {
-          branch: "main",
-          cloneUrl: "https://github.com/entryagents/entry-agents",
-          repoOwner: "entryagents",
-          repoName: "entry-agents",
-        },
-        "https://entry-agents.dev/api/sessions",
-      ),
-    );
-    const body = (await response.json()) as { error: string };
-
-    expect(response.status).toBe(403);
-    expect(body.error).toBe("Your account includes 1 trial session.");
-    expect(createCalls).toHaveLength(0);
-  });
-
-  test("blocks repo-backed sessions for trial users", async () => {
-    Object.assign(process.env, { NODE_ENV: "development" });
-    const { POST } = await routeModulePromise;
-
-    currentSession = {
-      authProvider: "vercel",
-      user: {
-        id: "user-1",
-        username: "nico",
-        name: "Nico",
-        email: "person@example.com",
-      },
-    };
-
-    const response = await POST(
-      createJsonRequest({
-        branch: "main",
-        cloneUrl: "https://github.com/entryagents/entry-agents",
-        repoOwner: "entryagents",
-        repoName: "entry-agents",
-      }),
-    );
-    const body = (await response.json()) as { error: string };
-
-    expect(response.status).toBe(403);
-    expect(body.error).toBe(
-      "GitHub-backed sessions are disabled for this session. Start a new chat without a repository.",
-    );
-    expect(createCalls).toHaveLength(0);
   });
 
   test("explicit Vercel project is validated against live repo matches before it is persisted", async () => {

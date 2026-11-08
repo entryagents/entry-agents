@@ -23,13 +23,7 @@ import {
   type VercelApiResult,
   type VercelCliToolResult,
 } from "@entry-agents/agent";
-import {
-  FatalError,
-  defineHook,
-  getWorkflowMetadata,
-  getWritable,
-} from "workflow";
-import { z } from "zod";
+import { FatalError, getWorkflowMetadata, getWritable } from "workflow";
 
 import { getRun } from "workflow/api";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
@@ -105,10 +99,6 @@ import {
   persistImageAttachmentsToSandbox,
   resolveChatSandboxRuntime,
 } from "./chat-sandbox-runtime";
-
-export const chatStopHook = defineHook({
-  schema: z.object({ reason: z.string().optional() }),
-});
 
 type AuthSessionContext = Pick<AuthSession, "authProvider" | "user"> | null;
 
@@ -605,24 +595,7 @@ async function resolveChatModelRuntime(params: {
   // SDK bundler would otherwise pull into the restricted "use workflow"
   // graph via this "use step" function's static imports.
   const { isUserAdmin } = await import("@/lib/db/users");
-  const { getFreeTierGateStatus } = await import("@/lib/db/platform-settings");
   const isAdminUser = await isUserAdmin(params.userId);
-  if (!isAdminUser) {
-    const gate = await getFreeTierGateStatus();
-    if (!gate.enabled) {
-      // Returned, not thrown, for the same reason as the usage-window gate
-      // below (see UsageBlocked): this message is already user-facing and
-      // the state is deterministic, so retrying it three times could only
-      // ever produce the same answer and then kill the process. The safe-
-      // error marker is no longer needed because the value never passes
-      // through toFriendlyChatErrorText.
-      return {
-        blockedNotice:
-          gate.reason ||
-          "We're at capacity right now -- please check back in a little while.",
-      };
-    }
-  }
 
   const preferences = rawPreferences
     ? sanitizeUserPreferencesForSession(
@@ -663,11 +636,7 @@ async function resolveChatModelRuntime(params: {
   if (!isAdminUser) {
     const { enforcePlanExpiry, claimUserBillingTurn } =
       await import("@/lib/billing/credit-ledger");
-    const {
-      getPlanDefinition,
-      FREE_PLAN_MODEL_ID,
-      FREE_TIER_ALLOWED_MODEL_IDS,
-    } = await import("@/lib/billing/plans");
+    const { getPlanDefinition } = await import("@/lib/billing/plans");
 
     // Claim the per-user billing-turn lock BEFORE reading the balance
     // that this turn will spend against. Without this, two concurrent
@@ -698,7 +667,7 @@ async function resolveChatModelRuntime(params: {
 
     // OWN expiry enforcement (owner 2026-09-15: don't rely on
     // Paystack): if the paid plan's last renewal is older than the
-    // grace window, this downgrades to Free RIGHT HERE and returns the
+    // 1-calendar-month billing cycle, this downgrades to Free RIGHT HERE and returns the
     // updated state -- the turn below then runs as a Free user. No
     // webhook delivery involved; it cannot be missed.
     const billingState = await enforcePlanExpiry(params.userId);
@@ -707,23 +676,50 @@ async function resolveChatModelRuntime(params: {
     const balanceCents = billingState?.creditBalanceCents ?? 0;
     startingBalanceCents = balanceCents;
 
-    const { getFreeTierModelId } = await import("@/lib/db/platform-settings");
-    const adminFreeTierModel = await getFreeTierModelId();
+    // Free tier capacity gate: only applies to users on the free plan!
+    // Paid subscribers (Plus, Entry/GOAT, Pro, Max) must NEVER be locked out
+    // when an admin toggles off the Free tier.
+    if (plan.id === "free") {
+      const { getFreeTierGateStatus } =
+        await import("@/lib/db/platform-settings");
+      const gate = await getFreeTierGateStatus();
+      if (!gate.enabled) {
+        const { releaseUserBillingTurn } =
+          await import("@/lib/billing/credit-ledger");
+        await releaseUserBillingTurn(params.userId, params.workflowRunId).catch(
+          () => {},
+        );
+        return {
+          blockedNotice:
+            gate.reason ||
+            "We're at capacity right now -- please check back in a little while.",
+        };
+      }
+    }
 
-    if (plan.modelAccess === "luna-only" && adminFreeTierModel !== "__all__") {
-      const allowedModel = adminFreeTierModel ?? FREE_PLAN_MODEL_ID;
-      const isAllowed =
-        !selectedModelId ||
-        selectedModelId === allowedModel ||
-        FREE_TIER_ALLOWED_MODEL_IDS.includes(selectedModelId);
-      if (!isAllowed) {
+    const { getFreeTierModelId, parseAdminFreeTierModels } =
+      await import("@/lib/db/platform-settings");
+    const adminFreeTierModel = await getFreeTierModelId();
+    const freeModelConfig = parseAdminFreeTierModels(adminFreeTierModel);
+
+    if (plan.modelAccess === "luna-only" && !freeModelConfig.allowAll) {
+      if (freeModelConfig.allowedModelIds.length === 0) {
         return {
           blockedNotice:
             "This model requires a paid plan. Upgrade your plan to chat with paid models.",
         };
       }
       if (!selectedModelId) {
-        selectedModelId = allowedModel;
+        selectedModelId = freeModelConfig.primaryModelId;
+      }
+      const isAllowed =
+        selectedModelId !== null &&
+        freeModelConfig.allowedModelIds.includes(selectedModelId);
+      if (!isAllowed) {
+        return {
+          blockedNotice:
+            "This model requires a paid plan. Upgrade your plan to chat with paid models.",
+        };
       }
     }
 
@@ -766,7 +762,7 @@ async function resolveChatModelRuntime(params: {
     }
   }
 
-  // Entry Windows (2026-09-15, shared gate): rolling 5-hour / weekly /
+  // Entry Windows (2026-09-15, shared gate): rolling or fixed 5-hour / weekly /
   // monthly usage pacing for plans that define windows (only the Entry
   // plan today), enforced for admins and non-admins alike. Debits land
   // in credit_transactions as usage_debit rows in real time (see
@@ -789,13 +785,18 @@ async function resolveChatModelRuntime(params: {
             ? planUsageWindows.weeklyLimitCents
             : planUsageWindows.monthlyLimitCents;
       const limitUsd = (limitCents / 100).toFixed(0);
+      const isFixedMode = totals.mode === "fixed";
       // Returned, not thrown -- see UsageBlocked above.
       return {
         blockedNotice:
           exceeded === "fiveHour"
-            ? `Your Entry plan's 5-hour usage window is full -- $${limitUsd} of usage per rolling 5 hours. It refills continuously as your oldest usage slides out; try again in a little while.`
+            ? isFixedMode
+              ? `Your Entry plan's 5-hour fixed usage window is full -- $${limitUsd} of usage per 5-hour block. It resets at ${totals.resetsAt5h ? new Date(totals.resetsAt5h).toUTCString() : "the end of the current 5-hour block"}.`
+              : `Your Entry plan's 5-hour usage window is full -- $${limitUsd} of usage per rolling 5 hours. It refills continuously as your oldest usage slides out; try again at ${totals.resetsAt5h ? new Date(totals.resetsAt5h).toUTCString() : "the end of the 5-hour period"}.`
             : exceeded === "weekly"
-              ? `Your Entry plan's weekly usage window is full -- $${limitUsd} of usage per rolling 7 days. It refills as your oldest usage slides out of the week; try again later.`
+              ? isFixedMode
+                ? `Your Entry plan's weekly fixed usage window is full -- $${limitUsd} of usage per 7-day block. It resets at ${totals.resetsAt7d ? new Date(totals.resetsAt7d).toUTCString() : "the end of the current 7-day block"}.`
+                : `Your Entry plan's weekly usage window is full -- $${limitUsd} of usage per rolling 7 days. It refills continuously as your oldest usage slides out; try again at ${totals.resetsAt7d ? new Date(totals.resetsAt7d).toUTCString() : "the end of the 7-day period"}.`
               : `You have exhausted your monthly usage of $${limitUsd}. Upgrade your plan or top up credit to continue.`,
       };
     }
@@ -1506,7 +1507,23 @@ async function fetchModelCostCatalogStep(): Promise<AvailableModel[]> {
   "use step";
 
   const { fetchModelCostCatalog } = await import("@/lib/models-with-context");
-  return withoutUndefined(await fetchModelCostCatalog());
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const catalog = await fetchModelCostCatalog();
+      if (catalog.length > 0 || attempt === 3) {
+        return withoutUndefined(catalog);
+      }
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+      }
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Failed to fetch model pricing catalog");
 }
 
 /**
@@ -1525,6 +1542,32 @@ function requireSandboxContext(
     );
   }
   return agentOptions.sandbox;
+}
+
+async function resolveCurrentSandboxContext(
+  agentOptions: WorkflowAgentOptions,
+  sessionId: string,
+): Promise<NonNullable<WorkflowAgentOptions["sandbox"]>> {
+  if (agentOptions.sandbox?.state) {
+    const { hasResumableSandboxState } = await import("@/lib/sandbox/utils");
+    if (hasResumableSandboxState(agentOptions.sandbox.state)) {
+      return agentOptions.sandbox;
+    }
+  }
+  const { getSessionById } = await import("@/lib/db/sessions");
+  const current = await getSessionById(sessionId);
+  if (current?.sandboxState) {
+    const { hasResumableSandboxState } = await import("@/lib/sandbox/utils");
+    if (hasResumableSandboxState(current.sandboxState)) {
+      return {
+        ...agentOptions.sandbox,
+        state: current.sandboxState,
+        workingDirectory:
+          agentOptions.sandbox?.workingDirectory ?? "/workspace",
+      };
+    }
+  }
+  return requireSandboxContext(agentOptions);
 }
 
 /**
@@ -2257,12 +2300,6 @@ export async function runAgentWorkflow(options: Options) {
   const runtimePromise = resolveChatSandboxRuntime({
     userId: options.userId,
     sessionId: options.sessionId,
-  }).catch((error) => {
-    console.error(
-      `[workflow] Sandbox runtime unavailable for session ${options.sessionId}; continuing without a workspace:`,
-      error,
-    );
-    return null;
   });
   // Cheap existence check only (no live token refresh -- see
   // hasVercelAccountLinked's own comment on why) so the workflow can
@@ -3243,18 +3280,31 @@ const runAgentStep = async (
   let remainingWindowBudgetCents = windowBudgetCents;
   let creditExhausted = false;
   let windowExhausted = false;
+  // Billing persistence promises are flushed before this durable step
+  // returns. The database owns sub-cent carry and idempotency.
+  const pendingDebits: Promise<void>[] = [];
+  let subagentStepSeq = 0;
   // Real-time subagent budget guard (framework SubagentBudgetGuard):
   // shares these same in-memory counters with the main model, so
-  // subagent spend eats the same window/balance budgets mid-turn
-  // instead of landing only at chat-post-finish. spendCents mirrors
-  // the main-model finish-step mutation below (flags + turn abort);
-  // it writes NO ledger rows -- the durable subagent debit still
-  // happens at chat-post-finish, so there is no double-billing.
+  // subagent spend eats the same window/balance budgets mid-turn, AND
+  // writes real-time ledger debits per subagent step into `pendingDebits`
+  // so the DB ledger is always up to date during the step.
   const subagentBudgetGuard = buildSubagentBudgetGuard({
     getWindowRemainingCents: () => remainingWindowBudgetCents,
     getBalanceRemainingCents: () => remainingBalanceCents,
     getEnforceCreditBlock: () => enforceCreditBlock,
-    spendCents: (costCents) => {
+    spendCents: (costCents, costUsd, subagentModelId) => {
+      if (costUsd !== undefined && costUsd > 0 && subagentModelId) {
+        subagentStepSeq += 1;
+        const seq = subagentStepSeq;
+        pendingDebits.push(
+          recordBillableUsage(userId, costUsd, {
+            billingReference: `${workflowRunId}:main-step:${stepNumber}:subagent-step:${seq}`,
+            modelId: subagentModelId,
+            description: `Subagent usage: ${subagentModelId}`,
+          }).then(() => undefined),
+        );
+      }
       const state = applySpendToBudgets({
         remainingWindowBudgetCents,
         remainingBalanceCents,
@@ -3286,9 +3336,6 @@ const runAgentStep = async (
   // the assignment below) crosses MAX_TURN_SPEND_CENTS, regardless of
   // how much account balance remains.
   let turnSpendCapped = false;
-  // Billing persistence promises are flushed before this durable step
-  // returns. The database owns sub-cent carry and idempotency.
-  const pendingDebits: Promise<void>[] = [];
   // Hoisted above the try/catch/finally on purpose -- `let` inside the
   // try block would be out of scope in the `finally` below, where it
   // needs to be closed regardless of which branch ran.
@@ -3401,7 +3448,10 @@ const runAgentStep = async (
                   ? `${input.commitTitle}\n\n${input.commitBody}`
                   : input.commitTitle
                 : undefined;
-              const sandbox = requireSandboxContext(agentOptions);
+              const sandbox = await resolveCurrentSandboxContext(
+                agentOptions,
+                sessionId,
+              );
               return performAgentCommitAndPush({
                 sandboxState: sandbox.state,
                 userId,
@@ -3459,7 +3509,10 @@ const runAgentStep = async (
                     "No GitHub repository is connected to this session yet.",
                 };
               }
-              const sandbox = requireSandboxContext(agentOptions);
+              const sandbox = await resolveCurrentSandboxContext(
+                agentOptions,
+                sessionId,
+              );
               return performAgentGithubCli({
                 userId,
                 sandboxState: sandbox.state,
@@ -3481,7 +3534,10 @@ const runAgentStep = async (
                   error: "No Vercel account is connected for this user.",
                 };
               }
-              const sandbox = requireSandboxContext(agentOptions);
+              const sandbox = await resolveCurrentSandboxContext(
+                agentOptions,
+                sessionId,
+              );
               return performAgentVercelCli({
                 userId,
                 sandboxState: sandbox.state,
@@ -3539,6 +3595,7 @@ const runAgentStep = async (
           const { hasResumableSandboxState } =
             await import("@/lib/sandbox/utils");
           const deadline = Date.now() + 180_000;
+          const provisioningDeadline = Date.now() + 30_000;
           let waitedForMigration = false;
           let migrationRunId: string | undefined;
 
@@ -3556,75 +3613,85 @@ const runAgentStep = async (
               throw new Error("Session is archived");
             }
 
-            if (current.lifecycleState !== "migrating") {
-              // Repair legacy boxd rows at the last safe boundary before any
-              // agent tool connects. Some older sessions were persisted as
-              // `{ type: "boxd" }` or with only machineId, so the lifecycle
-              // row could say active while the connector still had no name.
-              // Derive the deterministic name from the session id and persist
-              // it here instead of surfacing a host-resolution error.
-              let repairedSandboxState = current.sandboxState;
-              const currentMachineName =
-                current.sandboxState?.type === "boxd"
-                  ? (current.sandboxState as { machineName?: unknown })
-                      .machineName
-                  : undefined;
-              if (
-                current.sandboxState?.type === "boxd" &&
-                (typeof currentMachineName !== "string" ||
-                  !currentMachineName ||
-                  /^entry-undefined(?:-|$)/.test(currentMachineName))
-              ) {
-                const { requireSandboxProvider } =
-                  await import("@entry-agents/sandbox");
-                repairedSandboxState = requireSandboxProvider(
-                  "boxd",
-                ).buildProvisionState({
-                  existing: current.sandboxState,
-                  sessionId,
-                });
-                await updateSession(sessionId, {
-                  sandboxState: repairedSandboxState,
-                  lifecycleError: null,
-                });
-              }
+            if (current.lifecycleState === "migrating") {
+              waitedForMigration = true;
+              migrationRunId = current.lifecycleRunId ?? migrationRunId;
 
-              // No (usable) workspace yet is a normal agent-first state,
-              // not an error -- but it still has to fail this tool call
-              // with a readable message. Two reasons, both fatal if
-              // ignored:
-              //  1. a TypeError on `.state` instead of a sentence;
-              //  2. connectSandbox() on a state with no sandboxName would
-              //     CREATE a brand-new, untracked sandbox rather than
-              //     waiting for this session's provisioning run.
-              // hasResumableSandboxState is the exact predicate for
-              // "connecting will resume an existing workspace, not make
-              // one" (see lib/sandbox/utils.ts).
-              const gateState =
-                repairedSandboxState ?? agentOptions.sandbox?.state;
-              if (!gateState || !hasResumableSandboxState(gateState)) {
+              if (Date.now() >= deadline) {
                 throw new Error(
-                  "The workspace for this session is still starting up -- provisioning runs in the background. " +
-                    "Retry this tool once it is ready.",
+                  "Sandbox migration is still running; command execution was held to avoid targeting the retiring sandbox.",
                 );
               }
-              return {
-                sandboxState: gateState,
-                ...(waitedForMigration ? { waitedForMigration: true } : {}),
-                ...(migrationRunId ? { migrationRunId } : {}),
-              };
+
+              await new Promise((resolve) => setTimeout(resolve, 750));
+              continue;
             }
 
-            waitedForMigration = true;
-            migrationRunId = current.lifecycleRunId ?? migrationRunId;
-
-            if (Date.now() >= deadline) {
+            if (current.lifecycleState === "failed") {
               throw new Error(
-                "Sandbox migration is still running; command execution was held to avoid targeting the retiring sandbox.",
+                `The workspace failed to start: ${current.lifecycleError ?? "Provisioning failed"}.`,
               );
             }
 
-            await new Promise((resolve) => setTimeout(resolve, 750));
+            // Repair legacy boxd rows at the last safe boundary before any
+            // agent tool connects. Some older sessions were persisted as
+            // `{ type: "boxd" }` or with only machineId, so the lifecycle
+            // row could say active while the connector still had no name.
+            // Derive the deterministic name from the session id and persist
+            // it here instead of surfacing a host-resolution error.
+            let repairedSandboxState = current.sandboxState;
+            const currentMachineName =
+              current.sandboxState?.type === "boxd"
+                ? (current.sandboxState as { machineName?: unknown })
+                    .machineName
+                : undefined;
+            if (
+              current.sandboxState?.type === "boxd" &&
+              (typeof currentMachineName !== "string" ||
+                !currentMachineName ||
+                /^entry-undefined(?:-|$)/.test(currentMachineName))
+            ) {
+              const { requireSandboxProvider } =
+                await import("@entry-agents/sandbox");
+              repairedSandboxState = requireSandboxProvider(
+                "boxd",
+              ).buildProvisionState({
+                existing: current.sandboxState,
+                sessionId,
+              });
+              await updateSession(sessionId, {
+                sandboxState: repairedSandboxState,
+                lifecycleError: null,
+              });
+            }
+
+            // No (usable) workspace yet is a normal agent-first state,
+            // not an error -- background provisioning runs concurrently.
+            // When a tool is called before provisioning has finished, smoothly
+            // poll getSessionById until ready instead of immediately throwing.
+            const gateState =
+              repairedSandboxState ?? agentOptions.sandbox?.state;
+            if (!gateState || !hasResumableSandboxState(gateState)) {
+              if (Date.now() < provisioningDeadline) {
+                const { kickSandboxProvisioningWorkflow } =
+                  await import("@/lib/sandbox/provisioning-kick");
+                await kickSandboxProvisioningWorkflow(sessionId).catch(
+                  () => {},
+                );
+                await new Promise((resolve) => setTimeout(resolve, 750));
+                continue;
+              }
+
+              throw new Error(
+                "The workspace for this session is still starting up -- provisioning runs in the background. " +
+                  "Retry this tool once it is ready.",
+              );
+            }
+            return {
+              sandboxState: gateState,
+              ...(waitedForMigration ? { waitedForMigration: true } : {}),
+              ...(migrationRunId ? { migrationRunId } : {}),
+            };
           }
         },
         onCommandStart: async (info) => {
@@ -3806,7 +3873,7 @@ const runAgentStep = async (
               },
               stepModelCost,
             ) ?? 0)
-          : (estimatedInputTokens * 2) / 1_000_000;
+          : 0;
         const estMillionOutputCostUsd = stepModelCost
           ? (estimateModelUsageCost(
               {
@@ -3815,10 +3882,11 @@ const runAgentStep = async (
                 outputTokens: 1_000_000,
               },
               stepModelCost,
-            ) ?? 6)
-          : 6;
+            ) ?? 0)
+          : 0;
         let liveStreamedChars = 0;
         let midStreamDebited = false;
+        let midStreamDebitedUsd = 0;
 
         let stream: Awaited<ReturnType<typeof webAgent.stream>>;
         let streamAttempts = 0;
@@ -3947,6 +4015,7 @@ const runAgentStep = async (
           messageMetadata: ({ part: streamPart }) => {
             if (
               !midStreamDebited &&
+              stepModelCost &&
               (streamPart.type === "text-delta" ||
                 streamPart.type === "reasoning-delta" ||
                 streamPart.type === "tool-input-delta" ||
@@ -3970,10 +4039,7 @@ const runAgentStep = async (
               const liveStepCostUsd =
                 estInputCostUsd +
                 (liveOutputTokens / 1_000_000) * estMillionOutputCostUsd;
-              const liveStepCostCents = Math.max(
-                1,
-                Math.ceil(liveStepCostUsd * 100),
-              );
+              const liveStepCostCents = liveStepCostUsd * 100;
 
               const wouldExhaustWindow =
                 remainingWindowBudgetCents !== null &&
@@ -3986,23 +4052,25 @@ const runAgentStep = async (
 
               if (wouldExhaustWindow || wouldExhaustCredit) {
                 midStreamDebited = true;
+                midStreamDebitedUsd = liveStepCostUsd;
                 lastStepCost = liveStepCostUsd;
                 totalMessageCost = (totalMessageCost ?? 0) + liveStepCostUsd;
                 pendingDebits.push(
                   recordBillableUsage(userId, liveStepCostUsd, {
-                    billingReference: `${workflowRunId}:main-step:${stepNumber}`,
+                    billingReference: `${workflowRunId}:main-step:${stepNumber}:midstream`,
                     modelId,
                     description: `Usage: ${modelId}`,
                   }).then(() => undefined),
                 );
+                const debitedCents = Math.max(1, Math.ceil(liveStepCostCents));
                 if (enforceCreditBlock) {
-                  remainingBalanceCents -= liveStepCostCents;
+                  remainingBalanceCents -= debitedCents;
                   if (remainingBalanceCents <= 0) {
                     creditExhausted = true;
                   }
                 }
                 if (remainingWindowBudgetCents !== null) {
-                  remainingWindowBudgetCents -= liveStepCostCents;
+                  remainingWindowBudgetCents -= debitedCents;
                   if (remainingWindowBudgetCents <= 0) {
                     windowExhausted = true;
                   }
@@ -4026,48 +4094,58 @@ const runAgentStep = async (
                   ? addLanguageModelUsage(totalMessageUsage, streamPart.usage)
                   : streamPart.usage;
               }
-              const rawStepCost = estimateStepCost(
+              const stepCost = estimateStepCost(
                 streamPart.providerMetadata,
                 modelId,
                 streamPart.usage,
                 modelCostCatalog,
               );
-              const stepCost =
-                rawStepCost ??
-                (streamPart.usage
-                  ? ((streamPart.usage.inputTokens ?? 0) * 2 +
-                      (streamPart.usage.outputTokens ?? 0) * 6) /
-                    1_000_000
-                  : undefined);
-              if (stepCost !== undefined && !midStreamDebited) {
-                lastStepCost = stepCost;
-                totalMessageCost = (totalMessageCost ?? 0) + stepCost;
-
-                // Persist the exact step cost under a stable workflow/step
-                // reference. The DB owns sub-cent carry and idempotency, not
-                // this process, so durable replay cannot miss or double-charge.
-                const stepCostCents = Math.max(1, Math.ceil(stepCost * 100));
-                pendingDebits.push(
-                  recordBillableUsage(userId, stepCost, {
-                    billingReference: `${workflowRunId}:main-step:${stepNumber}`,
-                    modelId,
-                    description: `Usage: ${modelId}`,
-                  }).then(() => undefined),
+              if (stepCost !== undefined) {
+                const residualCostUsd = Math.max(
+                  0,
+                  stepCost - midStreamDebitedUsd,
                 );
+                lastStepCost = stepCost;
+                totalMessageCost =
+                  (totalMessageCost ?? 0) - midStreamDebitedUsd + stepCost;
 
-                if (enforceCreditBlock) {
-                  remainingBalanceCents -= stepCostCents;
-                  if (remainingBalanceCents <= 0 && !creditExhausted) {
-                    creditExhausted = true;
-                    abortController.abort();
+                if (residualCostUsd > 0) {
+                  // Persist the exact step cost (or any residual above a
+                  // mid-stream debit) under a stable workflow/step reference.
+                  // The DB owns sub-cent carry and idempotency, not this
+                  // process, so durable replay cannot miss or double-charge.
+                  const stepCostCents = Math.max(
+                    1,
+                    Math.ceil(residualCostUsd * 100),
+                  );
+                  pendingDebits.push(
+                    recordBillableUsage(userId, residualCostUsd, {
+                      billingReference: midStreamDebited
+                        ? `${workflowRunId}:main-step:${stepNumber}:final`
+                        : `${workflowRunId}:main-step:${stepNumber}`,
+                      modelId,
+                      description: `Usage: ${modelId}`,
+                    }).then(() => undefined),
+                  );
+
+                  if (enforceCreditBlock && !midStreamDebited) {
+                    remainingBalanceCents -= stepCostCents;
+                    if (remainingBalanceCents <= 0 && !creditExhausted) {
+                      creditExhausted = true;
+                      abortController.abort();
+                    }
                   }
-                }
 
-                if (remainingWindowBudgetCents !== null && !windowExhausted) {
-                  remainingWindowBudgetCents -= stepCostCents;
-                  if (remainingWindowBudgetCents <= 0) {
-                    windowExhausted = true;
-                    abortController.abort();
+                  if (
+                    remainingWindowBudgetCents !== null &&
+                    !windowExhausted &&
+                    !midStreamDebited
+                  ) {
+                    remainingWindowBudgetCents -= stepCostCents;
+                    if (remainingWindowBudgetCents <= 0) {
+                      windowExhausted = true;
+                      abortController.abort();
+                    }
                   }
                 }
 
@@ -4505,25 +4583,26 @@ function startStopMonitor(
         return;
       }
 
-      if (!isAdminUser) {
-        const { getFreeTierGateStatus } =
-          await import("@/lib/db/platform-settings");
-        const gate = await getFreeTierGateStatus().catch(() => ({
-          enabled: true,
-          reason: null,
-        }));
-        if (!gate.enabled) {
-          abortController.abort();
-          return;
-        }
-      }
-
       try {
         const { getUserBillingState, getUsageWindowTotals } =
           await import("@/lib/billing/credit-ledger");
         const { getPlanDefinition, findExceededUsageWindow } =
           await import("@/lib/billing/plans");
         const liveBilling = await getUserBillingState(userId);
+
+        if (!isAdminUser && (!liveBilling || liveBilling.plan === "free")) {
+          const { getFreeTierGateStatus } =
+            await import("@/lib/db/platform-settings");
+          const gate = await getFreeTierGateStatus().catch(() => ({
+            enabled: true,
+            reason: null,
+          }));
+          if (!gate.enabled) {
+            abortController.abort();
+            return;
+          }
+        }
+
         if (liveBilling && liveBilling.creditBalanceCents <= 0) {
           abortController.abort();
           return;

@@ -22,6 +22,7 @@ export interface UserBillingState {
 
 export async function getUserBillingState(
   userId: string,
+  opts?: { isAdmin?: boolean; skipAutoRevert?: boolean },
 ): Promise<UserBillingState | null> {
   const [row] = await db
     .select({
@@ -31,12 +32,44 @@ export async function getUserBillingState(
       billingCycleAnchor: users.billingCycleAnchor,
       billingCustomerCode: users.billingCustomerCode,
       billingSubscriptionCode: users.billingSubscriptionCode,
+      isAdmin: users.isAdmin,
     })
     .from(users)
     .where(eq(users.id, userId));
 
   if (!row) {
     return null;
+  }
+
+  const effectiveIsAdmin = opts?.isAdmin ?? row.isAdmin ?? false;
+  if (!opts?.skipAutoRevert && !effectiveIsAdmin) {
+    const { shouldAutoRevertToFree } = await import("@/lib/billing/plans");
+    if (shouldAutoRevertToFree(row.plan, row.billingCycleAnchor)) {
+      const previousPlan = row.plan;
+      await db
+        .update(users)
+        .set({
+          plan: "free",
+          billingSubscriptionCode: null,
+          billingCycleAnchor: null,
+        })
+        .where(eq(users.id, userId));
+
+      const pool = await expireGrantPoolOnPlanEnd(userId);
+      console.info(
+        "[billing] auto-revert to free: 1-month subscription cycle expired",
+        { userId, previousPlan, expiredGrantCents: pool.expiredCents },
+      );
+
+      return {
+        plan: "free",
+        creditBalanceCents: pool.balanceAfterCents,
+        planGrantBalanceCents: 0,
+        billingCycleAnchor: null,
+        billingCustomerCode: row.billingCustomerCode,
+        billingSubscriptionCode: null,
+      };
+    }
   }
 
   return {
@@ -103,49 +136,20 @@ export async function expireGrantPoolOnPlanEnd(
 }
 
 /**
- * OWN plan-expiry enforcement, independent of webhook delivery (owner
- * 2026-09-15: "build our own"): reads the billing state, and if the
- * paid plan's last renewal (billingCycleAnchor, refreshed by every
- * successful subscription charge) is older than
- * PLAN_EXPIRY_GRACE_MS, downgrades the user to Free right here and
- * returns the updated state. Call before any plan-dependent decision:
- * the chat pre-turn gate and /api/billing/me both use this, so a
- * lapsed subscriber reverts on their very next touch -- no Paystack
- * event can be missed. Admins are exempt (their plans are set by
- * hand, not by subscription charges). Balance is preserved: credit is
- * prepaid value; only plan perks revert.
+ * OWN plan-expiry enforcement, independent of webhook delivery:
+ * reads the billing state, and if the paid plan's last renewal
+ * (`billingCycleAnchor`, refreshed by every successful subscription charge)
+ * is older than 1 calendar month (`addOneCalendarMonth`), downgrades the
+ * user to Free right here, clears stale subscription/anchor fields, expires
+ * unused subscription-grant credit, and expires any top-ups older than 90 days.
  */
 export async function enforcePlanExpiry(
   userId: string,
   opts: { isAdmin?: boolean } = {},
 ): Promise<UserBillingState | null> {
-  const state = await getUserBillingState(userId);
-  if (!state) {
-    return null;
-  }
-  if (opts.isAdmin) {
-    return state;
-  }
-  const { shouldAutoRevertToFree, PLAN_EXPIRY_GRACE_MS } =
-    await import("@/lib/billing/plans");
-  if (!shouldAutoRevertToFree(state.plan, state.billingCycleAnchor)) {
-    return state;
-  }
-  const previousPlan = state.plan;
-  await db.update(users).set({ plan: "free" }).where(eq(users.id, userId));
-  // Subscription credit expires with the plan (owner 2026-09-15);
-  // paid top-ups survive.
-  const pool = await expireGrantPoolOnPlanEnd(userId);
-  console.info(
-    `[billing] auto-revert to free: no renewal within ${PLAN_EXPIRY_GRACE_MS / 86400000}d grace`,
-    { userId, previousPlan, expiredGrantCents: pool.expiredCents },
-  );
-  return {
-    ...state,
-    plan: "free",
-    creditBalanceCents: pool.balanceAfterCents,
-    planGrantBalanceCents: 0,
-  };
+  // Always enforce 90-day top-up expiry before any billing decision
+  await expireStaleTopUps(userId);
+  return getUserBillingState(userId, { isAdmin: opts.isAdmin });
 }
 
 export type CreditTransactionType =
@@ -213,86 +217,111 @@ async function applyLedgerEntry(
   });
 }
 
-/**
- * Per-user turn lock (billing correctness).
- *
- * Real-time credit enforcement inside a single turn (see
- * apps/web/app/workflows/chat.ts) tracks the running balance in-memory,
- * seeded once from a DB read at turn start. That in-memory counter is
- * NOT aware of any other turn's concurrent spend, so two turns started
- * around the same time for the same user (e.g. two open chat tabs) could
- * each read the same starting balance and each be allowed to spend up to
- * it before either one's own local counter hits zero -- a real
- * double-spend window, even though the underlying ledger writes
- * themselves are atomic per-row DB updates.
- *
- * This lock closes that window: exactly one turn per user may hold the
- * slot at a time. A second concurrent turn is rejected immediately,
- * before it spends anything, with a clear "already generating elsewhere"
- * error -- instead of racing the first turn on stale balance state.
- */
-
-/**
- * Atomically claims the billing-turn slot for `workflowRunId`. Returns
- * true when the slot is now owned by this run (it was free, or already
- * owned by this exact run -- safe to call more than once for the same
- * run). Returns false when a *different* run currently holds it.
- */
-// A held lock older than this is treated as abandoned (e.g. a crashed
-// or orphaned workflow run that never reached its cleanup/finally) and
-// can be stolen by a new turn. Generous relative to a normal turn's
-// length so it never fires on a merely-slow-but-alive turn.
 // Heartbeat is emitted every 30s during active turns; 2 minutes is 4 missed heartbeats.
 const BILLING_TURN_LOCK_STALE_MS = 2 * 60 * 1000;
 
-/**
- * Sums usage_debit rows in the trailing 5h / 7d / 30d windows in ONE
- * indexed query (only rows newer than the 30d cutoff are scanned).
- * Used by the pre-turn billing gate in resolveChatModelRuntime to
- * enforce a plan's rolling usage windows (GOAT's Entry Windows).
- */
-export async function getUserGoatWindowMode(
+export interface UserGoatWindowModeState {
+  mode: GoatWindowMode;
+  lockedAnchorIso: string | null;
+}
+
+export async function getUserGoatWindowModeState(
   userId: string,
-): Promise<GoatWindowMode> {
+): Promise<UserGoatWindowModeState> {
   try {
     const { platformSettings } = await import("@/lib/db/schema");
     const [row] = await db
-      .select({ titleModelId: platformSettings.titleModelId })
+      .select({
+        titleModelId: platformSettings.titleModelId,
+        disabledReason: platformSettings.disabledReason,
+      })
       .from(platformSettings)
       .where(eq(platformSettings.id, `goat_window_mode:${userId}`))
       .limit(1);
 
-    return row?.titleModelId === "fixed" ? "fixed" : "rolling";
+    return {
+      mode: row?.titleModelId === "fixed" ? "fixed" : "rolling",
+      lockedAnchorIso: row?.disabledReason ?? null,
+    };
   } catch {
-    return "rolling";
+    return { mode: "rolling", lockedAnchorIso: null };
   }
 }
 
+export async function getUserGoatWindowMode(
+  userId: string,
+): Promise<GoatWindowMode> {
+  const state = await getUserGoatWindowModeState(userId);
+  return state.mode;
+}
+
+/**
+ * Sets or locks the user's GOAT ("Entry") window mode ("rolling" vs "fixed").
+ *
+ * Permanent 1-month cycle lock policy:
+ * Once a user is in an active 1-month GOAT subscription cycle (`plan === "goat"`
+ * and `billingCycleAnchor` not yet expired) and their mode is locked to that
+ * `billingCycleAnchor`, the mode CANNOT be changed mid-cycle! It can only be
+ * updated when a new subscription cycle starts (a new `billingCycleAnchor` is
+ * passed on renewal/purchase) or when the user is not in an active locked GOAT cycle.
+ */
 export async function setUserGoatWindowMode(
   userId: string,
   mode: GoatWindowMode,
   billingCycleAnchor?: Date | null,
-): Promise<void> {
+): Promise<{ applied: boolean; mode: GoatWindowMode }> {
   const { platformSettings } = await import("@/lib/db/schema");
-  const anchorIso = billingCycleAnchor
+  const { shouldAutoRevertToFree } = await import("@/lib/billing/plans");
+
+  const [billingState, currentModeState] = await Promise.all([
+    getUserBillingState(userId),
+    getUserGoatWindowModeState(userId),
+  ]);
+
+  const activeGoatCycle =
+    billingState?.plan === "goat" &&
+    billingState.billingCycleAnchor !== null &&
+    !shouldAutoRevertToFree("goat", billingState.billingCycleAnchor);
+
+  const activeAnchorIso = billingState?.billingCycleAnchor
+    ? billingState.billingCycleAnchor.toISOString()
+    : null;
+  const incomingAnchorIso = billingCycleAnchor
     ? billingCycleAnchor.toISOString()
     : null;
+
+  // If the user is already in an active GOAT cycle and their mode is already
+  // locked to this cycle's anchor, reject any attempt to flip the mode mid-cycle
+  // (unless a brand-new cycle anchor is being granted on renewal).
+  if (
+    activeGoatCycle &&
+    currentModeState.lockedAnchorIso !== null &&
+    currentModeState.lockedAnchorIso === activeAnchorIso &&
+    incomingAnchorIso === null
+  ) {
+    return { applied: false, mode: currentModeState.mode };
+  }
+
+  const anchorIsoToLock = incomingAnchorIso ?? activeAnchorIso;
+
   await db
     .insert(platformSettings)
     .values({
       id: `goat_window_mode:${userId}`,
       titleModelId: mode,
-      disabledReason: anchorIso,
+      disabledReason: anchorIsoToLock,
       updatedAt: new Date(),
     })
     .onConflictDoUpdate({
       target: platformSettings.id,
       set: {
         titleModelId: mode,
-        disabledReason: anchorIso,
+        disabledReason: anchorIsoToLock,
         updatedAt: new Date(),
       },
     });
+
+  return { applied: true, mode };
 }
 
 export async function getUsageWindowTotals(
@@ -300,11 +329,17 @@ export async function getUsageWindowTotals(
 ): Promise<UsageWindowTotals> {
   const now = Date.now();
   const mode = await getUserGoatWindowMode(userId);
+  const {
+    addOneCalendarMonth: _addOneCalendarMonth,
+    computeFixedWindowBoundaries,
+    computeRollingWindowBoundaries,
+    computeRollingResetTimestamp,
+    subtractOneCalendarMonth,
+  } = await import("@/lib/billing/plans");
 
   const userRow = await db
     .select({
       billingCycleAnchor: users.billingCycleAnchor,
-      createdAt: users.createdAt,
     })
     .from(users)
     .where(eq(users.id, userId))
@@ -312,43 +347,41 @@ export async function getUsageWindowTotals(
 
   const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
   const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
-  const anchorMs = (
-    userRow[0]?.billingCycleAnchor ??
-    userRow[0]?.createdAt ??
-    new Date(now - THIRTY_DAYS_MS)
-  ).getTime();
-
-  // The 30d window is the permanent fixed monthly cycle usage.
-  // It anchors to the active billing cycle and resets only when the subscription renews.
-  // It NEVER rolls away past days.
-  const cycleStart30dMs = anchorMs;
-  const resetsAt30d = new Date(anchorMs + THIRTY_DAYS_MS).toISOString();
-  const cutoff30d = new Date(cycleStart30dMs);
+  // Never fall back to users.createdAt (which would sum lifetime spend if
+  // billingCycleAnchor is null). Bound fallback to 1 calendar month ago.
+  const oneMonthAgoMs = subtractOneCalendarMonth(now).getTime();
+  const rawAnchorMs =
+    userRow[0]?.billingCycleAnchor?.getTime() ?? oneMonthAgoMs;
+  const anchorMs = Math.max(rawAnchorMs, oneMonthAgoMs);
 
   let cutoff5hIso: string;
   let cutoff7dIso: string;
+  let cutoff30d: Date;
   let resetsAt5h: string | null = null;
   let resetsAt7d: string | null = null;
+  let resetsAt30d: string | null = null;
+  let cutoff5hMs = 0;
+  let cutoff7dMs = 0;
 
   if (mode === "fixed") {
-    const cycleStart5hMs =
-      anchorMs +
-      Math.max(0, Math.floor((now - anchorMs) / FIVE_HOURS_MS)) * FIVE_HOURS_MS;
-    const cycleStart7dMs =
-      anchorMs +
-      Math.max(0, Math.floor((now - anchorMs) / SEVEN_DAYS_MS)) * SEVEN_DAYS_MS;
-
-    resetsAt5h = new Date(cycleStart5hMs + FIVE_HOURS_MS).toISOString();
-    resetsAt7d = new Date(cycleStart7dMs + SEVEN_DAYS_MS).toISOString();
-
-    cutoff5hIso = new Date(cycleStart5hMs).toISOString();
-    cutoff7dIso = new Date(cycleStart7dMs).toISOString();
+    const boundaries = computeFixedWindowBoundaries(anchorMs, now);
+    cutoff5hIso = new Date(boundaries.cycleStart5hMs).toISOString();
+    cutoff7dIso = new Date(boundaries.cycleStart7dMs).toISOString();
+    cutoff30d = new Date(boundaries.cycleStart30dMs);
+    resetsAt5h = boundaries.resetsAt5h;
+    resetsAt7d = boundaries.resetsAt7d;
+    resetsAt30d = boundaries.resetsAt30d;
   } else {
-    // Rolling / sliding 5h and 7d sub-windows
-    cutoff5hIso = new Date(now - FIVE_HOURS_MS).toISOString();
-    cutoff7dIso = new Date(now - SEVEN_DAYS_MS).toISOString();
+    // Rolling / sliding 5h and 7d sub-windows; bounded by the 1-month subscription
+    // cycle anchor so a new subscription cycle resets all allowances to 100%.
+    const boundaries = computeRollingWindowBoundaries(anchorMs, now);
+    cutoff5hMs = boundaries.cutoff5hMs;
+    cutoff7dMs = boundaries.cutoff7dMs;
+    cutoff5hIso = new Date(cutoff5hMs).toISOString();
+    cutoff7dIso = new Date(cutoff7dMs).toISOString();
+    cutoff30d = new Date(boundaries.cutoff30dMs);
+    resetsAt30d = boundaries.resetsAt30d;
   }
 
   const [row] = await db
@@ -366,10 +399,66 @@ export async function getUsageWindowTotals(
       ),
     );
 
+  const last5HoursCents = row?.last5HoursCents ?? 0;
+  const last7DaysCents = row?.last7DaysCents ?? 0;
+  const last30DaysCents = row?.last30DaysCents ?? 0;
+
+  if (mode !== "fixed") {
+    const { asc } = await import("drizzle-orm");
+
+    if (last5HoursCents > 0) {
+      const txs5h = await db
+        .select({
+          createdAt: creditTransactions.createdAt,
+          amountCents: creditTransactions.amountCents,
+        })
+        .from(creditTransactions)
+        .where(
+          and(
+            eq(creditTransactions.userId, userId),
+            eq(creditTransactions.type, "usage_debit"),
+            gte(creditTransactions.createdAt, new Date(cutoff5hMs)),
+          ),
+        )
+        .orderBy(asc(creditTransactions.createdAt));
+
+      resetsAt5h = computeRollingResetTimestamp(
+        txs5h,
+        last5HoursCents,
+        1000,
+        FIVE_HOURS_MS,
+      );
+    }
+
+    if (last7DaysCents > 0) {
+      const txs7d = await db
+        .select({
+          createdAt: creditTransactions.createdAt,
+          amountCents: creditTransactions.amountCents,
+        })
+        .from(creditTransactions)
+        .where(
+          and(
+            eq(creditTransactions.userId, userId),
+            eq(creditTransactions.type, "usage_debit"),
+            gte(creditTransactions.createdAt, new Date(cutoff7dMs)),
+          ),
+        )
+        .orderBy(asc(creditTransactions.createdAt));
+
+      resetsAt7d = computeRollingResetTimestamp(
+        txs7d,
+        last7DaysCents,
+        2500,
+        SEVEN_DAYS_MS,
+      );
+    }
+  }
+
   return {
-    last5HoursCents: row?.last5HoursCents ?? 0,
-    last7DaysCents: row?.last7DaysCents ?? 0,
-    last30DaysCents: row?.last30DaysCents ?? 0,
+    last5HoursCents,
+    last7DaysCents,
+    last30DaysCents,
     mode,
     resetsAt5h,
     resetsAt7d,
@@ -815,12 +904,11 @@ export async function downgradeToFreeOnSubscriptionEnd(
     .set({
       plan: "free",
       billingSubscriptionCode: null,
+      billingCycleAnchor: null,
     })
     .where(eq(users.id, row.id));
 
-  // Subscription credit expires with the plan (owner 2026-09-15);
-  // paid top-ups survive. Run after the plan flip so a concurrent
-  // sweeper pass sees a Free user and no-ops.
+  // Subscription credit expires with the plan; unexpired paid top-ups survive.
   const pool = await expireGrantPoolOnPlanEnd(row.id);
   if (pool.expiredCents > 0) {
     console.info("[billing] subscription ended: expired unused grant credit", {
@@ -832,47 +920,153 @@ export async function downgradeToFreeOnSubscriptionEnd(
   return { downgraded: true, userId: row.id };
 }
 
+const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+
 /**
- * Calculates a user's active top-up credit balance and 3-month expiry timestamp.
- * Top-ups expire 90 days after purchase.
+ * Expires any unspent top-up credit from top-ups purchased more than 90 days
+ * ago. If a user's non-grant balance (`creditBalanceCents - planGrantBalanceCents`)
+ * exceeds the sum of active (<=90d) top-ups (plus any signup trial on free plan),
+ * the excess old top-up credit is expired and recorded as a `topup_expiry`
+ * ledger entry.
+ */
+export async function expireStaleTopUps(
+  userId: string,
+): Promise<{ expiredCents: number }> {
+  const cutoff = new Date(Date.now() - NINETY_DAYS_MS);
+
+  return db.transaction(async (tx) => {
+    const [userRow] = await tx
+      .select({
+        plan: users.plan,
+        creditBalanceCents: users.creditBalanceCents,
+        planGrantBalanceCents: users.planGrantBalanceCents,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!userRow) {
+      return { expiredCents: 0 };
+    }
+
+    const nonGrantBalance = Math.max(
+      0,
+      userRow.creditBalanceCents - userRow.planGrantBalanceCents,
+    );
+    if (nonGrantBalance <= 0) {
+      return { expiredCents: 0 };
+    }
+
+    const [sums] = await tx
+      .select({
+        oldTopUpCents: sql<number>`coalesce(sum(case when ${creditTransactions.type} = 'topup' and ${creditTransactions.createdAt} < ${cutoff.toISOString()}::timestamptz then ${creditTransactions.amountCents} else 0 end), 0)::int`,
+        activeTopUpCents: sql<number>`coalesce(sum(case when ${creditTransactions.type} = 'topup' and ${creditTransactions.createdAt} >= ${cutoff.toISOString()}::timestamptz then ${creditTransactions.amountCents} else 0 end), 0)::int`,
+        trialCents: sql<number>`coalesce(sum(case when ${creditTransactions.type} = 'signup_trial' then ${creditTransactions.amountCents} else 0 end), 0)::int`,
+      })
+      .from(creditTransactions)
+      .where(eq(creditTransactions.userId, userId));
+
+    const oldTopUpCents = sums?.oldTopUpCents ?? 0;
+    if (oldTopUpCents <= 0) {
+      return { expiredCents: 0 };
+    }
+
+    const activeTopUpCents = sums?.activeTopUpCents ?? 0;
+    const trialAllowance =
+      userRow.plan === "free" ? Math.max(0, sums?.trialCents ?? 100) : 0;
+    const maxValidNonGrantCents = activeTopUpCents + trialAllowance;
+
+    const expiredCents = Math.max(0, nonGrantBalance - maxValidNonGrantCents);
+    if (expiredCents <= 0) {
+      return { expiredCents: 0 };
+    }
+
+    const [updated] = await tx
+      .update(users)
+      .set({
+        creditBalanceCents: sql`${users.creditBalanceCents} - ${expiredCents}`,
+      })
+      .where(eq(users.id, userId))
+      .returning({ creditBalanceCents: users.creditBalanceCents });
+
+    if (!updated) {
+      return { expiredCents: 0 };
+    }
+
+    await tx.insert(creditTransactions).values({
+      id: nanoid(),
+      userId,
+      type: "grant_expiry",
+      amountCents: -expiredCents,
+      balanceAfterCents: updated.creditBalanceCents,
+      description: "Top-up credit expired after 90 days",
+    });
+
+    return { expiredCents };
+  });
+}
+
+/**
+ * Calculates a user's active, unspent top-up credit balance and 90-day expiry
+ * timestamp. Also enforces 90-day top-up expiry first so stale top-ups are
+ * removed from `users.creditBalanceCents`.
  */
 export async function getUserTopUpBalance(userId: string): Promise<{
   balanceCents: number;
   expiresAt: string | null;
 }> {
-  const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+  await expireStaleTopUps(userId);
+
   const cutoff = new Date(Date.now() - NINETY_DAYS_MS);
 
-  const topUpRows = await db
-    .select({
-      amountCents: creditTransactions.amountCents,
-      createdAt: creditTransactions.createdAt,
-    })
-    .from(creditTransactions)
-    .where(
-      and(
-        eq(creditTransactions.userId, userId),
-        eq(creditTransactions.type, "topup"),
-        gte(creditTransactions.createdAt, cutoff),
-      ),
-    )
-    .orderBy(desc(creditTransactions.createdAt));
+  const [state, topUpRows] = await Promise.all([
+    getUserBillingState(userId),
+    db
+      .select({
+        amountCents: creditTransactions.amountCents,
+        createdAt: creditTransactions.createdAt,
+      })
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.userId, userId),
+          eq(creditTransactions.type, "topup"),
+          gte(creditTransactions.createdAt, cutoff),
+        ),
+      )
+      .orderBy(desc(creditTransactions.createdAt)),
+  ]);
 
-  if (topUpRows.length === 0) {
+  if (!state || topUpRows.length === 0) {
     return { balanceCents: 0, expiresAt: null };
   }
 
-  const totalTopUpCents = topUpRows.reduce(
+  const totalActiveTopUpPurchased = topUpRows.reduce(
     (acc, r) => acc + Math.max(0, r.amountCents),
     0,
   );
+  // Actual remaining unspent top-up credit cannot exceed total balance minus
+  // the current subscription grant pool.
+  const nonGrantBalanceCents = Math.max(
+    0,
+    state.creditBalanceCents - state.planGrantBalanceCents,
+  );
+  const unspentTopUpCents = Math.min(
+    totalActiveTopUpPurchased,
+    nonGrantBalanceCents,
+  );
+
+  if (unspentTopUpCents <= 0) {
+    return { balanceCents: 0, expiresAt: null };
+  }
+
   const latestCreatedAt = topUpRows[0]?.createdAt ?? new Date();
   const expiresAt = new Date(
     latestCreatedAt.getTime() + NINETY_DAYS_MS,
   ).toISOString();
 
   return {
-    balanceCents: totalTopUpCents,
+    balanceCents: unspentTopUpCents,
     expiresAt,
   };
 }

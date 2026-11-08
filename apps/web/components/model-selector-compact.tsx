@@ -38,21 +38,16 @@ interface ModelSelectorCompactProps {
   onChange: (modelId: string) => void;
   disabled?: boolean;
   onCloseAutoFocus?: () => void;
-  /** True when the signed-in user is on the Free plan (Luna-only access)
-   * -- every model other than `freePlanModelId` renders locked with an
-   * upgrade prompt instead of being selectable. Omit/false for every
-   * other plan, where the picker behaves exactly as before. */
+  /** True when the signed-in user is on the Free plan
+   * -- every model not unlocked by the admin in Platform Settings renders
+   * locked with an upgrade prompt instead of being selectable. */
   isFreeTierLocked?: boolean;
-  /** The one model ID Free-tier users can still pick (qwen3.8-flash) --
-   * required when isFreeTierLocked is true so that model doesn't render locked. */
-  freePlanModelId?: string;
-  /** Additional model IDs Free-tier users may also pick without being
-   * locked. Merged with freePlanModelId when checking lock state; omit for
-   * no extras. Empty in practice since 2026-09-22 -- the owner-sponsored
-   * $0 model list was cleared (see FREE_TIER_ALLOWED_MODEL_IDS). */
+  /** The primary model ID unlocked by the admin for Free-tier users (or null if none). */
+  freePlanModelId?: string | null;
+  /** Model IDs unlocked by the admin for Free-tier users. */
   freeTierUnlockedModelIds?: readonly string[];
   /** Called when a Free-tier user clicks "Upgrade" inside the locked-
-   * model popup -- typically routes to /billing/plans. */
+   * model popup -- typically routes to /pricing. */
   onUpgradeRequired?: () => void;
 }
 

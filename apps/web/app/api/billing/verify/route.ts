@@ -52,21 +52,20 @@ export async function GET(req: Request) {
     await processChargeSuccess({
       reference: checkout.reference ?? checkout.checkoutId,
       customerId: checkout.customerId,
+      subscriptionId: checkout.subscriptionId,
       metadataUserId:
         typeof metadata.userId === "string" ? metadata.userId : null,
       metadataKind: typeof metadata.kind === "string" ? metadata.kind : null,
       metadataPlanId:
         typeof metadata.planId === "string" ? metadata.planId : null,
+      metadataWindowMode:
+        typeof metadata.windowMode === "string" ? metadata.windowMode : null,
       metadataUsdAmountCents:
         typeof metadata.usdAmountCents === "string" &&
         Number.isFinite(Number(metadata.usdAmountCents))
           ? Number(metadata.usdAmountCents)
           : null,
-      productId: null,
-      // Decimal string in checkout.currency. Only consulted when
-      // metadata.usdAmountCents is missing, and only meaningful when the
-      // session was priced in USD -- a non-USD amount must never be read
-      // as USD cents (that is how the old Paystack path over-credited).
+      productId: checkout.productId,
       fallbackAmountCents: usdDecimalToCents(
         checkout.amount,
         checkout.currency,

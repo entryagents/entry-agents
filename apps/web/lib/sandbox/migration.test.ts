@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import * as realDbSessions from "@/lib/db/sessions";
+import * as realSandbox from "@entry-agents/sandbox";
 
 mock.module("server-only", () => ({}));
 
@@ -16,8 +16,8 @@ interface TestSessionRecord {
     | "archived"
     | "failed";
   sandboxState: {
-    type: "vercel";
-    sandboxName: string;
+    type: "modal";
+    volumeName: string;
     expiresAt: number;
   };
   activeSandboxCommand: { cmdId: string } | null;
@@ -35,8 +35,8 @@ function makeDueSession(
     status: "running",
     lifecycleState: "active",
     sandboxState: {
-      type: "vercel",
-      sandboxName: "session_session-1",
+      type: "modal",
+      volumeName: "vol-1",
       // Already past the migration lead -- isSandboxMigrationDue()
       // should read this as due.
       expiresAt: Date.now() - 1,
@@ -63,14 +63,19 @@ const spies = {
       return patch;
     },
   ),
-  connectSandbox: mock(async (state: { type: string }) => {
+  claimSessionSandboxMigration: mock(async () => true),
+  connectSandbox: mock(async (state: unknown) => {
     if (connectSandboxShouldFail) {
       throw new Error("connect exploded");
     }
     return {
       killCommand: killCommandSpy,
       stop: stopSpy,
-      getState: () => ({ type: "vercel", sandboxName: "fresh-sandbox" }),
+      getState: () => ({
+        type: "modal",
+        volumeName: "fresh-sandbox",
+        expiresAt: Date.now() + 60_000,
+      }),
       __state: state,
     } as never;
   }),
@@ -83,21 +88,31 @@ const spies = {
   restoreWorkspacePayload: mock(async () => undefined),
 };
 
+const mockProvider = {
+  id: "modal",
+  capabilities: {
+    workspaceMigration: true,
+  },
+  buildProvisionState: mock(() => ({
+    type: "modal",
+    volumeName: "fresh-sandbox",
+  })),
+};
+
 mock.module("@/lib/db/sessions", () => ({
-  ...realDbSessions,
   getSessionById: spies.getSessionById,
   updateSession: spies.updateSession,
-  // lifecycle.ts (imported transitively via migration.ts's
-  // isSandboxMigrationDue/buildActiveLifecycleUpdate) also pulls
-  // getChatsBySessionId from this module; mock.module replaces the
-  // whole namespace for every consumer, not just this file's imports.
   getChatsBySessionId: mock(async () => []),
+  claimSessionSandboxMigration: spies.claimSessionSandboxMigration,
 }));
 
 mock.module("@entry-agents/sandbox", () => ({
+  ...realSandbox,
   connectSandbox: spies.connectSandbox,
   packWorkspacePayload: spies.packWorkspacePayload,
   restoreWorkspacePayload: spies.restoreWorkspacePayload,
+  requireSandboxProvider: mock(() => mockProvider),
+  getSandboxProvider: mock(() => mockProvider),
 }));
 
 let relaunchShouldThrow = false;
@@ -133,7 +148,7 @@ describe("performSandboxMigration", () => {
   test("migrates successfully and resets migrationFailureCount to 0", async () => {
     sessionRecord = makeDueSession({ migrationFailureCount: 3 });
 
-    const result = await performSandboxMigration("session-1");
+    const result = await performSandboxMigration("session-1", "test-run-1");
 
     expect(result).toEqual({ action: "migrated" });
     expect(sessionRecord?.migrationFailureCount).toBe(0);
@@ -144,7 +159,7 @@ describe("performSandboxMigration", () => {
       activeSandboxCommand: { cmdId: "cmd-123" },
     });
 
-    await performSandboxMigration("session-1");
+    await performSandboxMigration("session-1", "test-run-1");
 
     expect(killCommandSpy).toHaveBeenCalledWith("cmd-123");
   });
@@ -153,7 +168,7 @@ describe("performSandboxMigration", () => {
     connectSandboxShouldFail = true;
     sessionRecord = makeDueSession({ migrationFailureCount: 1 });
 
-    const result = await performSandboxMigration("session-1");
+    const result = await performSandboxMigration("session-1", "test-run-1");
 
     expect(result.action).toBe("failed");
     expect(result.failureCount).toBe(2);
@@ -165,7 +180,7 @@ describe("performSandboxMigration", () => {
     packShouldFail = true;
     sessionRecord = makeDueSession({ migrationFailureCount: 4 });
 
-    const result = await performSandboxMigration("session-1");
+    const result = await performSandboxMigration("session-1", "test-run-1");
 
     expect(result.action).toBe("failed");
     expect(result.failureCount).toBe(5);
@@ -176,7 +191,7 @@ describe("performSandboxMigration", () => {
     connectSandboxShouldFail = true;
     sessionRecord = makeDueSession({ migrationFailureCount: 0 });
 
-    const result = await performSandboxMigration("session-1");
+    const result = await performSandboxMigration("session-1", "test-run-1");
 
     expect(result.failureCount).toBe(1);
   });
@@ -184,7 +199,7 @@ describe("performSandboxMigration", () => {
   test("skips when a migration is already in progress for this session", async () => {
     sessionRecord = makeDueSession({ lifecycleState: "migrating" });
 
-    const result = await performSandboxMigration("session-1");
+    const result = await performSandboxMigration("session-1", "test-run-1");
 
     expect(result).toEqual({
       action: "skipped",
@@ -196,21 +211,21 @@ describe("performSandboxMigration", () => {
   test("skips without touching failure count when the sandbox isn't due for migration yet", async () => {
     sessionRecord = makeDueSession({
       sandboxState: {
-        type: "vercel",
-        sandboxName: "session_session-1",
+        type: "modal",
+        volumeName: "vol-1",
         expiresAt: Date.now() + 60 * 60 * 1000,
       },
       migrationFailureCount: 2,
     });
 
-    const result = await performSandboxMigration("session-1");
+    const result = await performSandboxMigration("session-1", "test-run-1");
 
     expect(result).toEqual({ action: "skipped", reason: "not-due-yet" });
     expect(sessionRecord?.migrationFailureCount).toBe(2);
   });
 
   test("checks whether a dev server needs relaunching after a successful migration", async () => {
-    const result = await performSandboxMigration("session-1");
+    const result = await performSandboxMigration("session-1", "test-run-1");
 
     expect(result).toEqual({ action: "migrated" });
     expect(relaunchDevServerAfterMigrationSpy).toHaveBeenCalledTimes(1);
@@ -219,7 +234,7 @@ describe("performSandboxMigration", () => {
   test("still reports the migration as successful when the dev server relaunch check throws", async () => {
     relaunchShouldThrow = true;
 
-    const result = await performSandboxMigration("session-1");
+    const result = await performSandboxMigration("session-1", "test-run-1");
 
     expect(result).toEqual({ action: "migrated" });
   });
@@ -227,7 +242,7 @@ describe("performSandboxMigration", () => {
   test("does not attempt a dev server relaunch when the migration itself fails", async () => {
     connectSandboxShouldFail = true;
 
-    await performSandboxMigration("session-1");
+    await performSandboxMigration("session-1", "test-run-1");
 
     expect(relaunchDevServerAfterMigrationSpy).not.toHaveBeenCalled();
   });

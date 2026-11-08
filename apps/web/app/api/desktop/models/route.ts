@@ -20,15 +20,15 @@ export async function GET(req: Request) {
       models: models.map((m) => ({
         id: m.id,
         name: m.name,
-        context_window: m.contextWindow || 1_000_000,
-        max_output_tokens: m.maxOutputTokens || 64_000,
-        pricing: m.pricing,
+        context_window: m.context_window || 1_000_000,
+        max_output_tokens: m.max_output_tokens || 64_000,
+        pricing: m.cost,
       })),
     });
   } catch (err) {
     return NextResponse.json(
       { error: (err as Error).message || "Failed to fetch desktop models" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

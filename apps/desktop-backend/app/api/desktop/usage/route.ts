@@ -22,19 +22,38 @@ interface WindowTotals {
   last30DaysCents: number;
 }
 
-async function getUsageWindowTotals(userId: string): Promise<WindowTotals> {
+async function getUsageWindowTotals(
+  userId: string,
+  billingCycleAnchor?: Date | null,
+): Promise<WindowTotals> {
+  const now = Date.now();
+  const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+  const anchorMs = billingCycleAnchor
+    ? billingCycleAnchor.getTime()
+    : now - THIRTY_DAYS_MS;
+
+  const cutoff5hIso = new Date(
+    Math.max(now - FIVE_HOURS_MS, anchorMs),
+  ).toISOString();
+  const cutoff7dIso = new Date(
+    Math.max(now - SEVEN_DAYS_MS, anchorMs),
+  ).toISOString();
+  const cutoff30d = new Date(anchorMs);
+
   const sums = await db
     .select({
-      last5: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} > now() - interval '5 hours' then abs(${creditTransactions.amountCents}) else 0 end), 0)`,
-      last7: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} > now() - interval '7 days' then abs(${creditTransactions.amountCents}) else 0 end), 0)`,
-      last30: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} > now() - interval '30 days' then abs(${creditTransactions.amountCents}) else 0 end), 0)`,
+      last5: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} >= ${cutoff5hIso}::timestamptz then -${creditTransactions.amountCents} else 0 end), 0)`,
+      last7: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} >= ${cutoff7dIso}::timestamptz then -${creditTransactions.amountCents} else 0 end), 0)`,
+      last30: sql<number>`coalesce(sum(-${creditTransactions.amountCents}), 0)`,
     })
     .from(creditTransactions)
     .where(
       and(
         eq(creditTransactions.userId, userId),
         eq(creditTransactions.type, "usage_debit"),
-        gte(creditTransactions.createdAt, sql`now() - interval '30 days'`),
+        gte(creditTransactions.createdAt, cutoff30d),
       ),
     );
   const s = sums[0];
@@ -53,6 +72,7 @@ export async function GET(req: NextRequest) {
     .select({
       plan: users.plan,
       creditBalanceCents: users.creditBalanceCents,
+      billingCycleAnchor: users.billingCycleAnchor,
     })
     .from(users)
     .where(eq(users.id, user.id))
@@ -70,14 +90,51 @@ export async function GET(req: NextRequest) {
     pro: "Pro",
     max: "Max",
   };
+
+  let currentPlan = u.plan ?? "free";
+  if (currentPlan !== "free" && u.billingCycleAnchor) {
+    const anchor = new Date(u.billingCycleAnchor);
+    if (!Number.isNaN(anchor.getTime())) {
+      const targetMonth = anchor.getUTCMonth() + 1;
+      const year = anchor.getUTCFullYear();
+      const lastDayOfTargetMonth = new Date(
+        Date.UTC(year, targetMonth + 1, 0),
+      ).getUTCDate();
+      const clampedDay = Math.min(anchor.getUTCDate(), lastDayOfTargetMonth);
+      const expiresAtMs = new Date(
+        Date.UTC(
+          year,
+          targetMonth,
+          clampedDay,
+          anchor.getUTCHours(),
+          anchor.getUTCMinutes(),
+          anchor.getUTCSeconds(),
+          anchor.getUTCMilliseconds(),
+        ),
+      ).getTime();
+
+      if (Date.now() > expiresAtMs) {
+        currentPlan = "free";
+        await db
+          .update(users)
+          .set({
+            plan: "free",
+            billingSubscriptionCode: null,
+            billingCycleAnchor: null,
+          })
+          .where(eq(users.id, user.id));
+      }
+    }
+  }
+
   // Rolling windows exist only on the goat/"Entry" plan: $10/5h, $25/week,
   // $50/month (20% / 50% / 100% of the $50 grant).
   const windows = { fiveHour: 1000, weekly: 2500, monthly: 5000 };
-  const hasWindows = u.plan === "goat";
+  const hasWindows = currentPlan === "goat";
 
   let usageWindows = null;
   if (hasWindows) {
-    const totals = await getUsageWindowTotals(user.id);
+    const totals = await getUsageWindowTotals(user.id, u.billingCycleAnchor);
     usageWindows = {
       fiveHour: {
         usedCents: totals.last5HoursCents,
@@ -92,8 +149,8 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
-    plan: u.plan,
-    planName: planNames[u.plan] ?? u.plan,
+    plan: currentPlan,
+    planName: planNames[currentPlan] ?? currentPlan,
     creditBalanceCents: u.creditBalanceCents,
     usageWindows,
   });

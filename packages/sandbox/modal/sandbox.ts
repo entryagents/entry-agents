@@ -552,6 +552,9 @@ export class ModalCloudSandbox implements Sandbox {
         };
       }
       if (error instanceof Error && error.name === "AbortError") {
+        if (cmdId) {
+          await this.killCommand(cmdId).catch(() => {});
+        }
         throw error;
       }
       const message = error instanceof Error ? error.message : String(error);

@@ -5,7 +5,7 @@ import {
   getUserTopUpBalance,
 } from "@/lib/billing/credit-ledger";
 import { isUserAdmin } from "@/lib/db/users";
-import { getPlanDefinition } from "@/lib/billing/plans";
+import { addOneCalendarMonth, getPlanDefinition } from "@/lib/billing/plans";
 
 /**
  * Lightweight "what plan am I on / how much credit do I have left" read,
@@ -78,7 +78,7 @@ export async function GET() {
   const isPaidPlan = state.plan && state.plan !== "free";
   const expiresAt =
     anchorDate && isPaidPlan
-      ? new Date(anchorDate.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      ? addOneCalendarMonth(anchorDate).toISOString()
       : null;
 
   return Response.json(

@@ -11,12 +11,17 @@ function ApproveForm() {
   const searchParams = useSearchParams();
   const codeParam = searchParams.get("code") || "";
 
-  const [code, setCode] = React.useState(codeParam.replace(/\D/g, "").slice(0, 6));
+  const [code, setCode] = React.useState(
+    codeParam.replace(/\D/g, "").slice(0, 6),
+  );
   const [loading, setLoading] = React.useState(false);
-  const [status, setStatus] = React.useState<"idle" | "checking" | "approved" | "error">("idle");
+  const [status, setStatus] = React.useState<
+    "idle" | "checking" | "approved" | "error"
+  >("idle");
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
 
-  const { isAuthenticated, loading: sessionLoading, user } = useSession();
+  const { isAuthenticated, loading: sessionLoading, session } = useSession();
+  const user = session?.user;
 
   React.useEffect(() => {
     if (codeParam) {
@@ -106,13 +111,29 @@ function ApproveForm() {
         ) : status === "approved" ? (
           <div className="w-full flex flex-col items-center gap-4 py-4">
             <div className="rounded-full bg-emerald-500/10 p-3 text-emerald-400 border border-emerald-500/20">
-              <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="h-8 w-8"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
-            <h2 className="text-base font-medium text-white">Desktop Application Authorized!</h2>
+            <h2 className="text-base font-medium text-white">
+              Desktop Application Authorized!
+            </h2>
             <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">
-              Approved as <span className="text-zinc-200 font-medium">{user?.email || user?.name}</span>. You can now return to Entry Agents Desktop.
+              Approved as{" "}
+              <span className="text-zinc-200 font-medium">
+                {user?.email || user?.name}
+              </span>
+              . You can now return to Entry Agents Desktop.
             </p>
             <div className="flex flex-col w-full gap-2 pt-2">
               <button
@@ -129,8 +150,12 @@ function ApproveForm() {
             {/* Account identifier */}
             <div className="w-full rounded-xl bg-zinc-900/60 border border-zinc-800/80 p-3 flex items-center justify-between text-left">
               <div className="flex flex-col">
-                <span className="text-xs text-zinc-400">Authorizing account:</span>
-                <span className="text-sm font-medium text-zinc-200">{user?.email || user?.name}</span>
+                <span className="text-xs text-zinc-400">
+                  Authorizing account:
+                </span>
+                <span className="text-sm font-medium text-zinc-200">
+                  {user?.email || user?.name}
+                </span>
               </div>
               <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-medium">
                 Active
@@ -139,10 +164,14 @@ function ApproveForm() {
 
             {/* Code Input */}
             <div className="w-full">
-              <label className="block text-xs uppercase tracking-wider text-zinc-400 mb-2 font-medium">
+              <label
+                htmlFor="confirmation-code"
+                className="block text-xs uppercase tracking-wider text-zinc-400 mb-2 font-medium"
+              >
                 Confirmation Code
               </label>
               <input
+                id="confirmation-code"
                 type="text"
                 maxLength={6}
                 value={code}

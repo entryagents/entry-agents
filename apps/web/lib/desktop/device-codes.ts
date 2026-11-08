@@ -84,7 +84,9 @@ export function createDeviceAuthorization(): {
 /**
  * Validates a user code without approving it yet.
  */
-export function getPendingDeviceAuthorization(userCode: string): DeviceAuthorizationRecord | null {
+export function getPendingDeviceAuthorization(
+  userCode: string,
+): DeviceAuthorizationRecord | null {
   cleanExpiredRecords();
   const cleanCode = userCode.trim().replace(/[\s-]/g, "");
   const record = deviceSessionsByUserCode.get(cleanCode);
@@ -109,7 +111,7 @@ export function approveDeviceAuthorization(
   userCode: string,
   userId: string,
   sessionToken: string,
-  userEmail?: string
+  userEmail?: string,
 ): { success: boolean; error?: string } {
   cleanExpiredRecords();
   const cleanCode = userCode.trim().replace(/[\s-]/g, "");
@@ -126,7 +128,10 @@ export function approveDeviceAuthorization(
 
   if (record.failedAttempts >= MAX_FAILED_ATTEMPTS) {
     record.status = "expired";
-    return { success: false, error: "Too many failed attempts. Code has been invalidated." };
+    return {
+      success: false,
+      error: "Too many failed attempts. Code has been invalidated.",
+    };
   }
 
   if (record.status !== "pending") {
@@ -168,12 +173,19 @@ export function pollAndConsumeDeviceToken(deviceCode: string): {
     return { status: "pending" };
   }
 
-  if (record.status === "approved" && record.sessionToken && record.approvedUserId) {
+  if (
+    record.status === "approved" &&
+    record.sessionToken &&
+    record.approvedUserId
+  ) {
     // Atomic one-time delivery
     const token = record.sessionToken;
     const userId = record.approvedUserId;
     const email = record.approvedUserEmail;
-    const remainingSeconds = Math.max(0, Math.floor((record.expiresAt - Date.now()) / 1000));
+    const remainingSeconds = Math.max(
+      0,
+      Math.floor((record.expiresAt - Date.now()) / 1000),
+    );
 
     record.status = "consumed";
     record.sessionToken = undefined; // wiped from memory immediately

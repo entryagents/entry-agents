@@ -73,7 +73,7 @@ export function sanitizePromptToTitle(prompt: string): string {
       .replace(/^[`'"]+|[`'"]+$/g, "")
       // Remove common conversational opening phrases
       .replace(
-        /^(can you\s+(please\s+)?(help\s+(me\s+)?with\s+|to\s+)?|please\s+|hey\s+|hi\s+|hello\s+|let's\s+|let\s+us\s+|let\s+me\s+|i\s+want\s+to\s+|i\s+need\s+to\s+|could\s+you\s+)/i,
+        /^((?:can you(?:\s+please)?(?:\s+help(?:\s+me)?\s+with|\s+to)?|please|hey|hi|hello|let's|let\s+us|let\s+me|i\s+want\s+to|i\s+need\s+to|could\s+you)[,\s]+)+/i,
         "",
       )
       .replace(

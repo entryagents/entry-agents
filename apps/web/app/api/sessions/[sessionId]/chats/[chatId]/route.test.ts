@@ -103,6 +103,17 @@ mock.module("@/lib/db/sessions", () => ({
   deleteChat: async (chatId: string) => {
     deleteChatCalls.push(chatId);
   },
+  updateChatActiveStreamId: async () => {},
+  compareAndSetChatActiveStreamId: async () => true,
+  setChatRunStatus: async () => {},
+}));
+
+mock.module("workflow/api", () => ({
+  getRun: () => ({
+    get status() {
+      return Promise.resolve("running");
+    },
+  }),
 }));
 
 mock.module("@/lib/db/user-preferences", () => ({
@@ -236,7 +247,7 @@ describe("/api/sessions/[sessionId]/chats/[chatId]", () => {
       activeStreamId: "stream-1",
     });
     expect(body.isStreaming).toBe(true);
-    expect(body.messages).toEqual(chatMessages.map((message) => message.parts));
+    expect(body.messages).toMatchObject(chatMessages);
   });
 
   test("PATCH returns auth error from guard", async () => {
