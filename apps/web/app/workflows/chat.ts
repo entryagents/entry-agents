@@ -3304,11 +3304,15 @@ const runAgentStep = async (
         subagentStepSeq += 1;
         const seq = subagentStepSeq;
         pendingDebits.push(
-          recordBillableUsage(userId, costUsd, {
-            billingReference: `${workflowRunId}:main-step:${stepNumber}:subagent-step:${seq}`,
-            modelId: subagentModelId,
-            description: `Subagent usage: ${subagentModelId}`,
-          }).then(() => undefined),
+          import("@/lib/billing/credit-ledger")
+            .then((m) =>
+              m.recordBillableUsage(userId, costUsd, {
+                billingReference: `${workflowRunId}:main-step:${stepNumber}:subagent-step:${seq}`,
+                modelId: subagentModelId,
+                description: `Subagent usage: ${subagentModelId}`,
+              }),
+            )
+            .then(() => undefined),
         );
       }
       const state = applySpendToBudgets({

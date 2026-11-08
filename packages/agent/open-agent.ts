@@ -330,7 +330,8 @@ export const openAgent = new ToolLoopAgent({
           if (!options.toolset) return merged;
           const picked: Record<string, unknown> = {};
           for (const name of options.toolset) {
-            if (name in merged) picked[name] = merged[name as keyof typeof merged];
+            if (name in merged)
+              picked[name] = merged[name as keyof typeof merged];
           }
           return picked as typeof merged;
         })(),

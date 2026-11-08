@@ -1,4 +1,3 @@
-
 /**
  * Server-side sandbox provider registry: binds each registered provider id
  * to its `connect()` implementation and its state-shape normalisation.
@@ -70,7 +69,9 @@ export interface SandboxProvider {
    * Vercel's `session_<id>` name, Boat's bare `bx_*` id -- stay inside the
    * provider instead of becoming provider-name branches in app code.
    */
-  buildProvisionState(input: BuildProvisionStateInput): SandboxState | Promise<SandboxState>;
+  buildProvisionState(
+    input: BuildProvisionStateInput,
+  ): SandboxState | Promise<SandboxState>;
   /**
    * Whether the provider can operate in this environment right now (i.e.
    * its credentials are configured). An unavailable provider is a hard
@@ -141,7 +142,11 @@ const modalProvider: SandboxProvider = {
 
   async buildProvisionState({ sessionId, source }) {
     // Automatically migrate retired modal sessions to Boxd
-    return await boxdProvider.buildProvisionState({ sessionId, source, fresh: true });
+    return await boxdProvider.buildProvisionState({
+      sessionId,
+      source,
+      fresh: true,
+    });
   },
 
   isAvailable: () => false,
@@ -191,7 +196,11 @@ const novitaProvider: SandboxProvider = {
 
   async buildProvisionState({ sessionId, source }) {
     // Automatically migrate retired novita sessions to Boxd
-    return await boxdProvider.buildProvisionState({ sessionId, source, fresh: true });
+    return await boxdProvider.buildProvisionState({
+      sessionId,
+      source,
+      fresh: true,
+    });
   },
 
   isAvailable: () => false,
