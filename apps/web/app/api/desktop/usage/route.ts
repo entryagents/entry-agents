@@ -49,10 +49,12 @@ export async function GET(req: Request) {
       email: foundSession.userEmail,
       name: foundSession.userName,
       avatar: foundSession.userAvatar,
+      image: foundSession.userAvatar,
       plan: plan.id,
       planName: plan.name,
       creditBalanceCents: billingState?.creditBalanceCents ?? 0,
-      monthlyGrantCents: plan.creditGrantCents ?? 0,
+      monthlyGrantCents:
+        billingState?.planGrantBalanceCents ?? plan.creditGrantCents ?? 0,
     });
   } catch (err) {
     return NextResponse.json(

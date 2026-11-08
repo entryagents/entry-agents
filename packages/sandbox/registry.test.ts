@@ -199,7 +199,7 @@ describe("provider state shape and persistence", () => {
   test("retired modal provision state migrates existing sessions to boxd", () => {
     const provider = requireSandboxProvider("modal");
 
-    const reopened = provider.buildProvisionState({
+    const reopened = await provider.buildProvisionState({
       sessionId: "abc",
       existing: { type: "modal", volumeName: "entry-workspace-abc" },
     });
@@ -226,13 +226,13 @@ describe("provider state shape and persistence", () => {
 
   test("boxd provision state always has a stable non-undefined machine name", () => {
     const provider = requireSandboxProvider("boxd");
-    const first = provider.buildProvisionState({ sessionId: "abc-123" });
+    const first = await provider.buildProvisionState({ sessionId: "abc-123" });
     expect(first).toMatchObject({ type: "boxd" });
     expect((first as { machineName: string }).machineName).toMatch(
       /^entry-[a-f0-9]{24}$/,
     );
 
-    const repaired = provider.buildProvisionState({
+    const repaired = await provider.buildProvisionState({
       sessionId: "abc-123",
       existing: { type: "boxd", machineName: "entry-undefined" },
     });

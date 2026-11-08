@@ -50,7 +50,7 @@ async function runProvisioning(sessionId: string, runId: string) {
     // generic-message gap as the earlier Vercel-era incidents, so the
     // helper stayed provider-neutral and moved into the sandbox
     // package root.
-    const message = toErrorMessage(error);
+    const message = await toErrorMessage(error);
     await updateSession(sessionId, {
       lifecycleState: "failed",
       lifecycleError: message,

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+
 /**
  * Server-side sandbox provider registry: binds each registered provider id
  * to its `connect()` implementation and its state-shape normalisation.
@@ -22,10 +22,11 @@ import {
   type SandboxCapabilities,
   type SandboxProviderId,
 } from "./registry-types.ts";
-import { connectBoxd } from "./boxd/connect.ts";
 import { isBoxdConfigured } from "./boxd/config.ts";
+// Adapter implementations are imported lazily inside connect(): the workflow
+// bundler forbids Node-only modules (@boxd-sh/sdk, node:fs, node:child_process)
+// in the static graph, and only the selected provider should ever load.
 import type { BoxdState } from "./boxd/state.ts";
-import { connectLocal } from "./local/sandbox.ts";
 import type { LocalSandboxConnectOptions } from "./local/sandbox.ts";
 
 export class UnsupportedSandboxProviderError extends Error {
@@ -69,7 +70,7 @@ export interface SandboxProvider {
    * Vercel's `session_<id>` name, Boat's bare `bx_*` id -- stay inside the
    * provider instead of becoming provider-name branches in app code.
    */
-  buildProvisionState(input: BuildProvisionStateInput): SandboxState;
+  buildProvisionState(input: BuildProvisionStateInput): SandboxState | Promise<SandboxState>;
   /**
    * Whether the provider can operate in this environment right now (i.e.
    * its credentials are configured). An unavailable provider is a hard
@@ -87,10 +88,11 @@ const boxdProvider: SandboxProvider = {
   async connect(state, options) {
     if (state.type !== "boxd")
       throw new UnsupportedSandboxProviderError(String(state.type));
+    const { connectBoxd } = await import("./boxd/connect.ts");
     return connectBoxd(state as { type: "boxd" } & BoxdState, options);
   },
 
-  buildProvisionState({ existing, sessionId, source }) {
+  async buildProvisionState({ existing, sessionId, source }) {
     const current =
       existing?.type === "boxd"
         ? (existing as { type: "boxd" } & BoxdState)
@@ -103,6 +105,7 @@ const boxdProvider: SandboxProvider = {
     // Do not put the raw session id in the public boxd hostname. The
     // machine name is also the editor subdomain, so it must be opaque even
     // though the machine id remains the durable reconnect handle.
+    const { createHash } = await import("node:crypto");
     const sessionNameHash = createHash("sha256")
       .update(sessionId)
       .digest("hex")
@@ -136,9 +139,9 @@ const modalProvider: SandboxProvider = {
     );
   },
 
-  buildProvisionState({ sessionId, source }) {
+  async buildProvisionState({ sessionId, source }) {
     // Automatically migrate retired modal sessions to Boxd
-    return boxdProvider.buildProvisionState({ sessionId, source, fresh: true });
+    return await boxdProvider.buildProvisionState({ sessionId, source, fresh: true });
   },
 
   isAvailable: () => false,
@@ -154,6 +157,7 @@ const localProvider: SandboxProvider = {
     if (state.type !== "local") {
       throw new UnsupportedSandboxProviderError(String(state.type));
     }
+    const { connectLocal } = await import("./local/sandbox.ts");
     return connectLocal(
       state as { type: "local" } & { rootDir: string },
       options as LocalSandboxConnectOptions | undefined,
@@ -185,9 +189,9 @@ const novitaProvider: SandboxProvider = {
     );
   },
 
-  buildProvisionState({ sessionId, source }) {
+  async buildProvisionState({ sessionId, source }) {
     // Automatically migrate retired novita sessions to Boxd
-    return boxdProvider.buildProvisionState({ sessionId, source, fresh: true });
+    return await boxdProvider.buildProvisionState({ sessionId, source, fresh: true });
   },
 
   isAvailable: () => false,

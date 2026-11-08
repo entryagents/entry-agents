@@ -115,12 +115,12 @@ function resolveSessionProvider(session: SessionRecord): SandboxProvider {
   return requireSandboxProvider(String(rawType));
 }
 
-function buildSandboxState(session: SessionRecord): SandboxState {
+async function buildSandboxState(session: SessionRecord): Promise<SandboxState> {
   const provider = resolveSessionProvider(session);
   const existingState = session.sandboxState;
   const source = buildSandboxSource(session);
 
-  return provider.buildProvisionState({
+  return await provider.buildProvisionState({
     existing: isSandboxState(existingState) ? existingState : undefined,
     sessionId: session.id,
     source,
@@ -243,7 +243,7 @@ export async function provisionSessionSandbox(params: {
   let sandbox: Sandbox;
   try {
     sandbox = await connectSandbox({
-      state: buildSandboxState(session),
+      state: await buildSandboxState(session),
       options: {
         githubToken: setupToken?.token,
         gitUser,
@@ -285,7 +285,7 @@ export async function provisionSessionSandbox(params: {
   const rawSandboxState = sandbox.getState?.();
   const sandboxState = isSandboxState(rawSandboxState)
     ? rawSandboxState
-    : buildSandboxState(session);
+    : await buildSandboxState(session);
 
   const updatedSession = await updateSessionIfNotArchived(params.sessionId, {
     sandboxState,

@@ -1724,7 +1724,7 @@ describe("runAgentWorkflow", () => {
           id: "queued-user-2",
           role: "user" as const,
           parts: [{ type: "text" as const, text: "Run the tests next" }],
-        }),
+        } as unknown as never),
       )
       .mockImplementationOnce(() => Promise.resolve(null));
 

@@ -131,7 +131,7 @@ export async function resolveChatSandboxRuntime(params: {
   let sandboxState = session.sandboxState;
   if (!sandboxState) {
     const { requireSandboxProvider } = await import("@entry-agents/sandbox");
-    sandboxState = requireSandboxProvider("boxd").buildProvisionState({
+    sandboxState = await requireSandboxProvider("boxd").buildProvisionState({
       sessionId: params.sessionId,
     });
   }

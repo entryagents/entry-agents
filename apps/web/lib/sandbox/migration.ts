@@ -155,7 +155,7 @@ export async function performSandboxMigration(
     // Deliberately AFTER oldSandbox.stop() above: the drive mount is
     // what makes this ordering load-bearing, not the sandbox creation.
     const freshProvider = requireSandboxProvider(String(sandboxState.type));
-    const freshState = freshProvider.buildProvisionState({
+    const freshState = await freshProvider.buildProvisionState({
       sessionId,
       fresh: true,
     });

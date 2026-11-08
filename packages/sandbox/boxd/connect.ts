@@ -1,3 +1,5 @@
+"use step";
+
 import { Boxd } from "@boxd-sh/sdk";
 import type { ConnectOptions } from "../factory.ts";
 import type { Sandbox } from "../interface.ts";
