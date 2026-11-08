@@ -186,8 +186,8 @@ describe("provider selection reaches the runtime", () => {
 });
 
 describe("provider state shape and persistence", () => {
-  test("retired modal provision state automatically migrates to boxd", () => {
-    const state = requireSandboxProvider("modal").buildProvisionState({
+  test("retired modal provision state automatically migrates to boxd", async () => {
+    const state = await requireSandboxProvider("modal").buildProvisionState({
       sessionId: "abc",
     });
 
