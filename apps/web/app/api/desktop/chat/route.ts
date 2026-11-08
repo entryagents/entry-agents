@@ -147,10 +147,10 @@ export async function POST(req: Request) {
         try {
           const models = await fetchAvailableLanguageModelsWithContext();
           const match = models.find((m) => m.id === modelId);
-          const costUsd = estimateModelUsageCost(usage, match?.pricing);
+          const costUsd = estimateModelUsageCost(usage, match?.cost);
           await recordBillableUsage(userId, costUsd ?? 0, {
             billingReference,
-            modelId: modelId || null,
+            modelId: modelId || undefined,
             description: "Desktop agent usage",
           });
         } catch (err) {
