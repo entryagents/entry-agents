@@ -88,7 +88,7 @@ IMPORTANT:
   outputSchema: taskOutputSchema,
   execute: async function* (
     { subagentType, task, instructions },
-    { experimental_context, abortSignal },
+    { experimental_context, abortSignal, toolCallId },
   ) {
     const sandboxContext = getSandboxContext(experimental_context, "task");
     const model = getSubagentModel(experimental_context, "task");
@@ -107,6 +107,8 @@ IMPORTANT:
 
     const startedAt = Date.now();
     let toolCallCount = 0;
+    // Nth model step of THIS subagent (billingGuard attribution below).
+    let subagentStepIndex = 0;
 
     if (billingGuard) {
       const plan = billingGuard.planSubagent(subagentModelId);
@@ -242,9 +244,17 @@ IMPORTANT:
         if (part.type === "finish-step") {
           usage = sumLanguageModelUsage(usage, part.usage);
           if (billingGuard) {
+            // Billing identity for THIS subagent model step: this task
+            // call's own toolCallId (unique per subagent launch, stable
+            // no matter how concurrent subagents interleave) plus the
+            // subagent's Nth model step. Hosts key idempotent ledger
+            // references on it -- a shared execution-wide counter would
+            // remap rows to the wrong subagent across replays.
+            subagentStepIndex += 1;
             const plan = billingGuard.noteSubagentStepUsage(
               subagentModelId,
               part.usage,
+              `${toolCallId}:${subagentStepIndex}`,
             );
             if (plan.stop) {
               budgetStopped = true;

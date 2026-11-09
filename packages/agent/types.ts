@@ -284,9 +284,18 @@ export interface SubagentBudgetPlan {
 
 export interface SubagentBudgetGuard {
   planSubagent(modelId: string): SubagentBudgetPlan;
+  /**
+   * `subagentStepId` (optional) identifies the (subagent, model step)
+   * pair for billing attribution -- e.g. the launching task tool call's
+   * own toolCallId plus the subagent's internal step index. Hosts use it
+   * to key idempotent ledger references; a per-execution counter instead
+   * would remap rows to the wrong subagent across concurrent finishes
+   * and step replays.
+   */
   noteSubagentStepUsage(
     modelId: string,
     usage: LanguageModelUsage,
+    subagentStepId?: string,
   ): SubagentBudgetPlan;
 }
 
