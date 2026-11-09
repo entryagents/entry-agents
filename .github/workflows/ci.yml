@@ -83,8 +83,10 @@ jobs:
       # TODO: 14 tests in apps/web/app/workflows currently fail on main due to
       # mock leakage between bun test files (bun's mock.module is process-global,
       # so tests only pass when run in isolation). Once
-      # `cd apps/web && bun test app/workflows/` is green, remove the
+      # `# bun mock.module is process-global: run each file in its own process
+for f in app/workflows/*.test.ts; do bun test "$f" || exit 1; done` is green, remove the
       # `continue-on-error` below so this gate blocks merges.
       - name: Workflow unit tests
         continue-on-error: true
-        run: cd apps/web && bun test app/workflows/
+        run: # bun mock.module is process-global: run each file in its own process
+for f in app/workflows/*.test.ts; do bun test "$f" || exit 1; done

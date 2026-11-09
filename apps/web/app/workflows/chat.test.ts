@@ -536,6 +536,12 @@ function makeOptions(overrides?: Record<string, unknown>) {
 
 // ── Tests ──────────────────────────────────────────────────────────
 
+// Default implementations captured once, right after the spies object is
+// created, so beforeEach can reinstall them after mockReset().
+const spyDefaults = new Map(
+  Object.entries(spies).map(([key, spy]) => [key, spy.getMockImplementation()]),
+);
+
 beforeEach(() => {
   writtenChunks.length = 0;
   runStatus = "running";
@@ -579,7 +585,15 @@ beforeEach(() => {
     globalSkillRefs: [],
     enabledModelIds: [],
   };
-  Object.values(spies).forEach((s) => s.mockClear());
+  // mockClear() does not drain queued mockImplementationOnce callbacks,
+  // so an unconsumed once-implementation leaks into the next test (and
+  // flips results between runs). Reset, then reinstall the default
+  // implementation captured at creation time.
+  for (const [key, spy] of Object.entries(spies)) {
+    spy.mockReset();
+    const fallback = spyDefaults.get(key);
+    if (fallback) spy.mockImplementation(fallback);
+  }
 });
 
 describe("runAgentWorkflow", () => {
