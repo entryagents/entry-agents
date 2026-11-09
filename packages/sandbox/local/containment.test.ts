@@ -71,7 +71,7 @@ describe("LocalSandbox workspace containment", () => {
   // ── PASS cases ────────────────────────────────────────────────────────
   test("PASS: the root directory itself", async () => {
     const { base, root } = await makeLandscape();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await expect(sandbox.access(root)).resolves.toBeUndefined();
     await expect(
@@ -84,7 +84,7 @@ describe("LocalSandbox workspace containment", () => {
 
   test("PASS: simple file inside root (relative and absolute)", async () => {
     const { base, root } = await makeLandscape();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await sandbox.writeFile("hello.txt", "hi");
     expect(await sandbox.readFile("hello.txt")).toBe("hi");
@@ -98,7 +98,7 @@ describe("LocalSandbox workspace containment", () => {
 
   test("PASS: nested file and nested directory", async () => {
     const { base, root } = await makeLandscape();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await sandbox.writeFile("src/components/App.tsx", "export default null;");
     expect(await sandbox.readFile("src/components/App.tsx")).toBe(
@@ -120,7 +120,7 @@ describe("LocalSandbox workspace containment", () => {
 
   test("PASS: nonexistent file inside root (write creates parents)", async () => {
     const { base, root } = await makeLandscape();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await sandbox.writeFile("src/brand/new-file.txt", "created");
     expect(
@@ -147,7 +147,7 @@ describe("LocalSandbox workspace containment", () => {
         "SYMLINK UNAVAILABLE: this environment does not permit symlink creation, so the symlink security cases could not be executed.",
       );
     }
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     expect(await sandbox.readFile("safe-link/inside.txt")).toBe(
       "inside content",
@@ -162,7 +162,7 @@ describe("LocalSandbox workspace containment", () => {
   // ── REJECT cases ──────────────────────────────────────────────────────
   test("REJECT: relative traversal (../ and ../../)", async () => {
     const { base, root } = await makeLandscape();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await expectRejected(
       sandbox.readFile("../outside/secret.txt"),
@@ -183,7 +183,7 @@ describe("LocalSandbox workspace containment", () => {
 
   test("REJECT: nested traversal escaping root after valid segments", async () => {
     const { base, root } = await makeLandscape();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await expectRejected(
       sandbox.readFile("src/components/../../../outside/secret.txt"),
@@ -199,7 +199,7 @@ describe("LocalSandbox workspace containment", () => {
 
   test("REJECT: absolute path outside root", async () => {
     const { base, root, outside } = await makeLandscape();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await expectRejected(
       sandbox.readFile(path.join(outside, "secret.txt")),
@@ -229,7 +229,7 @@ describe("LocalSandbox workspace containment", () => {
         "SYMLINK UNAVAILABLE: this environment does not permit symlink creation, so the symlink security cases could not be executed.",
       );
     }
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     // The symlink exists and is lexically inside root, but resolves outside.
     expect(await fs.readlink(path.join(root, "escape-link"))).toBe(outside);
@@ -271,7 +271,7 @@ describe("LocalSandbox workspace containment", () => {
         "SYMLINK UNAVAILABLE: this environment does not permit symlink creation, so the symlink security cases could not be executed.",
       );
     }
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await expectRejected(
       sandbox.readFile("chain/inner/secret.txt"),
@@ -288,7 +288,7 @@ describe("LocalSandbox workspace containment", () => {
 
   test("REJECT: prefix collision such as /project-secret", async () => {
     const { base, root, collision } = await makeLandscape();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     expect(collision.startsWith(root)).toBe(true); // the trap: string-prefix would pass
     await expectRejected(
@@ -305,7 +305,7 @@ describe("LocalSandbox workspace containment", () => {
 
   test("REJECT: prefix collision via relative traversal", async () => {
     const { base, root } = await makeLandscape();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     // root = <base>/project ; "../project-secret/collision.txt"
     await expectRejected(
@@ -318,7 +318,7 @@ describe("LocalSandbox workspace containment", () => {
 
   test("REJECT: exec cwd outside root", async () => {
     const { base, root, outside } = await makeLandscape();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     const result = await sandbox
       .exec("pwd", outside, 5000)
@@ -344,7 +344,7 @@ describe("LocalSandbox workspace containment", () => {
         "SYMLINK UNAVAILABLE: this environment does not permit symlink creation, so the symlink security cases could not be executed.",
       );
     }
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await expectRejected(
       sandbox.exec("pwd", "escape-link", 5000),
@@ -357,7 +357,7 @@ describe("LocalSandbox workspace containment", () => {
   // ── allowedRoots opt-in ───────────────────────────────────────────────
   test("allowedRoots grants access to an explicitly permitted second root only", async () => {
     const { base, root, outside, collision } = await makeLandscape();
-    const sandbox = new LocalSandbox(root, { allowedRoots: [outside] });
+    const sandbox = LocalSandbox(root, { allowedRoots: [outside] });
 
     expect(await sandbox.readFile(path.join(outside, "secret.txt"))).toBe(
       "top secret",
@@ -379,7 +379,7 @@ describe("LocalSandbox workspace containment", () => {
         "SYMLINK UNAVAILABLE: cannot symlink the root in this environment.",
       );
     }
-    const sandbox = new LocalSandbox(linkRoot);
+    const sandbox = LocalSandbox(linkRoot);
 
     await sandbox.writeFile("via-link.txt", "ok");
     expect(await fs.readFile(path.join(root, "via-link.txt"), "utf-8")).toBe(

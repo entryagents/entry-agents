@@ -11,7 +11,7 @@ async function makeTmpDir(): Promise<string> {
 describe("LocalSandbox", () => {
   test("writes and reads a file via relative + absolute paths", async () => {
     const root = await makeTmpDir();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await sandbox.writeFile("hello.txt", "hi there");
     expect(await sandbox.readFile("hello.txt")).toBe("hi there");
@@ -24,7 +24,7 @@ describe("LocalSandbox", () => {
 
   test("writeFile creates missing parent directories", async () => {
     const root = await makeTmpDir();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await sandbox.writeFile("nested/dir/file.txt", "content");
     expect(await sandbox.readFile("nested/dir/file.txt")).toBe("content");
@@ -34,7 +34,7 @@ describe("LocalSandbox", () => {
 
   test("exec runs a real shell command scoped to cwd and returns exit code", async () => {
     const root = await makeTmpDir();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
     await sandbox.writeFile("marker.txt", "present");
 
     const result = await sandbox.exec("ls", root, 5000);
@@ -47,7 +47,7 @@ describe("LocalSandbox", () => {
 
   test("exec surfaces a non-zero exit code without throwing", async () => {
     const root = await makeTmpDir();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     const result = await sandbox.exec("exit 3", root, 5000);
     expect(result.success).toBe(false);
@@ -58,7 +58,7 @@ describe("LocalSandbox", () => {
 
   test("exec kills a runaway command at the timeout instead of hanging", async () => {
     const root = await makeTmpDir();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     const result = await sandbox.exec("sleep 30", root, 200);
     expect(result.success).toBe(false);
@@ -70,7 +70,7 @@ describe("LocalSandbox", () => {
 
   test("brokered credentials inject into exec and clear cleanly", async () => {
     const root = await makeTmpDir();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await sandbox.setVercelAuthToken("vcp_test_token_123");
     await sandbox.setGitHubAuthToken("gho_test_token_456");
@@ -99,7 +99,7 @@ describe("LocalSandbox", () => {
 
   test("stat/access reflect real filesystem state", async () => {
     const root = await makeTmpDir();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
     await sandbox.writeFile("a.txt", "x");
 
     const stats = await sandbox.stat("a.txt");

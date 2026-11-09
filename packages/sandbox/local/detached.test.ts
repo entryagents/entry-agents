@@ -3,7 +3,8 @@ import * as fs from "node:fs/promises";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { LocalSandbox, LocalSandboxPathError } from "./sandbox.ts";
+import { LocalSandbox } from "./sandbox.ts";
+import { LocalSandboxPathError } from "./path-error.ts";
 
 /**
  * Phase 2B -- detached process lifecycle.
@@ -84,7 +85,7 @@ let serverCleanupPid: number | undefined;
 describe("LocalSandbox detached process lifecycle", () => {
   test("short-lived command: returns immediately with a command id", async () => {
     const root = await makeRoot();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     const start = Date.now();
     const { commandId } = await sandbox.execDetached("sleep 0.2", root);
@@ -96,7 +97,7 @@ describe("LocalSandbox detached process lifecycle", () => {
 
   test("long-running command: alive after execDetached returns, still tracked", async () => {
     const root = await makeRoot();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     // Write our own pid so the test can observe liveness independently.
     const { commandId } = await sandbox.execDetached(
@@ -123,7 +124,7 @@ describe("LocalSandbox detached process lifecycle", () => {
 
   test("kill: process terminates and registry releases the id", async () => {
     const root = await makeRoot();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     const { commandId } = await sandbox.execDetached("sleep 30", root);
     const { commandId: secondId } = await sandbox.execDetached(
@@ -147,7 +148,7 @@ describe("LocalSandbox detached process lifecycle", () => {
 
   test("kill an already-exited process resolves cleanly", async () => {
     const root = await makeRoot();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     const { commandId } = await sandbox.execDetached("true", root); // exits at once
     await new Promise((resolve) => setTimeout(resolve, 150)); // let it exit + deregister
@@ -166,7 +167,7 @@ describe("LocalSandbox detached process lifecycle", () => {
 
   test("unknown / foreign process ids are refused (no arbitrary PID kill)", async () => {
     const root = await makeRoot();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     // Never spawned by this sandbox -- including values that look like PIDs.
     await expect(sandbox.killCommand("local-999")).resolves.toBeUndefined();
@@ -177,7 +178,7 @@ describe("LocalSandbox detached process lifecycle", () => {
     await expect(sandbox.killCommand("")).resolves.toBeUndefined();
 
     // A DIFFERENT sandbox instance's ids are foreign to this one.
-    const other = new LocalSandbox(root);
+    const other = LocalSandbox(root);
     const { commandId } = await other.execDetached("sleep 30", root);
     try {
       await expect(sandbox.killCommand(commandId)).resolves.toBeUndefined();
@@ -193,7 +194,7 @@ describe("LocalSandbox detached process lifecycle", () => {
     const base = await makeRoot();
     const root = path.join(base, "project");
     await fs.mkdir(root);
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     await expect(sandbox.execDetached("true", root)).resolves.toMatchObject({
       commandId: expect.stringMatching(/^local-/),
@@ -211,7 +212,7 @@ describe("LocalSandbox detached process lifecycle", () => {
 
   test("dev-server-style: Node server binds a port, stays up, then dies on kill", async () => {
     const root = await makeRoot();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
     const port = 18_000 + Math.floor(Math.random() * 2_000);
     const serverScript = path.join(root, "tiny-server.js");
     await fs.writeFile(
@@ -269,7 +270,7 @@ describe("LocalSandbox detached process lifecycle", () => {
 
   test("stop() terminates everything still owned by the sandbox", async () => {
     const root = await makeRoot();
-    const sandbox = new LocalSandbox(root);
+    const sandbox = LocalSandbox(root);
 
     const pidFiles = ["s1.pid", "s2.pid"];
     const ids = [];

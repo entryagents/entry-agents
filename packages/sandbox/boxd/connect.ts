@@ -39,6 +39,47 @@ async function bootstrapWorkspace(
   /* oxlint-enable eslint/no-template-curly-in-string */
 
   if (source?.repo) {
+    // The bare ubuntu image does not guarantee git. Provisioning failed in
+    // production with a raw "git: command not found" from the clone below,
+    // surfacing as a fatal provisioning error that wedged the session.
+    // Ensure git FIRST, one simple command per branch (the runner parses
+    // compound programs inconsistently -- see the clone probe below).
+    const hasGit = await sandbox.exec(
+      "command -v git",
+      BOXD_WORKING_DIRECTORY,
+      30_000,
+    );
+    if (!hasGit.success) {
+      const installSudo = await sandbox.exec(
+        "sudo -n apt-get update -qq && sudo -n apt-get install -y -qq git",
+        BOXD_WORKING_DIRECTORY,
+        300_000,
+      );
+      if (!installSudo.success) {
+        const installPlain = await sandbox.exec(
+          "apt-get update -qq && apt-get install -y -qq git",
+          BOXD_WORKING_DIRECTORY,
+          300_000,
+        );
+        if (!installPlain.success) {
+          throw new Error(
+            "Failed to initialize workspace: git is not installed on the boxd " +
+              "machine and could not be installed (no sudo/root). Install git " +
+              "in the machine image or grant the runtime user package access.",
+          );
+        }
+      }
+      const verify = await sandbox.exec(
+        "command -v git",
+        BOXD_WORKING_DIRECTORY,
+        30_000,
+      );
+      if (!verify.success) {
+        throw new Error(
+          "Failed to initialize workspace: git still missing after install attempt",
+        );
+      }
+    }
     // Do not send a compound if/then/else shell program to the provider. The
     // boxd command runner has historically parsed that form inconsistently,
     // producing `/bin/sh: then: unexpected` and wedging reconnects. Probe the
