@@ -31,6 +31,7 @@ import { addLanguageModelUsage } from "./usage-utils";
 import { estimateStepCost } from "./gateway-metadata";
 import {
   applySpendToBudgets,
+  buildSubagentBillingReference,
   buildSubagentBudgetGuard,
   computeRealtimeSpendCap,
   estimateNextStepInputTokens,
@@ -3289,6 +3290,10 @@ const runAgentStep = async (
   // Billing persistence promises are flushed before this durable step
   // returns. The database owns sub-cent carry and idempotency.
   const pendingDebits: Promise<void>[] = [];
+  // Fallback segment for subagent billing references when a usage report
+  // arrives without a subagentStepId -- unique within this step execution
+  // only (it restarts on a replay). The real task-tool path always sends
+  // an id; see buildSubagentBillingReference.
   let subagentStepSeq = 0;
   // Real-time subagent budget guard (framework SubagentBudgetGuard):
   // shares these same in-memory counters with the main model, so
@@ -3299,7 +3304,7 @@ const runAgentStep = async (
     getWindowRemainingCents: () => remainingWindowBudgetCents,
     getBalanceRemainingCents: () => remainingBalanceCents,
     getEnforceCreditBlock: () => enforceCreditBlock,
-    spendCents: (costCents, costUsd, subagentModelId) => {
+    spendCents: (costCents, costUsd, subagentModelId, subagentStepId) => {
       if (costUsd !== undefined && costUsd > 0 && subagentModelId) {
         subagentStepSeq += 1;
         const seq = subagentStepSeq;
@@ -3307,7 +3312,18 @@ const runAgentStep = async (
           import("@/lib/billing/credit-ledger")
             .then((m) =>
               m.recordBillableUsage(userId, costUsd, {
-                billingReference: `${workflowRunId}:main-step:${stepNumber}:subagent-step:${seq}`,
+                // The reference must identify the (subagent, step) pair,
+                // not this execution's finish order: the ledger dedupes
+                // on (userId, reference) with onConflictDoNothing, so a
+                // replayed step's restarted seq counter would silently
+                // drop a different subagent's usage. subagentStepId is
+                // the task tool call's own id plus the subagent's step
+                // index -- deterministic per (subagent, step).
+                billingReference: buildSubagentBillingReference({
+                  workflowRunId,
+                  stepNumber,
+                  subagentStepId: subagentStepId || `${seq}`,
+                }),
                 modelId: subagentModelId,
                 description: `Subagent usage: ${subagentModelId}`,
               }),

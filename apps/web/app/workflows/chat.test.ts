@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type { UIMessageChunk } from "ai";
+import type { LanguageModelUsage, UIMessageChunk } from "ai";
+import type { AvailableModelCost } from "@/lib/models";
+import {
+  applySpendToBudgets,
+  buildSubagentBillingReference,
+  buildSubagentBudgetGuard,
+} from "@/lib/chat/realtime-spend-cap";
 
 mock.module("server-only", () => ({}));
 
@@ -1765,6 +1771,142 @@ describe("runAgentWorkflow", () => {
 
     // The finally block should still fire
     expect(spies.clearActiveStream).toHaveBeenCalled();
+  });
+});
+
+// ── Subagent billing references ────────────────────────────────────
+// billing_usage_events dedupes on (userId, reference) with
+// onConflictDoNothing, so the subagent segment of a billing reference
+// must identify the (subagent, model step) pair itself -- not this
+// execution's finish order. chat.ts's runAgentStep keys it on the
+// launching task tool call's own toolCallId plus the subagent's internal
+// step index (see packages/agent tools/task.ts), forwarded through the
+// guard's spendCents callback. These tests exercise that same
+// guard -> spendCents -> buildSubagentBillingReference wiring.
+
+const SUBAGENT_BILLING_TEST_COST: AvailableModelCost = {
+  input: 2,
+  output: 6,
+  cache_read: 0.25,
+  cache_write: 2,
+};
+
+const subagentStepUsage = (inputTokens: number) =>
+  ({
+    inputTokens,
+    cachedInputTokens: 0, // deprecated field: adapters leave it at 0
+    inputTokenDetails: { cacheReadTokens: 0 },
+    outputTokens: 100,
+    totalTokens: inputTokens + 100,
+    outputTokenDetails: {},
+  }) as unknown as LanguageModelUsage;
+
+function makeUsageRecordingGuard() {
+  const recorded: Array<{
+    costUsd: number | undefined;
+    modelId: string | undefined;
+    subagentStepId: string | undefined;
+  }> = [];
+  const guard = buildSubagentBudgetGuard({
+    getWindowRemainingCents: () => null,
+    getBalanceRemainingCents: () => 100_000,
+    getEnforceCreditBlock: () => true,
+    getCost: () => SUBAGENT_BILLING_TEST_COST,
+    spendCents: (costCents, costUsd, modelId, subagentStepId) => {
+      recorded.push({ costUsd, modelId, subagentStepId });
+      return applySpendToBudgets({
+        remainingWindowBudgetCents: null,
+        remainingBalanceCents: 100_000,
+        enforceCreditBlock: true,
+        costCents,
+      });
+    },
+  });
+  return { guard, recorded };
+}
+
+const referenceFor = (subagentStepId: string | undefined) =>
+  buildSubagentBillingReference({
+    workflowRunId: "wrun_test-123",
+    stepNumber: 3,
+    subagentStepId: subagentStepId ?? "",
+  });
+
+describe("subagent billing references (replay-safe attribution)", () => {
+  test("two subagents recording usage produce different references", () => {
+    // Two task tool calls launched from the SAME workflow step with the
+    // same model and per-step cost: every reference is distinct, so the
+    // ledger can never drop one subagent's usage as another's duplicate,
+    // whatever the finish order.
+    const { guard, recorded } = makeUsageRecordingGuard();
+    guard.noteSubagentStepUsage(
+      "qwen3.8-max",
+      subagentStepUsage(10_000),
+      "toolu_alpha:1",
+    );
+    guard.noteSubagentStepUsage(
+      "qwen3.8-max",
+      subagentStepUsage(10_000),
+      "toolu_beta:1",
+    );
+    guard.noteSubagentStepUsage(
+      "qwen3.8-max",
+      subagentStepUsage(10_000),
+      "toolu_alpha:2",
+    );
+    guard.noteSubagentStepUsage(
+      "qwen3.8-max",
+      subagentStepUsage(10_000),
+      "toolu_beta:2",
+    );
+
+    expect(recorded).toHaveLength(4);
+    // The guard actually forwards the step ids -- the wiring chat.ts's
+    // reference builder relies on.
+    expect(recorded.map((r) => r.subagentStepId)).toEqual([
+      "toolu_alpha:1",
+      "toolu_beta:1",
+      "toolu_alpha:2",
+      "toolu_beta:2",
+    ]);
+
+    const references = recorded.map((r) => referenceFor(r.subagentStepId));
+    expect(references).toHaveLength(new Set(references).size);
+    expect(references).toEqual([
+      "wrun_test-123:main-step:3:subagent-step:toolu_alpha:1",
+      "wrun_test-123:main-step:3:subagent-step:toolu_beta:1",
+      "wrun_test-123:main-step:3:subagent-step:toolu_alpha:2",
+      "wrun_test-123:main-step:3:subagent-step:toolu_beta:2",
+    ]);
+  });
+
+  test("a replayed sequence produces the same references as the first execution", () => {
+    // The reference is a pure function of (workflowRunId, stepNumber,
+    // subagent step id): a replayed step re-maps the same subagent
+    // sequence to the identical references (so the ledger's dedupe --
+    // not a reshuffled counter -- decides what happens), and even a
+    // replay whose concurrent subagents finish in a different
+    // interleaving maps every step to the same reference it had before.
+    const firstExecution = [
+      "toolu_alpha:1",
+      "toolu_beta:1",
+      "toolu_alpha:2",
+      "toolu_beta:2",
+    ];
+    expect(firstExecution.map(referenceFor)).toEqual(
+      [...firstExecution].map(referenceFor),
+    );
+
+    // Same steps, different finish order on the replay: same references.
+    const replayedDifferentOrder = [
+      "toolu_beta:1",
+      "toolu_alpha:2",
+      "toolu_beta:2",
+      "toolu_alpha:1",
+    ];
+    expect(new Set(replayedDifferentOrder.map(referenceFor))).toEqual(
+      new Set(firstExecution.map(referenceFor)),
+    );
   });
 });
 // diag: trivial no-op comment to trigger a real CI run and confirm

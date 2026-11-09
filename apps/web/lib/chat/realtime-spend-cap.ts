@@ -315,13 +315,44 @@ export interface SubagentBudgetGuardCallbacks {
    * Apply a spend to the live counters (mirrors the main-model
    * finish-step mutation, including tripping the exhausted flags) and
    * optionally queue a real-time ledger debit for the subagent step.
+   * `subagentStepId` identifies the (subagent, step) pair for the
+   * debit's billing reference -- see buildSubagentBillingReference.
    */
   spendCents(
     costCents: number,
     costUsd?: number,
     modelId?: string,
+    subagentStepId?: string,
   ): ReturnType<typeof applySpendToBudgets>;
   getCost(modelId: string): AvailableModelCost | undefined;
+}
+
+/**
+ * Billing reference for ONE subagent model step, recorded real-time by
+ * the host's subagent budget guard (see chat.ts). The DB ledger dedupes
+ * on (userId, reference) via onConflictDoNothing, so the subagent
+ * segment must be a deterministic function of the (subagent, step) pair
+ * -- NOT of this execution's finish order. A per-execution counter there
+ * restarts on a workflow step replay while concurrent subagents finish
+ * in timing-dependent order, so a replayed ":subagent-step:1" belonging
+ * to a DIFFERENT subagent collides with the first attempt's row and the
+ * ledger silently drops it (undercharge + model misattribution). The
+ * host instead passes `subagentStepId` derived from the launching task
+ * tool call's own id (unique per subagent, present on the exact path
+ * that records usage -- see packages/agent tools/task.ts) plus the
+ * subagent's internal step index.
+ *
+ * Kept raw (no hash): the reference column is unconstrained text and
+ * AI-SDK tool call ids are short fixed-charset strings, so the raw id
+ * keeps a ledger row greppable straight back to the tool call.
+ */
+export function buildSubagentBillingReference(input: {
+  workflowRunId: string;
+  stepNumber: number;
+  subagentStepId: string;
+}): string {
+  const { workflowRunId, stepNumber, subagentStepId } = input;
+  return `${workflowRunId}:main-step:${stepNumber}:subagent-step:${subagentStepId}`;
 }
 
 export function buildSubagentBudgetGuard(
@@ -377,7 +408,11 @@ export function buildSubagentBudgetGuard(
       };
     },
 
-    noteSubagentStepUsage(modelId: string, usage: LanguageModelUsage) {
+    noteSubagentStepUsage(
+      modelId: string,
+      usage: LanguageModelUsage,
+      subagentStepId?: string,
+    ) {
       const binding = bindingBudget();
       const costUsd = estimateModelUsageCost(
         {
@@ -397,7 +432,12 @@ export function buildSubagentBudgetGuard(
         return { stop: true, reason: binding.reason };
       }
       const costCents = Math.max(0, Math.round(costUsd * 100));
-      const state = callbacks.spendCents(costCents, costUsd, modelId);
+      const state = callbacks.spendCents(
+        costCents,
+        costUsd,
+        modelId,
+        subagentStepId,
+      );
       if (state.exhaustedReason) {
         return { stop: true, reason: state.exhaustedReason };
       }
