@@ -35,7 +35,7 @@ type FakeTx = {
         limit: () => {
           for: (
             strength: string,
-          ) => Promise<{ queuedPrompts: QueuedPrompt[] | null }>;
+          ) => Promise<Array<{ queuedPrompts: QueuedPrompt[] | null }>>;
         };
       };
     };
@@ -58,9 +58,8 @@ function makeTx(): FakeTx {
               const gate = gateNextSelect;
               gateNextSelect = null;
               // The row snapshot is taken when the lock is acquired.
-              return gate
-                ? gate.then(() => [{ queuedPrompts }])
-                : Promise.resolve([{ queuedPrompts }]);
+              const row = [{ queuedPrompts }];
+              return gate ? gate.then(() => row) : Promise.resolve(row);
             },
           }),
         }),

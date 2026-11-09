@@ -592,7 +592,10 @@ beforeEach(() => {
   for (const [key, spy] of Object.entries(spies)) {
     spy.mockReset();
     const fallback = spyDefaults.get(key);
-    if (fallback) spy.mockImplementation(fallback);
+    if (fallback) {
+      // spy is a union of mock signatures; cast through unknown for the reset.
+      spy.mockImplementation(fallback as never);
+    }
   }
 });
 

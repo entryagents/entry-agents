@@ -23,6 +23,12 @@ import {
 const MAX_QUEUED_PROMPTS = 20;
 const MAX_TEXT_LENGTH = 8_000;
 
+/** Result of the POST enqueue — the full flag must be read under the lock. */
+type QueuePostOutcome = {
+  full: boolean;
+  queued: QueuedPrompt[];
+};
+
 type QueuedPrompt = {
   id: string;
   text: string;
@@ -159,30 +165,33 @@ export async function POST(req: Request, context: RouteContext) {
     );
   }
 
-  const outcome = await withQueuedPrompts(auth.chatId, (queued) => {
-    if (queued.length >= MAX_QUEUED_PROMPTS) {
-      // Writing the unchanged list back is a no-op on the row; the full
-      // check must happen under the lock or concurrent POSTs overflow it.
-      return { next: queued, result: { full: true as const, queued } };
-    }
+  const outcome = await withQueuedPrompts(
+    auth.chatId,
+    (queued): { next: QueuedPrompt[]; result: QueuePostOutcome } => {
+      if (queued.length >= MAX_QUEUED_PROMPTS) {
+        // Writing the unchanged list back is a no-op on the row; the full
+        // check must happen under the lock or concurrent POSTs overflow it.
+        return { next: queued, result: { full: true, queued } };
+      }
 
-    const prompt: QueuedPrompt = {
-      id:
-        typeof body.id === "string" && body.id ? body.id : crypto.randomUUID(),
-      text,
-      payload: body.payload,
-      modelId: typeof body.modelId === "string" ? body.modelId : null,
-      createdAt: new Date().toISOString(),
-    };
+      const prompt: QueuedPrompt = {
+        id:
+          typeof body.id === "string" && body.id ? body.id : crypto.randomUUID(),
+        text,
+        payload: body.payload,
+        modelId: typeof body.modelId === "string" ? body.modelId : null,
+        createdAt: new Date().toISOString(),
+      };
 
-    // Idempotent on id: the composer may retry after a flaky connection,
-    // and a duplicate would send the message twice later.
-    const next = queued.some((item) => item.id === prompt.id)
-      ? queued
-      : [...queued, prompt];
+      // Idempotent on id: the composer may retry after a flaky connection,
+      // and a duplicate would send the message twice later.
+      const next = queued.some((item) => item.id === prompt.id)
+        ? queued
+        : [...queued, prompt];
 
-    return { next, result: { full: false as const, queued: next } };
-  });
+      return { next, result: { full: false, queued: next } };
+    },
+  );
 
   if (outcome.full) {
     return Response.json(
