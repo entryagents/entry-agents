@@ -36,6 +36,7 @@ const spies = {
     () => Promise.resolve({ id: "msg-1" }) as Promise<unknown>,
   ),
   updateChatAssistantActivity: mock(() => Promise.resolve()),
+  setChatRunStatus: mock(() => Promise.resolve()),
 };
 
 // ── Module mocks ───────────────────────────────────────────────────
@@ -65,6 +66,7 @@ mock.module("@/lib/db/sessions", () => ({
   compareAndSetChatActiveStreamId: spies.compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists: spies.createChatMessageIfNotExists,
   updateChatAssistantActivity: spies.updateChatAssistantActivity,
+  setChatRunStatus: spies.setChatRunStatus,
 }));
 
 const routeModulePromise = import("./route");
@@ -141,6 +143,14 @@ describe("POST /api/chat/[chatId]/stop", () => {
     // Should not attempt cancel or CAS
     expect(spies.cancel).not.toHaveBeenCalled();
     expect(spies.compareAndSetChatActiveStreamId).not.toHaveBeenCalled();
+
+    // The cancelled write is guarded on an empty slot: a newer run that
+    // claims the stream pointer concurrently keeps its own status.
+    expect(spies.setChatRunStatus).toHaveBeenCalledWith(
+      "chat-1",
+      "cancelled",
+      { onlyIfActiveStreamId: null },
+    );
   });
 
   test("cancels workflow and clears activeStreamId on success", async () => {
@@ -157,6 +167,22 @@ describe("POST /api/chat/[chatId]/stop", () => {
       "chat-1",
       "wrun_active-123",
       null,
+    );
+  });
+
+  test("guards the cancelled write on the stream-owning run", async () => {
+    const { POST } = await routeModulePromise;
+
+    await POST(createStopRequest(), routeContext);
+
+    // Cross-run flip guard: the write only lands while the observed run
+    // still owns active_stream_id, so a stale stop cannot cancel a
+    // newer run that has since claimed the slot.
+    expect(spies.setChatRunStatus).toHaveBeenCalledTimes(1);
+    expect(spies.setChatRunStatus).toHaveBeenCalledWith(
+      "chat-1",
+      "cancelled",
+      { onlyIfActiveStreamId: "wrun_active-123" },
     );
   });
 

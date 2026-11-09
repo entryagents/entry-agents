@@ -11,6 +11,10 @@ let isFirstChatMessageResult = false;
 let upsertChatMessageScopedResult: { status: string } = {
   status: "inserted",
 };
+let upsertChatMessageAndClearActiveStreamResult: {
+  status: string;
+  chatFinalized: boolean;
+} = { status: "inserted", chatFinalized: true };
 
 const sandboxExec = mock(() =>
   Promise.resolve({ success: true, stdout: " M file.ts\n" }),
@@ -37,6 +41,11 @@ const spies = {
   upsertChatMessageScoped: mock(() =>
     Promise.resolve(upsertChatMessageScopedResult),
   ),
+  upsertChatMessageAndClearActiveStream: mock(() =>
+    Promise.resolve(upsertChatMessageAndClearActiveStreamResult),
+  ),
+  setChatRunStatus: mock(() => Promise.resolve()),
+  failActiveChatRun: mock(() => Promise.resolve()),
   recordUsage: mock(() => Promise.resolve()),
   buildActiveLifecycleUpdate: mock(() => ({})),
   buildLifecycleActivityUpdate: mock(() => ({})),
@@ -69,6 +78,10 @@ mock.module("@/lib/db/sessions", () => ({
   updateChatAssistantActivity: spies.updateChatAssistantActivity,
   updateSession: spies.updateSession,
   upsertChatMessageScoped: spies.upsertChatMessageScoped,
+  upsertChatMessageAndClearActiveStream:
+    spies.upsertChatMessageAndClearActiveStream,
+  setChatRunStatus: spies.setChatRunStatus,
+  failActiveChatRun: spies.failActiveChatRun,
 }));
 
 mock.module("@/lib/db/usage", () => ({
@@ -110,6 +123,7 @@ mock.module("@/lib/billing/credit-ledger", () => ({
 const {
   persistUserMessage,
   persistAssistantMessage,
+  persistFinalAssistantMessage,
   refreshLifecycleActivity,
   persistSandboxState,
   clearActiveStream,
@@ -154,6 +168,10 @@ beforeEach(() => {
   createChatMessageIfNotExistsResult = { id: "msg-1" };
   isFirstChatMessageResult = false;
   upsertChatMessageScopedResult = { status: "inserted" };
+  upsertChatMessageAndClearActiveStreamResult = {
+    status: "inserted",
+    chatFinalized: true,
+  };
 });
 
 // ─── persistUserMessage ────────────────────────────────────────────
@@ -325,6 +343,35 @@ describe("clearActiveStream", () => {
       "wrun_abc",
       null,
     );
+    // Owned the slot, so the terminal fallback fires.
+    expect(spies.failActiveChatRun).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not fail a newer run after losing the CAS", async () => {
+    spies.compareAndSetChatActiveStreamId.mockImplementationOnce(() =>
+      Promise.resolve(false),
+    );
+
+    await clearActiveStream("chat-1", "wrun_stale");
+
+    expect(spies.compareAndSetChatActiveStreamId).toHaveBeenCalledWith(
+      "chat-1",
+      "wrun_stale",
+      null,
+    );
+    // A newer run owns the slot -- its status must stay untouched.
+    expect(spies.failActiveChatRun).not.toHaveBeenCalled();
+  });
+
+  test("keeps the fallback off when a retry loses the CAS", async () => {
+    spies.compareAndSetChatActiveStreamId
+      .mockImplementationOnce(() => Promise.reject(new Error("DB down")))
+      .mockImplementationOnce(() => Promise.resolve(false));
+
+    await clearActiveStream("chat-1", "wrun_stale");
+
+    expect(spies.compareAndSetChatActiveStreamId).toHaveBeenCalledTimes(2);
+    expect(spies.failActiveChatRun).not.toHaveBeenCalled();
   });
 
   test("retries transient db errors before succeeding", async () => {
@@ -356,6 +403,87 @@ describe("clearActiveStream", () => {
     await clearActiveStream("chat-1", "wrun_abc");
 
     expect(spies.compareAndSetChatActiveStreamId).toHaveBeenCalledTimes(3);
+    // Every attempt threw, so ownership was never established.
+    expect(spies.failActiveChatRun).not.toHaveBeenCalled();
+  });
+});
+
+// ─── persistFinalAssistantMessage ──────────────────────────────────
+
+describe("persistFinalAssistantMessage", () => {
+  test("persists message and status via one guarded upsert", async () => {
+    await persistFinalAssistantMessage(
+      "chat-1",
+      makeAssistantMessage(),
+      "wrun_abc",
+    );
+
+    expect(spies.upsertChatMessageAndClearActiveStream).toHaveBeenCalledTimes(
+      1,
+    );
+    const calls = spies.upsertChatMessageAndClearActiveStream.mock
+      .calls as unknown[][];
+    const [data, workflowRunId, opts] = calls[0] as [
+      Record<string, unknown>,
+      string,
+      { finalizeStatus: string },
+    ];
+    expect(data).toMatchObject({
+      id: "msg-2",
+      chatId: "chat-1",
+      role: "assistant",
+    });
+    expect(workflowRunId).toBe("wrun_abc");
+    expect(opts).toEqual({ finalizeStatus: "completed" });
+    // No separate status write: "completed" rides the same guarded
+    // UPDATE that clears the stream pointer.
+    expect(spies.setChatRunStatus).not.toHaveBeenCalled();
+  });
+
+  test("skips terminal status when a newer run owns the slot", async () => {
+    upsertChatMessageAndClearActiveStreamResult = {
+      status: "inserted",
+      chatFinalized: false,
+    };
+
+    // Must not throw -- the newer run owns the chat from here on.
+    await persistFinalAssistantMessage(
+      "chat-1",
+      makeAssistantMessage(),
+      "wrun_stale",
+    );
+
+    expect(spies.upsertChatMessageAndClearActiveStream).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(spies.setChatRunStatus).not.toHaveBeenCalled();
+  });
+
+  test("skips activity update on conflict", async () => {
+    upsertChatMessageAndClearActiveStreamResult = {
+      status: "conflict",
+      chatFinalized: false,
+    };
+
+    await persistFinalAssistantMessage(
+      "chat-1",
+      makeAssistantMessage(),
+      "wrun_abc",
+    );
+
+    expect(spies.updateChatAssistantActivity).not.toHaveBeenCalled();
+  });
+
+  test("does not throw on db error", async () => {
+    spies.upsertChatMessageAndClearActiveStream.mockImplementationOnce(() =>
+      Promise.reject(new Error("DB down")),
+    );
+
+    await persistFinalAssistantMessage(
+      "chat-1",
+      makeAssistantMessage(),
+      "wrun_abc",
+    );
   });
 });
 

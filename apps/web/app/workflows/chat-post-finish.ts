@@ -211,8 +211,12 @@ export async function persistAssistantMessage(
 
 /**
  * Atomic final persist (upstream open-agents #845): the assistant
- * message and the activeStreamId clear commit together in one
- * transaction, closing the refresh-replay window between them.
+ * message, the activeStreamId clear and the terminal "completed"
+ * status commit together in one transaction, closing the
+ * refresh-replay window between them. The status write is guarded by
+ * stream-pointer ownership, so a stale finishing run can never
+ * overwrite a newer run's "queued"/"running" (or the stop route's
+ * "cancelled").
  */
 export async function persistFinalAssistantMessage(
   chatId: string,
@@ -232,6 +236,7 @@ export async function persistFinalAssistantMessage(
         parts: sanitized,
       },
       workflowRunId,
+      { finalizeStatus: "completed" },
     );
 
     if (result.status === "conflict") {
@@ -242,11 +247,15 @@ export async function persistFinalAssistantMessage(
       await updateChatAssistantActivity(chatId, new Date());
     }
 
-    // Terminal transition, deliberately AFTER the transcript and stream
-    // pointer are durable: a viewer must never read "completed" while
-    // active_stream_id still points at a run it believes is live.
-    const { setChatRunStatus } = await import("@/lib/db/sessions");
-    await setChatRunStatus(chatId, "completed");
+    // chatFinalized is false when the stream pointer moved to a newer run
+    // between this run's steps: the guarded terminal write inside the
+    // transaction was skipped, leaving the newer run's status untouched.
+    // Nothing else to do here -- the newer run owns the chat from now on.
+    if (result.status !== "conflict" && !result.chatFinalized) {
+      console.warn(
+        `[workflow] Final persist skipped terminal status for chat ${chatId}: stream pointer moved to a newer run`,
+      );
+    }
   } catch (error) {
     console.error(
       "[workflow] Failed to persist final assistant message:",
@@ -306,15 +315,24 @@ export async function clearActiveStream(
     try {
       // Only clear if this workflow's run ID is still the active one.
       // Prevents a late-finishing workflow from clearing a newer workflow's ID.
-      await compareAndSetChatActiveStreamId(chatId, workflowRunId, null);
+      const owned = await compareAndSetChatActiveStreamId(
+        chatId,
+        workflowRunId,
+        null,
+      );
 
-      // Terminal fallback. "completed" is written by
-      // persistFinalAssistantMessage and "cancelled" by the stop route;
-      // anything still marked active here means the turn ended abnormally
-      // (crash, thrown step, exhausted retries). failActiveChatRun guards
-      // on status so it cannot stomp a success that already landed.
-      const { failActiveChatRun } = await import("@/lib/db/sessions");
-      await failActiveChatRun(chatId).catch(() => {});
+      // Terminal fallback, gated on ownership: compareAndSetChatActiveStreamId
+      // returns false instead of throwing when a newer run already owns the
+      // slot, so a stale finishing run must not flip that newer run's status
+      // to "failed". "completed" is written by persistFinalAssistantMessage
+      // and "cancelled" by the stop route; anything still marked active here
+      // means the turn ended abnormally (crash, thrown step, exhausted
+      // retries). failActiveChatRun also guards on status so it cannot stomp
+      // a success that already landed.
+      if (owned) {
+        const { failActiveChatRun } = await import("@/lib/db/sessions");
+        await failActiveChatRun(chatId).catch(() => {});
+      }
       return;
     } catch (error) {
       if (attempt === ACTIVE_STREAM_CLEAR_MAX_ATTEMPTS) {
@@ -770,11 +788,15 @@ export async function dequeueNextQueuedUserMessageStep(
     const { chats } = await import("@/lib/db/schema");
 
     const popped = await db.transaction(async (tx) => {
+      // Row lock across read+pop+write: concurrent queue POSTs/DELETEs (and
+      // other dequeue steps) take the same lock, so a prompt enqueued while
+      // this step runs cannot be lost or double-executed.
       const rows = await tx
         .select({ queuedPrompts: chats.queuedPrompts })
         .from(chats)
         .where(eq(chats.id, chatId))
-        .limit(1);
+        .limit(1)
+        .for("update");
 
       const rawQueue = rows[0]?.queuedPrompts;
       if (!Array.isArray(rawQueue) || rawQueue.length === 0) {

@@ -648,6 +648,11 @@ export async function compareAndSetChatActiveStreamId(
  * client never writes run state, it reads it. Terminal transitions belong
  * in the same transaction as the final message persist + activeStreamId
  * clear so status, transcript and stream pointer cannot disagree.
+ *
+ * Pass `guards.onlyIfActiveStreamId` to make the write a compare-and-set
+ * on the stream pointer: a string only matches that run, null only
+ * matches an empty slot. Callers that observed the pointer before writing
+ * MUST guard, or a stale writer can flip a newer run's status.
  */
 export type ChatRunStatus =
   | "idle"
@@ -670,11 +675,27 @@ export const ACTIVE_CHAT_RUN_STATUSES: ChatRunStatus[] = [
 export async function setChatRunStatus(
   chatId: string,
   status: ChatRunStatus,
+  guards?: { onlyIfActiveStreamId?: string | null },
 ): Promise<void> {
+  // Distinguish "no guard" (undefined) from "guard on an empty slot"
+  // (null): the latter only fires while no newer run has claimed the
+  // stream pointer, so a terminal write can never cross runs.
+  const onlyIfActiveStreamId = guards?.onlyIfActiveStreamId;
+  const streamGuard =
+    onlyIfActiveStreamId === undefined
+      ? undefined
+      : onlyIfActiveStreamId === null
+        ? isNull(chats.activeStreamId)
+        : eq(chats.activeStreamId, onlyIfActiveStreamId);
+
   await db
     .update(chats)
     .set({ status, runStatusUpdatedAt: new Date() })
-    .where(eq(chats.id, chatId));
+    .where(
+      streamGuard
+        ? and(eq(chats.id, chatId), streamGuard)
+        : eq(chats.id, chatId),
+    );
 }
 
 /**
@@ -941,6 +962,19 @@ export async function upsertChatMessageScoped(
   });
 }
 
+type UpsertChatMessageAndClearActiveStreamResult =
+  | {
+      status: "inserted";
+      message: typeof chatMessages.$inferSelect;
+      chatFinalized: boolean;
+    }
+  | {
+      status: "updated";
+      message: typeof chatMessages.$inferSelect;
+      chatFinalized: boolean;
+    }
+  | { status: "conflict" };
+
 /**
  * Atomic final-assistant persist (upstream open-agents #845).
  *
@@ -953,12 +987,16 @@ export async function upsertChatMessageScoped(
  *
  * The clear is a compare-and-set against workflowRunId: a newer
  * workflow that legitimately owns the slot is never clobbered by a
- * late-finishing older one.
+ * late-finishing older one. When `opts.finalizeStatus` is provided,
+ * the terminal status is written in the SAME update, guarded by the
+ * same ownership predicate -- a stale run can never overwrite a newer
+ * run's "queued"/"running" (or the stop route's "cancelled").
  */
 export async function upsertChatMessageAndClearActiveStream(
   data: NewChatMessage,
   workflowRunId: string,
-): Promise<UpsertChatMessageScopedResult> {
+  opts?: { finalizeStatus?: ChatRunStatus },
+): Promise<UpsertChatMessageAndClearActiveStreamResult> {
   return db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(chatMessages)
@@ -990,20 +1028,34 @@ export async function upsertChatMessageAndClearActiveStream(
       }
     }
 
+    let chatFinalized = false;
     if (status !== "conflict") {
-      // CAS-clear inside the SAME transaction as the upsert.
-      await tx
+      // CAS-clear inside the SAME transaction as the upsert. The terminal
+      // status (when requested) rides on the same guarded UPDATE: it lands
+      // only if this workflowRunId still owns the chat's stream slot.
+      const finalize = opts?.finalizeStatus;
+      const [updatedChat] = await tx
         .update(chats)
-        .set({ activeStreamId: null })
+        .set({
+          activeStreamId: null,
+          ...(finalize
+            ? { status: finalize, runStatusUpdatedAt: new Date() }
+            : {}),
+        })
         .where(
           and(
             eq(chats.id, data.chatId),
             eq(chats.activeStreamId, workflowRunId),
           ),
-        );
+        )
+        .returning({ id: chats.id });
+
+      chatFinalized = Boolean(updatedChat);
     }
 
-    return status === "conflict" ? { status } : { status, message: message! };
+    return status === "conflict"
+      ? { status }
+      : { status, message: message!, chatFinalized };
   });
 }
 
