@@ -70,15 +70,38 @@ async function readQueue(chatId: string): Promise<QueuedPrompt[]> {
   return normalize(rows[0]?.queuedPrompts);
 }
 
-async function writeQueue(
+/**
+ * Runs `mutate` against the chat's queued_prompts under a row lock.
+ *
+ * The queue is a jsonb column, so every mutation is a read-modify-write
+ * of the whole list. Without a lock, two concurrent POSTs (or a POST
+ * racing the workflow's dequeue step) read the same snapshot and the
+ * last write wins -- losing messages or double-executing a drained
+ * prompt. SELECT ... FOR UPDATE plus the write in the SAME transaction
+ * serializes against the dequeue step's own FOR UPDATE read (see
+ * dequeueNextQueuedUserMessageStep in chat-post-finish.ts).
+ */
+async function withQueuedPrompts<T>(
   chatId: string,
-  queued: QueuedPrompt[],
-): Promise<QueuedPrompt[]> {
-  await db
-    .update(chats)
-    .set({ queuedPrompts: queued.length > 0 ? queued : null })
-    .where(eq(chats.id, chatId));
-  return queued;
+  mutate: (queue: QueuedPrompt[]) => { next: QueuedPrompt[]; result: T },
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select({ queuedPrompts: chats.queuedPrompts })
+      .from(chats)
+      .where(eq(chats.id, chatId))
+      .limit(1)
+      .for("update");
+
+    const { next, result } = mutate(normalize(rows[0]?.queuedPrompts));
+
+    await tx
+      .update(chats)
+      .set({ queuedPrompts: next.length > 0 ? next : null })
+      .where(eq(chats.id, chatId));
+
+    return result;
+  });
 }
 
 async function authorize(
@@ -136,29 +159,39 @@ export async function POST(req: Request, context: RouteContext) {
     );
   }
 
-  const queued = await readQueue(auth.chatId);
-  if (queued.length >= MAX_QUEUED_PROMPTS) {
+  const outcome = await withQueuedPrompts(auth.chatId, (queued) => {
+    if (queued.length >= MAX_QUEUED_PROMPTS) {
+      // Writing the unchanged list back is a no-op on the row; the full
+      // check must happen under the lock or concurrent POSTs overflow it.
+      return { next: queued, result: { full: true as const, queued } };
+    }
+
+    const prompt: QueuedPrompt = {
+      id:
+        typeof body.id === "string" && body.id ? body.id : crypto.randomUUID(),
+      text,
+      payload: body.payload,
+      modelId: typeof body.modelId === "string" ? body.modelId : null,
+      createdAt: new Date().toISOString(),
+    };
+
+    // Idempotent on id: the composer may retry after a flaky connection,
+    // and a duplicate would send the message twice later.
+    const next = queued.some((item) => item.id === prompt.id)
+      ? queued
+      : [...queued, prompt];
+
+    return { next, result: { full: false as const, queued: next } };
+  });
+
+  if (outcome.full) {
     return Response.json(
       { error: `Queue is full (${MAX_QUEUED_PROMPTS} messages)` },
       { status: 409 },
     );
   }
 
-  const prompt: QueuedPrompt = {
-    id: typeof body.id === "string" && body.id ? body.id : crypto.randomUUID(),
-    text,
-    payload: body.payload,
-    modelId: typeof body.modelId === "string" ? body.modelId : null,
-    createdAt: new Date().toISOString(),
-  };
-
-  // Idempotent on id: the composer may retry after a flaky connection,
-  // and a duplicate would send the message twice later.
-  const next = queued.some((item) => item.id === prompt.id)
-    ? queued
-    : [...queued, prompt];
-
-  return Response.json({ queued: await writeQueue(auth.chatId, next) });
+  return Response.json({ queued: outcome.queued });
 }
 
 export async function PUT(req: Request, context: RouteContext) {
@@ -176,7 +209,12 @@ export async function PUT(req: Request, context: RouteContext) {
 
   // Full-list writes make edits and drag reordering durable across reloads
   // and devices instead of leaving the server row with stale ordering.
-  return Response.json({ queued: await writeQueue(auth.chatId, queued) });
+  const queuedAfterWrite = await withQueuedPrompts(auth.chatId, () => ({
+    next: queued,
+    result: queued,
+  }));
+
+  return Response.json({ queued: queuedAfterWrite });
 }
 
 export async function DELETE(req: Request, context: RouteContext) {
@@ -188,10 +226,12 @@ export async function DELETE(req: Request, context: RouteContext) {
     return Response.json({ error: "id is required" }, { status: 400 });
   }
 
-  const queued = await readQueue(auth.chatId);
-  const next = queued.filter((item) => item.id !== id);
+  const queued = await withQueuedPrompts(auth.chatId, (current) => {
+    const next = current.filter((item) => item.id !== id);
+    return { next, result: next };
+  });
 
-  return Response.json({ queued: await writeQueue(auth.chatId, next) });
+  return Response.json({ queued });
 }
 
 export const dynamic = "force-dynamic";

@@ -37,7 +37,11 @@ export async function POST(request: Request, context: RouteContext) {
   const { chat } = chatContext;
 
   if (!chat.activeStreamId) {
-    await setChatRunStatus(chatId, "cancelled").catch(() => {});
+    // Guarded on an empty slot: if a newer run claims the stream pointer
+    // between the chat read above and this write, it keeps its status.
+    await setChatRunStatus(chatId, "cancelled", {
+      onlyIfActiveStreamId: null,
+    }).catch(() => {});
     return Response.json({ success: true });
   }
 
@@ -56,8 +60,12 @@ export async function POST(request: Request, context: RouteContext) {
 
   // 1. Durably mark the chat as cancelled in the database FIRST.
   // This serves as an immediate cooperative stop signal picked up
-  // by startStopMonitor and step loops within 150ms.
-  await setChatRunStatus(chatId, "cancelled").catch((err) => {
+  // by startStopMonitor and step loops within 150ms. Guarded on the run
+  // that owned the stream pointer when the chat row was read: if a newer
+  // run has taken over the slot since, this must not cancel it.
+  await setChatRunStatus(chatId, "cancelled", {
+    onlyIfActiveStreamId: activeStreamId,
+  }).catch((err) => {
     console.error(
       `[workflow] Failed to setChatRunStatus to cancelled for chat ${chatId}:`,
       err,
