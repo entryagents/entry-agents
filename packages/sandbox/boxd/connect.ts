@@ -17,6 +17,23 @@ function shellEscape(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
+/**
+ * Embeds a GitHub token in an https clone URL. The boxd exec API ignores the
+ * `env` field (verified live: env vars never reach the machine), so the old
+ * http.extraheader mechanism cloned anonymously. The token is scrubbed from
+ * the stored remote immediately after clone/fetch by the caller.
+ */
+function injectGitHubToken(repoUrl: string, token: string): string {
+  if (!repoUrl.startsWith("https://github.com/")) {
+    return repoUrl;
+  }
+  const encoded = encodeURIComponent(token);
+  return repoUrl.replace(
+    "https://github.com/",
+    `https://x-access-token:${encoded}@github.com/`,
+  );
+}
+
 async function bootstrapWorkspace(
   sandbox: BoxdSandbox,
   state: BoxdState,
@@ -42,30 +59,32 @@ async function bootstrapWorkspace(
     // The bare ubuntu image does not guarantee git. Provisioning failed in
     // production with a raw "git: command not found" from the clone below,
     // surfacing as a fatal provisioning error that wedged the session.
-    // Ensure git FIRST, one simple command per branch (the runner parses
-    // compound programs inconsistently -- see the clone probe below).
+    // Probe order: boxd machines run as ROOT with no sudo binary, so the
+    // plain apt-get path is the one that works (verified against the live
+    // boxd API); sudo -n stays as the fallback for non-root images.
     const hasGit = await sandbox.exec(
       "command -v git",
       BOXD_WORKING_DIRECTORY,
       30_000,
     );
     if (!hasGit.success) {
-      const installSudo = await sandbox.exec(
-        "sudo -n apt-get update -qq && sudo -n apt-get install -y -qq git",
+      const installPlain = await sandbox.exec(
+        "apt-get update -qq && apt-get install -y -qq git",
         BOXD_WORKING_DIRECTORY,
         300_000,
       );
-      if (!installSudo.success) {
-        const installPlain = await sandbox.exec(
-          "apt-get update -qq && apt-get install -y -qq git",
+      if (!installPlain.success) {
+        const installSudo = await sandbox.exec(
+          "sudo -n apt-get update -qq && sudo -n apt-get install -y -qq git",
           BOXD_WORKING_DIRECTORY,
           300_000,
         );
-        if (!installPlain.success) {
+        if (!installSudo.success) {
           throw new Error(
             "Failed to initialize workspace: git is not installed on the boxd " +
-              "machine and could not be installed (no sudo/root). Install git " +
-              "in the machine image or grant the runtime user package access.",
+              "machine and could not be installed (no root/sudo access). " +
+              "Install git in the machine image or grant the runtime user " +
+              "package access.",
           );
         }
       }
@@ -80,6 +99,15 @@ async function bootstrapWorkspace(
         );
       }
     }
+    // The boxd exec API does NOT apply the `env` field (verified against the
+    // live API: `echo TOKEN=$X` with env {X:...} prints empty). The old
+    // http.extraheader + ${GITHUB_TOKEN} mechanism therefore cloned
+    // anonymously and failed on private repos with
+    // "could not read Username for 'https://github.com'". Embed the token in
+    // the clone URL instead, then scrub it from the stored remote.
+    const authedRepoUrl = options?.githubToken
+      ? injectGitHubToken(source.repo, options.githubToken)
+      : source.repo;
     // Do not send a compound if/then/else shell program to the provider. The
     // boxd command runner has historically parsed that form inconsistently,
     // producing `/bin/sh: then: unexpected` and wedging reconnects. Probe the
@@ -109,7 +137,7 @@ async function bootstrapWorkspace(
         }
       }
     } else {
-      const command = `${git} clone${branch} ${shellEscape(source.repo)} ${shellEscape(BOXD_WORKING_DIRECTORY)}`;
+      const command = `${git} clone${branch} ${shellEscape(authedRepoUrl)} ${shellEscape(BOXD_WORKING_DIRECTORY)}`;
       const result = await sandbox.exec(
         command,
         BOXD_WORKING_DIRECTORY,
@@ -118,6 +146,16 @@ async function bootstrapWorkspace(
       if (!result.success) {
         throw new Error(`Failed to prepare workspace: ${result.stderr.trim()}`);
       }
+    }
+
+    // Scrub the credential from the stored remote regardless of which path
+    // ran, so a later `git remote -v` on the machine cannot leak it.
+    if (options?.githubToken) {
+      await sandbox.exec(
+        `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} remote set-url origin ${shellEscape(source.repo)}`,
+        BOXD_WORKING_DIRECTORY,
+        30_000,
+      );
     }
 
     if (source.newBranch) {
