@@ -44,16 +44,15 @@ async function bootstrapWorkspace(
   }
 
   const source = state.source;
-  // Keep the repository credential in the machine environment rather than
-  // embedding it in the remote URL or shell command. Git reads this config
-  // from the environment for the duration of each clone/fetch only.
-  // Shell parameter expansion inside the command string is intentional.
-  // Shell parameter expansion inside the command string is intentional.
-  /* oxlint-disable eslint/no-template-curly-in-string -- git http.extraheader
-     value expands in the shell, not JS */
-  const git =
-    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="Authorization: Bearer ${GITHUB_TOKEN:-}" git';
-  /* oxlint-enable eslint/no-template-curly-in-string */
+  // Plain `git`. The old http.extraheader mechanism is gone: the boxd exec
+  // API ignores the `env` field (verified live — env vars never reach the
+  // machine), so `${GITHUB_TOKEN:-}` always expanded to EMPTY and sent
+  // "Authorization: Bearer " — GitHub answers 401 on an empty auth header
+  // even for PUBLIC repos, which surfaced as
+  // "fatal: could not read Username for 'https://github.com'". Credentials
+  // now travel in the URL (injectGitHubToken) and are scrubbed from the
+  // stored remote right after clone/fetch.
+  const git = "git";
 
   // The bare ubuntu image does not guarantee git. Provisioning failed in
   // production with a raw "git: command not found" from the clone below,
@@ -123,6 +122,14 @@ async function bootstrapWorkspace(
       : "";
     if (hasRepository.success) {
       if (options?.githubToken) {
+        // The stored remote is the clean URL (scrubbed after the last
+        // clone/fetch). Point it at the authed URL for the fetch, then
+        // scrub again below — the credential never persists on the machine.
+        await sandbox.exec(
+          `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} remote set-url origin ${shellEscape(authedRepoUrl)}`,
+          BOXD_WORKING_DIRECTORY,
+          30_000,
+        );
         const fetchCmd =
           `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} fetch --all --prune` +
           (source.branch
