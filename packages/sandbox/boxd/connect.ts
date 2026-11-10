@@ -55,50 +55,51 @@ async function bootstrapWorkspace(
     'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="Authorization: Bearer ${GITHUB_TOKEN:-}" git';
   /* oxlint-enable eslint/no-template-curly-in-string */
 
-  if (source?.repo) {
-    // The bare ubuntu image does not guarantee git. Provisioning failed in
-    // production with a raw "git: command not found" from the clone below,
-    // surfacing as a fatal provisioning error that wedged the session.
-    // Probe order: boxd machines run as ROOT with no sudo binary, so the
-    // plain apt-get path is the one that works (verified against the live
-    // boxd API); sudo -n stays as the fallback for non-root images.
-    const hasGit = await sandbox.exec(
+  // The bare ubuntu image does not guarantee git. Provisioning failed in
+  // production with a raw "git: command not found" from the clone below,
+  // surfacing as a fatal provisioning error that wedged the session.
+  // Probe order: boxd machines run as ROOT with no sudo binary, so the
+  // plain apt-get path is the one that works (verified against the live
+  // boxd API); sudo -n stays as the fallback for non-root images.
+  const hasGit = await sandbox.exec(
+    "command -v git",
+    BOXD_WORKING_DIRECTORY,
+    30_000,
+  );
+  if (!hasGit.success) {
+    const installPlain = await sandbox.exec(
+      "apt-get update -qq && apt-get install -y -qq git",
+      BOXD_WORKING_DIRECTORY,
+      300_000,
+    );
+    if (!installPlain.success) {
+      const installSudo = await sandbox.exec(
+        "sudo -n apt-get update -qq && sudo -n apt-get install -y -qq git",
+        BOXD_WORKING_DIRECTORY,
+        300_000,
+      );
+      if (!installSudo.success) {
+        throw new Error(
+          "Failed to initialize workspace: git is not installed on the boxd " +
+            "machine and could not be installed (no root/sudo access). " +
+            "Install git in the machine image or grant the runtime user " +
+            "package access.",
+        );
+      }
+    }
+    const verify = await sandbox.exec(
       "command -v git",
       BOXD_WORKING_DIRECTORY,
       30_000,
     );
-    if (!hasGit.success) {
-      const installPlain = await sandbox.exec(
-        "apt-get update -qq && apt-get install -y -qq git",
-        BOXD_WORKING_DIRECTORY,
-        300_000,
+    if (!verify.success) {
+      throw new Error(
+        "Failed to initialize workspace: git still missing after install attempt",
       );
-      if (!installPlain.success) {
-        const installSudo = await sandbox.exec(
-          "sudo -n apt-get update -qq && sudo -n apt-get install -y -qq git",
-          BOXD_WORKING_DIRECTORY,
-          300_000,
-        );
-        if (!installSudo.success) {
-          throw new Error(
-            "Failed to initialize workspace: git is not installed on the boxd " +
-              "machine and could not be installed (no root/sudo access). " +
-              "Install git in the machine image or grant the runtime user " +
-              "package access.",
-          );
-        }
-      }
-      const verify = await sandbox.exec(
-        "command -v git",
-        BOXD_WORKING_DIRECTORY,
-        30_000,
-      );
-      if (!verify.success) {
-        throw new Error(
-          "Failed to initialize workspace: git still missing after install attempt",
-        );
-      }
     }
+  }
+
+  if (source?.repo) {
     // The boxd exec API does NOT apply the `env` field (verified against the
     // live API: `echo TOKEN=$X` with env {X:...} prints empty). The old
     // http.extraheader + ${GITHUB_TOKEN} mechanism therefore cloned
