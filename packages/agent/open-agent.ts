@@ -15,6 +15,7 @@ import {
   type ProviderOptionsByProvider,
 } from "./models";
 import { defaultModelLabel } from "./default-model";
+import { applyToolDisclosure } from "./tools/tool-bridge";
 
 import type { SkillMetadata } from "./skills/types";
 import type {
@@ -324,8 +325,14 @@ export const openAgent = new ToolLoopAgent({
       tools: addCacheControl({
         // toolset allowlist filter (desktop harness)
         tools: (() => {
+          // Large MCP/connector sets are hidden behind tool_search/
+          // tool_describe/tool_call only when that is estimated to
+          // save tokens (see tools/tool-bridge.ts).
           const merged = options.extraTools
-            ? { ...(settings.tools ?? tools), ...options.extraTools }
+            ? {
+                ...(settings.tools ?? tools),
+                ...applyToolDisclosure(options.extraTools).tools,
+              }
             : (settings.tools ?? tools);
           if (!options.toolset) return merged;
           const picked: Record<string, unknown> = {};
