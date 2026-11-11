@@ -318,6 +318,8 @@ export interface AgentContext {
   vercel?: VercelToolContext;
   sandboxLifecycleHooks?: SandboxLifecycleHooksContext;
   billingGuard?: SubagentBudgetGuard;
+  /** Hierarchical delegation depth (0 = root agent, 1 = subagent). */
+  depth?: number;
 }
 
 export interface SandboxExecutionContext {

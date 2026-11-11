@@ -10,7 +10,12 @@ import {
   SUBAGENT_REGISTRY,
   SUBAGENT_TYPES,
 } from "../subagents/registry";
-import { SUBAGENT_STEP_LIMIT } from "../subagents/constants";
+import {
+  MAX_INLINE_SUMMARY_CHARS,
+  MAX_SUBAGENT_DEPTH,
+  SUBAGENT_STEP_LIMIT,
+} from "../subagents/constants";
+import { subagentSessionStore } from "../subagents/session-store";
 import { sumLanguageModelUsage } from "../usage";
 import { getSandboxContext, getSubagentModel } from "./utils";
 import type { AgentContext, SubagentBudgetGuard } from "../types";
@@ -33,6 +38,12 @@ const taskInputSchema = z.object({
 - Constraints and patterns to follow
 - How to verify the work`,
   ),
+  sessionId: z
+    .string()
+    .optional()
+    .describe(
+      "Optional session ID of an active subagent to continue or follow up with. When provided, the subagent retains its conversational memory and tool context from previous turns.",
+    ),
 });
 
 const taskPendingToolCallSchema = z.object({
@@ -49,6 +60,8 @@ export const taskOutputSchema = z.object({
   modelId: z.string().optional(),
   final: z.custom<ModelMessage[]>().optional(),
   usage: z.custom<LanguageModelUsage>().optional(),
+  sessionId: z.string().optional(),
+  depth: z.number().int().nonnegative().optional(),
 });
 
 export type TaskToolOutput = z.infer<typeof taskOutputSchema>;
@@ -87,14 +100,48 @@ IMPORTANT:
   inputSchema: taskInputSchema,
   outputSchema: taskOutputSchema,
   execute: async function* (
-    { subagentType, task, instructions },
+    { subagentType, task, instructions, sessionId },
     { experimental_context, abortSignal, toolCallId },
   ) {
+    const currentDepth =
+      (experimental_context as AgentContext | undefined)?.depth ?? 0;
+    if (currentDepth >= MAX_SUBAGENT_DEPTH) {
+      const refused: ModelMessage[] = [
+        {
+          role: "assistant",
+          content: `Task not started: maximum subagent delegation depth reached (${MAX_SUBAGENT_DEPTH}). Subagents cannot spawn child subagents. Please execute this work directly.`,
+        },
+      ];
+      yield {
+        final: refused,
+        toolCallCount: 0,
+        startedAt: Date.now(),
+        depth: currentDepth,
+      };
+      return;
+    }
+
     const sandboxContext = getSandboxContext(experimental_context, "task");
     const model = getSubagentModel(experimental_context, "task");
     const subagentModelId = typeof model === "string" ? model : model.modelId;
 
     const subagent = SUBAGENT_REGISTRY[subagentType].agent;
+
+    // Resumable subagent session handling: look up existing session or create fresh.
+    const activeSessionId = sessionId?.trim() || crypto.randomUUID();
+    let existingSession = sessionId
+      ? subagentSessionStore.get(sessionId.trim())
+      : undefined;
+    if (sessionId && !existingSession) {
+      existingSession = subagentSessionStore.create({
+        id: activeSessionId,
+        subagentType,
+        depth: currentDepth + 1,
+      });
+    }
+    const isFollowUp = Boolean(
+      existingSession && existingSession.messages.length > 0,
+    );
 
     // Real-time subagent budget enforcement (host-injected billing
     // guard, 2026-09-15): subagent usage previously landed in the
@@ -131,6 +178,8 @@ IMPORTANT:
           toolCallCount,
           startedAt,
           modelId: subagentModelId,
+          sessionId: activeSessionId,
+          depth: currentDepth + 1,
         };
         return;
       }
@@ -151,30 +200,57 @@ IMPORTANT:
     let budgetStopped = false;
     let budgetStopReason: "window" | "credit" | undefined;
 
-    const userPrompt = `Task: ${task}\n\nInstructions:\n${instructions}\n\nPlease complete this task thoroughly. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`;
+    const userPrompt = isFollowUp
+      ? `Follow-up Task: ${task}\n\nInstructions:\n${instructions}\n\nPlease proceed with this follow-up using your previous findings and context. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`
+      : `Task: ${task}\n\nInstructions:\n${instructions}\n\nPlease complete this task thoroughly. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`;
 
     let streamError: string | undefined;
     let result: Awaited<ReturnType<typeof subagent.stream>> | undefined;
 
     try {
-      result = await subagent.stream({
-        prompt: userPrompt,
-        options: {
-          task,
-          instructions,
-          sandbox: sandboxContext.sandbox,
-          model,
-          ...(billingGuard
-            ? (() => {
-                const plan = billingGuard.planSubagent(subagentModelId);
-                return plan.maxOutputTokens
-                  ? { maxOutputTokens: plan.maxOutputTokens }
-                  : {};
-              })()
-            : {}),
-        },
-        abortSignal: localAbort.signal,
-      });
+      const streamCallParams =
+        isFollowUp && existingSession
+          ? {
+              messages: [
+                ...existingSession.messages,
+                { role: "user", content: userPrompt } as ModelMessage,
+              ],
+              options: {
+                task,
+                instructions,
+                sandbox: sandboxContext.sandbox,
+                model,
+                ...(billingGuard
+                  ? (() => {
+                      const plan = billingGuard.planSubagent(subagentModelId);
+                      return plan.maxOutputTokens
+                        ? { maxOutputTokens: plan.maxOutputTokens }
+                        : {};
+                    })()
+                  : {}),
+              },
+              abortSignal: localAbort.signal,
+            }
+          : {
+              prompt: userPrompt,
+              options: {
+                task,
+                instructions,
+                sandbox: sandboxContext.sandbox,
+                model,
+                ...(billingGuard
+                  ? (() => {
+                      const plan = billingGuard.planSubagent(subagentModelId);
+                      return plan.maxOutputTokens
+                        ? { maxOutputTokens: plan.maxOutputTokens }
+                        : {};
+                    })()
+                  : {}),
+              },
+              abortSignal: localAbort.signal,
+            };
+
+      result = await subagent.stream(streamCallParams as never);
     } catch (err) {
       streamError = err instanceof Error ? err.message : String(err);
     }
@@ -199,7 +275,13 @@ IMPORTANT:
     const streamedToolCalls: { name: string; input: unknown }[] = [];
 
     // Emit an initial state so UIs can show elapsed time from a stable timestamp.
-    yield { toolCallCount, startedAt, modelId: subagentModelId };
+    yield {
+      toolCallCount,
+      startedAt,
+      modelId: subagentModelId,
+      sessionId: activeSessionId,
+      depth: currentDepth + 1,
+    };
 
     if (streamError || !result) {
       const errorMsg: ModelMessage[] = [
@@ -213,6 +295,8 @@ IMPORTANT:
         toolCallCount,
         startedAt,
         modelId: subagentModelId,
+        sessionId: activeSessionId,
+        depth: currentDepth + 1,
       };
       return;
     }
@@ -263,6 +347,8 @@ IMPORTANT:
             usage,
             startedAt,
             modelId: subagentModelId,
+            sessionId: activeSessionId,
+            depth: currentDepth + 1,
           };
         }
 
@@ -293,6 +379,8 @@ IMPORTANT:
             usage,
             startedAt,
             modelId: subagentModelId,
+            sessionId: activeSessionId,
+            depth: currentDepth + 1,
           };
         }
       }
@@ -355,6 +443,25 @@ IMPORTANT:
       }
     }
 
+    // Save subagent session history for future follow-up turns
+    if (activeSessionId) {
+      subagentSessionStore.recordTaskCompletion({
+        id: activeSessionId,
+        task,
+        newMessages: [
+          { role: "user", content: userPrompt } as ModelMessage,
+          ...baseMessages,
+        ],
+        toolCallCount,
+        usage: finalUsage,
+        outcome: streamError
+          ? `error: ${streamError}`
+          : budgetStopped
+            ? "budget_stopped"
+            : "completed",
+      });
+    }
+
     if (streamError) {
       const messagesWithError: ModelMessage[] = [
         ...baseMessages,
@@ -369,6 +476,8 @@ IMPORTANT:
         usage: finalUsage,
         startedAt,
         modelId: subagentModelId,
+        sessionId: activeSessionId,
+        depth: currentDepth + 1,
       };
       return;
     }
@@ -393,6 +502,8 @@ IMPORTANT:
         usage: finalUsage,
         startedAt,
         modelId: subagentModelId,
+        sessionId: activeSessionId,
+        depth: currentDepth + 1,
       };
       return;
     }
@@ -403,9 +514,22 @@ IMPORTANT:
       usage: finalUsage,
       startedAt,
       modelId: subagentModelId,
+      sessionId: activeSessionId,
+      depth: currentDepth + 1,
     };
   },
-  toModelOutput: ({ output: { final: messages } }) => {
+  toModelOutput: ({
+    output,
+  }: {
+    output: {
+      final?: ModelMessage[];
+      sessionId?: string;
+      toolCallCount?: number;
+      startedAt?: number;
+    };
+  }) => {
+    const messages = output?.final;
+    const sessionId = output?.sessionId;
     if (!messages || messages.length === 0) {
       return {
         type: "text",
@@ -515,7 +639,18 @@ IMPORTANT:
     }
 
     if (substantiveText) {
-      return { type: "text", value: substantiveText };
+      let formattedText = substantiveText;
+      if (formattedText.length > MAX_INLINE_SUMMARY_CHARS) {
+        const headChars = Math.floor(MAX_INLINE_SUMMARY_CHARS * 0.75);
+        const tailChars = Math.floor(MAX_INLINE_SUMMARY_CHARS * 0.25);
+        formattedText = `${formattedText.slice(0, headChars)}\n\n[... Subagent output middle omitted for context window optimization (${formattedText.length} total characters) ...]\n\n${formattedText.slice(-tailChars)}`;
+      }
+
+      const sessionNotice = sessionId
+        ? `\n\n*(Subagent session \`${sessionId}\` is active. Pass this sessionId in a subsequent task call to follow up or refine.)*`
+        : "";
+
+      return { type: "text", value: `${formattedText}${sessionNotice}` };
     }
 
     // 3. If no text was produced, return reconstructed actions and clear diagnostics
@@ -523,10 +658,13 @@ IMPORTANT:
       executedActions.length > 0
         ? `\n\nExecuted actions:\n${executedActions.slice(-15).join("\n")}`
         : "";
+    const sessionNotice = sessionId
+      ? `\n\n*(Subagent session \`${sessionId}\` is active.)*`
+      : "";
 
     return {
       type: "text",
-      value: `Subagent completed without emitting a final text summary (${executedActions.length} tool call${executedActions.length === 1 ? "" : "s"} executed).${actionDetails}\n\nCheck the affected files directly to verify the outcome.`,
+      value: `Subagent completed without emitting a final text summary (${executedActions.length} tool call${executedActions.length === 1 ? "" : "s"} executed).${actionDetails}${sessionNotice}\n\nCheck the affected files directly to verify the outcome.`,
     };
   },
 });
