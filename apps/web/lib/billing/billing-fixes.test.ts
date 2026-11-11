@@ -30,16 +30,23 @@ describe("Billing Audit Fixes and Invariants", () => {
 
   describe("Customer ID resolution across Bachs payload shapes", () => {
     it("resolves customer id from customer.id or customer.customer_id", () => {
-      const resolveCustomerId = (customer: {
-        id?: string | null;
-        customer_id?: string | null;
-      } | null | undefined): string | null => {
+      const resolveCustomerId = (
+        customer:
+          | {
+              id?: string | null;
+              customer_id?: string | null;
+            }
+          | null
+          | undefined,
+      ): string | null => {
         return customer?.id ?? customer?.customer_id ?? null;
       };
 
       expect(resolveCustomerId({ id: "cust_123" })).toBe("cust_123");
       expect(resolveCustomerId({ customer_id: "cust_456" })).toBe("cust_456");
-      expect(resolveCustomerId({ id: "cust_123", customer_id: "cust_456" })).toBe("cust_123");
+      expect(
+        resolveCustomerId({ id: "cust_123", customer_id: "cust_456" }),
+      ).toBe("cust_123");
       expect(resolveCustomerId(null)).toBeNull();
       expect(resolveCustomerId(undefined)).toBeNull();
     });
@@ -47,20 +54,28 @@ describe("Billing Audit Fixes and Invariants", () => {
 
   describe("usdAmountCents parsing from metadata", () => {
     it("correctly parses metadata.usdAmountCents whether number or string", () => {
-      const parseMetadataUsdAmountCents = (metadata: Record<string, unknown> | null): number | null => {
+      const parseMetadataUsdAmountCents = (
+        metadata: Record<string, unknown> | null,
+      ): number | null => {
         if (!metadata) return null;
-        return typeof metadata.usdAmountCents === "number" && Number.isFinite(metadata.usdAmountCents)
+        return typeof metadata.usdAmountCents === "number" &&
+          Number.isFinite(metadata.usdAmountCents)
           ? metadata.usdAmountCents
-          : typeof metadata.usdAmountCents === "string" && Number.isFinite(Number(metadata.usdAmountCents))
+          : typeof metadata.usdAmountCents === "string" &&
+              Number.isFinite(Number(metadata.usdAmountCents))
             ? Number(metadata.usdAmountCents)
             : null;
       };
 
       expect(parseMetadataUsdAmountCents({ usdAmountCents: 5000 })).toBe(5000);
-      expect(parseMetadataUsdAmountCents({ usdAmountCents: "5000" })).toBe(5000);
+      expect(parseMetadataUsdAmountCents({ usdAmountCents: "5000" })).toBe(
+        5000,
+      );
       expect(parseMetadataUsdAmountCents({ usdAmountCents: 0 })).toBe(0);
       expect(parseMetadataUsdAmountCents({ usdAmountCents: "0" })).toBe(0);
-      expect(parseMetadataUsdAmountCents({ usdAmountCents: "invalid" })).toBeNull();
+      expect(
+        parseMetadataUsdAmountCents({ usdAmountCents: "invalid" }),
+      ).toBeNull();
       expect(parseMetadataUsdAmountCents({})).toBeNull();
       expect(parseMetadataUsdAmountCents(null)).toBeNull();
     });
@@ -73,7 +88,10 @@ describe("Billing Audit Fixes and Invariants", () => {
         sumsTrialCents: number | null | undefined,
       ): number => {
         return plan === "free"
-          ? Math.max(0, sumsTrialCents && sumsTrialCents > 0 ? sumsTrialCents : 100)
+          ? Math.max(
+              0,
+              sumsTrialCents && sumsTrialCents > 0 ? sumsTrialCents : 100,
+            )
           : 0;
       };
 
@@ -95,7 +113,8 @@ describe("Billing Audit Fixes and Invariants", () => {
         activeTopUpCents: number;
         trialAllowance: number;
       }): number => {
-        const maxValidNonGrantCents = params.activeTopUpCents + params.trialAllowance;
+        const maxValidNonGrantCents =
+          params.activeTopUpCents + params.trialAllowance;
         return Math.max(0, params.nonGrantBalance - maxValidNonGrantCents);
       };
 
@@ -122,7 +141,10 @@ describe("Billing Audit Fixes and Invariants", () => {
 
   describe("Admin credit block exemption", () => {
     it("exempts admin users from credit balance exhaustion gating", () => {
-      const shouldBlockUser = (isAdmin: boolean, balanceCents: number): boolean => {
+      const shouldBlockUser = (
+        isAdmin: boolean,
+        balanceCents: number,
+      ): boolean => {
         if (isAdmin) {
           // Admin bypasses balance check
           return false;
