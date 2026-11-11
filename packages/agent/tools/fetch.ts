@@ -367,6 +367,26 @@ EXAMPLES:
     const bodyFileName = buildWebFetchBodyFileName(url);
     const bodyFilePath = `${WEB_FETCH_BODY_DIR}/${bodyFileName}`;
 
+    // curl is not guaranteed on every sandbox base image (the boxd ubuntu
+    // image ships neither curl nor wget), which used to make every
+    // web_fetch call fail with "curl: command not found".
+    //
+    // The guard is a shell PREFIX on the fetch command itself rather than
+    // extra sandbox.exec() round-trips. That matters: adding probe calls
+    // would change the number and ordering of execs, and callers/tests
+    // observe the exact command. Inlining keeps the fetch a single exec
+    // while still self-healing when curl is missing (root-first apt-get,
+    // sudo fallback -- the same pattern as the git guard in
+    // packages/sandbox/boxd/connect.ts). When curl is already present
+    // (the common case) the prefix is a cheap no-op.
+    const ensureCurl = [
+      "command -v curl >/dev/null 2>&1 || {",
+      "  apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq curl >/dev/null 2>&1;",
+      "  command -v curl >/dev/null 2>&1 ||",
+      "    sudo -n apt-get update -qq >/dev/null 2>&1 && sudo -n apt-get install -y -qq curl >/dev/null 2>&1;",
+      "};",
+    ].join(" ");
+
     const port =
       parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80");
     const args: string[] = [
@@ -412,6 +432,7 @@ EXAMPLES:
     args.push(shellEscape(url));
 
     const command = [
+      ensureCurl,
       `mkdir -p ${shellEscape(WEB_FETCH_BODY_DIR)}`,
       `status=$(${args.join(" ")})`,
       "curlExit=$?",
