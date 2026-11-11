@@ -79,6 +79,27 @@ pnpm test:verbose path/to/file.test.ts             # Same verbose output for a s
 - Run project checks through package scripts (for example `pnpm run ci`, `pnpm --dir apps/web db:check`).
 - Prefer `pnpm <script>` over invoking tool binaries directly (`pnpm exec`, `tsc`, `eslint`, etc.) so local runs match CI behavior.
 
+**GitHub Actions CI is currently broken — always run the checks manually.**
+
+`.github/workflows/ci.yml` is invalid YAML (the `Workflow unit tests` step's `run:` value
+is written at column 0 instead of being indented, which makes the file unparseable), and its
+`actions/checkout` steps reference `github.event.pull_request.head.*`, which is null on
+`push` events. Every CI run therefore fails in 0s with "This run likely failed because of a
+workflow file issue" and **zero jobs** — including every push to `main`. No commit in this
+repo has ever been verified by CI.
+
+Consequence for agents:
+
+- **Never treat a green or red GitHub Actions check as signal.** It is not running at all.
+- **Always run the checks yourself, manually, on the machine the agent is on** before claiming
+  a change works: `pnpm check`, `pnpm typecheck`, `pnpm test:isolated`, and the relevant
+  `bun test <file>` invocations. Do not rely on CI to catch a regression, and do not report a
+  change as "CI verified" — there is no CI to verify it.
+- If a PR shows `mergeStateStatus: UNSTABLE` with empty checks, that is this bug, not a real
+  failure of your change.
+- This rule stays in force until someone repairs `ci.yml` and confirms a real job actually
+  runs. Do not remove it just because the file looks plausible again — verify a job executes.
+
 ## Git Commands
 
 - **Branch sync preference:** When bringing in `origin/main`, prefer a normal merge (`git fetch origin main` then `git merge origin/main`) instead of rebasing, unless explicitly requested otherwise.
