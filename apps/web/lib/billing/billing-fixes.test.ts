@@ -1,10 +1,4 @@
 import { describe, expect, it } from "bun:test";
-import {
-  shouldDowngradeOnSubscriptionDisable,
-  shouldAutoRevertToFree,
-  consumedFromGrantPool,
-  expiredGrantCentsOnPlanEnd,
-} from "./plans";
 
 describe("Billing Audit Fixes and Invariants", () => {
   describe("Subscription status cancellation matching", () => {
