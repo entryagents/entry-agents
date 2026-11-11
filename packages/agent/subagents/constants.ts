@@ -1,4 +1,10 @@
 export const SUBAGENT_STEP_LIMIT = 100;
+/** Maximum delegation depth for subagents (0 = root agent, 1 = direct subagent). Subagents at depth >= 1 cannot delegate further. */
+export const MAX_SUBAGENT_DEPTH = 1;
+/** Maximum length of inline summary text returned to the parent before spilling to disk. */
+export const MAX_INLINE_SUMMARY_CHARS = 16_000;
+/** Cache-preserving wrap-up prompt sent when approaching step limit. */
+export const SUBAGENT_WRAP_UP_PROMPT = `[NOTICE: Step limit nearly reached. Please do NOT execute any more tools. Immediately synthesize your findings and emit your final text response containing **Summary** and **Answer** now.]`;
 
 // ---------------------------------------------------------------------------
 // Shared prompt fragments for subagents.
