@@ -37,7 +37,12 @@ const spies = {
   ),
   updateChatAssistantActivity: mock(() => Promise.resolve()),
   setChatRunStatus: mock(() => Promise.resolve()),
+  releaseUserBillingTurn: mock(() => Promise.resolve()),
 };
+
+mock.module("@/lib/billing/credit-ledger", () => ({
+  releaseUserBillingTurn: spies.releaseUserBillingTurn,
+}));
 
 // ── Module mocks ───────────────────────────────────────────────────
 
@@ -146,11 +151,9 @@ describe("POST /api/chat/[chatId]/stop", () => {
 
     // The cancelled write is guarded on an empty slot: a newer run that
     // claims the stream pointer concurrently keeps its own status.
-    expect(spies.setChatRunStatus).toHaveBeenCalledWith(
-      "chat-1",
-      "cancelled",
-      { onlyIfActiveStreamId: null },
-    );
+    expect(spies.setChatRunStatus).toHaveBeenCalledWith("chat-1", "cancelled", {
+      onlyIfActiveStreamId: null,
+    });
   });
 
   test("cancels workflow and clears activeStreamId on success", async () => {
@@ -179,14 +182,12 @@ describe("POST /api/chat/[chatId]/stop", () => {
     // still owns active_stream_id, so a stale stop cannot cancel a
     // newer run that has since claimed the slot.
     expect(spies.setChatRunStatus).toHaveBeenCalledTimes(1);
-    expect(spies.setChatRunStatus).toHaveBeenCalledWith(
-      "chat-1",
-      "cancelled",
-      { onlyIfActiveStreamId: "wrun_active-123" },
-    );
+    expect(spies.setChatRunStatus).toHaveBeenCalledWith("chat-1", "cancelled", {
+      onlyIfActiveStreamId: "wrun_active-123",
+    });
   });
 
-  test("returns 500 when workflow cancel fails", async () => {
+  test("returns 500 when workflow cancel fails but still releases billing turn lease", async () => {
     cancelShouldThrow = true;
     const { POST } = await routeModulePromise;
 
@@ -195,6 +196,10 @@ describe("POST /api/chat/[chatId]/stop", () => {
 
     const body = await response.json();
     expect(body).toEqual({ error: "Failed to cancel workflow run" });
+    expect(spies.releaseUserBillingTurn).toHaveBeenCalledWith(
+      "user-1",
+      "wrun_active-123",
+    );
   });
 
   test("persists assistant snapshot when valid message in body", async () => {
@@ -211,13 +216,16 @@ describe("POST /api/chat/[chatId]/stop", () => {
     await POST(createStopRequest(body), routeContext);
 
     expect(spies.createChatMessageIfNotExists).toHaveBeenCalledTimes(1);
-    expect(spies.createChatMessageIfNotExists).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(spies.createChatMessageIfNotExists).toHaveBeenCalledWith({
+      id: "assistant-1",
+      chatId: "chat-1",
+      role: "assistant",
+      parts: {
         id: "assistant-1",
-        chatId: "chat-1",
         role: "assistant",
-      }),
-    );
+        parts: [{ type: "text", text: "Partial response..." }],
+      },
+    });
   });
 
   test("skips snapshot when body has no assistant message", async () => {

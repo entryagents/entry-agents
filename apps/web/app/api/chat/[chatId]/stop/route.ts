@@ -13,6 +13,7 @@ import {
   updateSession,
 } from "@/lib/db/sessions";
 import { canOperateOnSandbox } from "@/lib/sandbox/utils";
+import { sanitizeMessageForDatabase } from "@/lib/chat/sanitize-db-message";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
@@ -110,29 +111,34 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   // 4. Cancel the workflow run at the next suspension point
+  let cancelError: unknown = null;
   try {
     const run = getRun(activeStreamId);
     await run.cancel();
   } catch (error) {
+    cancelError = error;
     console.error(
       `[workflow] Failed to cancel workflow run for chat ${chatId}:`,
       error,
     );
+  } finally {
+    // 5. Release user billing turn lease immediately
+    try {
+      const { releaseUserBillingTurn } =
+        await import("@/lib/billing/credit-ledger");
+      await releaseUserBillingTurn(authResult.userId, activeStreamId).catch(
+        () => {},
+      );
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  if (cancelError) {
     return Response.json(
       { error: "Failed to cancel workflow run" },
       { status: 500 },
     );
-  }
-
-  // 5. Release user billing turn lease immediately
-  try {
-    const { releaseUserBillingTurn } =
-      await import("@/lib/billing/credit-ledger");
-    await releaseUserBillingTurn(authResult.userId, activeStreamId).catch(
-      () => {},
-    );
-  } catch {
-    // Non-fatal
   }
 
   return Response.json({ success: true });
@@ -145,11 +151,12 @@ async function persistAssistantSnapshot(
   // Insert-only: if the workflow already persisted a fuller message, this
   // is a no-op. Avoids overwriting server-side content with a stale
   // (throttled) client snapshot.
+  const sanitized = sanitizeMessageForDatabase(message);
   const created = await createChatMessageIfNotExists({
     id: message.id,
     chatId,
     role: "assistant",
-    parts: message,
+    parts: sanitized,
   });
   if (created) {
     await updateChatAssistantActivity(chatId, new Date());
