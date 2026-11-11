@@ -183,6 +183,20 @@ IMPORTANT:
     let usage: LanguageModelUsage | undefined;
     let consecutiveRepeatedCalls = 0;
     let lastCallSignature = "";
+    // Streamed assistant text, accumulated as a fallback for the final
+    // output. `result.response.messages` is the primary source, but it can
+    // resolve empty when the subagent is cut off (step-limit exhaustion,
+    // abort, or a provider that returns no assembled messages). Before this
+    // fallback existed, that path returned the useless
+    // "Subagent completed without producing messages." string and silently
+    // discarded everything the subagent had actually produced in-stream --
+    // observed in practice as every delegated task returning no content.
+    // Text parts from the fullStream are captured here so the final
+    // assembly can reconstruct at least the last text the subagent emitted.
+    const streamedTextChunks: string[] = [];
+    // Ordered record of executed tool calls (name + target), captured from
+    // the stream so the fallback can still report what the subagent did.
+    const streamedToolCalls: { name: string; input: unknown }[] = [];
 
     // Emit an initial state so UIs can show elapsed time from a stable timestamp.
     yield { toolCallCount, startedAt, modelId: subagentModelId };
@@ -212,9 +226,20 @@ IMPORTANT:
               : String(part.error);
         }
 
+        if (part.type === "text-delta") {
+          // Capture streamed assistant text for the empty-`response.messages`
+          // fallback (see streamedTextChunks above). Only real deltas are
+          // appended; empty deltas are ignored so a provider that emits
+          // placeholder chunks does not inflate the buffer.
+          if (typeof part.text === "string" && part.text.length > 0) {
+            streamedTextChunks.push(part.text);
+          }
+        }
+
         if (part.type === "tool-call") {
           toolCallCount += 1;
           pending = { name: part.toolName, input: part.input };
+          streamedToolCalls.push({ name: part.toolName, input: part.input });
 
           try {
             const signature = `${part.toolName}:${JSON.stringify(part.input)}`;
@@ -294,7 +319,41 @@ IMPORTANT:
         finalUsage = undefined;
       }
     }
-    const baseMessages = response?.messages ?? [];
+    // Primary source: the assembled response messages. Fallback: when the
+    // response resolved with no messages (step-limit cut-off, abort, or a
+    // provider that returned no assembled messages), rebuild a final
+    // assistant message from the text this subagent streamed. Without this,
+    // every such run degraded to "Subagent completed without producing
+    // messages." and discarded the subagent's actual output.
+    let baseMessages: ModelMessage[] = response?.messages ?? [];
+    if (baseMessages.length === 0) {
+      const streamedText = streamedTextChunks.join("").trim();
+      if (streamedText.length > 0) {
+        baseMessages = [
+          {
+            role: "assistant",
+            content: streamedText,
+          } as ModelMessage,
+        ];
+      } else if (streamedToolCalls.length > 0) {
+        // No assembled messages and no streamed text, but the subagent did
+        // run tools. Emit a synthetic assistant message carrying the tool
+        // calls so toModelOutput's action-reconstruction path (which reads
+        // `final`) can still report what happened, instead of the generic
+        // "completed without producing messages" string.
+        baseMessages = [
+          {
+            role: "assistant",
+            content: streamedToolCalls.map((call) => ({
+              type: "tool-call" as const,
+              toolCallId: "",
+              toolName: call.name,
+              input: call.input,
+            })),
+          } as unknown as ModelMessage,
+        ];
+      }
+    }
 
     if (streamError) {
       const messagesWithError: ModelMessage[] = [

@@ -158,4 +158,43 @@ describe("taskTool.toModelOutput", () => {
     ).toModelOutput({ output: { final: [] } });
     expect(out.value).toContain("without producing messages");
   });
+
+  test("recovers executed actions from a synthetic tool-call message", () => {
+    // Regression: when the subagent's `response.messages` resolves empty,
+    // task.ts now rebuilds `final` from streamed text (or, absent text,
+    // from the tool calls it captured). This asserts the observable
+    // contract of that recovery path: a synthetic assistant message made
+    // of tool-call parts must still produce a useful summary rather than
+    // the generic "without producing messages" fallback.
+    const synthetic: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "",
+            toolName: "read",
+            input: { path: "packages/agent/tools/task.ts" },
+          },
+          {
+            type: "tool-call",
+            toolCallId: "",
+            toolName: "grep",
+            input: { pattern: "toModelOutput" },
+          },
+        ],
+      } as never,
+    ];
+    const out = (
+      taskTool as unknown as {
+        toModelOutput: (arg: unknown) => { type: string; value: string };
+      }
+    ).toModelOutput({ output: { final: synthetic } });
+    expect(out.value).toContain(
+      "Subagent completed without emitting a final text summary",
+    );
+    expect(out.value).toContain("2 tool calls executed");
+    expect(out.value).toContain("packages/agent/tools/task.ts");
+    expect(out.value).toContain("toModelOutput");
+  });
 });
