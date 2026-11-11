@@ -81,6 +81,7 @@ import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
 import { SnippetChip } from "@/components/snippet-chip";
 import { AssistantMessageGroups } from "@/components/assistant-message-groups";
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
+import { AgentHubButton } from "@/components/agent-hub/agent-hub-button";
 import { MessageModelPill } from "@/components/message-model-pill";
 import {
   PinnedTodoPanel,

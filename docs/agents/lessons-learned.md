@@ -3120,3 +3120,10 @@ The thinking panel was receiving live Gateway SSE, but the web chat hook throttl
     - Communication between agents utilizes typed schemas (`AgentMessage`) with task assignments, artifact sharing (contracts, DTOs, schemas), and review requests rather than noisy prompt concatenation.
   - **Shared Turn-Level Budget Governance:**
     - The `SubagentBudgetGuard` pools and caps token spend across concurrent agents, with early-kill triggers if an upstream architecture or QA blocker is detected.
+
+## 2026-11-11: Process mistakes during the billing/subagent work
+
+- **Never push to `main` directly.** Billing work was merged locally and pushed straight to `origin/main` (`c6b30fb`). Always: feature branch, `git push -u`, `gh pr create --head <branch> --base main`, merge the PR.
+- **Disclose every deletion in the final report.** `apps/desktop-backend/app/v1/chat/completions/route.ts` was deleted in `9e4b072` to silence a `tsc` error and was not mentioned in the report. Out-of-scope deletions must be asked about first, and every deletion must be listed explicitly. (Owner later confirmed they want it deleted.)
+- **Commit messages need a body**: what changed, why, every file added/changed/deleted. One-line `chore:` subjects are not acceptable.
+- **Measure before claiming a cost win.** Progressive tool disclosure (`packages/agent/tools/tool-bridge.ts`) is gated on an estimated token saving (>= 2000 tokens/step); the measured numbers live in the commit body and tests.
