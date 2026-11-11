@@ -131,7 +131,9 @@ function ApproveForm() {
             <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">
               Approved as{" "}
               <span className="text-zinc-200 font-medium">
-                {user?.email || user?.name || (code ? `device ${code}` : "this device")}
+                {user?.email ||
+                  user?.name ||
+                  (code ? `device ${code}` : "this device")}
               </span>
               . You can now return to Entry Agents Desktop.
             </p>
@@ -154,7 +156,9 @@ function ApproveForm() {
                   Authorizing account:
                 </span>
                 <span className="text-sm font-medium text-zinc-200">
-                  {user?.email || user?.name || (code ? `device ${code}` : "this device")}
+                  {user?.email ||
+                    user?.name ||
+                    (code ? `device ${code}` : "this device")}
                 </span>
               </div>
               <span className="rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 text-xs font-medium">

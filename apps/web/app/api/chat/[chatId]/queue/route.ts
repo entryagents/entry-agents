@@ -176,7 +176,9 @@ export async function POST(req: Request, context: RouteContext) {
 
       const prompt: QueuedPrompt = {
         id:
-          typeof body.id === "string" && body.id ? body.id : crypto.randomUUID(),
+          typeof body.id === "string" && body.id
+            ? body.id
+            : crypto.randomUUID(),
         text,
         payload: body.payload,
         modelId: typeof body.modelId === "string" ? body.modelId : null,

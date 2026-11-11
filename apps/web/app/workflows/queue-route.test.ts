@@ -201,18 +201,15 @@ describe("queue route mutations", () => {
     const second = post({ id: "b", text: "b", payload: { text: "b" } });
     releaseLock();
 
-    const [firstResponse, secondResponse] = await Promise.all([
-      first,
-      second,
-    ]);
+    const [firstResponse, secondResponse] = await Promise.all([first, second]);
     expect(firstResponse.status).toBe(200);
     expect(secondResponse.status).toBe(200);
 
     // The locked read-modify-write serialized the enqueues: both survive,
     // in lock-acquisition order -- a lost update would leave only ["b"].
     expect(queuedIds()).toEqual(["a", "b"]);
-    const writes = spies.writeQueuedPrompts.mock.calls.map(
-      (call) => (call[0] as QueuedPrompt[]).map((p) => p.id),
+    const writes = spies.writeQueuedPrompts.mock.calls.map((call) =>
+      (call[0] as QueuedPrompt[]).map((p) => p.id),
     );
     expect(writes).toEqual([["a"], ["a", "b"]]);
     expect(spies.selectForUpdate).toHaveBeenCalledTimes(2);

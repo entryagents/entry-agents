@@ -115,7 +115,9 @@ function resolveSessionProvider(session: SessionRecord): SandboxProvider {
   return requireSandboxProvider(String(rawType));
 }
 
-async function buildSandboxState(session: SessionRecord): Promise<SandboxState> {
+async function buildSandboxState(
+  session: SessionRecord,
+): Promise<SandboxState> {
   const provider = resolveSessionProvider(session);
   const existingState = session.sandboxState;
   const source = buildSandboxSource(session);

@@ -126,13 +126,17 @@ export async function deleteModalVolume(
 }
 
 export async function listAllBoxdMachines(
-  ...args: Parameters<(typeof import("./boxd/connect.ts"))["listAllBoxdMachines"]>
+  ...args: Parameters<
+    (typeof import("./boxd/connect.ts"))["listAllBoxdMachines"]
+  >
 ) {
   const m = await import("./boxd/connect.ts");
   return m.listAllBoxdMachines(...args);
 }
 export async function deleteAllBoxdMachines(
-  ...args: Parameters<(typeof import("./boxd/connect.ts"))["deleteAllBoxdMachines"]>
+  ...args: Parameters<
+    (typeof import("./boxd/connect.ts"))["deleteAllBoxdMachines"]
+  >
 ) {
   const m = await import("./boxd/connect.ts");
   return m.deleteAllBoxdMachines(...args);

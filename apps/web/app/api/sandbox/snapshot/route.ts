@@ -259,14 +259,14 @@ export async function PUT(req: Request) {
 
     const newState = sandbox.getState?.();
     const restoredState = (newState ??
-      await sandboxProvider.buildProvisionState({
+      (await sandboxProvider.buildProvisionState({
         sessionId,
         existing: {
           type: sandboxProvider.id,
           sandboxName:
             persistentSandboxName ?? getSessionSandboxName(sessionId),
         } as SandboxState,
-      })) as Parameters<typeof updateSession>[1]["sandboxState"];
+      }))) as Parameters<typeof updateSession>[1]["sandboxState"];
 
     await updateSession(sessionId, {
       sandboxState: restoredState,

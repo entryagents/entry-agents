@@ -8,7 +8,6 @@ import type { ExecResult, Sandbox, SandboxHooks } from "../interface.ts";
 import { LocalSandboxPathError } from "./path-error";
 import type { LocalState } from "./state.ts";
 
-
 export interface LocalSandboxConnectOptions {
   env?: Record<string, string>;
   hooks?: SandboxHooks;

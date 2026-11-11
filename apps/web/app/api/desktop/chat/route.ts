@@ -31,11 +31,14 @@ interface ParsedUsage {
   outputTokens: number;
 }
 
-function usageFromOpenAI(u: Record<string, unknown> | undefined): ParsedUsage | null {
+function usageFromOpenAI(
+  u: Record<string, unknown> | undefined,
+): ParsedUsage | null {
   if (!u || typeof u !== "object") return null;
   const promptTokens = Number(u.prompt_tokens ?? 0);
   const completionTokens = Number(u.completion_tokens ?? 0);
-  if (!Number.isFinite(promptTokens) && !Number.isFinite(completionTokens)) return null;
+  if (!Number.isFinite(promptTokens) && !Number.isFinite(completionTokens))
+    return null;
   const details = (u.prompt_tokens_details ?? {}) as Record<string, unknown>;
   return {
     inputTokens: promptTokens,
@@ -65,7 +68,10 @@ export async function POST(req: Request) {
   try {
     const userId = await resolveUserIdFromBearer(req);
     if (!userId) {
-      return NextResponse.json({ error: "Invalid or expired session token" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Invalid or expired session token" },
+        { status: 401 },
+      );
     }
 
     const gatewayBase = process.env.GATEWAY_BASE_URL;
@@ -73,7 +79,7 @@ export async function POST(req: Request) {
     if (!gatewayBase || !gatewayKey) {
       return NextResponse.json(
         { error: "Gateway is not configured" },
-        { status: 503 }
+        { status: 503 },
       );
     }
 
@@ -89,33 +95,45 @@ export async function POST(req: Request) {
       req.headers.get("x-billing-reference") || crypto.randomUUID();
 
     // Always request usage so billing can be computed server-side.
-    body.stream_options = { ...(body.stream_options as object | undefined), include_usage: true };
+    body.stream_options = {
+      ...(body.stream_options as object | undefined),
+      include_usage: true,
+    };
 
-    const upstream = await fetch(`${gatewayBase.replace(/\/$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${gatewayKey}`,
+    const upstream = await fetch(
+      `${gatewayBase.replace(/\/$/, "")}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${gatewayKey}`,
+        },
+        body: JSON.stringify(body),
       },
-      body: JSON.stringify(body),
-    });
+    );
 
     if (!upstream.ok || !upstream.body) {
       const text = await upstream.text().catch(() => "");
       return NextResponse.json(
-        { error: `Gateway error ${upstream.status}`, detail: text.slice(0, 2000) },
-        { status: upstream.status || 502 }
+        {
+          error: `Gateway error ${upstream.status}`,
+          detail: text.slice(0, 2000),
+        },
+        { status: upstream.status || 502 },
       );
     }
 
     // Tee the upstream stream: pipe it back verbatim while scanning for the
     // final usage payload to bill against.
     const [toClient, forBilling] = upstream.body.tee();
-    const contentType = upstream.headers.get("content-type") ?? "text/event-stream";
+    const contentType =
+      upstream.headers.get("content-type") ?? "text/event-stream";
 
     // Collect usage without blocking the client stream.
     const usagePromise = (async () => {
-      const reader = forBilling.pipeThrough(new TextDecoderStream()).getReader();
+      const reader = forBilling
+        .pipeThrough(new TextDecoderStream())
+        .getReader();
       let lastUsage: ParsedUsage | null = null;
       let buffer = "";
       for (;;) {
@@ -131,7 +149,9 @@ export async function POST(req: Request) {
           if (!payload || payload === "[DONE]") continue;
           try {
             const json = JSON.parse(payload) as Record<string, unknown>;
-            const parsed = usageFromOpenAI(json.usage as Record<string, unknown> | undefined);
+            const parsed = usageFromOpenAI(
+              json.usage as Record<string, unknown> | undefined,
+            );
             if (parsed) lastUsage = parsed;
           } catch {
             /* partial or non-JSON line — ignore */
@@ -170,7 +190,7 @@ export async function POST(req: Request) {
   } catch (err) {
     return NextResponse.json(
       { error: (err as Error).message || "Desktop chat proxy failed" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
