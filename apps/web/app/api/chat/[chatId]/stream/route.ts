@@ -5,10 +5,7 @@ import {
   requireOwnedChatById,
 } from "@/app/api/chat/_lib/chat-context";
 import type { WebAgentUIMessage } from "@/app/types";
-import {
-  compareAndSetChatActiveStreamId,
-  updateChatActiveStreamId,
-} from "@/lib/db/sessions";
+import { compareAndSetChatActiveStreamId } from "@/lib/db/sessions";
 import { getLatestCompletedWorkflowRunIdForChat } from "@/lib/db/workflow-runs";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
 import { verifyRunState } from "@/lib/workflow-run-recovery";
@@ -126,9 +123,12 @@ export async function GET(request: Request, context: RouteContext) {
   // the workflow is done — clear the stale activeStreamId using CAS so we
   // never clobber a newly claimed runId.
   if (outcome === "gone") {
-    await compareAndSetChatActiveStreamId(chatId, runId, null).catch(() =>
-      updateChatActiveStreamId(chatId, null),
-    );
+    await compareAndSetChatActiveStreamId(chatId, runId, null).catch((err) => {
+      console.error(
+        `[chat-stream] Failed to clear stale activeStreamId ${runId} for chat ${chatId}:`,
+        err,
+      );
+    });
     if (isMidStreamReconnect) {
       const tailResponse = await openReadableStreamResponse(runId, startIndex);
       if (tailResponse) {

@@ -491,16 +491,18 @@ describe("persistFinalAssistantMessage", () => {
     expect(spies.updateChatAssistantActivity).not.toHaveBeenCalled();
   });
 
-  test("does not throw on db error", async () => {
+  test("re-throws on db error so Workflow retries the step", async () => {
     spies.upsertChatMessageAndClearActiveStream.mockImplementationOnce(() =>
       Promise.reject(new Error("DB down")),
     );
 
-    await persistFinalAssistantMessage(
-      "chat-1",
-      makeAssistantMessage(),
-      "wrun_abc",
-    );
+    await expect(
+      persistFinalAssistantMessage(
+        "chat-1",
+        makeAssistantMessage(),
+        "wrun_abc",
+      ),
+    ).rejects.toThrow("DB down");
   });
 });
 

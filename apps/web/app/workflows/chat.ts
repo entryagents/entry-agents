@@ -2474,6 +2474,7 @@ export async function runAgentWorkflow(options: Options) {
     latestMessage.role === "assistant" ? latestMessage : undefined;
   const stepTimings: WorkflowRunStepTiming[] = [];
   let wasAborted = false;
+  let wasTimedOut = false;
   let exhaustedMaxSteps = false;
   let totalUsage: LanguageModelUsage | undefined;
   let finalFinishReason: FinishReason | undefined;
@@ -2658,6 +2659,7 @@ export async function runAgentWorkflow(options: Options) {
         console.warn(
           `[chat-workflow] Turn exceeded maximum duration (${MAX_WORKFLOW_TURN_DURATION_MS}ms) for chat ${options.chatId}`,
         );
+        wasTimedOut = true;
         break;
       }
       let result: Awaited<ReturnType<typeof runAgentStep>>;
@@ -2985,24 +2987,45 @@ export async function runAgentWorkflow(options: Options) {
       };
     }
 
-    // Persist completed model output before post-finish work so it is not lost
-    // if later automation fails. Sandbox state can persist in parallel.
-    // This final persist ALSO clears activeStreamId in the same
-    // transaction (upstream open-agents #845) — atomic, so a refresh can
-    // never replay the response into the transcript a second time.
-    await Promise.all([
-      persistFinalAssistantMessage(
-        options.chatId,
-        pendingAssistantResponse,
-        workflowRunId,
-      ),
-      ...(sandboxState
-        ? [persistSandboxState(options.sessionId, sandboxState)]
-        : []),
-    ]);
+    if (wasTimedOut) {
+      const timeoutNotice =
+        "\n\n*[This task reached the maximum turn duration (1 hour) and was paused. You can send a follow-up message to continue.]*";
+      const lastPart = pendingAssistantResponse.parts.at(-1);
+      if (lastPart?.type === "text") {
+        pendingAssistantResponse = {
+          ...pendingAssistantResponse,
+          parts: [
+            ...pendingAssistantResponse.parts.slice(0, -1),
+            { ...lastPart, text: lastPart.text + timeoutNotice },
+          ],
+          metadata: {
+            ...pendingAssistantResponse.metadata,
+            turnTimedOut: true,
+          },
+        };
+      } else {
+        pendingAssistantResponse = {
+          ...pendingAssistantResponse,
+          parts: [
+            ...pendingAssistantResponse.parts,
+            { type: "text", text: timeoutNotice },
+          ],
+          metadata: {
+            ...pendingAssistantResponse.metadata,
+            turnTimedOut: true,
+          },
+        };
+      }
+      await sendTextMessage(writable, `${assistantId}:timeout`, timeoutNotice);
+    }
+
+    if (sandboxState) {
+      await persistSandboxState(options.sessionId, sandboxState);
+    }
 
     const finishedNaturally =
       !wasAborted &&
+      !wasTimedOut &&
       finalFinishReason !== undefined &&
       finalFinishReason !== "tool-calls";
     const commitPartId = `${assistantId}:commit`;
@@ -3131,6 +3154,16 @@ export async function runAgentWorkflow(options: Options) {
     if (didUpdateGitData) {
       await persistAssistantMessage(options.chatId, pendingAssistantResponse);
     }
+
+    // Final atomic persist: saves the final assistant message (including
+    // usage metadata and any commit/PR data parts), clears activeStreamId,
+    // and finalizes the chat status to "completed" in one atomic transaction.
+    // Retried by the Workflow engine on transient database outage.
+    await persistFinalAssistantMessage(
+      options.chatId,
+      pendingAssistantResponse,
+      workflowRunId,
+    );
 
     await Promise.all([
       clearActiveStream(options.chatId, workflowRunId),
@@ -3303,6 +3336,35 @@ const runAgentStep = async (
   // Billing persistence promises are flushed before this durable step
   // returns. The database owns sub-cent carry and idempotency.
   const pendingDebits: Promise<void>[] = [];
+  const recordDebit = (
+    costUsd: number,
+    opts: {
+      billingReference: string;
+      modelId?: string | null;
+      description?: string;
+    },
+  ) => {
+    pendingDebits.push(
+      (async () => {
+        const { recordBillableUsage } =
+          await import("@/lib/billing/credit-ledger");
+        const entryOpts = {
+          billingReference: opts.billingReference,
+          description: opts.description,
+          ...(opts.modelId ? { modelId: opts.modelId } : {}),
+        };
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            await recordBillableUsage(userId, costUsd, entryOpts);
+            return;
+          } catch (err) {
+            if (attempt === 3) throw err;
+            await delay(attempt * 100);
+          }
+        }
+      })(),
+    );
+  };
   // Fallback segment for subagent billing references when a usage report
   // arrives without a subagentStepId -- unique within this step execution
   // only (it restarts on a replay). The real task-tool path always sends
@@ -3321,28 +3383,22 @@ const runAgentStep = async (
       if (costUsd !== undefined && costUsd > 0 && subagentModelId) {
         subagentStepSeq += 1;
         const seq = subagentStepSeq;
-        pendingDebits.push(
-          import("@/lib/billing/credit-ledger")
-            .then((m) =>
-              m.recordBillableUsage(userId, costUsd, {
-                // The reference must identify the (subagent, step) pair,
-                // not this execution's finish order: the ledger dedupes
-                // on (userId, reference) with onConflictDoNothing, so a
-                // replayed step's restarted seq counter would silently
-                // drop a different subagent's usage. subagentStepId is
-                // the task tool call's own id plus the subagent's step
-                // index -- deterministic per (subagent, step).
-                billingReference: buildSubagentBillingReference({
-                  workflowRunId,
-                  stepNumber,
-                  subagentStepId: subagentStepId || `${seq}`,
-                }),
-                modelId: subagentModelId,
-                description: `Subagent usage: ${subagentModelId}`,
-              }),
-            )
-            .then(() => undefined),
-        );
+        recordDebit(costUsd, {
+          // The reference must identify the (subagent, step) pair,
+          // not this execution's finish order: the ledger dedupes
+          // on (userId, reference) with onConflictDoNothing, so a
+          // replayed step's restarted seq counter would silently
+          // drop a different subagent's usage. subagentStepId is
+          // the task tool call's own id plus the subagent's step
+          // index -- deterministic per (subagent, step).
+          billingReference: buildSubagentBillingReference({
+            workflowRunId,
+            stepNumber,
+            subagentStepId: subagentStepId || `${seq}`,
+          }),
+          modelId: subagentModelId,
+          description: `Subagent usage: ${subagentModelId}`,
+        });
       }
       const state = applySpendToBudgets({
         remainingWindowBudgetCents,
@@ -4094,17 +4150,11 @@ const runAgentStep = async (
                 midStreamDebitedUsd = liveStepCostUsd;
                 lastStepCost = liveStepCostUsd;
                 totalMessageCost = (totalMessageCost ?? 0) + liveStepCostUsd;
-                pendingDebits.push(
-                  import("@/lib/billing/credit-ledger")
-                    .then((m) =>
-                      m.recordBillableUsage(userId, liveStepCostUsd, {
-                        billingReference: `${workflowRunId}:main-step:${stepNumber}:midstream`,
-                        modelId,
-                        description: `Usage: ${modelId}`,
-                      }),
-                    )
-                    .then(() => undefined),
-                );
+                recordDebit(liveStepCostUsd, {
+                  billingReference: `${workflowRunId}:main-step:${stepNumber}:midstream`,
+                  modelId,
+                  description: `Usage: ${modelId}`,
+                });
                 const debitedCents = Math.max(1, Math.ceil(liveStepCostCents));
                 if (enforceCreditBlock) {
                   remainingBalanceCents -= debitedCents;
@@ -4161,19 +4211,13 @@ const runAgentStep = async (
                     1,
                     Math.ceil(residualCostUsd * 100),
                   );
-                  pendingDebits.push(
-                    import("@/lib/billing/credit-ledger")
-                      .then((m) =>
-                        m.recordBillableUsage(userId, residualCostUsd, {
-                          billingReference: midStreamDebited
-                            ? `${workflowRunId}:main-step:${stepNumber}:final`
-                            : `${workflowRunId}:main-step:${stepNumber}`,
-                          modelId,
-                          description: `Usage: ${modelId}`,
-                        }),
-                      )
-                      .then(() => undefined),
-                  );
+                  recordDebit(residualCostUsd, {
+                    billingReference: midStreamDebited
+                      ? `${workflowRunId}:main-step:${stepNumber}:final`
+                      : `${workflowRunId}:main-step:${stepNumber}`,
+                    modelId,
+                    description: `Usage: ${modelId}`,
+                  });
 
                   if (enforceCreditBlock && !midStreamDebited) {
                     remainingBalanceCents -= stepCostCents;
@@ -4572,7 +4616,7 @@ function startStopMonitor(
     // doesn't change mid-stream, only the free-tier gate flag does (see
     // the dynamic import below, polled every tick for that reason).
     const { isUserAdmin } = await import("@/lib/db/users");
-    const isAdminUser = await isUserAdmin(userId).catch(() => true);
+    const isAdminUser = await isUserAdmin(userId).catch(() => false);
     const { getChatById } = await import("@/lib/db/sessions");
 
     while (!shouldStop && !abortController.signal.aborted) {
@@ -4666,7 +4710,7 @@ function startStopMonitor(
         // Ignore transient DB poll errors inside stop monitor
       }
 
-      await delay(150);
+      await delay(1000);
     }
   })();
 

@@ -206,10 +206,28 @@ async function reconcileExistingActiveStream(
       };
     }
 
-    // "gone" clears the stale id; "unknown" after bounded retries fails
-    // open too (matches the billing-turn staleness fallback: a crashed or
-    // orphaned run must never permanently brick a chat). The CAS guards
-    // against stomping a slot another request re-claimed meanwhile.
+    if (outcome === "unknown") {
+      const latestChat = await getChatById(chatId);
+      const isRecentlyActive =
+        latestChat &&
+        (latestChat.status === "running" || latestChat.status === "queued") &&
+        (latestChat.runStatusUpdatedAt
+          ? Date.now() - latestChat.runStatusUpdatedAt.getTime() <
+            15 * 60 * 1000
+          : Date.now() - latestChat.updatedAt.getTime() < 15 * 60 * 1000);
+
+      if (isRecentlyActive) {
+        console.warn(
+          `[chat-route] workflow run ${currentStreamId} state is indeterminate but chat ${chatId} was recently active. Refusing to clear activeStreamId.`,
+        );
+        return { action: "conflict" };
+      }
+    }
+
+    // "gone" clears the stale id. "unknown" clears ONLY when the chat is no
+    // longer recently active (older than 15 minutes without status update),
+    // ensuring transient Workflow API lookup blips never abort a live running
+    // workflow. The CAS guards against stomping a slot another request re-claimed.
     const cleared = await compareAndSetChatActiveStreamId(
       chatId,
       currentStreamId,

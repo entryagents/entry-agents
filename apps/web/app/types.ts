@@ -76,6 +76,11 @@ export type WebAgentMessageMetadata = {
    * notice in session-chat-content.tsx.
    */
   turnSpendCapped?: boolean;
+  /**
+   * True when this turn reached the 1-hour workflow duration ceiling
+   * (MAX_WORKFLOW_TURN_DURATION_MS in app/workflows/chat.ts).
+   */
+  turnTimedOut?: boolean;
 };
 
 export type WebAgentGitDataStatus = "pending" | "success" | "error" | "skipped";

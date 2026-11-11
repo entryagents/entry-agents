@@ -258,9 +258,10 @@ export async function persistFinalAssistantMessage(
     }
   } catch (error) {
     console.error(
-      "[workflow] Failed to persist final assistant message:",
+      "[workflow] Failed to persist final assistant message; re-throwing for step retry:",
       error,
     );
+    throw error;
   }
 }
 
