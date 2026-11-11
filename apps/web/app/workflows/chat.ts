@@ -1912,12 +1912,25 @@ const VERCEL_CLI_PLACEHOLDER_TOKEN = "sandboxed_cli_do_not_use";
 // the FIXED 2026-09-12 note on performAgentVercelCli's docstring above
 // for why this exists (the base sandbox image does NOT ship it, despite
 // an earlier comment near ENSURE_GH_CLI_INSTALLED claiming otherwise).
-// Unlike gh (no package manager guarantee, needs a release-binary
-// download), npm is always available here, so a simple global install
-// is enough. Cheap no-op on every call after the first thanks to
-// `command -v`.
-const ENSURE_VERCEL_CLI_INSTALLED =
-  "command -v vercel >/dev/null 2>&1 || npm install -g vercel >/dev/null 2>&1";
+//
+// FIXED 2026-11-10: this used to be a bare
+//   `command -v vercel || npm install -g vercel`
+// which silently no-oped whenever npm was absent -- and the boxd base
+// image ships NEITHER node NOR npm (verified live: `command -v npm` is
+// empty; only git/apt exist). The install then failed with its output
+// discarded (`>/dev/null 2>&1`), so `vercel <args>` ran next and died
+// with "vercel: command not found", exactly the failure the guard was
+// added to prevent. Now the guard bootstraps node+npm via apt first when
+// absent (the same root-first apt path the git guard in boxd/connect.ts
+// proves works on this image), then installs the CLI globally.
+const ENSURE_VERCEL_CLI_INSTALLED = [
+  "command -v vercel >/dev/null 2>&1 || {",
+  "  command -v npm >/dev/null 2>&1 || {",
+  "    apt-get update -qq && apt-get install -y -qq nodejs npm;",
+  "  };",
+  "  npm install -g vercel >/dev/null 2>&1;",
+  "}",
+].join(" ");
 
 async function performAgentVercelCli(params: {
   userId: string;
