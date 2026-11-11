@@ -61,10 +61,13 @@ export async function GET(req: Request) {
       metadataWindowMode:
         typeof metadata.windowMode === "string" ? metadata.windowMode : null,
       metadataUsdAmountCents:
-        typeof metadata.usdAmountCents === "string" &&
-        Number.isFinite(Number(metadata.usdAmountCents))
-          ? Number(metadata.usdAmountCents)
-          : null,
+        typeof metadata.usdAmountCents === "number" &&
+        Number.isFinite(metadata.usdAmountCents)
+          ? metadata.usdAmountCents
+          : typeof metadata.usdAmountCents === "string" &&
+              Number.isFinite(Number(metadata.usdAmountCents))
+            ? Number(metadata.usdAmountCents)
+            : null,
       productId: checkout.productId,
       fallbackAmountCents: usdDecimalToCents(
         checkout.amount,
@@ -78,10 +81,13 @@ export async function GET(req: Request) {
       (typeof metadata.kind === "string" ? metadata.kind : null) ??
       (metadata.planId ? "subscription" : "topup");
     const amountCents =
-      typeof metadata.usdAmountCents === "string" &&
-      Number.isFinite(Number(metadata.usdAmountCents))
-        ? Number(metadata.usdAmountCents)
-        : null;
+      typeof metadata.usdAmountCents === "number" &&
+      Number.isFinite(metadata.usdAmountCents)
+        ? metadata.usdAmountCents
+        : typeof metadata.usdAmountCents === "string" &&
+            Number.isFinite(Number(metadata.usdAmountCents))
+          ? Number(metadata.usdAmountCents)
+          : null;
 
     return Response.json({
       status: "success",

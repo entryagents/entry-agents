@@ -752,18 +752,12 @@ async function resolveChatModelRuntime(params: {
           "You already have another chat generating a response -- wait for it to finish, then try again.",
       };
     }
-    const billingState = await enforcePlanExpiry(params.userId);
+    const billingState = await enforcePlanExpiry(params.userId, {
+      isAdmin: true,
+    });
     const plan = getPlanDefinition(billingState?.plan);
     planUsageWindows = plan.usageWindows ?? null;
     startingBalanceCents = billingState?.creditBalanceCents ?? 0;
-    if (startingBalanceCents <= 0) {
-      return {
-        blockedNotice:
-          plan.modelAccess === "luna-only"
-            ? "Free tier ended, upgrade your account to use Entry"
-            : "You're out of credit -- add more to keep chatting.",
-      };
-    }
   }
 
   // Entry Windows (2026-09-15, shared gate): rolling or fixed 5-hour / weekly /
@@ -881,7 +875,7 @@ async function resolveChatModelRuntime(params: {
     autoCreatePrEnabled,
     startingBalanceCents,
     windowBudgetCents,
-    enforceCreditBlock: true,
+    enforceCreditBlock: !isAdminUser,
     guidedFrontendWorkflowEnabled:
       preferences?.guidedFrontendWorkflowEnabled ?? false,
   });

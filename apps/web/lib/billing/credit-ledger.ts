@@ -878,7 +878,14 @@ export async function downgradeToFreeOnSubscriptionEnd(
       billingSubscriptionCode: users.billingSubscriptionCode,
     })
     .from(users)
-    .where(eq(users.billingCustomerCode, customerCode));
+    .where(
+      customerCode
+        ? or(
+            eq(users.billingCustomerCode, customerCode),
+            eq(users.billingSubscriptionCode, subscriptionCode),
+          )
+        : eq(users.billingSubscriptionCode, subscriptionCode),
+    );
 
   if (!row) {
     return { downgraded: false };
@@ -973,7 +980,12 @@ export async function expireStaleTopUps(
 
     const activeTopUpCents = sums?.activeTopUpCents ?? 0;
     const trialAllowance =
-      userRow.plan === "free" ? Math.max(0, sums?.trialCents ?? 100) : 0;
+      userRow.plan === "free"
+        ? Math.max(
+            0,
+            sums?.trialCents && sums.trialCents > 0 ? sums.trialCents : 100,
+          )
+        : 0;
     const maxValidNonGrantCents = activeTopUpCents + trialAllowance;
 
     const expiredCents = Math.max(0, nonGrantBalance - maxValidNonGrantCents);

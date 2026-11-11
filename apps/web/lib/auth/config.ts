@@ -253,6 +253,25 @@ export const auth = betterAuth({
             username: deriveAuthUsername(user),
           },
         }),
+        after: async (user) => {
+          try {
+            await db.insert(schema.creditTransactions).values({
+              id: nanoid(),
+              userId: user.id,
+              type: "signup_trial",
+              amountCents: 100,
+              balanceAfterCents:
+                (user as { creditBalanceCents?: number }).creditBalanceCents ??
+                100,
+              description: "Welcome credit ($1.00)",
+            });
+          } catch (err) {
+            console.error(
+              "[auth] Failed to insert initial signup_trial transaction:",
+              err,
+            );
+          }
+        },
       },
     },
   },

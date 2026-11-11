@@ -33,7 +33,8 @@ interface BachsCollectionSucceededData {
 }
 
 interface BachsSubscriptionEventData {
-  subscription_id: string;
+  subscription_id?: string;
+  id?: string;
   customer: { customer_id?: string | null; id?: string | null } | null;
   status?: string;
 }
@@ -148,10 +149,16 @@ export async function POST(req: Request) {
           data.id ??
           `evt_${event.id ?? "unknown"}`;
 
+        const subscriptionId =
+          data.subscription_id ??
+          (data as { subscription?: { id?: string | null } }).subscription
+            ?.id ??
+          null;
+
         await processChargeSuccess({
           reference,
           customerId,
-          subscriptionId: data.subscription_id ?? null,
+          subscriptionId,
           metadataUserId,
           metadataKind,
           metadataPlanId,
@@ -165,15 +172,19 @@ export async function POST(req: Request) {
 
       case "customer.subscription.created": {
         const data = event.data as unknown as BachsSubscriptionEventData;
-        const eventKey = `customer.subscription.created:${data.subscription_id}`;
+        const subscriptionId = data.subscription_id ?? data.id;
+        if (!subscriptionId) break;
+
+        const eventKey = `customer.subscription.created:${subscriptionId}`;
         const isNew = await claimEventOnce(eventKey, type, event.data);
         if (!isNew) break;
 
-        const customerId = data.customer?.customer_id;
+        const customerId =
+          data.customer?.id ?? data.customer?.customer_id ?? null;
         if (customerId) {
           const userId = await findUserIdByBillingCustomerCode(customerId);
           if (userId) {
-            await setBillingSubscriptionCode(userId, data.subscription_id);
+            await setBillingSubscriptionCode(userId, subscriptionId);
           }
         }
         break;
@@ -181,23 +192,25 @@ export async function POST(req: Request) {
 
       case "customer.subscription.deleted": {
         const data = event.data as unknown as BachsSubscriptionEventData;
-        const eventKey = `customer.subscription.deleted:${data.subscription_id}`;
+        const subscriptionId = data.subscription_id ?? data.id;
+        if (!subscriptionId) break;
+
+        const eventKey = `customer.subscription.deleted:${subscriptionId}`;
         const isNew = await claimEventOnce(eventKey, type, event.data);
         if (!isNew) break;
 
-        const customerId = data.customer?.customer_id;
-        if (customerId) {
-          const result = await downgradeToFreeOnSubscriptionEnd(
-            customerId,
-            data.subscription_id,
+        const customerId =
+          data.customer?.id ?? data.customer?.customer_id ?? "";
+        const result = await downgradeToFreeOnSubscriptionEnd(
+          customerId,
+          subscriptionId,
+        );
+        if (!result.downgraded && result.userId) {
+          console.log(
+            "[billing/webhook] subscription.deleted for user:",
+            result.userId,
+            "-- code mismatch or already free, no downgrade",
           );
-          if (!result.downgraded && result.userId) {
-            console.log(
-              "[billing/webhook] subscription.deleted for user:",
-              result.userId,
-              "-- code mismatch or already free, no downgrade",
-            );
-          }
         }
         break;
       }
@@ -205,13 +218,14 @@ export async function POST(req: Request) {
       case "customer.subscription.updated": {
         const data = event.data as unknown as {
           subscription_id?: string;
+          id?: string;
           product_id?: string | null;
           product?: { id?: string } | null;
-          customer?: { customer_id?: string | null } | null;
+          customer?: { customer_id?: string | null; id?: string | null } | null;
           status?: string;
         };
 
-        const subscriptionId = data.subscription_id;
+        const subscriptionId = data.subscription_id ?? data.id;
         if (!subscriptionId) break;
 
         const eventKey = event.id
@@ -221,16 +235,20 @@ export async function POST(req: Request) {
         const planId = resolvePlanForProductId(
           data.product_id ?? data.product?.id ?? null,
         );
-        const customerId = data.customer?.customer_id;
+        const customerId =
+          data.customer?.id ?? data.customer?.customer_id ?? "";
         const isTerminal =
-          data.status === "canceled" || data.status === "paused";
+          data.status === "canceled" ||
+          data.status === "cancelled" ||
+          data.status === "paused" ||
+          data.status === "unpaid";
 
         if (!isTerminal && (!planId || !customerId)) {
           await claimEventOnce(eventKey, type, event.data);
           break;
         }
 
-        if (isTerminal && customerId) {
+        if (isTerminal) {
           const isNew = await claimEventOnce(eventKey, type, event.data);
           if (isNew) {
             await downgradeToFreeOnSubscriptionEnd(customerId, subscriptionId);
