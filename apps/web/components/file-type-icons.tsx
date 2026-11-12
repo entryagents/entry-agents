@@ -15,11 +15,14 @@ import {
   Coffee,
   Database,
   File,
+  FileArchive,
   FileCode,
+  FileSpreadsheet,
   FileText,
   Folder,
   FolderOpen,
   Gem,
+  Globe,
   Image,
   Lock,
   Settings,
@@ -401,6 +404,15 @@ const RubyIcon = lucide(Gem, "text-[#CC342D]");
 const PhpIcon = lucide(FileCode, "text-[#777BB4]");
 const SwiftIcon = lucide(FileCode, "text-[#F05138]");
 const KotlinIcon = lucide(FileCode, "text-[#7F52FF]");
+const CsvIcon = lucide(FileSpreadsheet, "text-emerald-500");
+const PdfIcon = lucide(FileText, "text-rose-500");
+const LogIcon = lucide(FileText, "text-muted-foreground");
+const TxtIcon = lucide(FileText, "text-muted-foreground");
+const ArchiveIcon = lucide(FileArchive, "text-amber-500");
+const UrlIcon = lucide(Globe, "text-blue-500");
+const VueIcon = lucide(FileCode, "text-[#42B883]");
+const SvelteIcon = lucide(FileCode, "text-[#FF3E00]");
+const AstroIcon = lucide(FileCode, "text-[#BC52EE]");
 const GenericFileIcon = lucide(File, "text-muted-foreground");
 
 /* ------------------------------------------------------------------ */
@@ -509,6 +521,25 @@ const extensionMap: Record<string, (props: IconProps) => React.JSX.Element> = {
   rake: RubyIcon,
   gemspec: RubyIcon,
 
+  // Web Frameworks
+  vue: VueIcon,
+  svelte: SvelteIcon,
+  astro: AstroIcon,
+
+  // Documents & Data
+  csv: CsvIcon,
+  tsv: CsvIcon,
+  pdf: PdfIcon,
+  log: LogIcon,
+  txt: TxtIcon,
+  url: UrlIcon,
+
+  // Archives
+  zip: ArchiveIcon,
+  tar: ArchiveIcon,
+  gz: ArchiveIcon,
+  tgz: ArchiveIcon,
+
   // PHP
   php: PhpIcon,
 
@@ -543,6 +574,14 @@ const filenameMap: Record<string, (props: IconProps) => React.JSX.Element> = {
   "bun.lock": LockIcon,
   "bun.lockb": LockIcon,
   "gemfile.lock": LockIcon,
+  "plan.md": MarkdownIcon,
+  "agents.md": MarkdownIcon,
+  "readme.md": MarkdownIcon,
+  "tsconfig.json": TypeScriptIcon,
+  "turbo.json": JsonIcon,
+  "components.json": JsonIcon,
+  license: lucide(Shield, "text-amber-500"),
+  "license.md": lucide(Shield, "text-amber-500"),
 };
 
 /* ------------------------------------------------------------------ */
