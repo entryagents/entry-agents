@@ -13,6 +13,7 @@ import { formatTokens, toRelativePath } from "@entry-agents/shared";
 import { cn } from "@/lib/utils";
 import { DEFAULT_WORKING_DIRECTORY } from "@/lib/sandbox/config";
 import { ApprovalButtons } from "./tool-call/approval-buttons";
+import { useOptionalGitPanel } from "@/app/sessions/[sessionId]/chats/[chatId]/git-panel-context";
 import type { ReactNode } from "react";
 
 type TaskStatus =
@@ -217,6 +218,14 @@ function TaskItem({
     nestedStatus = summary ? `${displayName}(${summary})` : displayName;
   }
 
+  const gitPanel = useOptionalGitPanel();
+
+  const handleOpenSubagent = () => {
+    if (gitPanel) {
+      gitPanel.openSubagentTab(part.toolCallId, desc, subagentType);
+    }
+  };
+
   return (
     <div className="flex">
       {/* Tree line */}
@@ -224,7 +233,16 @@ function TaskItem({
 
       <div className="min-w-0 flex-1 py-0.5">
         {/* Task row */}
-        <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={handleOpenSubagent}
+          disabled={!gitPanel}
+          className={cn(
+            "group flex w-full min-w-0 items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors",
+            gitPanel && "cursor-pointer hover:bg-muted/50",
+            !gitPanel && "cursor-default",
+          )}
+        >
           {/* Type-specific icon */}
           <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70">
             {isRunning ? (
@@ -241,7 +259,7 @@ function TaskItem({
               "min-w-0 truncate text-sm",
               status === "error" || status === "denied"
                 ? "text-red-500"
-                : "text-muted-foreground",
+                : "text-muted-foreground group-hover:text-foreground transition-colors",
             )}
           >
             {desc}
@@ -256,7 +274,7 @@ function TaskItem({
               [NEEDS APPROVAL]
             </span>
           )}
-        </div>
+        </button>
 
         {/* Executor approval warning */}
         {approvalRequested && subagentType === "executor" && (

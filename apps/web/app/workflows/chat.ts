@@ -3194,6 +3194,16 @@ export async function runAgentWorkflow(options: Options) {
       );
     }
 
+    if (totalUsage) {
+      pendingAssistantResponse = {
+        ...pendingAssistantResponse,
+        metadata: {
+          ...pendingAssistantResponse.metadata,
+          totalMessageUsage: totalUsage,
+        },
+      };
+    }
+
     if (pendingAssistantResponse.parts.length === 0 && !streamClosed) {
       const errorText = getSetupErrorMessage(error, isRepeatFailure);
       pendingAssistantResponse = {
@@ -3201,6 +3211,9 @@ export async function runAgentWorkflow(options: Options) {
         parts: [{ type: "text", text: errorText }],
       };
       await sendTextMessage(writable, "setup-error", errorText);
+    }
+
+    if (pendingAssistantResponse.parts.length > 0) {
       await persistAssistantMessage(options.chatId, pendingAssistantResponse);
     }
   } finally {

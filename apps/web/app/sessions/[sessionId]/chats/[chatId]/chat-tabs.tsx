@@ -28,6 +28,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { SubagentIcon } from "@/components/agent-hub/agent-status";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import { useGitPanel } from "./git-panel-context";
 
 type ChatTabsProps = {
@@ -49,6 +50,9 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     setChangesTabDismissed,
     focusedFilePath,
     setFocusedFilePath,
+    agentOpenFiles,
+    switchAgentFileTab,
+    closeAgentFileTab,
     fileTabDismissed,
     setFileTabDismissed,
     activeSubagentId,
@@ -127,7 +131,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
 
   const [fileTabIndex, setFileTabIndex] = useState<number | null>(null);
   useEffect(() => {
-    const isFileVisible = !fileTabDismissed && !!focusedFilePath;
+    const isFileVisible = agentOpenFiles.length > 0;
     if (isFileVisible && fileTabIndex === null) {
       setFileTabIndex(
         chats.length + (!changesTabDismissed && !!focusedDiffFile ? 1 : 0),
@@ -136,8 +140,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
       setFileTabIndex(null);
     }
   }, [
-    focusedFilePath,
-    fileTabDismissed,
+    agentOpenFiles.length,
     chats.length,
     fileTabIndex,
     changesTabDismissed,
@@ -245,17 +248,17 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
   const canDelete = chats.length > 1;
   const showChangesTab = !changesTabDismissed && !!focusedDiffFile;
   const insertAt = showChangesTab ? (changesTabIndex ?? chats.length) : null;
-  const showFileTab = !fileTabDismissed && !!focusedFilePath;
-  const fileInsertAt = showFileTab
+  const showFileTabs = agentOpenFiles.length > 0;
+  const fileInsertAt = showFileTabs
     ? (fileTabIndex ?? chats.length + (showChangesTab ? 1 : 0))
     : null;
-  const fileTabFileName =
-    focusedFilePath?.split("/").pop() ?? focusedFilePath ?? "";
 
   const showSubagentTab = !subagentTabDismissed && !!activeSubagentId;
   const subagentInsertAt = showSubagentTab
     ? (subagentTabIndex ??
-      chats.length + (showChangesTab ? 1 : 0) + (showFileTab ? 1 : 0))
+      chats.length +
+        (showChangesTab ? 1 : 0) +
+        (showFileTabs ? agentOpenFiles.length : 0))
     : null;
 
   const tabElements = useMemo(() => {
@@ -272,7 +275,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
         <button
           type="button"
           onClick={() => setActiveView("diff")}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium cursor-pointer"
         >
           <GitCompare className="h-3.5 w-3.5" />
           <span>Changes</span>
@@ -281,7 +284,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
           type="button"
           onClick={handleCloseChanges}
           className={cn(
-            "mr-1 rounded p-0.5 text-muted-foreground transition-opacity hover:bg-accent hover:text-foreground",
+            "mr-1 rounded p-0.5 text-muted-foreground transition-opacity hover:bg-accent hover:text-foreground cursor-pointer",
             isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100",
           )}
         >
@@ -290,36 +293,46 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
       </div>
     ) : null;
 
-    const fileTabEl = showFileTab ? (
-      <div
-        key="__file__"
-        className={cn(
-          "group relative flex shrink-0 items-center border-b-2 transition-colors",
-          activeView === "file"
-            ? "border-foreground text-foreground"
-            : "border-transparent text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <button
-          type="button"
-          onClick={() => setActiveView("file")}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium"
-        >
-          <FileText className="h-3.5 w-3.5" />
-          <span className="max-w-[120px] truncate">{fileTabFileName}</span>
-        </button>
-        <button
-          type="button"
-          onClick={handleCloseFile}
+    const fileTabEls = agentOpenFiles.map((filePath) => {
+      const fileName = filePath.split("/").pop() ?? filePath;
+      const isFocused = activeView === "file" && focusedFilePath === filePath;
+
+      return (
+        <div
+          key={`__file_${filePath}__`}
           className={cn(
-            "mr-1 rounded p-0.5 text-muted-foreground transition-opacity hover:bg-accent hover:text-foreground",
-            isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            "group relative flex shrink-0 items-center border-b-2 transition-colors",
+            isFocused
+              ? "border-foreground text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
-          <X className="h-3 w-3" />
-        </button>
-      </div>
-    ) : null;
+          <button
+            type="button"
+            onClick={() => switchAgentFileTab(filePath)}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium cursor-pointer"
+            title={filePath}
+          >
+            <FileTypeIcon path={fileName} className="h-3.5 w-3.5 shrink-0" />
+            <span className="max-w-[140px] truncate">{fileName}</span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              closeAgentFileTab(filePath);
+            }}
+            className={cn(
+              "mr-1 rounded p-0.5 text-muted-foreground transition-opacity hover:bg-accent hover:text-foreground cursor-pointer",
+              isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            )}
+            aria-label={`Close ${fileName}`}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      );
+    });
 
     const subagentTabEl = showSubagentTab ? (
       <div
@@ -334,7 +347,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
         <button
           type="button"
           onClick={() => setActiveView("subagent")}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium cursor-pointer"
         >
           <SubagentIcon
             type={activeSubagentType ?? "agent"}
@@ -349,7 +362,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
           type="button"
           onClick={handleCloseSubagent}
           className={cn(
-            "mr-1 rounded p-0.5 text-muted-foreground transition-opacity hover:bg-accent hover:text-foreground",
+            "mr-1 rounded p-0.5 text-muted-foreground transition-opacity hover:bg-accent hover:text-foreground cursor-pointer",
             isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100",
           )}
           aria-label="Close subagent tab"
@@ -366,7 +379,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
         elements.push(changesTabEl);
       }
       if (fileInsertAt === index) {
-        elements.push(fileTabEl);
+        elements.push(...fileTabEls);
       }
       if (subagentInsertAt === index) {
         elements.push(subagentTabEl);
@@ -416,7 +429,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
                 }
                 setActiveView("chat");
               }}
-              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium cursor-pointer"
             >
               <span className="max-w-[120px] truncate">
                 {chat.title || "New Chat"}
@@ -440,7 +453,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
                   e.stopPropagation();
                   handleStartRename(chat.id, chat.title || "");
                 }}
-                className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer"
                 aria-label="Rename chat"
               >
                 <Pencil className="h-3 w-3" />
@@ -452,7 +465,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
                     e.stopPropagation();
                     setDeletingChatId(chat.id);
                   }}
-                  className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground cursor-pointer"
                   aria-label="Close chat"
                 >
                   <X className="h-3 w-3" />
@@ -469,7 +482,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     }
 
     if (fileInsertAt !== null && fileInsertAt >= chats.length) {
-      elements.push(fileTabEl);
+      elements.push(...fileTabEls);
     }
 
     if (subagentInsertAt !== null && subagentInsertAt >= chats.length) {
@@ -482,12 +495,13 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     activeSubagentTitle,
     activeSubagentType,
     activeView,
+    agentOpenFiles,
     canDelete,
     chats,
+    closeAgentFileTab,
     fileInsertAt,
-    fileTabFileName,
+    focusedFilePath,
     handleCloseChanges,
-    handleCloseFile,
     handleCloseSubagent,
     handleFinishRename,
     handleStartRename,
@@ -498,9 +512,9 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     renamingChatId,
     setActiveView,
     showChangesTab,
-    showFileTab,
     showSubagentTab,
     subagentInsertAt,
+    switchAgentFileTab,
     switchChat,
   ]);
 

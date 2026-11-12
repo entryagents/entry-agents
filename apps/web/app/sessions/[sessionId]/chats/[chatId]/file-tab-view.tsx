@@ -2,15 +2,20 @@
 
 import { File as DiffsFile } from "@pierre/diffs/react";
 import {
+  Check,
   Code2,
+  Copy,
   Download,
   Eye,
   FileText,
+  GitCompare,
   Loader2,
   RefreshCw,
   WrapText,
+  X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 import useSWR from "swr";
 import type { WorkspaceFileContentResponse } from "@/app/api/sessions/[sessionId]/files/content/route";
 import { FileTypeIcon } from "@/components/file-type-icons";
@@ -82,10 +87,11 @@ function getDefaultViewMode(filePath: string): ViewMode {
 }
 
 export function FileTabView() {
-  const { focusedFilePath } = useGitPanel();
+  const { focusedFilePath, openDiffToFile, closeAgentFileTab } = useGitPanel();
   const { session } = useSessionChatMetadataContext();
   const { resolvedTheme } = useTheme();
 
+  const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
     focusedFilePath ? getDefaultViewMode(focusedFilePath) : "code",
   );
@@ -118,6 +124,18 @@ export function FileTabView() {
     if (!data?.content) return null;
     return computeFileMetrics(data.content, data.size);
   }, [data]);
+
+  const handleCopy = useCallback(async () => {
+    if (!data?.content) return;
+    try {
+      await navigator.clipboard.writeText(data.content);
+      setCopied(true);
+      toast.success("File content copied to clipboard");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy file content");
+    }
+  }, [data?.content]);
 
   const baseFileOptions = useMemo(
     () => ({
@@ -247,6 +265,45 @@ export function FileTabView() {
             </Tooltip>
           )}
 
+          {/* Compare changes toggle */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 px-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                onClick={() => openDiffToFile(focusedFilePath)}
+                aria-label="Compare file changes"
+              >
+                <GitCompare className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Compare changes</TooltipContent>
+          </Tooltip>
+
+          {/* Copy content */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 px-0 cursor-pointer text-muted-foreground hover:text-foreground"
+                onClick={() => void handleCopy()}
+                disabled={!data?.content}
+                aria-label="Copy file content"
+              >
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {copied ? "Copied" : "Copy content"}
+            </TooltipContent>
+          </Tooltip>
+
           {downloadUrl && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -254,7 +311,7 @@ export function FileTabView() {
                   asChild
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 px-0 cursor-pointer"
+                  className="h-7 w-7 px-0 cursor-pointer text-muted-foreground hover:text-foreground"
                 >
                   <a
                     href={downloadUrl}
@@ -276,7 +333,7 @@ export function FileTabView() {
                 size="sm"
                 onClick={() => void mutate()}
                 disabled={isLoading || isRefreshing}
-                className="h-7 w-7 px-0 cursor-pointer"
+                className="h-7 w-7 px-0 cursor-pointer text-muted-foreground hover:text-foreground"
               >
                 <RefreshCw
                   className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
@@ -284,6 +341,22 @@ export function FileTabView() {
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">Refresh</TooltipContent>
+          </Tooltip>
+
+          {/* Close tab */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 px-0 cursor-pointer text-muted-foreground hover:text-foreground hover:bg-destructive/10 hover:text-destructive"
+                onClick={() => closeAgentFileTab(focusedFilePath)}
+                aria-label="Close file tab"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Close tab</TooltipContent>
           </Tooltip>
         </div>
       </div>

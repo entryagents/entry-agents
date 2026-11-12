@@ -28,8 +28,13 @@ export function useImageAttachments() {
         mediaType: processedFile.type as ImageMediaType,
         filename: processedFile.name,
       };
-      setImages((prev) => [...prev, attachment]);
-      return true;
+      let added = false;
+      setImages((prev) => {
+        if (prev.length >= 5) return prev;
+        added = true;
+        return [...prev, attachment];
+      });
+      return added;
     } catch (error) {
       console.error("Failed to process image attachment:", error);
       return false;
@@ -64,7 +69,7 @@ export function useImageAttachments() {
   }, []);
 
   const addImageAttachments = useCallback((attachments: ImageAttachment[]) => {
-    setImages((prev) => [...prev, ...attachments]);
+    setImages((prev) => [...prev, ...attachments].slice(0, 5));
   }, []);
 
   return {

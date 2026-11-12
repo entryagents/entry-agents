@@ -55,16 +55,15 @@ export type ChatErrorCategory =
   | "aborted"
   | "rate_limit"
   | "usage_window"
+  | "credit_exhausted"
   | "quota"
   | "auth"
   | "timeout"
   | "network"
   | "provider_unavailable"
-  // Specific buckets added after the 2026-09-24 log review. Each one was
-  // falling through to "unknown" and showing the user a generic
-  // "Something went wrong", even though the real cause was both known and
-  // actionable. Keep these ABOVE the generic buckets in
-  // classifyChatError: classification is first-match-wins.
+  | "tool_failure"
+  // Specific buckets added after log reviews. Each one was
+  // falling through to "unknown" and showing a generic fallback.
   | "blocked"
   | "model_unavailable"
   | "invalid_prompt"
@@ -78,14 +77,18 @@ const CATEGORY_MESSAGES: Record<ChatErrorCategory, string> = {
     "The AI provider is receiving too many requests right now. Please wait a moment and try again.",
   usage_window:
     "This plan's usage window is full. Entry limits spend over rolling 7-day, 5-hour, and 30-day windows; each refills automatically as older usage ages out. Open Settings > Usage to see exactly when yours resets, or upgrade the plan to raise the ceiling.",
+  credit_exhausted:
+    "Your account has run out of credits. Please add credits or upgrade your plan in Settings > Billing to continue.",
   quota:
-    "This model has hit its usage limit and can't respond right now. Try switching to a different model.",
+    "This model has hit its provider quota and can't respond right now. Try switching to a different model in the composer dropdown.",
   auth: "There's a temporary problem connecting to the AI provider. Please try again shortly.",
   timeout: "The request took too long and timed out. Please try again.",
   network:
     "Connection issue reaching the AI provider. Please check your connection and try again.",
   provider_unavailable:
     "The AI provider is temporarily unavailable. Please try again in a moment.",
+  tool_failure:
+    "A tool call encountered an execution error. Review the tool output above or send a follow-up to ask the agent to retry.",
   blocked:
     "The model provider refused this message under its content policy, so no reply was generated. That is a refusal at the provider, not a bug -- reword the message, or pick a different model and send it again.",
   model_unavailable:
@@ -97,10 +100,6 @@ const CATEGORY_MESSAGES: Record<ChatErrorCategory, string> = {
   workspace:
     "The sandbox workspace could not be initialized. Entry is switching to a writable workspace path and retrying the session. Resend this message in a moment.",
   // The residual category: an error signature Entry doesn't recognize.
-  // Deliberately specific (there is no such thing as a generic "something
-  // went wrong" worth showing a user): it names what failed, points at the
-  // Retry control and the persisted run error detail, and stops. The raw
-  // cause is logged server-side, never echoed into the chat.
   unknown:
     "The response was interrupted. Click Retry to continue where you left off, or switch models if the issue persists.",
 };
@@ -231,15 +230,47 @@ export function classifyChatError(error: unknown): ChatErrorCategory {
 
   if (
     matchesAny(signal, [
+      "insufficient balance",
+      "insufficient funds",
+      "credit balance",
+      "out of credits",
+      "out of credit",
+      "credit limit",
+      "credits exhausted",
+      "credit_exhausted",
+      "billing exhausted",
+      "402",
+      "payment required",
+      "not enough credits",
+      "credit deficit",
+    ])
+  ) {
+    return "credit_exhausted";
+  }
+
+  if (
+    matchesAny(signal, [
       "usage limit",
       "monthly usage",
       "quota",
-      "insufficient",
-      "402",
-      "credit",
+      "rate limit reached for organization",
+      "quota exceeded",
     ])
   ) {
     return "quota";
+  }
+
+  if (
+    matchesAny(signal, [
+      "tool execution failed",
+      "tool call error",
+      "tool execution error",
+      "failed to execute tool",
+      "bash tool failed",
+      "tool execution rejected",
+    ])
+  ) {
+    return "tool_failure";
   }
 
   if (
@@ -346,7 +377,8 @@ export function toFriendlyChatErrorText(
   if (
     isRepeatFailure &&
     category !== "aborted" &&
-    category !== "usage_window"
+    category !== "usage_window" &&
+    category !== "credit_exhausted"
   ) {
     return `${base}${REPEAT_FAILURE_SUFFIX}`;
   }

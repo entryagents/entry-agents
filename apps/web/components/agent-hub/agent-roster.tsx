@@ -225,8 +225,8 @@ export function AgentRoster({
 
                     {/* Live streaming indicator bar */}
                     {isLive && (
-                      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <div className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium text-foreground/70">
+                        <span className="h-1.5 w-1.5 rounded-full bg-foreground/60" />
                         <span className="font-mono text-[10px]">
                           Processing task...
                         </span>

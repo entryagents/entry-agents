@@ -165,6 +165,26 @@ export async function POST(req: Request, context: RouteContext) {
     );
   }
 
+  // Enforce maximum 5 attachments per queued message
+  const payloadObj = body.payload as Record<string, unknown>;
+  const payloadFiles = Array.isArray(payloadObj.files) ? payloadObj.files : [];
+  const payloadParts = Array.isArray(payloadObj.parts) ? payloadObj.parts : [];
+  const partAttachments = payloadParts.filter(
+    (p) =>
+      typeof p === "object" &&
+      p !== null &&
+      "type" in p &&
+      ((p as { type: string }).type === "file" ||
+        (p as { type: string }).type === "image" ||
+        (p as { type: string }).type === "data-snippet"),
+  );
+  if (payloadFiles.length + partAttachments.length > 5) {
+    return Response.json(
+      { error: "Maximum 5 attachments allowed per message" },
+      { status: 400 },
+    );
+  }
+
   const outcome = await withQueuedPrompts(
     auth.chatId,
     (queued): { next: QueuedPrompt[]; result: QueuePostOutcome } => {

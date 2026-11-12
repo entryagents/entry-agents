@@ -4,12 +4,14 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useState,
   useMemo,
   useRef,
   type ReactNode,
   type RefObject,
 } from "react";
+import { useParams } from "next/navigation";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export type GitPanelTab =
@@ -84,11 +86,27 @@ type GitPanelContextValue = {
   focusedFilePath: string | null;
   setFocusedFilePath: (file: string | null) => void;
 
+  /** Files open in the agent tabs (independent of workspace tabs) */
+  agentOpenFiles: string[];
+  setAgentOpenFiles: React.Dispatch<React.SetStateAction<string[]>>;
+
+  /** Open a file in the agent tabs without opening workspace */
+  openAgentFileTab: (filePath: string) => void;
+
+  /** Close a file in the agent tabs */
+  closeAgentFileTab: (filePath: string) => void;
+
+  /** Switch active file in the agent tabs */
+  switchAgentFileTab: (filePath: string) => void;
+
+  /** Open a file exclusively inside the workspace tabs */
+  openWorkspaceFile: (filePath: string) => void;
+
   /** Whether the user has explicitly closed the File tab */
   fileTabDismissed: boolean;
   setFileTabDismissed: (dismissed: boolean) => void;
 
-  /** Open a file in the workspace dynamic tabs */
+  /** Open a file in the agent tabs (backwards compatible alias) */
   openFileTab: (filePath: string) => void;
 
   /** Subagent toolCallId currently focused in the subagent chat tab */
@@ -132,6 +150,9 @@ const GitPanelContext = createContext<GitPanelContextValue | undefined>(
 
 export function GitPanelProvider({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
+  const params = useParams<{ sessionId?: string }>();
+  const sessionId = params?.sessionId ?? "";
+
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
   const [isWorkspaceExpanded, setIsWorkspaceExpanded] = useState(false);
   const [openFiles, setOpenFiles] = useState<string[]>([]);
@@ -146,7 +167,69 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
   const [hasActionNeeded, setHasActionNeeded] = useState(false);
   const [changesCount, setChangesCount] = useState(0);
   const [hasCommittedChanges, setHasCommittedChanges] = useState(false);
-  const [focusedFilePath, setFocusedFilePath] = useState<string | null>(null);
+
+  // Dynamic open files in agent tabs (independent of workspace)
+  const [agentOpenFiles, setAgentOpenFiles] = useState<string[]>(() => {
+    if (typeof window === "undefined" || !sessionId) return [];
+    try {
+      const stored = localStorage.getItem(
+        `entry:agent-open-files:${sessionId}`,
+      );
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(
+            (item): item is string => typeof item === "string",
+          );
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
+  const [focusedFilePath, setFocusedFilePath] = useState<string | null>(() => {
+    if (typeof window === "undefined" || !sessionId) return null;
+    try {
+      return (
+        localStorage.getItem(`entry:agent-focused-file:${sessionId}`) || null
+      );
+    } catch {
+      return null;
+    }
+  });
+
+  // Sync agentOpenFiles to localStorage
+  useEffect(() => {
+    if (typeof window === "undefined" || !sessionId) return;
+    try {
+      localStorage.setItem(
+        `entry:agent-open-files:${sessionId}`,
+        JSON.stringify(agentOpenFiles),
+      );
+    } catch {
+      // ignore
+    }
+  }, [sessionId, agentOpenFiles]);
+
+  // Sync focusedFilePath to localStorage
+  useEffect(() => {
+    if (typeof window === "undefined" || !sessionId) return;
+    try {
+      if (focusedFilePath) {
+        localStorage.setItem(
+          `entry:agent-focused-file:${sessionId}`,
+          focusedFilePath,
+        );
+      } else {
+        localStorage.removeItem(`entry:agent-focused-file:${sessionId}`);
+      }
+    } catch {
+      // ignore
+    }
+  }, [sessionId, focusedFilePath]);
+
   const [fileTabDismissed, setFileTabDismissed] = useState(false);
   const [shareRequested, setShareRequested] = useState(false);
   const [changeRepoRequested, setChangeRepoRequested] = useState(false);
@@ -207,21 +290,49 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
     setSubagentTabDismissed(true);
   }, []);
 
-  const openFileTab = useCallback(
-    (filePath: string) => {
-      setFocusedFilePath(filePath);
-      setOpenFiles((prev) =>
-        prev.includes(filePath) ? prev : [...prev, filePath],
-      );
-      setActiveWorkspaceTab(filePath);
-      setGitPanelOpen(true);
-      if (isMobile) {
-        setActiveView("file");
-        setFileTabDismissed(false);
-      }
-    },
-    [isMobile],
-  );
+  const openAgentFileTab = useCallback((filePath: string) => {
+    setFocusedFilePath(filePath);
+    setAgentOpenFiles((prev) =>
+      prev.includes(filePath) ? prev : [...prev, filePath],
+    );
+    setActiveView("file");
+    setFileTabDismissed(false);
+  }, []);
+
+  const closeAgentFileTab = useCallback((filePath: string) => {
+    setAgentOpenFiles((prev) => {
+      const next = prev.filter((p) => p !== filePath);
+      setFocusedFilePath((current) => {
+        if (current === filePath) {
+          const idx = prev.indexOf(filePath);
+          const nextActive = next[idx - 1] ?? next[0] ?? null;
+          if (!nextActive) {
+            setActiveView("chat");
+          }
+          return nextActive;
+        }
+        return current;
+      });
+      return next;
+    });
+  }, []);
+
+  const switchAgentFileTab = useCallback((filePath: string) => {
+    setFocusedFilePath(filePath);
+    setActiveView("file");
+    setFileTabDismissed(false);
+  }, []);
+
+  // Open a file exclusively inside the workspace tabs
+  const openWorkspaceFile = useCallback((filePath: string) => {
+    setOpenFiles((prev) =>
+      prev.includes(filePath) ? prev : [...prev, filePath],
+    );
+    setActiveWorkspaceTab(filePath);
+    setGitPanelOpen(true);
+  }, []);
+
+  const openFileTab = openAgentFileTab;
 
   const value = useMemo(
     () => ({
@@ -254,6 +365,12 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
       setHasCommittedChanges,
       focusedFilePath,
       setFocusedFilePath,
+      agentOpenFiles,
+      setAgentOpenFiles,
+      openAgentFileTab,
+      closeAgentFileTab,
+      switchAgentFileTab,
+      openWorkspaceFile,
       fileTabDismissed,
       setFileTabDismissed,
       openFileTab,
@@ -285,6 +402,11 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
       focusedDiffRequestId,
       openDiffToFile,
       focusedFilePath,
+      agentOpenFiles,
+      openAgentFileTab,
+      closeAgentFileTab,
+      switchAgentFileTab,
+      openWorkspaceFile,
       fileTabDismissed,
       openFileTab,
       activeSubagentId,

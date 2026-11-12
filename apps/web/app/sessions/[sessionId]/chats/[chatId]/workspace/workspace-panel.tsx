@@ -89,7 +89,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     setActiveWorkspaceTab,
     closeWorkspaceFile,
     openDiffToFile,
-    openFileTab,
+    openWorkspaceFile,
   } = useGitPanel();
 
   const isMobile = useIsMobile();
@@ -481,7 +481,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 ? activeWorkspaceTab
                 : undefined
             }
-            onOpenFile={openFileTab}
+            onOpenFile={openWorkspaceFile}
             onCloseSidebar={() => setIsSidebarOpen(false)}
           />
         )}
@@ -495,7 +495,10 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               activeWorkspaceTab === "review" ? "block" : "hidden",
             )}
           >
-            <WorkspaceReviewTab {...gitPanelProps} onOpenFile={openFileTab} />
+            <WorkspaceReviewTab
+              {...gitPanelProps}
+              onOpenFile={openWorkspaceFile}
+            />
           </div>
 
           {/* Live Preview Tab */}
@@ -579,7 +582,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                   key={f.value}
                   type="button"
                   onClick={() => {
-                    openFileTab(f.value);
+                    openWorkspaceFile(f.value);
                     setFileSearchOpen(false);
                   }}
                   className="flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-left rounded hover:bg-muted/60 transition-colors cursor-pointer group"

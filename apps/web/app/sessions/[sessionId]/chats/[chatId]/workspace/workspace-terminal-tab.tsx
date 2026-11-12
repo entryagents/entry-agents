@@ -47,14 +47,69 @@ export function WorkspaceTerminalTab({
   canRun?: boolean;
 }) {
   const router = useRouter();
-  const [logs, setLogs] = useState<TerminalLogEntry[]>([]);
+  const [logs, setLogs] = useState<TerminalLogEntry[]>(() => {
+    if (typeof window === "undefined" || !sessionId) return [];
+    try {
+      const stored = localStorage.getItem(`entry:terminal-logs:${sessionId}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+          return parsed.map((item) => ({
+            ...item,
+            timestamp: new Date(item.timestamp),
+          }));
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
   const [inputCommand, setInputCommand] = useState("");
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [commandHistory, setCommandHistory] = useState<string[]>(() => {
+    if (typeof window === "undefined" || !sessionId) return [];
+    try {
+      const stored = localStorage.getItem(
+        `entry:terminal-history:${sessionId}`,
+      );
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
   const [isRunning, setIsRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   const outputEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !sessionId) return;
+    try {
+      localStorage.setItem(
+        `entry:terminal-logs:${sessionId}`,
+        JSON.stringify(logs.slice(-50)),
+      );
+    } catch {
+      // ignore
+    }
+  }, [sessionId, logs]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !sessionId) return;
+    try {
+      localStorage.setItem(
+        `entry:terminal-history:${sessionId}`,
+        JSON.stringify(commandHistory.slice(0, 50)),
+      );
+    } catch {
+      // ignore
+    }
+  }, [sessionId, commandHistory]);
 
   const scrollToBottom = useCallback(() => {
     outputEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -141,6 +196,12 @@ export function WorkspaceTerminalTab({
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {
+      e.preventDefault();
+      handleClear();
+      return;
+    }
+
     if (e.key === "Enter") {
       e.preventDefault();
       void executeCommand(inputCommand);
@@ -166,6 +227,13 @@ export function WorkspaceTerminalTab({
 
   const handleClear = () => {
     setLogs([]);
+    if (typeof window !== "undefined" && sessionId) {
+      try {
+        localStorage.removeItem(`entry:terminal-logs:${sessionId}`);
+      } catch {
+        // ignore
+      }
+    }
   };
 
   const handleCopy = () => {
@@ -187,10 +255,32 @@ export function WorkspaceTerminalTab({
       {/* Top Bar */}
       <div className="flex shrink-0 items-center justify-between border-b border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs">
         <div className="flex items-center gap-2">
-          <TerminalIcon className="h-3.5 w-3.5 text-emerald-400" />
+          <TerminalIcon className="h-3.5 w-3.5 text-zinc-400" />
           <span className="font-semibold text-zinc-300">Sandbox Shell</span>
           <span className="rounded bg-zinc-800 px-1.5 py-0.2 text-[10px] text-zinc-400">
             bash
+          </span>
+          <span
+            className={cn(
+              "flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
+              isRunning
+                ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                : canRun
+                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                  : "bg-zinc-800 text-zinc-500",
+            )}
+          >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                isRunning
+                  ? "bg-amber-400 animate-pulse"
+                  : canRun
+                    ? "bg-emerald-400"
+                    : "bg-zinc-500",
+              )}
+            />
+            {isRunning ? "Running" : canRun ? "Ready" : "Offline"}
           </span>
         </div>
 
@@ -281,13 +371,13 @@ export function WorkspaceTerminalTab({
             </div>
 
             {log.result?.stdout && (
-              <pre className="overflow-x-auto whitespace-pre-wrap text-zinc-300 pl-4 border-l border-zinc-800">
+              <pre className="overflow-x-auto whitespace-pre-wrap break-words break-all [overflow-wrap:anywhere] text-zinc-300 pl-4 border-l border-zinc-800">
                 {log.result.stdout}
               </pre>
             )}
 
             {log.result?.stderr && (
-              <pre className="overflow-x-auto whitespace-pre-wrap text-rose-400 pl-4 border-l border-rose-900/60">
+              <pre className="overflow-x-auto whitespace-pre-wrap break-words break-all [overflow-wrap:anywhere] text-rose-400 pl-4 border-l border-rose-900/60">
                 {log.result.stderr}
               </pre>
             )}
