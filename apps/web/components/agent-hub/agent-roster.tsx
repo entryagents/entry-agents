@@ -77,7 +77,7 @@ export function AgentRoster({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search subagents or tools..."
-            className="h-8 w-full rounded-md border border-border/60 bg-muted/30 pl-8 pr-7 text-xs placeholder:text-muted-foreground/50 focus:border-primary/40 focus:outline-hidden focus:ring-1 focus:ring-primary/20 transition-all"
+            className="h-8 w-full rounded-md border border-border/60 bg-muted/30 pl-8 pr-7 text-xs placeholder:text-muted-foreground/50 focus:border-primary/40 focus:outline-hidden focus:ring-1 focus:ring-primary/20 transition-colors"
           />
           {searchQuery && (
             <button
@@ -97,7 +97,7 @@ export function AgentRoster({
             type="button"
             onClick={() => setFilterTab("all")}
             className={cn(
-              "flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition-all active:scale-[0.97]",
+              "flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition-colors active:scale-[0.97]",
               filterTab === "all"
                 ? "bg-foreground text-background font-semibold"
                 : "text-muted-foreground hover:bg-muted/50",
@@ -112,7 +112,7 @@ export function AgentRoster({
             type="button"
             onClick={() => setFilterTab("active")}
             className={cn(
-              "flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition-all active:scale-[0.97]",
+              "flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition-colors active:scale-[0.97]",
               filterTab === "active"
                 ? "bg-emerald-600 text-white font-semibold"
                 : "text-muted-foreground hover:bg-muted/50",
@@ -127,7 +127,7 @@ export function AgentRoster({
             type="button"
             onClick={() => setFilterTab("completed")}
             className={cn(
-              "flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition-all active:scale-[0.97]",
+              "flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition-colors active:scale-[0.97]",
               filterTab === "completed"
                 ? "bg-foreground text-background font-semibold"
                 : "text-muted-foreground hover:bg-muted/50",
@@ -143,7 +143,7 @@ export function AgentRoster({
               type="button"
               onClick={() => setFilterTab("failed")}
               className={cn(
-                "flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition-all active:scale-[0.97]",
+                "flex items-center gap-1 rounded-md px-2 py-0.5 font-medium transition-colors active:scale-[0.97]",
                 filterTab === "failed"
                   ? "bg-red-600 text-white font-semibold"
                   : "text-muted-foreground hover:bg-muted/50",
@@ -183,7 +183,7 @@ export function AgentRoster({
                     aria-selected={selected}
                     onClick={() => onSelect(entry.id)}
                     className={cn(
-                      "group relative flex w-full flex-col gap-1.5 rounded-lg border p-2.5 text-left transition-all",
+                      "group relative flex w-full flex-col gap-1.5 rounded-lg border p-2.5 text-left transition-colors",
                       "active:scale-[0.98] transition-transform duration-150",
                       "focus-visible:ring-ring focus-visible:outline-hidden focus-visible:ring-2",
                       selected

@@ -20,23 +20,23 @@ export function SubagentParentCard({
   const [isExpanded, setIsExpanded] = useState(true);
 
   return (
-    <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 dark:border-blue-400/20 dark:bg-blue-950/20 shadow-xs overflow-hidden">
+    <div className="rounded-xl border border-border/70 bg-card shadow-2xs overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-blue-500/10 px-4 py-3 bg-blue-500/10 dark:bg-blue-900/30">
+      <div className="flex items-center justify-between border-b border-border/50 px-4 py-2.5 bg-muted/20">
         <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-600 text-white shadow-xs">
-            <Bot className="h-3.5 w-3.5" />
+          <div className="flex h-5 w-5 items-center justify-center rounded-md bg-muted text-foreground border border-border/50">
+            <Bot className="h-3 w-3" />
           </div>
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-blue-900 dark:text-blue-200">
-            <span>Main Agent</span>
-            <ArrowDownRight className="h-3 w-3 text-blue-500" />
-            <span className="flex items-center gap-1 text-foreground font-medium">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+            <span>Main agent</span>
+            <ArrowDownRight className="h-3 w-3 text-muted-foreground" />
+            <span className="flex items-center gap-1 text-muted-foreground font-normal">
               <SubagentIcon
                 type={subagentType}
-                className="h-3.5 w-3.5 text-neutral-500"
+                className="h-3.5 w-3.5 text-muted-foreground"
               />
               {subagentType.charAt(0).toUpperCase() + subagentType.slice(1)}{" "}
-              Subagent
+              subagent
             </span>
           </div>
         </div>
@@ -70,7 +70,7 @@ export function SubagentParentCard({
 
         {/* Full Instructions */}
         {isExpanded && instructions && (
-          <div className="mt-2.5 rounded-lg border border-border/50 bg-background/80 p-3 font-sans text-xs leading-relaxed text-foreground dark:bg-neutral-900/60">
+          <div className="mt-2.5 rounded-lg border border-border/50 bg-muted/20 p-3 font-sans text-xs leading-relaxed text-foreground">
             <StreamingMarkdown content={instructions} isStreaming={false} />
           </div>
         )}

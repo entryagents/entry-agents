@@ -6,7 +6,6 @@ import {
   CornerDownRight,
   ExternalLink,
   Filter,
-  Sparkles,
   Terminal,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -98,7 +97,7 @@ export function WorkspaceAgentsTab({
               type="button"
               onClick={() => setFilterMode("all")}
               className={cn(
-                "rounded-md px-2 py-0.5 font-medium transition-all active:scale-[0.97]",
+                "rounded-md px-2 py-0.5 font-medium transition-colors active:scale-[0.97]",
                 filterMode === "all"
                   ? "bg-background text-foreground shadow-2xs font-semibold"
                   : "text-muted-foreground hover:text-foreground",
@@ -110,7 +109,7 @@ export function WorkspaceAgentsTab({
               type="button"
               onClick={() => setFilterMode("active")}
               className={cn(
-                "rounded-md px-2 py-0.5 font-medium transition-all active:scale-[0.97]",
+                "rounded-md px-2 py-0.5 font-medium transition-colors active:scale-[0.97]",
                 filterMode === "active"
                   ? "bg-emerald-600 text-white font-semibold shadow-2xs"
                   : "text-muted-foreground hover:text-foreground",
@@ -122,7 +121,7 @@ export function WorkspaceAgentsTab({
               type="button"
               onClick={() => setFilterMode("completed")}
               className={cn(
-                "rounded-md px-2 py-0.5 font-medium transition-all active:scale-[0.97]",
+                "rounded-md px-2 py-0.5 font-medium transition-colors active:scale-[0.97]",
                 filterMode === "completed"
                   ? "bg-background text-foreground shadow-2xs font-semibold"
                   : "text-muted-foreground hover:text-foreground",
@@ -155,7 +154,7 @@ export function WorkspaceAgentsTab({
                 key={entry.id}
                 style={{ paddingLeft: entry.depth * 14 }}
                 className={cn(
-                  "group relative rounded-xl border p-3 shadow-2xs transition-all",
+                  "group relative rounded-xl border p-3 shadow-2xs transition-colors",
                   "active:scale-[0.99] transition-transform duration-150",
                   isLive
                     ? "border-emerald-500/40 bg-emerald-500/5 dark:bg-emerald-950/15"
@@ -201,7 +200,7 @@ export function WorkspaceAgentsTab({
                       {/* Live streamed thoughts snippet preview */}
                       {entry.streamedText && (
                         <div className="mt-2 flex items-start gap-1 rounded-md bg-muted/40 p-1.5 text-[11px] text-muted-foreground line-clamp-2">
-                          <Sparkles className="h-3 w-3 text-primary shrink-0 mt-0.5" />
+                          <Bot className="h-3 w-3 text-muted-foreground shrink-0 mt-0.5" />
                           <span className="truncate">{entry.streamedText}</span>
                         </div>
                       )}
