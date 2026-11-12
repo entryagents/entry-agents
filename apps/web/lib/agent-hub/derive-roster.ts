@@ -29,6 +29,7 @@ export interface AgentHubEntry {
   messageId: string;
   subagentType: string;
   title: string;
+  instructions: string;
   status: AgentHubStatus;
   modelId: string | null;
   startedAt: number | null;
@@ -36,6 +37,7 @@ export interface AgentHubEntry {
   inputTokens: number | null;
   outputTokens: number | null;
   pending: AgentHubPendingCall | null;
+  streamedText: string | null;
   /** Subagent session id (resumable follow-ups), when reported. */
   sessionId: string | null;
   /** Lineage depth: 0 = spawned by the main agent. */
@@ -120,13 +122,17 @@ export function deriveAgentHubRoster(messages: unknown): AgentHubEntry[] {
         index: entries.length + 1,
         messageId: raw.id ?? "",
         subagentType:
-          typeof input?.subagentType === "string"
-            ? input.subagentType
-            : "agent",
+          typeof input?.subagent_type === "string"
+            ? input.subagent_type
+            : typeof input?.subagentType === "string"
+              ? input.subagentType
+              : "agent",
         title:
           typeof input?.task === "string" && input.task.length > 0
             ? input.task
             : "Spawning subagent",
+        instructions:
+          typeof input?.instructions === "string" ? input.instructions : "",
         status: statusOf(part),
         modelId: typeof output?.modelId === "string" ? output.modelId : null,
         startedAt: numberOrNull(output?.startedAt),
@@ -137,6 +143,8 @@ export function deriveAgentHubRoster(messages: unknown): AgentHubEntry[] {
           pending && typeof pending.name === "string"
             ? { name: pending.name, input: pending.input }
             : null,
+        streamedText:
+          typeof output?.streamedText === "string" ? output.streamedText : null,
         sessionId:
           typeof output?.sessionId === "string" ? output.sessionId : null,
         depth,

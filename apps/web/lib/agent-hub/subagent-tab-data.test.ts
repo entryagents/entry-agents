@@ -109,6 +109,62 @@ describe("deriveSubagentTabData", () => {
     expect(data?.finalText).toBe("CSRF token validation added successfully.");
   });
 
+  test("extracts live streaming executed tools and streamed text from in-flight subagents", () => {
+    const liveStreamingMessages = [
+      {
+        id: "msg_live",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-task",
+            toolCallId: "call_subagent_live",
+            state: "output-available",
+            preliminary: true,
+            input: {
+              subagentType: "executor",
+              task: "Refactor database migrations",
+              instructions: "Migrate schema and verify types",
+            },
+            output: {
+              startedAt: 1700000020000,
+              modelId: "anthropic/claude-3-5-sonnet",
+              streamedText:
+                "I am updating the Drizzle schema to add indexes...",
+              executedTools: [
+                {
+                  toolCallId: "call_read_1",
+                  name: "read",
+                  input: { filePath: "apps/web/lib/db/schema.ts" },
+                  output: { content: "export const users = pgTable..." },
+                  state: "completed",
+                },
+              ],
+              pending: {
+                name: "write",
+                input: { filePath: "apps/web/lib/db/schema.ts" },
+              },
+              toolCallCount: 2,
+              sessionId: "sesh_live_456",
+            },
+          },
+        ],
+      },
+    ];
+
+    const data = deriveSubagentTabData(
+      liveStreamingMessages,
+      "call_subagent_live",
+    );
+    expect(data).not.toBeNull();
+    expect(data?.status).toBe("running");
+    expect(data?.completedParts).toHaveLength(1);
+    expect(data?.completedParts[0]?.type).toBe("tool-read");
+    expect(data?.finalText).toBe(
+      "I am updating the Drizzle schema to add indexes...",
+    );
+    expect(data?.pending?.name).toBe("write");
+  });
+
   test("returns null for unknown subagent ID", () => {
     expect(deriveSubagentTabData(testMessages, "nonexistent")).toBeNull();
   });
