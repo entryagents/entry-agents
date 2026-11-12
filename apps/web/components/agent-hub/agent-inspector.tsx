@@ -3,10 +3,10 @@
 import { formatTokens } from "@entry-agents/shared";
 import {
   ArrowLeft,
+  Bot,
   Check,
   Copy,
   ExternalLink,
-  Sparkles,
   Square,
   Terminal,
 } from "lucide-react";
@@ -37,7 +37,7 @@ function StatTile({
 }) {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5 transition-colors">
-      <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+      <div className="text-[11px] font-medium text-muted-foreground">
         {label}
       </div>
       <div className="mt-1 font-mono text-sm font-semibold tabular-nums text-foreground">
@@ -185,8 +185,8 @@ export function AgentInspector({
         <section className="rounded-xl border border-border/80 bg-card p-3.5 shadow-2xs">
           <div className="flex items-center justify-between pb-2 mb-2 border-b border-border/40 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5 font-medium text-foreground">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              Live Stream Thoughts
+              <Bot className="h-3.5 w-3.5 text-muted-foreground" />
+              Live stream thoughts
             </span>
             {live && (
               <span className="flex items-center gap-1 font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
@@ -206,9 +206,9 @@ export function AgentInspector({
 
       {/* Current or Last Tool Execution */}
       <section>
-        <div className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <Terminal className="h-3.5 w-3.5" />
-          <span>{live ? "Current Tool" : "Last Tool"}</span>
+          <span>{live ? "Current tool" : "Last tool"}</span>
         </div>
         <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2 font-mono text-xs break-all text-foreground">
           {pendingSummary(entry)}
@@ -217,7 +217,7 @@ export function AgentInspector({
 
       {/* Model Spec */}
       <section>
-        <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="mb-1 text-xs font-medium text-muted-foreground">
           Model
         </div>
         <div className="font-mono text-xs text-muted-foreground">
@@ -228,8 +228,8 @@ export function AgentInspector({
       {/* Instructions / Task Definition */}
       {entry.instructions && (
         <section>
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Parent Delegation Instructions
+          <div className="mb-1 text-xs font-medium text-muted-foreground">
+            Parent delegation instructions
           </div>
           <div className="rounded-lg border border-border/60 bg-muted/20 p-2.5 font-sans text-xs leading-relaxed text-muted-foreground max-h-36 overflow-y-auto">
             {entry.instructions}
@@ -240,7 +240,7 @@ export function AgentInspector({
       {/* Lineage Tree */}
       {(parent || childEntries.length > 0) && (
         <section>
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="mb-1 text-xs font-medium text-muted-foreground">
             Lineage
           </div>
           <div className="flex flex-col gap-1.5 text-xs">
