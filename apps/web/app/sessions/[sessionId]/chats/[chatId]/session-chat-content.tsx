@@ -61,6 +61,7 @@ import {
 import { useInlineQuestion } from "@/components/inline-question-input";
 import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
+import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
 import { SubagentChatView } from "@/components/subagent-chat/subagent-chat-view";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
 import {
@@ -1564,7 +1565,7 @@ export function SessionChatContent({
     setHasPendingResponse(false);
 
     clearError();
-    setMessages(data.messages);
+    setMessages((current) => mergePreservingLocalWork(data.messages, current));
   }, [chatInfo.id, clearError, session.id, setMessages]);
 
   const refreshAfterTabResume = useCallback(async (): Promise<void> => {
@@ -1821,10 +1822,37 @@ export function SessionChatContent({
       } catch (error) {
         setHasPendingResponse(false);
         void setChatStreaming(chatInfo.id, false);
+        // Anchor user prompt in local messages so an error never drops it from the UI
+        if (message) {
+          const userText =
+            typeof message === "string"
+              ? message
+              : "text" in message && typeof message.text === "string"
+                ? message.text
+                : "";
+          if (userText) {
+            setMessages((current) => {
+              const hasRecentMatchingUserMsg = current.some(
+                (m) =>
+                  m.role === "user" &&
+                  m.parts.some((p) => p.type === "text" && p.text === userText),
+              );
+              if (hasRecentMatchingUserMsg) return current;
+              return [
+                ...current,
+                {
+                  id: `user-err-${Date.now()}`,
+                  role: "user",
+                  parts: [{ type: "text", text: userText }],
+                },
+              ];
+            });
+          }
+        }
         throw error;
       }
     },
-    [chatInfo.id, sendMessage, setChatStreaming],
+    [chatInfo.id, sendMessage, setChatStreaming, setMessages],
   );
 
   // --- Prompt queue -----------------------------------------------------

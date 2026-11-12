@@ -18,7 +18,6 @@ import {
   summarizeAgentHub,
 } from "@/lib/agent-hub/derive-roster";
 import { AgentInspector } from "./agent-inspector";
-import { AgentRoster } from "./agent-roster";
 
 /**
  * Agent Hub: live roster + inspector for the subagents of this chat.
@@ -42,7 +41,6 @@ export function AgentHubButton({
   const totals = useMemo(() => summarizeAgentHub(roster), [roster]);
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mobileInspector, setMobileInspector] = useState(false);
 
   // Keyboard shortcut listener (Alt+A or Option+A or Ctrl+Shift+A)
   useEffect(() => {
@@ -79,11 +77,7 @@ export function AgentHubButton({
 
   const select = (id: string) => {
     setSelectedId(id);
-    setMobileInspector(true);
   };
-
-  const showRoster = !isMobile || !mobileInspector;
-  const showInspector = !isMobile || mobileInspector;
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -147,22 +141,12 @@ export function AgentHubButton({
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {showRoster && (
-            <div className="min-h-0 w-full overflow-hidden md:w-80 md:shrink-0 md:border-r border-border/60">
-              <AgentRoster
-                entries={roster}
-                selectedId={selected?.id ?? null}
-                onSelect={select}
-              />
-            </div>
-          )}
-          {showInspector && selected && (
+          {selected && (
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
               <AgentInspector
                 entry={selected}
                 parent={parent}
                 childEntries={kids}
-                onBack={isMobile ? () => setMobileInspector(false) : undefined}
                 onSelect={select}
                 onStopRun={onStopRun}
               />

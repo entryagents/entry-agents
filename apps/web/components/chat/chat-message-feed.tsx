@@ -2,7 +2,6 @@
 
 import { isReasoningUIPart, isToolUIPart } from "ai";
 import {
-  Bot,
   Check,
   Copy,
   GitBranch,
@@ -153,8 +152,8 @@ export function ChatMessageFeed({
   lastUserMessageSentAt = null,
   cwd,
   readOnly = false,
-  agentName = "Entry",
-  agentIcon,
+  agentName: _agentName = "Entry",
+  agentIcon: _agentIcon,
   emptyStateMessage = "Send a message to get started",
   showThinkingIndicator = false,
   workspaceStatusMessage,
@@ -298,13 +297,6 @@ export function ChatMessageFeed({
                     .slice(group.index + 1)
                     .some((messagePart) => messagePart.type === "text");
 
-                const isFirstAssistantTextPart =
-                  m.role === "assistant" &&
-                  (group.index === 0 ||
-                    !m.parts
-                      .slice(0, group.index)
-                      .some((messagePart) => messagePart.type === "text"));
-
                 const canCopyAssistantMessage =
                   isFinalAssistantTextPart &&
                   !isMessageStreaming &&
@@ -436,24 +428,6 @@ export function ChatMessageFeed({
                           }
                         }}
                       >
-                        {/* Model Response Header (rendered once at the start of the assistant turn) */}
-                        {isFirstAssistantTextPart && (
-                          <div className="flex items-center gap-2 mb-2 select-none">
-                            <div className="flex h-5 w-5 items-center justify-center rounded-md bg-muted text-foreground border border-border/70">
-                              {agentIcon ?? <Bot className="h-3 w-3" />}
-                            </div>
-                            <span className="text-xs font-semibold text-foreground">
-                              {agentName}
-                            </span>
-                            {isMessageStreaming && (
-                              <span className="flex items-center gap-1.5 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                Streaming
-                              </span>
-                            )}
-                          </div>
-                        )}
-
                         {/* Markdown prose text */}
                         <div className="text-sm leading-relaxed text-foreground select-text">
                           <StreamingMarkdown
