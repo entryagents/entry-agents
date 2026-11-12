@@ -3,6 +3,7 @@
 import { ArrowDownRight, Bot, ChevronDown, ChevronUp } from "lucide-react";
 import { useState } from "react";
 import { SubagentIcon } from "@/components/agent-hub/agent-status";
+import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { Button } from "@/components/ui/button";
 
 export function SubagentParentCard({
@@ -69,8 +70,8 @@ export function SubagentParentCard({
 
         {/* Full Instructions */}
         {isExpanded && instructions && (
-          <div className="mt-2.5 rounded-lg border border-border/50 bg-background/80 p-3 font-sans text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap dark:bg-neutral-900/60">
-            {instructions}
+          <div className="mt-2.5 rounded-lg border border-border/50 bg-background/80 p-3 font-sans text-xs leading-relaxed text-foreground dark:bg-neutral-900/60">
+            <StreamingMarkdown content={instructions} isStreaming={false} />
           </div>
         )}
       </div>

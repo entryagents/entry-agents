@@ -3670,6 +3670,11 @@ export function SessionChatContent({
               messages={messages}
               onClose={closeSubagentTab}
               onStopRun={() => void stopChatStream()}
+              onSteerSubagent={(id, instruction, title) => {
+                void sendMessageWithPendingState({
+                  text: `Steer subagent "${title || id}" (sessionId: ${id}):\n\n${instruction}`,
+                });
+              }}
             />
           ) : (
             <>

@@ -53,12 +53,27 @@ const taskPendingToolCallSchema = z.object({
 
 export type TaskPendingToolCall = z.infer<typeof taskPendingToolCallSchema>;
 
+const taskExecutedToolSchema = z.object({
+  toolCallId: z.string().optional(),
+  name: z.string(),
+  input: z.unknown(),
+  output: z.unknown().optional(),
+  state: z.enum(["running", "completed", "failed"]).optional(),
+});
+
+export type TaskExecutedTool = z.infer<typeof taskExecutedToolSchema>;
+
 export const taskOutputSchema = z.object({
   pending: taskPendingToolCallSchema.optional(),
   toolCallCount: z.number().int().nonnegative().optional(),
   startedAt: z.number().int().nonnegative().optional(),
   modelId: z.string().optional(),
   final: z.custom<ModelMessage[]>().optional(),
+  streamedText: z.string().optional(),
+  executedTools: z.array(taskExecutedToolSchema).optional(),
+  status: z
+    .enum(["starting", "running", "completed", "failed", "denied"])
+    .optional(),
   usage: z.custom<LanguageModelUsage>().optional(),
   sessionId: z.string().optional(),
   depth: z.number().int().nonnegative().optional(),
@@ -271,6 +286,8 @@ IMPORTANT:
     // Ordered record of executed tool calls (name + target), captured from
     // the stream so the fallback can still report what the subagent did.
     const streamedToolCalls: { name: string; input: unknown }[] = [];
+    const executedTools: TaskExecutedTool[] = [];
+    let lastTextYieldTime = 0;
 
     // Emit an initial state so UIs can show elapsed time from a stable timestamp.
     yield {
@@ -278,6 +295,7 @@ IMPORTANT:
       startedAt,
       modelId: subagentModelId,
       sessionId: activeSessionId,
+      status: "starting",
       depth: currentDepth + 1,
     };
 
@@ -297,6 +315,7 @@ IMPORTANT:
         startedAt,
         modelId: subagentModelId,
         sessionId: activeSessionId,
+        status: "failed",
         depth: currentDepth + 1,
       };
       return;
@@ -312,19 +331,40 @@ IMPORTANT:
         }
 
         if (part.type === "text-delta") {
-          // Capture streamed assistant text for the empty-`response.messages`
-          // fallback (see streamedTextChunks above). Only real deltas are
-          // appended; empty deltas are ignored so a provider that emits
-          // placeholder chunks does not inflate the buffer.
           if (typeof part.text === "string" && part.text.length > 0) {
             streamedTextChunks.push(part.text);
+            const now = Date.now();
+            // Emit throttled live updates so the frontend inspector and subagent tab stream in real-time
+            if (now - lastTextYieldTime > 120 || part.text.includes("\n")) {
+              lastTextYieldTime = now;
+              yield {
+                pending,
+                toolCallCount,
+                streamedText: streamedTextChunks.join(""),
+                executedTools: [...executedTools],
+                status: "running",
+                usage,
+                startedAt,
+                modelId: subagentModelId,
+                sessionId: activeSessionId,
+                depth: currentDepth + 1,
+              };
+            }
           }
         }
 
         if (part.type === "tool-call") {
           toolCallCount += 1;
+          const callId =
+            (part as { toolCallId?: string }).toolCallId || crypto.randomUUID();
           pending = { name: part.toolName, input: part.input };
           streamedToolCalls.push({ name: part.toolName, input: part.input });
+          executedTools.push({
+            toolCallId: callId,
+            name: part.toolName,
+            input: part.input,
+            state: "running",
+          });
 
           try {
             const signature = `${part.toolName}:${JSON.stringify(part.input)}`;
@@ -345,6 +385,41 @@ IMPORTANT:
           yield {
             pending,
             toolCallCount,
+            streamedText: streamedTextChunks.join(""),
+            executedTools: [...executedTools],
+            status: "running",
+            usage,
+            startedAt,
+            modelId: subagentModelId,
+            sessionId: activeSessionId,
+            depth: currentDepth + 1,
+          };
+        }
+
+        if (part.type === "tool-result") {
+          const res = part as {
+            toolCallId?: string;
+            toolName?: string;
+            result?: unknown;
+          };
+          const match =
+            executedTools.find((t) => t.toolCallId === res.toolCallId) ??
+            executedTools
+              .slice()
+              .toReversed()
+              .find((t) => t.name === res.toolName && t.state === "running");
+          if (match) {
+            match.output = res.result;
+            match.state = "completed";
+          }
+          pending = undefined;
+
+          yield {
+            pending,
+            toolCallCount,
+            streamedText: streamedTextChunks.join(""),
+            executedTools: [...executedTools],
+            status: "running",
             usage,
             startedAt,
             modelId: subagentModelId,
@@ -377,6 +452,9 @@ IMPORTANT:
           yield {
             pending,
             toolCallCount,
+            streamedText: streamedTextChunks.join(""),
+            executedTools: [...executedTools],
+            status: "running",
             usage,
             startedAt,
             modelId: subagentModelId,
@@ -474,6 +552,9 @@ IMPORTANT:
       ];
       yield {
         final: messagesWithError,
+        streamedText: streamedTextChunks.join(""),
+        executedTools: [...executedTools],
+        status: "failed",
         toolCallCount,
         usage: finalUsage,
         startedAt,
@@ -500,6 +581,9 @@ IMPORTANT:
       ];
       yield {
         final: truncated,
+        streamedText: streamedTextChunks.join(""),
+        executedTools: [...executedTools],
+        status: "denied",
         toolCallCount,
         usage: finalUsage,
         startedAt,
@@ -512,6 +596,9 @@ IMPORTANT:
 
     yield {
       final: baseMessages,
+      streamedText: streamedTextChunks.join(""),
+      executedTools: [...executedTools],
+      status: "completed",
       toolCallCount,
       usage: finalUsage,
       startedAt,

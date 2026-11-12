@@ -213,15 +213,42 @@ export function deriveSubagentTabData(
           : null;
 
       const finalMessages = output?.final;
-      const completedParts = extractSubagentToolParts(finalMessages);
-      const finalText = extractFinalAssistantText(finalMessages);
+      const partsFromFinal = extractSubagentToolParts(finalMessages);
+
+      // Support live streaming executedTools directly from task tool updates
+      const executedToolsRaw = Array.isArray(output?.executedTools)
+        ? (output.executedTools as Array<Record<string, unknown>>)
+        : [];
+      const partsFromExecuted = executedToolsRaw.map(
+        (call) =>
+          ({
+            type: `tool-${String(call.name ?? "tool")}`,
+            toolCallId: String(call.toolCallId ?? crypto.randomUUID()),
+            state:
+              call.state === "running" ? "input-available" : "output-available",
+            input: call.input,
+            output: call.output,
+          }) as unknown as WebAgentUIToolPart,
+      );
+
+      const completedParts =
+        partsFromFinal.length > 0 ? partsFromFinal : partsFromExecuted;
+
+      const finalText =
+        extractFinalAssistantText(finalMessages) ??
+        (typeof output?.streamedText === "string" &&
+        output.streamedText.length > 0
+          ? output.streamedText
+          : null);
 
       return {
         id: subagentId,
         subagentType:
-          typeof input?.subagentType === "string"
-            ? input.subagentType
-            : "agent",
+          typeof input?.subagent_type === "string"
+            ? input.subagent_type
+            : typeof input?.subagentType === "string"
+              ? input.subagentType
+              : "agent",
         title:
           typeof input?.task === "string" && input.task.length > 0
             ? input.task
