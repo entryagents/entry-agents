@@ -319,23 +319,23 @@ export function ToolLayout({
           aria-hidden={!isExpandedPanelVisible}
           inert={!isExpandedPanelVisible}
           className={cn(
-            "grid overflow-hidden transition-[grid-template-rows,opacity,margin-top] motion-reduce:transition-none",
+            "grid min-w-0 w-full overflow-hidden transition-[grid-template-rows,opacity,margin-top] motion-reduce:transition-none",
             isExpandedPanelVisible
               ? "mt-1.5 grid-rows-[1fr] opacity-100 duration-200 ease-out"
               : "grid-rows-[0fr] opacity-0 pointer-events-none duration-150 ease-out",
           )}
         >
-          <div className="min-h-0">
+          <div className="min-h-0 min-w-0 w-full overflow-hidden">
             {shouldRenderExpandedContent && (
-              <div className="space-y-2 pb-1">
+              <div className="space-y-2 pb-1 min-w-0 w-full overflow-hidden">
                 {showErrorExpanded &&
                   !hasRenderableContent(expandedContent) && (
-                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 font-mono text-xs leading-relaxed text-red-400">
+                    <pre className="max-h-48 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all break-words rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 font-mono text-xs leading-relaxed text-red-400">
                       {errorMessage}
                     </pre>
                   )}
                 {showInterruptedExpanded && (
-                  <pre className="rounded-md border border-yellow-500/20 bg-yellow-500/5 px-3 py-2 font-mono text-xs leading-relaxed text-yellow-500">
+                  <pre className="overflow-x-auto rounded-md border border-yellow-500/20 bg-yellow-500/5 px-3 py-2 font-mono text-xs leading-relaxed text-yellow-500">
                     interrupted
                   </pre>
                 )}

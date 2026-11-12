@@ -101,7 +101,6 @@ import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import { useSessionChats } from "@/hooks/use-session-chats";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
-import { useIsMobile } from "@/hooks/use-mobile";
 import {
   getGitFinalizationState,
   hasRenderableAssistantPart,
@@ -248,8 +247,12 @@ function getLatestContextUsage(
 ): MessageUsageTotals {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
-    if (message?.role === "assistant" && message.metadata?.lastStepUsage) {
-      return getUsageTotals(message.metadata.lastStepUsage);
+    if (message?.role === "assistant") {
+      const usage =
+        message.metadata?.lastStepUsage ?? message.metadata?.totalMessageUsage;
+      if (usage) {
+        return getUsageTotals(usage);
+      }
     }
   }
 
@@ -418,7 +421,9 @@ function ContextUsageIndicator({
   }
 
   const percentage =
-    contextLimit > 0 ? Math.round((inputTokens / contextLimit) * 100) : 0;
+    contextLimit > 0
+      ? Math.min(100, Math.round((inputTokens / contextLimit) * 100))
+      : 0;
   const uncachedConversationInputTokens = Math.max(
     0,
     conversationInputTokens - conversationCachedInputTokens,
@@ -876,7 +881,6 @@ export function SessionChatContent({
   const [branchPreviewUrlChangeBaseline, setBranchPreviewUrlChangeBaseline] =
     useState<string | null | undefined>(undefined);
   const hasMounted = useHasMounted();
-  const isMobile = useIsMobile();
   const {
     activeView,
     activeSubagentId,

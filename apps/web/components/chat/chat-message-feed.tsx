@@ -253,7 +253,7 @@ export function ChatMessageFeed({
                 return (
                   <div
                     key={`${m.id}-${group.renderKey}`}
-                    className="max-w-full pl-[22px]"
+                    className="min-w-0 w-full overflow-hidden pl-0 sm:pl-[22px]"
                   >
                     <ThinkingBlock
                       text={getReasoningGroupText(group.parts)}
@@ -281,7 +281,7 @@ export function ChatMessageFeed({
                 return (
                   <div
                     key={`${m.id}-${group.renderKey}`}
-                    className="max-w-full pl-[22px]"
+                    className="min-w-0 w-full overflow-hidden pl-0 sm:pl-[22px]"
                   >
                     <ThinkingBlock
                       text={p.text}
@@ -305,12 +305,6 @@ export function ChatMessageFeed({
                   !m.parts
                     .slice(group.index + 1)
                     .some((messagePart) => messagePart.type === "text");
-
-                const canCopyAssistantMessage =
-                  isFinalAssistantTextPart &&
-                  !isMessageStreaming &&
-                  p.text.trim().length > 0 &&
-                  Boolean(onCopyAssistantMessage);
 
                 return (
                   <div
@@ -445,69 +439,6 @@ export function ChatMessageFeed({
                             components={streamdownComponents}
                           />
                         </div>
-
-                        {/* Footer: copy, fork, and model pill */}
-                        {(canCopyAssistantMessage ||
-                          (isFinalAssistantTextPart && m.metadata)) && (
-                          <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
-                            {canCopyAssistantMessage ? (
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    onCopyAssistantMessage?.(m.id, p.text);
-                                  }}
-                                  aria-label="Copy assistant response"
-                                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97]"
-                                >
-                                  {copiedAssistantMessageId === m.id ? (
-                                    <>
-                                      <Check className="h-3.5 w-3.5 text-emerald-500" />
-                                      <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                                        Copied
-                                      </span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Copy className="h-3.5 w-3.5" />
-                                      <span>Copy</span>
-                                    </>
-                                  )}
-                                </button>
-                                {!readOnly && onForkAssistantMessage && (
-                                  <button
-                                    type="button"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      onForkAssistantMessage(m.id);
-                                    }}
-                                    disabled={
-                                      forkingAssistantMessageId !== null
-                                    }
-                                    aria-label="Fork conversation from this response"
-                                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
-                                  >
-                                    {forkingAssistantMessageId === m.id ? (
-                                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                      <GitBranch className="h-3.5 w-3.5" />
-                                    )}
-                                    <span>Fork</span>
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              <div />
-                            )}
-                            {isFinalAssistantTextPart && (
-                              <MessageModelPill
-                                metadata={m.metadata}
-                                modelOptions={modelOptions}
-                              />
-                            )}
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -523,8 +454,8 @@ export function ChatMessageFeed({
                   <div
                     key={`${m.id}-${group.renderKey}`}
                     className={cn(
-                      "max-w-full",
-                      isSubagentTask ? "py-1" : "pl-[22px]",
+                      "min-w-0 w-full overflow-hidden",
+                      isSubagentTask ? "py-1" : "pl-0 sm:pl-[22px]",
                     )}
                   >
                     <ToolCall
@@ -632,9 +563,6 @@ export function ChatMessageFeed({
             });
 
           if (m.role === "assistant") {
-            const hasTextPart = m.parts.some(
-              (part) => part.type === "text" && part.text.trim().length > 0,
-            );
             return (
               <AssistantMessageGroups
                 key={m.id}
@@ -650,19 +578,79 @@ export function ChatMessageFeed({
                     : null)
                 }
               >
-                {(isExpanded) => (
-                  <>
-                    {renderGroups(isExpanded)}
-                    {!hasTextPart && (
-                      <div className="mt-2 flex items-center justify-end border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
+                {(isExpanded) => {
+                  const combinedText = m.parts
+                    .filter(
+                      (part): part is { type: "text"; text: string } =>
+                        part.type === "text" && part.text.trim().length > 0,
+                    )
+                    .map((part) => part.text)
+                    .join("\n\n");
+                  const canCopyAssistant =
+                    !isMessageStreaming &&
+                    combinedText.length > 0 &&
+                    Boolean(onCopyAssistantMessage);
+
+                  return (
+                    <>
+                      {renderGroups(isExpanded)}
+                      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
+                        {canCopyAssistant ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onCopyAssistantMessage?.(m.id, combinedText);
+                              }}
+                              aria-label="Copy assistant response"
+                              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97]"
+                            >
+                              {copiedAssistantMessageId === m.id ? (
+                                <>
+                                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                    Copied
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="h-3.5 w-3.5" />
+                                  <span>Copy</span>
+                                </>
+                              )}
+                            </button>
+                            {!readOnly && onForkAssistantMessage && (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  onForkAssistantMessage(m.id);
+                                }}
+                                disabled={forkingAssistantMessageId !== null}
+                                aria-label="Fork conversation from this response"
+                                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                {forkingAssistantMessageId === m.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <GitBranch className="h-3.5 w-3.5" />
+                                )}
+                                <span>Fork</span>
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <div />
+                        )}
                         <MessageModelPill
                           metadata={m.metadata}
                           modelOptions={modelOptions}
                         />
                       </div>
-                    )}
-                  </>
-                )}
+                    </>
+                  );
+                }}
               </AssistantMessageGroups>
             );
           }

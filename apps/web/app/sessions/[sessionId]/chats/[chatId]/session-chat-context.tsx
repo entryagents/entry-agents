@@ -113,12 +113,31 @@ function resolveContextLimitForModel(
   modelOptions: ModelOption[] | undefined,
   modelId: string | null | undefined,
 ): number | null {
-  if (!modelOptions || !modelId) {
+  if (!modelId) {
     return null;
   }
 
-  const selectedModel = modelOptions.find((model) => model.id === modelId);
-  return toPositiveInteger(selectedModel?.contextWindow);
+  const selectedModel = modelOptions?.find((model) => model.id === modelId);
+  const contextWindow = toPositiveInteger(selectedModel?.contextWindow);
+  if (contextWindow) {
+    return contextWindow;
+  }
+
+  // Model-specific fallback context limits if gateway metadata omitted contextWindow
+  if (modelId.includes("step-5")) {
+    return 1_000_000;
+  }
+  if (modelId.includes("gemini") || modelId.includes("gemma")) {
+    return 1_000_000;
+  }
+  if (modelId.includes("qwen") || modelId.includes("mimo")) {
+    return 128_000;
+  }
+  if (modelId.includes("claude")) {
+    return 200_000;
+  }
+
+  return null;
 }
 
 type SessionChatContextValue = {
