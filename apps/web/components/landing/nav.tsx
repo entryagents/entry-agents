@@ -37,7 +37,7 @@ export function LandingNav({
     >
       <div className="mx-auto max-w-[1320px]">
         <div
-          className={`flex h-16 items-center justify-between border-x bg-(--l-bg) pl-6 pr-4 transition-all duration-200 ${
+          className={`flex h-16 items-center justify-between border-x bg-(--l-bg) pl-6 pr-4 transition-[box-shadow,border-color] duration-200 ${
             scrolled
               ? "border-x-(--l-border) shadow-[0_1px_0_0_var(--l-border)]"
               : "shadow-none"

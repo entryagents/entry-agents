@@ -53,7 +53,7 @@ export function FeatureSandbox() {
           {sequence.map((_, i) => (
             <div
               key={i}
-              className="h-px flex-1 transition-all duration-700"
+              className="h-px flex-1 transition-colors duration-700"
               style={{
                 backgroundColor:
                   i === idx

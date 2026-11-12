@@ -1,43 +1,49 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
     "ai-sdk": {
       "source": "vercel/ai",
       "sourceType": "github",
-      "computedHash": "58ce68f628890c3925aea2b5435a649251ac182057541045c68fc19a27aaa0ec"
+      "computedHash": "931d01afad474c3e753c7c8daa506918dd07dacf2ffdeceaa342334a5e3d79fc"
     },
     "chat-sdk": {
       "source": "vercel/chat",
       "sourceType": "github",
-      "computedHash": "3483217a04e5abd951e9f90f26beb062cdcccb5785a3b2a97ec9fe797536a135"
+      "computedHash": "1ac2ec0d8b2276067b557d8bc3c8a08cd973a19919676d488761eb9fc808be70"
     },
     "composio": {
       "source": "ComposioHQ/composio",
       "sourceType": "github",
       "skillPath": "skills/composio/SKILL.md",
-      "computedHash": "60d7d3cf79e25c061030309af40eaa2a9de6df8f6b87977932996a9909232886"
+      "computedHash": "0e0e42aec4d7faf1458cb2f396298a2e2d01264cad66f74ac44eb8bec3c783f3"
     },
     "emil-design-eng": {
       "source": "emilkowalski/skill",
       "sourceType": "github",
-      "computedHash": "32f63a1e56fc41f53497f7b19d6391b7c3e55bedd884c5a4d10bc4eacd2310e4"
+      "computedHash": ""
     },
     "neon": {
       "source": "neondatabase/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/neon/SKILL.md",
-      "computedHash": "34714c04b6ab06adc728df602131f8c23fcbf79bf6a54c4b82e9021ad138cb72"
+      "computedHash": "99270bc95dbc55b1144eb41f124c70f7f35f044f8fad8d09d67034c6d3121319"
     },
     "neon-postgres": {
       "source": "neondatabase/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/neon-postgres/SKILL.md",
-      "computedHash": "58b7ffd550cc8a17c86250999cbdd0020bcb839d2389d423227272743c8d2fb8"
+      "computedHash": "8d49e0bebd2d6a01740fdf37480b14d5e1f6017992c5330a0a03361ddb6ab465"
     },
     "vercel-react-best-practices": {
       "source": "vercel-labs/agent-skills",
       "sourceType": "github",
-      "computedHash": "3462ec83f862abb2d532953df33a4dbf87f4616849da5d4b5cc7c13601aaf997"
+      "computedHash": ""
+    },
+    "web-design-guidelines": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/web-design-guidelines/SKILL.md",
+      "computedHash": "4f68ae07187fb0d1fb78c88b503d089da4cf5a9d9625d1f2e425b1590bf96d92"
     }
   }
 }

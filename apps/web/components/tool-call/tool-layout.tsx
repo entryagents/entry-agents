@@ -28,6 +28,8 @@ export type ToolLayoutProps = {
   /** @deprecated Use `icon` instead. */
   indicator?: ReactNode;
   nameClassName?: string;
+  /** Optional custom click handler for the entire tool header row (e.g. opening subagent tab). */
+  onHeaderClick?: (e: React.MouseEvent | React.KeyboardEvent) => void;
 };
 
 function StatusIndicator({ state }: { state: ToolRenderState }) {
@@ -81,6 +83,7 @@ export function ToolLayout({
   icon,
   indicator,
   nameClassName,
+  onHeaderClick,
 }: ToolLayoutProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const showApprovalButtons = Boolean(
@@ -147,6 +150,27 @@ export function ToolLayout({
     setIsExpanded(nextExpanded);
   };
 
+  const isInteractiveHeader = hasExpandedDetails || Boolean(onHeaderClick);
+
+  const handleClick = (e: React.MouseEvent) => {
+    if (onHeaderClick) {
+      onHeaderClick(e);
+      return;
+    }
+    handleToggle();
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      if (onHeaderClick) {
+        onHeaderClick(e);
+        return;
+      }
+      handleToggle();
+    }
+  };
+
   // Resolve the icon to show in the header.
   const isRunning = state.running;
   const resolvedIcon = isRunning ? (
@@ -160,17 +184,12 @@ export function ToolLayout({
       <div
         className={cn(
           "group flex min-w-0 select-none items-center gap-2 rounded-md px-1.5 py-1 text-sm",
-          hasExpandedDetails &&
-            "cursor-pointer transition-all hover:bg-muted/50 active:scale-[0.98]",
+          isInteractiveHeader &&
+            "cursor-pointer transition-colors hover:bg-muted/50 active:scale-[0.98]",
         )}
-        {...(hasExpandedDetails && {
-          onClick: handleToggle,
-          onKeyDown: (e: React.KeyboardEvent) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              handleToggle();
-            }
-          },
+        {...(isInteractiveHeader && {
+          onClick: handleClick,
+          onKeyDown: handleKeyDown,
           role: "button",
           tabIndex: 0,
           "aria-expanded": isExpanded,

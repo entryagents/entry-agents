@@ -94,7 +94,7 @@ export function HeroTerminal() {
   const rows = useMemo(() => active.data, [active]);
 
   return (
-    <div className="group flex h-[420px] flex-col transition-all duration-300 md:h-[480px]">
+    <div className="group flex h-[420px] flex-col transition-colors duration-150 md:h-[480px]">
       <div className="flex items-center justify-between border-b border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2">
         <div className="flex items-center gap-3 font-mono text-[11px] tabular-nums text-(--l-panel-fg-2)">
           <div>

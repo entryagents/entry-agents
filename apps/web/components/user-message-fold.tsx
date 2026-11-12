@@ -68,7 +68,7 @@ export function UserMessageFold({
         }}
         aria-expanded={isExpanded}
         aria-controls={contentId}
-        className="group/toggle inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-muted-foreground bg-background/50 hover:bg-background/80 hover:text-foreground active:scale-[0.97] transition-all"
+        className="group/toggle inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium text-muted-foreground bg-background/50 hover:bg-background/80 hover:text-foreground active:scale-[0.97] transition-colors"
       >
         <span>
           {isExpanded ? "Show less" : `Read more (${lineCount} lines)`}

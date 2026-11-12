@@ -68,13 +68,15 @@ function normalizeStoredMessage(m: {
     } as WebAgentUIMessage;
   }
   if (raw && typeof raw === "object") {
-    const obj = raw as { id?: unknown; role?: unknown; parts?: unknown };
+    const obj = raw as Record<string, unknown>;
     return {
+      ...obj,
       id: typeof obj.id === "string" ? obj.id : m.id,
       role: (typeof obj.role === "string"
         ? obj.role
         : m.role) as WebAgentUIMessage["role"],
       parts: Array.isArray(obj.parts) ? obj.parts : [],
+      metadata: (obj.metadata as WebAgentUIMessage["metadata"]) ?? undefined,
     } as WebAgentUIMessage;
   }
   return {

@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import type { AgentHubEntry } from "@/lib/agent-hub/derive-roster";
 import { isLiveStatus } from "@/lib/agent-hub/derive-roster";
 import { cn } from "@/lib/utils";
-import { StatusBadge, SubagentIcon, SubagentRoleBadge } from "./agent-status";
+import { StatusBadge, SubagentIcon } from "./agent-status";
 
 type FilterTab = "all" | "active" | "completed" | "failed";
 
@@ -214,8 +214,6 @@ export function AgentRoster({
                       <span className="text-foreground/80 font-medium">
                         #{entry.index}
                       </span>
-                      <span>·</span>
-                      <SubagentRoleBadge subagentType={entry.subagentType} />
                       <span>·</span>
                       <span className="tabular-nums">{tokenLabel(entry)}</span>
                       {entry.pending && (

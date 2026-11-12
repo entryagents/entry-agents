@@ -64,11 +64,18 @@ interface RawMessage {
 }
 
 function isTaskPart(part: unknown): part is RawToolPart {
+  if (typeof part !== "object" || part === null) return false;
+  const p = part as {
+    type?: unknown;
+    toolCallId?: unknown;
+    toolName?: unknown;
+    name?: unknown;
+  };
+  if (typeof p.toolCallId !== "string") return false;
   return (
-    typeof part === "object" &&
-    part !== null &&
-    (part as { type?: unknown }).type === "tool-task" &&
-    typeof (part as { toolCallId?: unknown }).toolCallId === "string"
+    p.type === "tool-task" ||
+    ((p.type === "dynamic-tool" || p.type === "tool-call") &&
+      (p.toolName === "task" || p.name === "task"))
   );
 }
 

@@ -298,13 +298,12 @@ export function ChatMessageFeed({
                     .slice(group.index + 1)
                     .some((messagePart) => messagePart.type === "text");
 
-                if (
-                  !isToolCallsExpanded &&
+                const isFirstAssistantTextPart =
                   m.role === "assistant" &&
-                  !isFinalAssistantTextPart
-                ) {
-                  return null;
-                }
+                  (group.index === 0 ||
+                    !m.parts
+                      .slice(0, group.index)
+                      .some((messagePart) => messagePart.type === "text"));
 
                 const canCopyAssistantMessage =
                   isFinalAssistantTextPart &&
@@ -318,10 +317,7 @@ export function ChatMessageFeed({
                     className={cn(
                       "flex min-w-0 py-2",
                       m.role === "user" ? "justify-end" : "justify-start",
-                      isFinalAssistantTextPart && group.index > 0 && "mt-4",
-                      m.role === "assistant" &&
-                        !isFinalAssistantTextPart &&
-                        "pl-[22px]",
+                      isFinalAssistantTextPart && group.index > 0 && "mt-3",
                     )}
                   >
                     {m.role === "user" ? (
@@ -440,21 +436,23 @@ export function ChatMessageFeed({
                           }
                         }}
                       >
-                        {/* Model Response Header */}
-                        <div className="flex items-center gap-2 mb-2 select-none">
-                          <div className="flex h-5 w-5 items-center justify-center rounded-md bg-muted text-foreground border border-border/70">
-                            {agentIcon ?? <Bot className="h-3 w-3" />}
-                          </div>
-                          <span className="text-xs font-semibold text-foreground">
-                            {agentName}
-                          </span>
-                          {isMessageStreaming && (
-                            <span className="flex items-center gap-1.5 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              Streaming
+                        {/* Model Response Header (rendered once at the start of the assistant turn) */}
+                        {isFirstAssistantTextPart && (
+                          <div className="flex items-center gap-2 mb-2 select-none">
+                            <div className="flex h-5 w-5 items-center justify-center rounded-md bg-muted text-foreground border border-border/70">
+                              {agentIcon ?? <Bot className="h-3 w-3" />}
+                            </div>
+                            <span className="text-xs font-semibold text-foreground">
+                              {agentName}
                             </span>
-                          )}
-                        </div>
+                            {isMessageStreaming && (
+                              <span className="flex items-center gap-1.5 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Streaming
+                              </span>
+                            )}
+                          </div>
+                        )}
 
                         {/* Markdown prose text */}
                         <div className="text-sm leading-relaxed text-foreground select-text">
@@ -536,11 +534,17 @@ export function ChatMessageFeed({
               }
 
               if (isToolUIPart(p)) {
-                if (!isToolCallsExpanded) return null;
+                const isSubagentTask =
+                  p.type === "tool-task" ||
+                  (p as { toolName?: string }).toolName === "task";
+                if (!isToolCallsExpanded && !isSubagentTask) return null;
                 return (
                   <div
                     key={`${m.id}-${group.renderKey}`}
-                    className="max-w-full pl-[22px]"
+                    className={cn(
+                      "max-w-full",
+                      isSubagentTask ? "py-1" : "pl-[22px]",
+                    )}
                   >
                     <ToolCall
                       part={p as WebAgentUIToolPart}
