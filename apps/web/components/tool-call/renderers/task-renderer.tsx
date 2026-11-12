@@ -6,6 +6,7 @@ import type { ToolRenderState } from "@entry-agents/shared/lib/tool-state";
 import {
   ShieldCheck,
   Bot,
+  ExternalLink,
   FileText,
   FilePlus,
   FolderSearch,
@@ -19,6 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { useOptionalGitPanel } from "@/app/sessions/[sessionId]/chats/[chatId]/git-panel-context";
 import {
   extractRenderState,
   getToolName,
@@ -374,12 +376,32 @@ export function TaskRenderer({
     statParts.push(`${formatTokens(tokenCount)} tokens`);
   }
 
-  const meta =
-    statParts.length > 0 ? (
-      <span className="font-mono text-xs text-neutral-600 dark:text-neutral-400">
-        {statParts.join(" · ")}
-      </span>
-    ) : null;
+  const gitPanel = useOptionalGitPanel();
+
+  const meta = (
+    <div className="flex items-center gap-2">
+      {statParts.length > 0 && (
+        <span className="font-mono text-xs text-neutral-600 dark:text-neutral-400">
+          {statParts.join(" · ")}
+        </span>
+      )}
+      {gitPanel && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            gitPanel.openSubagentTab(part.toolCallId, desc, subagentType);
+          }}
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 transition-colors"
+          title="Open in dedicated subagent tab"
+          aria-label={`Open ${desc} in dedicated subagent tab`}
+        >
+          <ExternalLink className="h-3 w-3" />
+          <span>View tab</span>
+        </button>
+      )}
+    </div>
+  );
 
   // --- Expanded content ---
   // While running: show the current pending tool call

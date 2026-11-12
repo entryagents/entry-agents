@@ -19,7 +19,7 @@ export type GitPanelTab =
   | "review"
   | "preview"
   | "terminal";
-export type ActiveView = "chat" | "diff" | "file";
+export type ActiveView = "chat" | "diff" | "file" | "subagent";
 export type DiffScope = "uncommitted" | "branch";
 
 type GitPanelContextValue = {
@@ -90,6 +90,26 @@ type GitPanelContextValue = {
 
   /** Open a file in the workspace dynamic tabs */
   openFileTab: (filePath: string) => void;
+
+  /** Subagent toolCallId currently focused in the subagent chat tab */
+  activeSubagentId: string | null;
+  setActiveSubagentId: (id: string | null) => void;
+  activeSubagentTitle: string | null;
+  activeSubagentType: string | null;
+
+  /** Whether the user has explicitly closed the Subagent tab */
+  subagentTabDismissed: boolean;
+  setSubagentTabDismissed: (dismissed: boolean) => void;
+
+  /** Open the dedicated Subagent tab in the main view */
+  openSubagentTab: (
+    subagentId: string,
+    title?: string,
+    subagentType?: string,
+  ) => void;
+
+  /** Close the dedicated Subagent tab and return to main chat */
+  closeSubagentTab: () => void;
 
   /** Share dialog trigger */
   shareRequested: boolean;
@@ -162,6 +182,31 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
     [isMobile],
   );
 
+  const [activeSubagentId, setActiveSubagentId] = useState<string | null>(null);
+  const [activeSubagentTitle, setActiveSubagentTitle] = useState<string | null>(
+    null,
+  );
+  const [activeSubagentType, setActiveSubagentType] = useState<string | null>(
+    null,
+  );
+  const [subagentTabDismissed, setSubagentTabDismissed] = useState(false);
+
+  const openSubagentTab = useCallback(
+    (subagentId: string, title?: string, subagentType?: string) => {
+      setActiveSubagentId(subagentId);
+      if (title) setActiveSubagentTitle(title);
+      if (subagentType) setActiveSubagentType(subagentType);
+      setSubagentTabDismissed(false);
+      setActiveView("subagent");
+    },
+    [],
+  );
+
+  const closeSubagentTab = useCallback(() => {
+    setActiveView("chat");
+    setSubagentTabDismissed(true);
+  }, []);
+
   const openFileTab = useCallback(
     (filePath: string) => {
       setFocusedFilePath(filePath);
@@ -212,6 +257,14 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
       fileTabDismissed,
       setFileTabDismissed,
       openFileTab,
+      activeSubagentId,
+      setActiveSubagentId,
+      activeSubagentTitle,
+      activeSubagentType,
+      subagentTabDismissed,
+      setSubagentTabDismissed,
+      openSubagentTab,
+      closeSubagentTab,
       shareRequested,
       setShareRequested,
       changeRepoRequested,
@@ -234,6 +287,12 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
       focusedFilePath,
       fileTabDismissed,
       openFileTab,
+      activeSubagentId,
+      activeSubagentTitle,
+      activeSubagentType,
+      subagentTabDismissed,
+      openSubagentTab,
+      closeSubagentTab,
       diffScope,
       hasActionNeeded,
       changesCount,
@@ -256,4 +315,8 @@ export function useGitPanel() {
     throw new Error("useGitPanel must be used within a GitPanelProvider");
   }
   return context;
+}
+
+export function useOptionalGitPanel(): GitPanelContextValue | undefined {
+  return useContext(GitPanelContext);
 }

@@ -734,8 +734,8 @@ async function resolveChatModelRuntime(params: {
       return {
         blockedNotice:
           plan.modelAccess === "luna-only"
-            ? "Free tier ended, upgrade your account to use Entry"
-            : "You're out of credit -- add more to keep chatting.",
+            ? "Your free tier allowance has ended. Please upgrade your plan to continue using Entry."
+            : "Your credit balance is exhausted. Please add credits or upgrade your plan to continue chatting.",
       };
     }
   } else {

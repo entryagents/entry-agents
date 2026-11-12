@@ -164,13 +164,11 @@ IMPORTANT:
         // refuse the launch with zero spend. Wording mirrors the main
         // model's window/credit exhaustion notices.
         const reasonText =
-          plan.reason === "window"
-            ? "usage window exhausted"
-            : "credit balance exhausted";
+          plan.reason === "window" ? "usage window" : "credit balance";
         const refused: ModelMessage[] = [
           {
             role: "assistant",
-            content: `Task not started: the user's ${reasonText}. Ask them to wait for the window to refill or top up, then re-invoke this task.`,
+            content: `**Task launch deferred**: The user's ${reasonText} is currently exhausted. Please allow the window to reset or replenish credits before launching subagent tasks.`,
           },
         ];
         yield {
@@ -284,10 +282,13 @@ IMPORTANT:
     };
 
     if (streamError || !result) {
+      const cleanError = (
+        streamError ?? "Failed to initialize subagent stream"
+      ).replace(/^Error:\s*/, "");
       const errorMsg: ModelMessage[] = [
         {
           role: "assistant",
-          content: `[Subagent error: ${streamError ?? "Failed to initialize subagent stream"}]`,
+          content: `**Subagent execution halted**: ${cleanError}`,
         },
       ];
       yield {
@@ -463,11 +464,12 @@ IMPORTANT:
     }
 
     if (streamError) {
+      const cleanError = streamError.replace(/^Error:\s*/, "");
       const messagesWithError: ModelMessage[] = [
         ...baseMessages,
         {
           role: "assistant",
-          content: `[Subagent error: ${streamError}]`,
+          content: `**Subagent execution halted**: ${cleanError}`,
         },
       ];
       yield {
@@ -493,7 +495,7 @@ IMPORTANT:
         ...baseMessages,
         {
           role: "assistant",
-          content: `[Budget limit reached: this subagent was stopped by the user's ${reasonText}. The work above is partial -- the remaining steps were not run.]`,
+          content: `**Subagent limit reached**: Stopped by ${reasonText}. Partial progress preserved across ${toolCallCount} steps.`,
         },
       ];
       yield {
@@ -574,7 +576,9 @@ IMPORTANT:
       return (
         typeof c === "string" &&
         (c.startsWith("[Budget limit reached:") ||
-          c.startsWith("[Subagent error:"))
+          c.startsWith("[Subagent error:") ||
+          c.startsWith("**Subagent execution halted**:") ||
+          c.startsWith("**Subagent limit reached**:"))
       );
     });
     if (errorNotice && typeof errorNotice.content === "string") {
