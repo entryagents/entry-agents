@@ -285,6 +285,11 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
+      {/* Mobile grab handle bar */}
+      <div className="flex items-center justify-center pt-2 pb-0.5 lg:hidden">
+        <div className="h-1.5 w-12 rounded-full bg-muted-foreground/25" />
+      </div>
+
       {/* Workspace Header Dynamic Tab Bar (Matching OpenCode side-region) */}
       <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-2 py-1 gap-1">
         {/* Dynamic Tab Strip */}
@@ -347,7 +352,10 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                   }
                 }}
                 className={cn(
-                  "group flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer shrink-0 select-none",
+                  "group flex items-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer shrink-0 select-none",
+                  isMobile
+                    ? "px-3 py-1.5 text-xs min-h-[34px]"
+                    : "px-2.5 py-1 text-xs",
                   isFile && "font-mono max-w-[190px]",
                   isActive
                     ? "bg-background text-foreground shadow-2xs font-semibold border border-border/80"
@@ -455,7 +463,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
         {/* Right Header Actions: Expand/Collapse & Close */}
         <div className="flex items-center gap-1 shrink-0 ml-1">
-          {onToggleWorkspaceExpand && (
+          {!isMobile && onToggleWorkspaceExpand && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -489,11 +497,11 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                className="h-8 w-8 lg:h-7 lg:w-7 text-muted-foreground hover:text-foreground cursor-pointer"
                 onClick={() => setGitPanelOpen(false)}
                 aria-label="Close workspace"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-4 w-4 lg:h-3.5 lg:w-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">Close workspace</TooltipContent>

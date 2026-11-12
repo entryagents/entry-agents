@@ -2,7 +2,7 @@
 
 import { File as DiffsFile } from "@pierre/diffs/react";
 import {
-  Code2,
+  Check,
   Copy,
   Download,
   ExternalLink,
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/tooltip";
 import { getFileOptions } from "@/lib/diffs-config";
 import { useTheme } from "@/app/providers";
-import { fetcherNoStore } from "@/lib/swr";
+import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 import { FileTree } from "../file-tree";
 
@@ -74,7 +74,7 @@ export function WorkspaceCodeTab({
   }, [selectedFilePath, sessionId]);
 
   const { data, error, isLoading, isValidating, mutate } =
-    useSWR<WorkspaceFileContentResponse>(requestUrl, fetcherNoStore, {
+    useSWR<WorkspaceFileContentResponse>(requestUrl, fetcher, {
       revalidateOnFocus: false,
       shouldRetryOnError: false,
     });
@@ -217,7 +217,11 @@ export function WorkspaceCodeTab({
                     className="h-7 w-7 text-muted-foreground hover:text-foreground"
                     onClick={handleCopyContent}
                   >
-                    <Copy className="h-3.5 w-3.5" />
+                    {copied ? (
+                      <Check className="h-3.5 w-3.5 text-emerald-500" />
+                    ) : (
+                      <Copy className="h-3.5 w-3.5" />
+                    )}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">Copy Content</TooltipContent>

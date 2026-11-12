@@ -194,6 +194,18 @@ export async function GET(req: Request, context: RouteContext) {
       );
     }
 
+    const etag = `W/"${stats.size}-${stats.mtimeMs ?? 0}"`;
+    const clientEtag = req.headers.get("if-none-match");
+    if (clientEtag && clientEtag === etag) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          "Cache-Control": "private, no-cache, stale-while-revalidate=30",
+        },
+      });
+    }
+
     const previewMimeType = getPreviewMimeType(filePath);
     const buffer = await sandbox.readFileBuffer(fullPath);
     const isBinary = Boolean(previewMimeType) || buffer.includes(0);
@@ -209,7 +221,10 @@ export async function GET(req: Request, context: RouteContext) {
         contentBase64: buffer.toString("base64"),
       };
       return Response.json(response, {
-        headers: { "Cache-Control": "no-store" },
+        headers: {
+          ETag: etag,
+          "Cache-Control": "private, no-cache, stale-while-revalidate=30",
+        },
       });
     }
 
@@ -224,7 +239,8 @@ export async function GET(req: Request, context: RouteContext) {
 
     return Response.json(response, {
       headers: {
-        "Cache-Control": "no-store",
+        ETag: etag,
+        "Cache-Control": "private, no-cache, stale-while-revalidate=30",
       },
     });
   } catch (error) {

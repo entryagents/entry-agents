@@ -455,14 +455,15 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
 
   const parts = [CORE_SYSTEM_PROMPT, getModelOverlay(family, options.modelId)];
 
+  // Stable date string (YYYY-MM-DD) without second-level jitter to preserve prompt cache hits
+  // across consecutive turns and tool steps.
   const now = new Date();
   const currentDateStr = now.toISOString().split("T")[0];
-  const currentDateTimeStr = now.toUTCString();
 
   const envParts = [
     `# Environment`,
     ``,
-    `Current date: ${currentDateStr} (${currentDateTimeStr})`,
+    `Current date: ${currentDateStr}`,
     options.cwd
       ? `Working directory: . (workspace root: \`${options.cwd}\`)\nAbsolute path: \`${options.cwd}\`\nUse workspace-relative paths for all file operations. Framework scaffolding (such as create-next-app or next dev) may auto-generate guidance files like AGENTS.md; treat them as standard project instructions.`
       : undefined,

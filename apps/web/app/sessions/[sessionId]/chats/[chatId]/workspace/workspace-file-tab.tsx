@@ -36,7 +36,7 @@ import {
 } from "@/components/workspace/workspace-file-stats";
 import { getFileOptions } from "@/lib/diffs-config";
 import { useTheme } from "@/app/providers";
-import { fetcherNoStore } from "@/lib/swr";
+import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 
 type WorkspaceFileTabProps = {
@@ -116,7 +116,7 @@ export function WorkspaceFileTab({
   }, [filePath, sessionId]);
 
   const { data, error, isLoading, isValidating, mutate } =
-    useSWR<WorkspaceFileContentResponse>(requestUrl, fetcherNoStore, {
+    useSWR<WorkspaceFileContentResponse>(requestUrl, fetcher, {
       revalidateOnFocus: false,
       shouldRetryOnError: false,
     });
