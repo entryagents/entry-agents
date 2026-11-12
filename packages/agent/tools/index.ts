@@ -39,6 +39,7 @@ export {
   killProcessTool,
   type SandboxProcessEntry,
 } from "./process";
+export { inboxTool, type InboxToolInput } from "./inbox";
 export {
   createMcpToolSet,
   namespacedMcpToolName,

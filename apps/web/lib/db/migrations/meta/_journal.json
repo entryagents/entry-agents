@@ -505,6 +505,13 @@
       "when": 1791422080000,
       "tag": "0070_chat_messages_usage_events_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1794511153439,
+      "tag": "0072_add_chat_steering_inbox",
+      "breakpoints": true
     }
   ]
 }

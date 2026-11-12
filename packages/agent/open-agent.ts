@@ -21,6 +21,7 @@ import type { SkillMetadata } from "./skills/types";
 import type {
   SubagentBudgetGuard,
   GithubToolContext,
+  InboxToolContext,
   SandboxControlContext,
   SandboxLifecycleHooksContext,
   VercelToolContext,
@@ -35,6 +36,7 @@ import {
   githubCliTool,
   globTool,
   grepTool,
+  inboxTool,
   killProcessTool,
   processStatusTool,
   readFileTool,
@@ -153,6 +155,7 @@ const callOptionsSchema = z.object({
   // cannot generate past it, so worst-case output spend fits the
   // budget. Undefined = no cap (ordinary turns).
   maxOutputTokens: z.number().int().positive().optional(),
+  inboxHooks: z.custom<InboxToolContext>().optional(),
 });
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -229,6 +232,7 @@ const tools = {
   sandbox: sandboxControlTool(),
   process_status: processStatusTool,
   kill_process: killProcessTool,
+  inbox: inboxTool,
 } satisfies ToolSet;
 
 export const openAgent = new ToolLoopAgent({
@@ -368,6 +372,7 @@ export const openAgent = new ToolLoopAgent({
         vercel: options.vercel,
         sandboxLifecycleHooks: options.sandboxLifecycleHooks,
         sandboxControl: options.sandboxControl,
+        inboxHooks: options.inboxHooks,
         billingGuard: options.billingGuard,
       },
     };

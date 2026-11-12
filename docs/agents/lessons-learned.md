@@ -1,5 +1,23 @@
 # Lessons Learned
 
+## 2026-11-12 — Streaming Scroll, Gateway-Driven Reasoning/Context, Sandbox Process Survival & Inbox Steering (PR #88, #89, #90)
+
+- **Free Scrolling During Active Streaming (PR #88)**:
+  - During 20–60 renders/sec streaming, relying on React state `isAtBottom` in `useEffect([messages])` causes a race where `scrollToBottom()` snaps the viewport back to the bottom before `setIsAtBottom(false)` flushes. Fix: track `isAtBottomRef` synchronously, disengage immediately on `wheel` (`deltaY < 0`) and upward `touchmove` events, and gate auto-scroll on `scrollIfAtBottom()`.
+- **Gateway-Driven Context & Reasoning Metadata + Usage Pill Accuracy (PR #88)**:
+  - Never hardcode model-family context window fallbacks (`step-5`, `gemini`, `qwen`, `claude`) or let `models.dev` overwrite `entry-gateway`'s `/v1/models` `context_window` or `cost`. When `context_window` is absent, show raw token counts (`{formatTokens(inputTokens)} tok`) instead of inventing a percentage.
+  - Pricing `totalMessageUsage` with a single context-tier lookup misprices multi-step turns whose summed `inputTokens` cross a tier threshold (e.g., >200k) even though each individual step stayed under the tier. Always sum `stepBreakdown` step-by-step when available, and include `cacheWriteInputTokens`.
+  - When parsing gateway `reasoning_efforts` / `reasoning_levels` / `supported_reasoning_efforts`, destructure raw override fields before spreading `...model` into typed `AvailableModel` objects to avoid TypeScript union conflicts.
+- **Parallel `replace_file_content` Hazard**:
+  - Never issue parallel `replace_file_content` calls targeting the same file in a single turn; concurrent line-range replacements overwrite earlier edits. Always edit a given file sequentially or combine into one contiguous chunk.
+- **Sandbox Process Survival & Toolchain Bootstrap (PR #89)**:
+  - `nohup ... &` alone does not guarantee background server survival across sandbox exec stream closes in `BoxdSandbox` and `ModalCloudSandbox`. Use `setsid nohup bash -c ... > log 2>&1 < /dev/null &` + `disown -a` and register PID/metadata/logs in `/tmp/entry_pids/` (`packages/sandbox/process-registry.ts`), paired with `process_status` and `kill_process` agent tools (`packages/agent/tools/process.ts`).
+  - Optional developer toolchain installs (`jq`, `rg`, `tmux`, `curl`, `python3`, `gh`, `vercel`) during sandbox provisioning must be guarded with `set +e` / `|| true` (`packages/sandbox/toolchain.ts`) so missing root or package-manager hiccups never block sandbox startup.
+- **Drizzle Migration Drift Inspection (PR #90)**:
+  - `drizzle-kit generate` can emit DDL for unrelated existing tables if local `meta/` snapshots drifted from `schema.ts`, and can fail in non-interactive shells on rename prompts. Always inspect the generated `.sql` file and scope it strictly (using `CREATE TABLE IF NOT EXISTS` / `DO $$ ... EXCEPTION WHEN duplicate_object`) to the newly added table/columns.
+- **Real-Time Steering Inbox (`chat_steering_inbox` + `inbox` Tool, PR #90)**:
+  - Unlike post-turn queued prompts (`chats.queuedPrompts`), real-time steering messages are stored in `chat_steering_inbox` (`status: "unread" | "read"`). At the start of each model step in `runAgentWorkflow`, `getUnreadInboxCountStep` checks for unread rows and injects a `[HIGH-PRIORITY STEERING INBOX INTERVENTION]` message instructing the model to call `inbox` immediately. `inboxHooks` must be constructed inside `runAgentStep` (never passed as a workflow step argument, since closures cannot cross the serialization boundary), returning all messages marked `[NEW / UNREAD]` vs `[OLD / READ]` and marking unread rows as `read`.
+
 ## 2026-11-12 — Comprehensive engineering overhaul, billing persistence, terminal, tabs, error lifecycle, and UX fixes (PR #83, #84, #85, #86)
 
 - **Branding & Logo Replacement Pipeline (PR #86)**:
