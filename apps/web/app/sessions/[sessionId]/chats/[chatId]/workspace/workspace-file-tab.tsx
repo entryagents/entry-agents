@@ -3,9 +3,10 @@
 import { File as DiffsFile } from "@pierre/diffs/react";
 import {
   Check,
+  Code2,
   Copy,
   Download,
-  FileCode,
+  Eye,
   FileText,
   GitCompare,
   Loader2,
@@ -16,12 +17,23 @@ import {
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import type { WorkspaceFileContentResponse } from "@/app/api/sessions/[sessionId]/files/content/route";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  HtmlArtifactPreview,
+  MarkdownArtifactPreview,
+  SvgArtifactPreview,
+  UrlArtifactPreview,
+} from "@/components/workspace/artifact-preview";
+import {
+  computeFileMetrics,
+  getFileLanguage,
+} from "@/components/workspace/workspace-file-stats";
 import { getFileOptions } from "@/lib/diffs-config";
 import { useTheme } from "@/app/providers";
 import { fetcherNoStore } from "@/lib/swr";
@@ -34,11 +46,51 @@ type WorkspaceFileTabProps = {
   onOpenDiff?: (filePath: string) => void;
 };
 
-const wrappedFileExtensions = new Set([".md", ".mdx", ".markdown", ".txt"]);
+type ViewMode = "preview" | "code";
 
-function shouldDefaultWrap(filePath: string) {
+const wrappedFileExtensions = new Set([".md", ".mdx", ".markdown", ".txt"]);
+const markdownExtensions = new Set([".md", ".mdx", ".markdown"]);
+
+function isMarkdown(filePath: string): boolean {
   const lower = filePath.toLowerCase();
-  return [...wrappedFileExtensions].some((ext) => lower.endsWith(ext));
+  return [...markdownExtensions].some((ext) => lower.endsWith(ext));
+}
+
+function isHtml(filePath: string): boolean {
+  return (
+    filePath.toLowerCase().endsWith(".html") ||
+    filePath.toLowerCase().endsWith(".htm")
+  );
+}
+
+function isSvg(filePath: string): boolean {
+  return filePath.toLowerCase().endsWith(".svg");
+}
+
+function isUrlArtifact(filePath: string): boolean {
+  return filePath.toLowerCase().endsWith(".url.json");
+}
+
+function supportsPreview(filePath: string): boolean {
+  return (
+    isMarkdown(filePath) ||
+    isHtml(filePath) ||
+    isSvg(filePath) ||
+    isUrlArtifact(filePath)
+  );
+}
+
+function getDefaultViewMode(filePath: string): ViewMode {
+  // Markdown documents and HTML/SVG artifacts default to rich preview
+  if (
+    isMarkdown(filePath) ||
+    isHtml(filePath) ||
+    isSvg(filePath) ||
+    isUrlArtifact(filePath)
+  ) {
+    return "preview";
+  }
+  return "code";
 }
 
 export function WorkspaceFileTab({
@@ -48,7 +100,14 @@ export function WorkspaceFileTab({
   onOpenDiff,
 }: WorkspaceFileTabProps) {
   const [copied, setCopied] = useState(false);
-  const [wrapLines, setWrapLines] = useState(() => shouldDefaultWrap(filePath));
+  const [viewMode, setViewMode] = useState<ViewMode>(() =>
+    getDefaultViewMode(filePath),
+  );
+  const [wrapLines, setWrapLines] = useState(() =>
+    [...wrappedFileExtensions].some((ext) =>
+      filePath.toLowerCase().endsWith(ext),
+    ),
+  );
 
   const requestUrl = useMemo(() => {
     if (!filePath) return null;
@@ -63,7 +122,8 @@ export function WorkspaceFileTab({
     });
 
   const fileName = filePath.split("/").pop() ?? filePath;
-  const dirPath = filePath.slice(0, -fileName.length);
+  const pathParts = filePath.split("/");
+  const dirParts = pathParts.slice(0, -1);
 
   const { resolvedTheme } = useTheme();
   const fileOptions = useMemo(
@@ -73,6 +133,13 @@ export function WorkspaceFileTab({
     }),
     [resolvedTheme, wrapLines],
   );
+
+  const language = useMemo(() => getFileLanguage(filePath), [filePath]);
+
+  const metrics = useMemo(() => {
+    if (!data?.content) return null;
+    return computeFileMetrics(data.content, data.size);
+  }, [data]);
 
   const binaryPreview = useMemo(() => {
     if (!data?.contentBase64) return null;
@@ -86,7 +153,9 @@ export function WorkspaceFileTab({
       await navigator.clipboard.writeText(data.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    } catch {
+      // Ignore clipboard write failure (e.g. unfocused window or permissions denied)
+    }
   };
 
   const downloadUrl = useMemo(() => {
@@ -96,32 +165,90 @@ export function WorkspaceFileTab({
     return URL.createObjectURL(blob);
   }, [binaryPreview, data]);
 
+  const hasPreviewSupport = supportsPreview(filePath);
+
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
-      {/* File Action Bar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/20 px-3 py-1.5 gap-2">
-        {/* Left: Path Breadcrumbs */}
-        <div className="flex min-w-0 items-center gap-1.5 font-mono text-xs">
-          <FileCode className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          {dirPath && (
-            <span className="text-muted-foreground truncate hidden sm:inline">
-              {dirPath}
+      {/* Enhanced Desktop File Action Bar */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/20 px-3 py-1.5 gap-2 flex-wrap">
+        {/* Left: File Icon + Path Breadcrumbs + Language Badge */}
+        <div className="flex min-w-0 items-center gap-2">
+          <FileTypeIcon path={fileName} className="h-4 w-4 shrink-0" />
+
+          {/* Breadcrumb path */}
+          <div className="flex items-center gap-1 font-mono text-xs overflow-hidden">
+            {dirParts.map((part, index) => (
+              <span
+                key={`${part}-${index}`}
+                className="flex items-center gap-1 text-muted-foreground"
+              >
+                <span>{part}</span>
+                <span>/</span>
+              </span>
+            ))}
+            <span className="font-semibold text-foreground truncate">
+              {fileName}
+            </span>
+          </div>
+
+          {/* Language / File Type Badge */}
+          <span className="hidden sm:inline-flex rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {language}
+          </span>
+
+          {/* Metrics (lines & size) */}
+          {metrics && (
+            <span className="hidden md:inline-flex font-mono text-[11px] text-muted-foreground/80">
+              · {metrics.lines} {metrics.lines === 1 ? "line" : "lines"} ·{" "}
+              {metrics.formattedSize}
             </span>
           )}
-          <span className="font-semibold text-foreground truncate">
-            {fileName}
-          </span>
         </div>
 
-        {/* Right: Actions */}
+        {/* Right: Controls & Actions */}
         <div className="flex items-center gap-1 shrink-0">
+          {/* Preview vs Code Segmented Switch (For Markdown, HTML, SVG, URL artifacts) */}
+          {hasPreviewSupport && data?.content && (
+            <div className="flex items-center rounded-md border border-border bg-muted/40 p-0.5 mr-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode("preview")}
+                className={cn(
+                  "h-6 px-2 text-xs gap-1 cursor-pointer",
+                  viewMode === "preview" &&
+                    "bg-background text-foreground shadow-2xs font-medium",
+                )}
+              >
+                <Eye className="h-3 w-3" />
+                <span>Preview</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode("code")}
+                className={cn(
+                  "h-6 px-2 text-xs gap-1 cursor-pointer",
+                  viewMode === "code" &&
+                    "bg-background text-foreground shadow-2xs font-medium",
+                )}
+              >
+                <Code2 className="h-3 w-3" />
+                <span>Code</span>
+              </Button>
+            </div>
+          )}
+
+          {/* Diff Action */}
           {onOpenDiff && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
                   onClick={() => onOpenDiff(filePath)}
                 >
                   <GitCompare className="h-3.5 w-3.5" />
@@ -131,34 +258,38 @@ export function WorkspaceFileTab({
             </Tooltip>
           )}
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn(
-                  "h-7 w-7 transition-colors",
-                  wrapLines
-                    ? "text-primary bg-primary/10"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-                onClick={() => setWrapLines((prev) => !prev)}
-              >
-                <WrapText className="h-3.5 w-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {wrapLines ? "Disable line wrap" : "Wrap long lines"}
-            </TooltipContent>
-          </Tooltip>
+          {/* Line Wrap Toggle (When in code mode) */}
+          {(!hasPreviewSupport || viewMode === "code") && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "h-7 w-7 transition-colors cursor-pointer",
+                    wrapLines
+                      ? "text-primary bg-primary/10"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => setWrapLines((prev) => !prev)}
+                >
+                  <WrapText className="h-3.5 w-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {wrapLines ? "Disable line wrap" : "Wrap long lines"}
+              </TooltipContent>
+            </Tooltip>
+          )}
 
+          {/* Copy Button */}
           {data?.content && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
                   onClick={handleCopy}
                 >
                   {copied ? (
@@ -174,6 +305,7 @@ export function WorkspaceFileTab({
             </Tooltip>
           )}
 
+          {/* Download Button */}
           {downloadUrl && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -181,7 +313,7 @@ export function WorkspaceFileTab({
                   asChild
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
                 >
                   <a
                     href={downloadUrl}
@@ -196,12 +328,13 @@ export function WorkspaceFileTab({
             </Tooltip>
           )}
 
+          {/* Refresh Button */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
                 onClick={() => void mutate()}
                 disabled={isLoading || isValidating}
               >
@@ -216,13 +349,14 @@ export function WorkspaceFileTab({
             <TooltipContent side="bottom">Refresh File</TooltipContent>
           </Tooltip>
 
+          {/* Close Tab Button */}
           {onClose && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground ml-1"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground ml-1 cursor-pointer"
                   onClick={onClose}
                 >
                   <X className="h-3.5 w-3.5" />
@@ -249,9 +383,10 @@ export function WorkspaceFileTab({
             </p>
           </div>
         ) : data ? (
-          <div>
+          <div className="h-full">
+            {/* Binary Media: Image */}
             {data.kind === "image" && binaryPreview ? (
-              <div className="flex min-h-full items-center justify-center p-8">
+              <div className="flex min-h-full items-center justify-center p-8 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] dark:bg-[radial-gradient(#27272a_1px,transparent_1px)]">
                 {/* oxlint-disable-next-line nextjs/no-img-element */}
                 <img
                   src={binaryPreview}
@@ -297,11 +432,29 @@ export function WorkspaceFileTab({
                 </a>
               </div>
             ) : data.content && data.content.length > 0 ? (
-              <DiffsFile
-                key={filePath}
-                file={{ name: filePath, contents: data.content }}
-                options={fileOptions}
-              />
+              /* Rich Document / Artifact Previews */
+              viewMode === "preview" && isMarkdown(filePath) ? (
+                <MarkdownArtifactPreview content={data.content} />
+              ) : viewMode === "preview" && isHtml(filePath) ? (
+                <HtmlArtifactPreview
+                  htmlContent={data.content}
+                  fileName={fileName}
+                />
+              ) : viewMode === "preview" && isSvg(filePath) ? (
+                <SvgArtifactPreview
+                  svgContent={data.content}
+                  fileName={fileName}
+                />
+              ) : isUrlArtifact(filePath) ? (
+                <UrlArtifactPreview jsonContent={data.content} />
+              ) : (
+                /* Standard Source Code Highlighting with Pierre Diffs */
+                <DiffsFile
+                  key={filePath}
+                  file={{ name: filePath, contents: data.content }}
+                  options={fileOptions}
+                />
+              )
             ) : (
               <div className="p-12 text-center text-xs text-muted-foreground">
                 This file is empty.

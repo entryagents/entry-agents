@@ -7,25 +7,23 @@ import {
   Globe,
   Maximize2,
   Minimize2,
+  PanelLeft,
+  PanelLeftClose,
   Plus,
   Search,
   Terminal as TerminalIcon,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  deriveAgentHubRoster,
-  summarizeAgentHub,
-} from "@/lib/agent-hub/derive-roster";
-import type { DevServerControls } from "../hooks/use-dev-server";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,21 +31,27 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { WorkspaceFileTree } from "@/components/workspace/workspace-file-tree";
+import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  deriveAgentHubRoster,
+  summarizeAgentHub,
+} from "@/lib/agent-hub/derive-roster";
 import { cn } from "@/lib/utils";
 import type { GitPanelProps } from "../git-panel";
-import { FileTypeIcon } from "@/components/file-type-icons";
 import { useGitPanel } from "../git-panel-context";
-import { WorkspaceReviewTab } from "./workspace-review-tab";
-import { WorkspacePreviewTab } from "./workspace-preview-tab";
-import { WorkspaceTerminalTab } from "./workspace-terminal-tab";
-import { WorkspaceFileTab } from "./workspace-file-tab";
+import type { DevServerControls } from "../hooks/use-dev-server";
 import { WorkspaceAgentsTab } from "./workspace-agents-tab";
+import { WorkspaceFileTab } from "./workspace-file-tab";
+import { WorkspacePreviewTab } from "./workspace-preview-tab";
+import { WorkspaceReviewTab } from "./workspace-review-tab";
+import { WorkspaceTerminalTab } from "./workspace-terminal-tab";
 
 export type WorkspacePanelProps = GitPanelProps & {
   devServer: DevServerControls;
@@ -94,6 +98,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     openFileTab,
     openSubagentTab,
   } = useGitPanel();
+
+  const isMobile = useIsMobile();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const subagentRoster = useMemo(
     () => deriveAgentHubRoster(props.messages),
@@ -251,13 +258,15 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       });
     }
 
-    // Dynamic Open File Tabs
+    // Dynamic Open File Tabs with FileTypeIcon
     for (const filePath of openFiles) {
       const fileName = filePath.split("/").pop() ?? filePath;
       list.push({
         id: filePath,
         label: fileName,
-        icon: FileCode,
+        icon: function DynamicFileIcon({ className }: { className?: string }) {
+          return <FileTypeIcon path={fileName} className={className} />;
+        },
         closeable: true,
       });
     }
@@ -280,6 +289,38 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-2 py-1 gap-1">
         {/* Dynamic Tab Strip */}
         <div className="flex items-center gap-1 overflow-x-auto min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {/* Desktop File Explorer Toggle */}
+          {!isMobile && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setIsSidebarOpen((prev) => !prev)}
+                  className={cn(
+                    "h-6 w-6 rounded-md text-muted-foreground hover:text-foreground cursor-pointer shrink-0 mr-0.5",
+                    isSidebarOpen && "bg-muted text-foreground font-semibold",
+                  )}
+                  aria-label={
+                    isSidebarOpen
+                      ? "Collapse file explorer sidebar"
+                      : "Expand file explorer sidebar"
+                  }
+                >
+                  {isSidebarOpen ? (
+                    <PanelLeftClose className="h-3.5 w-3.5" />
+                  ) : (
+                    <PanelLeft className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {isSidebarOpen ? "Collapse file tree" : "Open file tree"}
+              </TooltipContent>
+            </Tooltip>
+          )}
+
           {tabList.map((tab) => {
             const isActive = activeWorkspaceTab === tab.id;
             const Icon = tab.icon;
@@ -288,7 +329,16 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             return (
               <div
                 key={tab.id}
+                role="tab"
+                tabIndex={0}
+                aria-selected={isActive}
                 onClick={() => setActiveWorkspaceTab(tab.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setActiveWorkspaceTab(tab.id);
+                  }
+                }}
                 onAuxClick={(e) => {
                   if (e.button === 1 && tab.closeable) {
                     e.preventDefault();
@@ -451,80 +501,97 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         </div>
       </div>
 
-      {/* Tab Panels with State Preservation (block/hidden keeps terminal & dev server iframes live) */}
-      <div className="relative flex-1 min-h-0 overflow-hidden">
-        {/* OpenCode Review / Changes Tab */}
-        <div
-          className={cn(
-            "h-full w-full overflow-hidden",
-            activeWorkspaceTab === "review" ? "block" : "hidden",
-          )}
-        >
-          <WorkspaceReviewTab {...gitPanelProps} onOpenFile={openFileTab} />
-        </div>
-
-        {/* Live Preview Tab */}
-        <div
-          className={cn(
-            "h-full w-full overflow-hidden",
-            activeWorkspaceTab === "preview" ? "block" : "hidden",
-          )}
-        >
-          <WorkspacePreviewTab
-            devServer={devServer}
-            sessionId={session.id}
-            previewDeploymentTargetUrl={gitPanelProps.prDeploymentUrl}
-            isDeploymentStale={gitPanelProps.isDeploymentStale}
-            isDeploymentFailed={gitPanelProps.isDeploymentFailed}
-            canRun={gitPanelProps.hasSandbox}
-          />
-        </div>
-
-        {/* Terminal Tab */}
-        <div
-          className={cn(
-            "h-full w-full overflow-hidden",
-            activeWorkspaceTab === "terminal" ? "block" : "hidden",
-          )}
-        >
-          <WorkspaceTerminalTab
-            sessionId={session.id}
-            canRun={gitPanelProps.hasSandbox}
-          />
-        </div>
-
-        {/* Subagents Tab */}
-        <div
-          className={cn(
-            "h-full w-full overflow-hidden",
-            activeWorkspaceTab === "agents" ? "block" : "hidden",
-          )}
-        >
-          <WorkspaceAgentsTab
-            messages={props.messages}
-            onSelectSubagent={(id, title, type) =>
-              openSubagentTab(id, title, type)
+      {/* Body: Left Sidebar (Desktop Only) + Tab Panels */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
+        {!isMobile && isSidebarOpen && (
+          <WorkspaceFileTree
+            files={files}
+            diffFiles={gitPanelProps.diffFiles ?? undefined}
+            activeFilePath={
+              openFiles.includes(activeWorkspaceTab)
+                ? activeWorkspaceTab
+                : undefined
             }
+            onOpenFile={openFileTab}
+            onCloseSidebar={() => setIsSidebarOpen(false)}
           />
-        </div>
+        )}
 
-        {/* Dynamic File Viewer Tabs */}
-        {openFiles.map((filePath) => (
+        {/* Tab Panels with State Preservation (block/hidden keeps terminal & dev server iframes live) */}
+        <div className="relative flex-1 min-h-0 overflow-hidden">
+          {/* OpenCode Review / Changes Tab */}
           <div
-            key={filePath}
             className={cn(
               "h-full w-full overflow-hidden",
-              activeWorkspaceTab === filePath ? "block" : "hidden",
+              activeWorkspaceTab === "review" ? "block" : "hidden",
             )}
           >
-            <WorkspaceFileTab
+            <WorkspaceReviewTab {...gitPanelProps} onOpenFile={openFileTab} />
+          </div>
+
+          {/* Live Preview Tab */}
+          <div
+            className={cn(
+              "h-full w-full overflow-hidden",
+              activeWorkspaceTab === "preview" ? "block" : "hidden",
+            )}
+          >
+            <WorkspacePreviewTab
+              devServer={devServer}
               sessionId={session.id}
-              filePath={filePath}
-              onClose={() => closeWorkspaceFile(filePath)}
-              onOpenDiff={openDiffToFile}
+              previewDeploymentTargetUrl={gitPanelProps.prDeploymentUrl}
+              isDeploymentStale={gitPanelProps.isDeploymentStale}
+              isDeploymentFailed={gitPanelProps.isDeploymentFailed}
+              canRun={gitPanelProps.hasSandbox}
             />
           </div>
-        ))}
+
+          {/* Terminal Tab */}
+          <div
+            className={cn(
+              "h-full w-full overflow-hidden",
+              activeWorkspaceTab === "terminal" ? "block" : "hidden",
+            )}
+          >
+            <WorkspaceTerminalTab
+              sessionId={session.id}
+              canRun={gitPanelProps.hasSandbox}
+            />
+          </div>
+
+          {/* Subagents Tab */}
+          <div
+            className={cn(
+              "h-full w-full overflow-hidden",
+              activeWorkspaceTab === "agents" ? "block" : "hidden",
+            )}
+          >
+            <WorkspaceAgentsTab
+              messages={props.messages}
+              onSelectSubagent={(id, title, type) =>
+                openSubagentTab(id, title, type)
+              }
+            />
+          </div>
+
+          {/* Dynamic File Viewer Tabs */}
+          {openFiles.map((filePath) => (
+            <div
+              key={filePath}
+              className={cn(
+                "h-full w-full overflow-hidden",
+                activeWorkspaceTab === filePath ? "block" : "hidden",
+              )}
+            >
+              <WorkspaceFileTab
+                sessionId={session.id}
+                filePath={filePath}
+                onClose={() => closeWorkspaceFile(filePath)}
+                onOpenDiff={openDiffToFile}
+              />
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Open File Quick-Open Dialog */}
