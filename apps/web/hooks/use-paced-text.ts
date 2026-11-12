@@ -2,14 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export const TEXT_RENDER_PACE_MS = 24;
-export const TEXT_RENDER_IMMEDIATE = 32;
-export const TEXT_RENDER_SNAP = /[\s.,!?;:)\]\n]/;
+export const TEXT_RENDER_PACE_MS = 20;
+export const TEXT_RENDER_SNAP = /[\s.,!?;:)\]}\n]/;
 
 export function nextSliceEnd(target: string, currentLength: number): number {
-  // Reveal a chunk of 8-32 chars per frame, proportional to backlog
   const backlog = target.length - currentLength;
-  const step = Math.min(64, Math.max(12, Math.ceil(backlog / 6)));
+  if (backlog <= 0) return target.length;
+
+  // Reveal a chunk of 3-32 chars per frame, accelerating smoothly if backlog grows
+  const step = Math.min(64, Math.max(3, Math.ceil(backlog / 6)));
   const end = Math.min(target.length, currentLength + step);
   const max = Math.min(target.length, end + 8);
 
@@ -36,57 +37,35 @@ export function usePacedText(text: string, isStreaming: boolean): string {
   isStreamingRef.current = isStreaming;
 
   useEffect(() => {
+    // When not streaming, immediately sync to final text
     if (!isStreaming) {
       setShownText(text);
       return;
     }
 
-    // If target text shrank or reset, sync immediately
+    // If target text shrank or completely changed, sync immediately
     if (!text.startsWith(shownText)) {
       setShownText(text);
       return;
     }
 
-    // If text is already synced or backlog is tiny, show immediately
-    if (text.length - shownText.length <= TEXT_RENDER_IMMEDIATE) {
-      setShownText(text);
+    // If already fully caught up, nothing to schedule
+    if (shownText.length >= text.length) {
       return;
     }
 
-    let timerId: ReturnType<typeof setTimeout> | undefined;
-
-    const tick = () => {
-      const currentTarget = targetRef.current;
-      const isLive = isStreamingRef.current;
-
-      if (!isLive) {
-        setShownText(currentTarget);
-        return;
-      }
-
+    const timer = setTimeout(() => {
       setShownText((current) => {
-        if (currentTarget.length - current.length <= TEXT_RENDER_IMMEDIATE) {
-          return currentTarget;
+        const target = targetRef.current;
+        if (!isStreamingRef.current || current.length >= target.length) {
+          return target;
         }
-
-        const nextEnd = nextSliceEnd(currentTarget, current.length);
-        const nextShown = currentTarget.slice(0, nextEnd);
-
-        if (nextShown.length < currentTarget.length) {
-          timerId = setTimeout(tick, TEXT_RENDER_PACE_MS);
-        }
-
-        return nextShown;
+        const nextEnd = nextSliceEnd(target, current.length);
+        return target.slice(0, nextEnd);
       });
-    };
+    }, TEXT_RENDER_PACE_MS);
 
-    timerId = setTimeout(tick, TEXT_RENDER_PACE_MS);
-
-    return () => {
-      if (timerId !== undefined) {
-        clearTimeout(timerId);
-      }
-    };
+    return () => clearTimeout(timer);
   }, [text, isStreaming, shownText]);
 
   return isStreaming ? shownText : text;

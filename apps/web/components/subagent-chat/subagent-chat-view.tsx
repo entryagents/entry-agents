@@ -1,22 +1,23 @@
 "use client";
 
 import { formatTokens } from "@entry-agents/shared";
-import { ArrowLeft, Bot, CornerDownLeft, Square, Terminal } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import type { LanguageModelUsage } from "ai";
+import { AlertCircle, ArrowLeft, Check, Square } from "lucide-react";
+import { useMemo } from "react";
+import type {
+  WebAgentUIMessage,
+  WebAgentUIMessagePart,
+  WebAgentUIToolPart,
+} from "@/app/types";
 import {
   StatusBadge,
   SubagentIcon,
   SubagentRoleBadge,
 } from "@/components/agent-hub/agent-status";
 import { useNow } from "@/components/agent-hub/use-now";
-import { StreamingMarkdown } from "@/components/streaming-markdown";
+import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
 import { Button } from "@/components/ui/button";
 import { deriveSubagentTabData } from "@/lib/agent-hub/subagent-tab-data";
-import { SubagentParentCard } from "./subagent-parent-card";
-import {
-  PendingSubagentToolItem,
-  SubagentToolItem,
-} from "./subagent-tool-item";
 
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -25,26 +26,25 @@ function formatElapsed(ms: number): string {
   return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
 }
 
+export interface SubagentChatViewProps {
+  subagentId: string;
+  messages: unknown;
+  onClose: () => void;
+  onStopRun?: () => void;
+}
+
+/**
+ * Read-only Subagent Chat View.
+ * Shares the exact same ChatMessageFeed, streaming, and tool call rendering
+ * components as normal chat so fixes, streaming improvements, and unslop styling
+ * automatically apply across both.
+ */
 export function SubagentChatView({
   subagentId,
   messages,
   onClose,
   onStopRun,
-  onSteerSubagent,
-}: {
-  subagentId: string;
-  messages: unknown;
-  onClose: () => void;
-  onStopRun?: () => void;
-  onSteerSubagent?: (
-    subagentId: string,
-    instruction: string,
-    subagentTitle?: string,
-  ) => void;
-}) {
-  const [steerInput, setSteerInput] = useState("");
-  const [isSubmittingSteer, setIsSubmittingSteer] = useState(false);
-
+}: SubagentChatViewProps) {
   const data = useMemo(
     () => deriveSubagentTabData(messages, subagentId),
     [messages, subagentId],
@@ -57,27 +57,96 @@ export function SubagentChatView({
       ? formatElapsed((isLive ? now : Date.now()) - data.startedAt)
       : null;
 
-  const handleSteerSubmit = useCallback(
-    (e?: React.FormEvent) => {
-      e?.preventDefault();
-      const trimmed = steerInput.trim();
-      if (!trimmed || !onSteerSubagent || isSubmittingSteer) return;
+  // Transform subagent execution state into standard WebAgentUIMessage[]
+  // so it renders with the identical pipeline as main session chat
+  const subagentMessages = useMemo<WebAgentUIMessage[]>(() => {
+    if (!data) return [];
 
-      setIsSubmittingSteer(true);
-      try {
-        onSteerSubagent(subagentId, trimmed, data?.title);
-        setSteerInput("");
-      } finally {
-        setIsSubmittingSteer(false);
-      }
-    },
-    [steerInput, onSteerSubagent, isSubmittingSteer, subagentId, data?.title],
-  );
+    const msgs: WebAgentUIMessage[] = [];
+
+    // 1. Parent model delegation instructions (User role in subagent conversation)
+    const promptText = data.instructions?.trim()
+      ? data.instructions
+      : data.title;
+
+    if (promptText) {
+      msgs.push({
+        id: `${subagentId}-prompt`,
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: promptText,
+          },
+        ],
+      });
+    }
+
+    // 2. Subagent execution response (Assistant role in subagent conversation)
+    const assistantParts: WebAgentUIMessagePart[] = [];
+
+    // All executed tool calls (write, edit, bash, glob, search, etc.)
+    for (const toolPart of data.completedParts) {
+      assistantParts.push(toolPart);
+    }
+
+    // Pending in-flight tool call if actively running
+    if (data.pending && isLive) {
+      assistantParts.push({
+        type: `tool-${data.pending.name}`,
+        toolCallId: `pending-${data.pending.name}`,
+        state: "input-available",
+        input: data.pending.input,
+      } as unknown as WebAgentUIToolPart);
+    }
+
+    // Streamed or completed text output
+    if (data.finalText) {
+      assistantParts.push({
+        type: "text",
+        text: data.finalText,
+      });
+    }
+
+    if (assistantParts.length > 0 || isLive) {
+      msgs.push({
+        id: `${subagentId}-response`,
+        role: "assistant",
+        parts: assistantParts,
+        metadata: {
+          modelId: data.modelId ?? undefined,
+          totalMessageUsage:
+            data.inputTokens !== null
+              ? ({
+                  inputTokens: data.inputTokens,
+                  outputTokens: data.outputTokens ?? undefined,
+                  totalTokens:
+                    (data.inputTokens ?? 0) + (data.outputTokens ?? 0),
+                  inputTokenDetails: {
+                    noCacheTokens: undefined,
+                    cacheReadTokens: undefined,
+                    cacheWriteTokens: undefined,
+                  },
+                  outputTokenDetails: {
+                    textTokens: undefined,
+                    reasoningTokens: undefined,
+                  },
+                } as LanguageModelUsage)
+              : undefined,
+        },
+      });
+    }
+
+    return msgs;
+  }, [data, isLive, subagentId]);
 
   if (!data) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-        <Bot className="h-10 w-10 text-muted-foreground/60 mb-3" />
+        <SubagentIcon
+          type="agent"
+          className="h-10 w-10 text-muted-foreground/60 mb-3"
+        />
         <h3 className="text-base font-semibold">Subagent not found</h3>
         <p className="text-sm text-muted-foreground mt-1 max-w-sm">
           This subagent session may have expired or is not present in the
@@ -87,7 +156,7 @@ export function SubagentChatView({
           variant="outline"
           size="sm"
           onClick={onClose}
-          className="mt-4 active:scale-[0.97] transition-transform"
+          className="mt-4 transition-colors"
         >
           <ArrowLeft className="mr-1.5 h-4 w-4" /> Return to Main Chat
         </Button>
@@ -97,14 +166,14 @@ export function SubagentChatView({
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
-      {/* Subagent Top Control Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/20 px-4 py-2.5">
+      {/* 1. Subagent Top Control Header */}
+      <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/20 px-4 py-2.5 select-none">
         <div className="flex items-center gap-3 min-w-0">
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="-ml-2 h-8 px-2 text-muted-foreground hover:text-foreground active:scale-[0.97] transition-transform"
+            className="-ml-2 h-8 px-2 text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Back to main chat"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
@@ -153,7 +222,7 @@ export function SubagentChatView({
               variant="destructive"
               size="sm"
               onClick={onStopRun}
-              className="h-7 px-2.5 text-xs gap-1 active:scale-[0.97] transition-transform"
+              className="h-7 px-2.5 text-xs gap-1 transition-colors"
             >
               <Square className="h-3 w-3 fill-current" />
               <span>Stop run</span>
@@ -162,162 +231,68 @@ export function SubagentChatView({
         </div>
       </div>
 
-      {/* Main Streaming Body */}
+      {/* 2. Scrollable Messages Timeline: Same Stream and UI as Main Chat */}
       <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
         <div className="mx-auto max-w-4xl space-y-6">
-          {/* 1. First thing displayed: Parent Model Message */}
-          <SubagentParentCard
-            task={data.title}
-            instructions={data.instructions}
-            subagentType={data.subagentType}
-            modelId={data.modelId}
+          <ChatMessageFeed
+            messages={subagentMessages}
+            isStreaming={isLive}
+            readOnly={true}
+            agentName={`Entry · ${data.title}`}
+            agentIcon={
+              <SubagentIcon
+                type={data.subagentType}
+                className="h-3 w-3 text-foreground"
+              />
+            }
+            emptyStateMessage="No subagent events recorded"
           />
 
-          {/* 2. Subagent Execution Timeline */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
-              <span className="flex items-center gap-2">
-                <Terminal className="h-3.5 w-3.5" />
-                <span>Subagent execution trace</span>
-              </span>
-              {data.completedParts.length > 0 && (
-                <span className="font-mono text-[11px] font-normal">
-                  {data.completedParts.length} step
-                  {data.completedParts.length !== 1 ? "s" : ""}
-                </span>
-              )}
+          {/* Clean Error Notice if subagent failed */}
+          {data.errorText && (
+            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
+              <div className="flex items-center gap-2 font-semibold">
+                <AlertCircle className="h-4 w-4" />
+                <span>Subagent encountered an error</span>
+              </div>
+              <p className="mt-1 text-xs">{data.errorText}</p>
             </div>
-
-            {/* Completed Tool Calls */}
-            {data.completedParts.length > 0 && (
-              <div className="space-y-1.5 pl-2 border-l-2 border-border/60">
-                {data.completedParts.map((toolPart) => (
-                  <SubagentToolItem key={toolPart.toolCallId} part={toolPart} />
-                ))}
-              </div>
-            )}
-
-            {/* Streaming in-flight Tool Call */}
-            {data.pending && isLive && (
-              <div
-                key={`pending-${data.pending.name}`}
-                className="pl-2 border-l-2 border-emerald-500/50"
-                style={{ animation: "slide-up-fade 150ms ease-out both" }}
-              >
-                <PendingSubagentToolItem pending={data.pending} />
-              </div>
-            )}
-
-            {/* Live Streaming Assistant Output with Syntax-Highlighted Markdown */}
-            {data.finalText && (
-              <div className="rounded-xl border border-border/80 bg-card p-4 sm:p-5 shadow-xs transition-colors">
-                <div className="flex items-center justify-between pb-3 mb-3 border-b border-border/50 text-xs font-medium text-muted-foreground">
-                  <span className="flex items-center gap-1.5 font-medium text-foreground">
-                    <Bot className="h-3.5 w-3.5 text-muted-foreground" />
-                    Output and findings
-                  </span>
-                  {isLive && (
-                    <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400 font-mono text-[11px]">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Live streaming
-                    </span>
-                  )}
-                </div>
-                <div className="text-sm leading-relaxed text-foreground">
-                  <StreamingMarkdown
-                    content={data.finalText}
-                    isStreaming={isLive}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Clean Error Notice (no raw slop string) */}
-            {data.errorText && (
-              <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
-                <p className="font-semibold">Subagent encountered an error</p>
-                <p className="mt-1 text-xs">{data.errorText}</p>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
-      {/* 3. Interactive Steering Composer Bar */}
-      {onSteerSubagent && (
-        <div className="shrink-0 border-t border-border bg-background/95 backdrop-blur-md p-3 sm:p-4">
-          <div className="mx-auto max-w-4xl space-y-2">
-            {/* Quick steer chips */}
-            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5 text-xs text-muted-foreground">
-              <span className="text-[11px] font-medium shrink-0">
-                Quick steer:
-              </span>
-              <button
-                type="button"
-                onClick={() =>
-                  setSteerInput(
-                    "Summarize your progress and key discoveries so far",
-                  )
-                }
-                className="shrink-0 rounded-full border border-border bg-muted/40 hover:bg-muted px-2.5 py-1 text-[11px] transition-colors active:scale-[0.97]"
-              >
-                Summarize findings
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSteerInput(
-                    "Focus only on modified files and avoid broad file walks",
-                  )
-                }
-                className="shrink-0 rounded-full border border-border bg-muted/40 hover:bg-muted px-2.5 py-1 text-[11px] transition-colors active:scale-[0.97]"
-              >
-                Focus on modified files
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setSteerInput("Verify unit tests pass before completing")
-                }
-                className="shrink-0 rounded-full border border-border bg-muted/40 hover:bg-muted px-2.5 py-1 text-[11px] transition-colors active:scale-[0.97]"
-              >
-                Verify tests
-              </button>
+      {/* 3. Read-Only Status Footer (No prompt composer for user) */}
+      <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-3 select-none">
+        <div className="mx-auto max-w-4xl flex items-center justify-between text-xs text-muted-foreground">
+          {isLive ? (
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Subagent running autonomously · Read-only view</span>
             </div>
+          ) : data.status === "failed" ? (
+            <div className="flex items-center gap-2 text-red-500">
+              <AlertCircle className="h-3.5 w-3.5" />
+              <span>Subagent execution stopped</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Check className="h-3.5 w-3.5 text-muted-foreground" />
+              <span>
+                Subagent execution complete · Output returned to main agent
+              </span>
+            </div>
+          )}
 
-            {/* Input + Action */}
-            <form
-              onSubmit={handleSteerSubmit}
-              className="relative flex items-center rounded-xl border border-border bg-muted/30 focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/20 transition-colors"
-            >
-              <textarea
-                value={steerInput}
-                onChange={(e) => setSteerInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSteerSubmit(e);
-                  }
-                }}
-                rows={1}
-                placeholder={`Steer ${data.title}... (Press Enter to send)`}
-                className="flex-1 bg-transparent px-3.5 py-2.5 text-sm resize-none focus:outline-hidden placeholder:text-muted-foreground/60 min-h-[40px] max-h-32"
-              />
-              <div className="pr-2">
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={!steerInput.trim() || isSubmittingSteer}
-                  className="h-8 px-3 text-xs gap-1.5 active:scale-[0.97] transition-transform"
-                >
-                  <CornerDownLeft className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Steer</span>
-                </Button>
-              </div>
-            </form>
-          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onClose}
+            className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Return to chat
+          </Button>
         </div>
-      )}
+      </div>
     </div>
   );
 }

@@ -239,8 +239,7 @@ export function WorkspaceGitTab(props: GitPanelProps) {
         await refreshGitStatus();
         await refreshDiff();
       }
-    } catch {
-    } finally {
+    } catch {} finally {
       setIsDiscarding(false);
     }
   };
@@ -255,8 +254,7 @@ export function WorkspaceGitTab(props: GitPanelProps) {
         await refreshGitStatus();
         await refreshDiff();
       }
-    } catch {
-    } finally {
+    } catch {} finally {
       setIsDiscarding(false);
     }
   };
