@@ -32,7 +32,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getFileOptions } from "@/lib/diffs-config";
 import { useTheme } from "@/app/providers";
 import { streamdownPlugins } from "@/lib/streamdown-config";
-import { fetcherNoStore } from "@/lib/swr";
+import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 
 type WorkspaceFileViewerProps = {
@@ -460,7 +460,7 @@ export function WorkspaceFileViewer({
   const downloadUrl = requestUrl ? `${requestUrl}&download=1` : "";
 
   const { data, error, isLoading, isValidating, mutate } =
-    useSWR<WorkspaceFileContentResponse>(requestUrl, fetcherNoStore, {
+    useSWR<WorkspaceFileContentResponse>(requestUrl, fetcher, {
       revalidateOnFocus: false,
       shouldRetryOnError: false,
     });

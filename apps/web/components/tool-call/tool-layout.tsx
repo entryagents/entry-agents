@@ -161,7 +161,7 @@ export function ToolLayout({
         className={cn(
           "group flex min-w-0 select-none items-center gap-2 rounded-md px-1.5 py-1 text-sm",
           hasExpandedDetails &&
-            "cursor-pointer transition-colors hover:bg-muted/50",
+            "cursor-pointer transition-all hover:bg-muted/50 active:scale-[0.98]",
         )}
         {...(hasExpandedDetails && {
           onClick: handleToggle,

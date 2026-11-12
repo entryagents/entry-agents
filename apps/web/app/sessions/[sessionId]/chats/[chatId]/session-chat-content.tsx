@@ -14,18 +14,16 @@ import {
   ArrowUp,
   Lock,
   Check,
-  Code2,
   Copy,
+  Download,
   ExternalLink,
   GitBranch,
   GitCommitHorizontal,
   GitPullRequest,
-  Globe,
   Link2,
   Loader2,
   Mic,
   Paperclip,
-  Play,
   RefreshCw,
   RotateCcw,
   Share2,
@@ -79,6 +77,10 @@ import {
 import { useInlineQuestion } from "@/components/inline-question-input";
 import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
 import { SnippetChip } from "@/components/snippet-chip";
+import { StreamingMarkdown } from "@/components/streaming-markdown";
+import { UserMessageFold } from "@/components/user-message-fold";
+import { AudioAttachmentCard } from "@/components/audio-attachment-card";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import { AssistantMessageGroups } from "@/components/assistant-message-groups";
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import { SubagentChatView } from "@/components/subagent-chat/subagent-chat-view";
@@ -137,7 +139,6 @@ import {
 } from "@/lib/models";
 import { getPrDeploymentRefreshInterval } from "@/lib/pr-deployment-polling";
 
-import { streamdownPlugins } from "@/lib/streamdown-config";
 import { cn } from "@/lib/utils";
 import {
   type SandboxInfo,
@@ -179,10 +180,6 @@ const ConnectRepoDialog = dynamic(
   { ssr: false },
 );
 
-const Streamdown = dynamic(
-  () => import("streamdown").then((m) => m.Streamdown),
-  { ssr: false },
-);
 const DiffTabView = dynamic(
   () => import("./diff-tab-view").then((m) => m.DiffTabView),
   { ssr: false },
@@ -191,9 +188,6 @@ const FileTabView = dynamic(
   () => import("./file-tab-view").then((m) => m.FileTabView),
   { ssr: false },
 );
-const GitPanel = dynamic(() => import("./git-panel").then((m) => m.GitPanel), {
-  ssr: false,
-});
 const WorkspacePanel = dynamic(
   () => import("./workspace/workspace-panel").then((m) => m.WorkspacePanel),
   { ssr: false },
@@ -1122,7 +1116,6 @@ export function SessionChatContent({
     setChangesCount,
     setHasCommittedChanges,
     panelPortalRef,
-    headerActionsRef,
     isWorkspaceExpanded,
     setIsWorkspaceExpanded,
   } = useGitPanel();
@@ -3249,7 +3242,6 @@ export function SessionChatContent({
     reconnectionStatus,
   ]);
   const canRunDevServer = !isArchived;
-  const canUseSandboxActions = !isArchived;
   const canUseCodeEditor = codeEditorDisabledReason === null;
   const ensureSandboxReadyForAction =
     useCallback(async (): Promise<boolean> => {
@@ -3319,10 +3311,6 @@ export function SessionChatContent({
     canRun: canRunDevServer && canUseCodeEditor,
     ensureSandboxReady: ensureSandboxReadyForAction,
   });
-  const isCodeEditorActionDisabled =
-    !canUseCodeEditor ||
-    codeEditor.state.status === "starting" ||
-    codeEditor.state.status === "stopping";
 
   const hasRepo = Boolean(session.cloneUrl);
   const hasExistingPr = session.prNumber != null;
@@ -3406,12 +3394,6 @@ export function SessionChatContent({
     !buildingDeploymentUrl &&
     !hasExistingPr &&
     Boolean(failedDeploymentUrl);
-  const previewDeploymentTargetUrl =
-    (isDeploymentStale ? buildingDeploymentUrl : null) ??
-    prDeploymentUrl ??
-    (isDeploymentFailed ? failedDeploymentUrl : null);
-  const showHeaderActions =
-    canUseSandboxActions || Boolean(previewDeploymentTargetUrl);
 
   // When auto-commit lands (transitions from committing to clean), mark the
   // current preview deployment as stale so the UI shows "Deploying…" until
@@ -3826,9 +3808,12 @@ export function SessionChatContent({
                                       )}
                                     >
                                       {m.role === "user" ? (
-                                        <div className="group flex w-fit min-w-0 max-w-[80%] flex-col items-end">
-                                          <button
-                                            type="button"
+                                        <div className="group flex w-fit min-w-0 max-w-[85%] sm:max-w-[80%] flex-col items-end">
+                                          <div
+                                            className="rounded-3xl bg-secondary px-4 py-2.5 text-left transition-colors hover:bg-secondary/90 shadow-sm"
+                                            // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- wraps nested interactive UserMessageFold controls, can't be a real <button>
+                                            role="button"
+                                            tabIndex={0}
                                             onClick={() =>
                                               setActiveMessageActionsId(
                                                 (current) =>
@@ -3837,12 +3822,23 @@ export function SessionChatContent({
                                                     : m.id,
                                               )
                                             }
-                                            className="rounded-3xl bg-secondary px-4 py-2 text-left"
+                                            onKeyDown={(event) => {
+                                              if (
+                                                event.key === "Enter" ||
+                                                event.key === " "
+                                              ) {
+                                                event.preventDefault();
+                                                setActiveMessageActionsId(
+                                                  (current) =>
+                                                    current === m.id
+                                                      ? null
+                                                      : m.id,
+                                                );
+                                              }
+                                            }}
                                           >
-                                            <p className="whitespace-pre-wrap break-words">
-                                              {p.text}
-                                            </p>
-                                          </button>
+                                            <UserMessageFold text={p.text} />
+                                          </div>
                                           {group.index === 0 && (
                                             <div
                                               className={cn(
@@ -3940,27 +3936,11 @@ export function SessionChatContent({
                                             }
                                           }}
                                         >
-                                          <Streamdown
-                                            animated={
-                                              isMessageStreaming
-                                                ? {
-                                                    animation: "fadeIn",
-                                                    duration: 250,
-                                                    easing: "ease-out",
-                                                  }
-                                                : undefined
-                                            }
-                                            mode={
-                                              isMessageStreaming
-                                                ? "streaming"
-                                                : "static"
-                                            }
-                                            isAnimating={isMessageStreaming}
+                                          <StreamingMarkdown
+                                            content={p.text}
+                                            isStreaming={isMessageStreaming}
                                             components={streamdownComponents}
-                                            plugins={streamdownPlugins}
-                                          >
-                                            {p.text}
-                                          </Streamdown>
+                                          />
                                           {(canCopyAssistantMessage ||
                                             (!isMessageStreaming &&
                                               isFinalAssistantTextPart &&
@@ -4084,27 +4064,69 @@ export function SessionChatContent({
                                   );
                                 }
 
-                                // Render image attachments
-                                if (
-                                  p.type === "file" &&
-                                  p.mediaType?.startsWith("image/")
-                                ) {
+                                // Render file attachments (images, audio/music, documents/code)
+                                if (p.type === "file") {
                                   if (
                                     !isToolCallsExpanded &&
                                     m.role === "assistant"
                                   ) {
                                     return null;
                                   }
+
+                                  const isImage =
+                                    p.mediaType?.startsWith("image/") ||
+                                    /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(
+                                      p.filename ?? "",
+                                    );
+                                  const isAudio =
+                                    p.mediaType?.startsWith("audio/") ||
+                                    /\.(mp3|wav|ogg|m4a|aac|flac|weba)$/i.test(
+                                      p.filename ?? "",
+                                    );
+
                                   return (
                                     <div
                                       key={`${m.id}-${group.renderKey}`}
-                                      className="flex justify-end"
+                                      className={cn(
+                                        "flex",
+                                        m.role === "user"
+                                          ? "justify-end"
+                                          : "justify-start",
+                                      )}
                                     >
                                       <div className="group relative w-fit max-w-[80%]">
-                                        <MessageAttachmentChip
-                                          url={p.url}
-                                          filename={p.filename}
-                                        />
+                                        {isImage ? (
+                                          <MessageAttachmentChip
+                                            url={p.url}
+                                            filename={p.filename}
+                                          />
+                                        ) : isAudio ? (
+                                          <AudioAttachmentCard
+                                            src={p.url}
+                                            filename={p.filename}
+                                          />
+                                        ) : (
+                                          <div className="inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card px-3 py-2 text-xs font-medium text-foreground shadow-sm">
+                                            <FileTypeIcon
+                                              path={p.filename ?? "file"}
+                                              className="h-4 w-4 shrink-0"
+                                            />
+                                            <span className="truncate max-w-[180px]">
+                                              {p.filename ?? "Attachment"}
+                                            </span>
+                                            <a
+                                              href={p.url}
+                                              download={
+                                                p.filename ?? "download"
+                                              }
+                                              className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground transition hover:bg-muted hover:text-foreground active:scale-95"
+                                              title="Download file"
+                                              aria-label={`Download ${p.filename ?? "file"}`}
+                                            >
+                                              <Download className="h-3.5 w-3.5" />
+                                            </a>
+                                          </div>
+                                        )}
                                         {m.role === "user" &&
                                           group.index === 0 && (
                                             <button

@@ -10,13 +10,15 @@ type ProviderOptions = Record<string, Record<string, JSONValue>>;
 
 function isAnthropicModel(model: LanguageModel): boolean {
   if (typeof model === "string") {
-    return model.includes("anthropic") || model.includes("claude");
+    const lower = (model as string).toLowerCase();
+    return lower.includes("anthropic") || lower.includes("claude");
   }
+  const provider = (model.provider || "").toLowerCase();
+  const modelId = (model.modelId || "").toLowerCase();
   return (
-    model.provider === "anthropic" ||
-    model.provider.includes("anthropic") ||
-    model.modelId.includes("anthropic") ||
-    model.modelId.includes("claude")
+    provider.includes("anthropic") ||
+    modelId.includes("anthropic") ||
+    modelId.includes("claude")
   );
 }
 
@@ -168,8 +170,29 @@ export function addCacheControl<T extends ToolSet>({
 
   if (messages !== undefined) {
     if (messages.length === 0) return messages;
+
+    // Anthropic supports max 4 cache breakpoints total:
+    // 1 for instructions, 1 for tools, and up to 2 for conversation history.
+    // In multi-turn chat, we place:
+    // - Breakpoint on the last message (current turn end)
+    // - Breakpoint on the previous turn checkpoint (the last assistant message before the latest user message)
+    // This allows subsequent turns to hit the cache for earlier conversation history!
+    const lastIndex = messages.length - 1;
+    let checkpointIndex = -1;
+    if (messages.length >= 3) {
+      for (let i = lastIndex - 1; i >= 0; i--) {
+        if (messages[i]?.role === "assistant") {
+          checkpointIndex = i;
+          break;
+        }
+      }
+      if (checkpointIndex === -1 && lastIndex > 1) {
+        checkpointIndex = lastIndex - 2;
+      }
+    }
+
     return messages.map((message, index) =>
-      index === messages.length - 1
+      index === lastIndex || index === checkpointIndex
         ? {
             ...message,
             providerOptions: {

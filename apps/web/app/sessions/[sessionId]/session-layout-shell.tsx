@@ -61,7 +61,9 @@ function SessionLayoutInner({
           setChatWidthPercent(parsed);
         }
       }
-    } catch {}
+    } catch {
+      // Ignore localStorage read errors in restricted contexts
+    }
   }, []);
 
   // Dragging event listeners
@@ -83,7 +85,9 @@ function SessionLayoutInner({
           "entry_agents_workspace_split",
           String(chatWidthPercent),
         );
-      } catch {}
+      } catch {
+        // Ignore localStorage write errors in restricted contexts
+      }
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -145,7 +149,9 @@ function SessionLayoutInner({
             setChatWidthPercent(50);
             try {
               localStorage.setItem("entry_agents_workspace_split", "50");
-            } catch {}
+            } catch {
+              // Ignore localStorage write errors in restricted contexts
+            }
           }}
           className={cn(
             "hidden lg:flex relative items-center justify-center w-2 -mx-1 z-20 cursor-col-resize select-none shrink-0 group transition-colors",
@@ -180,7 +186,7 @@ function SessionLayoutInner({
           gitPanelOpen
             ? isWorkspaceExpanded
               ? "w-full translate-x-0"
-              : "w-[92vw] sm:w-[540px] lg:w-auto lg:flex-none lg:shrink-0 translate-x-0"
+              : "w-full sm:w-[540px] lg:w-auto lg:flex-none lg:shrink-0 translate-x-0"
             : "w-0 translate-x-full lg:translate-x-0 border-l-0 overflow-hidden pointer-events-none",
         )}
         style={{

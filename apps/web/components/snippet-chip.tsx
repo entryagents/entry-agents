@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText } from "lucide-react";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -33,22 +33,24 @@ export function SnippetChip({
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          "inline-flex max-w-full items-center gap-1.5 rounded-xl bg-secondary/70 px-3 py-1.5",
+          "inline-flex max-w-full items-center gap-2 rounded-xl border border-border/60 bg-secondary/70 px-3 py-1.5",
           "font-mono text-xs leading-tight text-muted-foreground",
-          "transition-colors hover:bg-secondary hover:text-foreground",
+          "transition-all hover:bg-secondary hover:text-foreground active:scale-[0.97]",
           className,
         )}
         title={`${filename}\n${meta}`}
       >
-        <FileText className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">{filename}</span>
-        <span className="shrink-0 text-[10px] opacity-60">{meta}</span>
+        <FileTypeIcon path={filename} className="h-3.5 w-3.5 shrink-0" />
+        <span className="truncate font-medium text-foreground">{filename}</span>
+        <span className="shrink-0 text-[10px] text-muted-foreground">
+          {meta}
+        </span>
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-mono text-sm">
-              <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <FileTypeIcon path={filename} className="h-4 w-4 shrink-0" />
               <span>{filename}</span>
               <span className="text-xs font-normal text-muted-foreground">
                 {meta}

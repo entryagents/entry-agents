@@ -32,7 +32,7 @@ import {
 } from "@/components/workspace/workspace-file-stats";
 import { getFileOptions } from "@/lib/diffs-config";
 import { useTheme } from "@/app/providers";
-import { fetcherNoStore } from "@/lib/swr";
+import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 import { useGitPanel } from "./git-panel-context";
 import { useSessionChatMetadataContext } from "./session-chat-context";
@@ -104,7 +104,7 @@ export function FileTabView() {
   }, [focusedFilePath, session.id]);
 
   const { data, error, isLoading, isValidating, mutate } =
-    useSWR<WorkspaceFileContentResponse>(requestUrl, fetcherNoStore, {
+    useSWR<WorkspaceFileContentResponse>(requestUrl, fetcher, {
       revalidateOnFocus: false,
       shouldRetryOnError: false,
     });
