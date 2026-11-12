@@ -9,11 +9,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import {
-  StatusBadge,
-  SubagentIcon,
-  SubagentRoleBadge,
-} from "@/components/agent-hub/agent-status";
+import { StatusBadge, SubagentIcon } from "@/components/agent-hub/agent-status";
 import { Button } from "@/components/ui/button";
 import {
   deriveAgentHubRoster,
@@ -180,10 +176,8 @@ export function WorkspaceAgentsTab({
                         </span>
                       </div>
 
-                      {/* Role & Telemetry subline */}
+                      {/* Telemetry subline */}
                       <div className="mt-1 flex items-center gap-1.5 flex-wrap font-mono text-[11px] text-muted-foreground">
-                        <SubagentRoleBadge subagentType={entry.subagentType} />
-                        <span>·</span>
                         <span className="tabular-nums">
                           {entry.inputTokens === null
                             ? "usage —"

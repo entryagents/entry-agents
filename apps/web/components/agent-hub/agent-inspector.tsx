@@ -16,7 +16,7 @@ import type { AgentHubEntry } from "@/lib/agent-hub/derive-roster";
 import { isLiveStatus } from "@/lib/agent-hub/derive-roster";
 import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { Button } from "@/components/ui/button";
-import { StatusBadge, SubagentIcon, SubagentRoleBadge } from "./agent-status";
+import { StatusBadge, SubagentIcon } from "./agent-status";
 import { useNow } from "./use-now";
 
 function formatElapsed(ms: number): string {
@@ -122,7 +122,6 @@ export function AgentInspector({
             <span className="font-mono text-xs text-muted-foreground font-medium">
               #{entry.index}
             </span>
-            <SubagentRoleBadge subagentType={entry.subagentType} />
             <StatusBadge status={entry.status} size="sm" />
           </div>
 

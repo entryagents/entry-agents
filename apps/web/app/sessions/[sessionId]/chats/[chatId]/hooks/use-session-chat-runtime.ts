@@ -15,7 +15,7 @@ import type {
 } from "@/app/types";
 import { AbortableChatTransport } from "@/lib/abortable-chat-transport";
 import { triggerBillingSync } from "@/components/sidebar-billing-widget";
-import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
+import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
 import {
   abortChatInstanceTransport,
   getOrCreateChatInstance,
@@ -335,7 +335,12 @@ export function useSessionChatRuntime({
                     abortChatInstanceTransport(chatId);
                   }
                   if (data?.messages) {
-                    chat.setMessages(dedupeMessageList(data.messages));
+                    chat.setMessages(
+                      mergePreservingLocalWork(
+                        data.messages,
+                        chatInstance.messages,
+                      ),
+                    );
                   }
                   clearChatWorkspaceStatus(chatId);
                   triggerBillingSync();
@@ -343,7 +348,12 @@ export function useSessionChatRuntime({
                 }
                 if (resumeAttachedToNothing) {
                   if (data?.messages) {
-                    chat.setMessages(dedupeMessageList(data.messages));
+                    chat.setMessages(
+                      mergePreservingLocalWork(
+                        data.messages,
+                        chatInstance.messages,
+                      ),
+                    );
                   }
                   // Server is actively streaming (e.g. turn started on another
                   // device or reconnected after network loss) -- reset local
