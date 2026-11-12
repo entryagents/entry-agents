@@ -150,3 +150,14 @@ export async function NovitaSandboxLazy() {
 export { connectNovita } from "./novita/connect.ts";
 export { isNovitaConfigured } from "./novita/config.ts";
 export type { NovitaState } from "./novita/state.ts";
+
+// durable background process registry & toolchain bootstrap
+export {
+  ENTRY_PIDS_DIR,
+  ENTRY_PIDS_REGISTRY,
+  buildDetachedSpawnScript,
+  buildProcessStatusScript,
+  buildKillProcessScript,
+  type RegisteredSandboxProcess,
+} from "./process-registry.ts";
+export { buildToolchainBootstrapScript } from "./toolchain.ts";

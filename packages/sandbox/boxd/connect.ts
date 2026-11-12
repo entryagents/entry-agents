@@ -12,6 +12,7 @@ import {
 } from "./config.ts";
 import type { BoxdState } from "./state.ts";
 import { BoxdSandbox } from "./sandbox.ts";
+import { buildToolchainBootstrapScript } from "../toolchain.ts";
 
 function shellEscape(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -202,6 +203,11 @@ async function bootstrapWorkspace(
       );
     }
   }
+
+  // Best-effort modern CLI toolchain bootstrap (jq, rg, tmux, curl, python3, gh, vercel)
+  await sandbox
+    .exec(buildToolchainBootstrapScript(), BOXD_WORKING_DIRECTORY, 60_000)
+    .catch(() => undefined);
 }
 
 export async function connectBoxd(

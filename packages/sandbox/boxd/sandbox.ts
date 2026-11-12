@@ -12,6 +12,10 @@ import type {
 } from "../interface.ts";
 import type { ConnectOptions } from "../factory.ts";
 import { BOXD_WORKING_DIRECTORY } from "./config.ts";
+import {
+  buildDetachedSpawnScript,
+  buildKillProcessScript,
+} from "../process-registry.ts";
 
 function asDirent(entry: DirEntry): Dirent {
   return {
@@ -256,16 +260,14 @@ export class BoxdSandbox implements Sandbox {
   ): Promise<{ commandId: string }> {
     this.assertRunning();
     const commandId = `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const logPath = `/tmp/${commandId}.log`;
-    const wrapped = `nohup bash -c ${JSON.stringify(command)} > ${logPath} 2>&1 & echo $!`;
-    const res = await this.client.machines.exec(this.machineId, {
-      command: ["bash", "-c", wrapped],
+    const script = buildDetachedSpawnScript(command, commandId, cwd);
+    await this.client.machines.exec(this.machineId, {
+      command: ["bash", "-c", script],
       cwd,
       timeout: 10000,
       env: this.commandEnv(),
     });
-    const pid = res.stdout.trim();
-    return { commandId: pid || commandId };
+    return { commandId };
   }
 
   async setGitHubAuthToken(token?: string): Promise<void> {
@@ -311,18 +313,17 @@ export class BoxdSandbox implements Sandbox {
         .catch(() => undefined);
       return;
     }
-    if (!/^[1-9][0-9]*$/.test(trimmed)) {
+    if (
+      !/^[1-9][0-9]*$/.test(trimmed) &&
+      !/^cmd_[0-9]+_[a-z0-9]+$/.test(trimmed)
+    ) {
       return;
     }
     await this.client.machines
       .exec(this.machineId, {
-        command: [
-          "bash",
-          "-c",
-          `kill -TERM -${trimmed} ${trimmed} 2>/dev/null || true`,
-        ],
+        command: ["bash", "-c", buildKillProcessScript(trimmed)],
         cwd: BOXD_WORKING_DIRECTORY,
-        timeout: 5_000,
+        timeout: 10_000,
       })
       .catch(() => undefined);
   }

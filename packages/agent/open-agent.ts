@@ -35,6 +35,8 @@ import {
   githubCliTool,
   globTool,
   grepTool,
+  killProcessTool,
+  processStatusTool,
   readFileTool,
   sandboxControlTool,
   skillTool,
@@ -225,6 +227,8 @@ const tools = {
   vercel_cli: vercelCliTool(),
   vercel_api: vercelApiTool(),
   sandbox: sandboxControlTool(),
+  process_status: processStatusTool,
+  kill_process: killProcessTool,
 } satisfies ToolSet;
 
 export const openAgent = new ToolLoopAgent({
