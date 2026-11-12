@@ -881,3 +881,17 @@ export async function dequeueNextQueuedUserMessageStep(
     return null;
   }
 }
+
+export async function getUnreadInboxCountStep(
+  chatId: string,
+): Promise<{ unreadCount: number }> {
+  "use step";
+  try {
+    const { getUnreadInboxMessages } = await import("@/lib/db/inbox");
+    const unread = await getUnreadInboxMessages(chatId);
+    return { unreadCount: unread.length };
+  } catch (error) {
+    console.error("[workflow] Failed to check steering inbox:", error);
+    return { unreadCount: 0 };
+  }
+}

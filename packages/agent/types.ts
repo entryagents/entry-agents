@@ -299,6 +299,25 @@ export interface SubagentBudgetGuard {
   ): SubagentBudgetPlan;
 }
 
+export interface InboxMessageItem {
+  id: string;
+  sequence: number;
+  content: string;
+  status: "unread" | "read";
+  isNew: boolean;
+  createdAt: string;
+  readAt: string | null;
+}
+
+export interface InboxToolContext {
+  checkInbox: (options?: { markAsRead?: boolean }) => Promise<{
+    unreadCount: number;
+    totalCount: number;
+    newlyReadCount: number;
+    messages: InboxMessageItem[];
+  }>;
+}
+
 export interface AgentContext {
   /** Host-backed workspace lifecycle control (tools/sandbox.ts). */
   sandboxControl?: SandboxControlContext;
@@ -317,6 +336,7 @@ export interface AgentContext {
   github?: GithubToolContext;
   vercel?: VercelToolContext;
   sandboxLifecycleHooks?: SandboxLifecycleHooksContext;
+  inboxHooks?: InboxToolContext;
   billingGuard?: SubagentBudgetGuard;
   /** Hierarchical delegation depth (0 = root agent, 1 = subagent). */
   depth?: number;

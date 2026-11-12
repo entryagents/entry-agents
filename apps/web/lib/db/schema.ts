@@ -907,3 +907,32 @@ export const feedback = pgTable("feedback", {
     .notNull()
     .defaultNow(),
 });
+
+export const chatSteeringInbox = pgTable(
+  "chat_steering_inbox",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    status: text("status", { enum: ["unread", "read"] })
+      .notNull()
+      .default("unread"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    readAt: timestamp("read_at"),
+  },
+  (table) => [
+    index("chat_steering_inbox_chat_status_created_idx").on(
+      table.chatId,
+      table.status,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type ChatSteeringInboxRow = typeof chatSteeringInbox.$inferSelect;
+export type NewChatSteeringInboxRow = typeof chatSteeringInbox.$inferInsert;

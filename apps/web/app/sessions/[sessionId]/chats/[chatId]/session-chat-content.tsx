@@ -10,6 +10,7 @@ import {
   Lock,
   Check,
   Copy,
+  Inbox,
   Link2,
   Loader2,
   Mic,
@@ -97,6 +98,7 @@ import { useFileSuggestions } from "@/hooks/use-file-suggestions";
 import { useImageAttachments } from "@/hooks/use-image-attachments";
 import { useTextAttachments } from "@/hooks/use-text-attachments";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
+import { useChatInbox } from "@/hooks/use-chat-inbox";
 import { useSessionChats } from "@/hooks/use-session-chats";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
@@ -1344,6 +1346,11 @@ export function SessionChatContent({
   // fetch abort doesn't cleanly settle the hook status).
   const [userStopped, setUserStopped] = useState(false);
   const isChatInFlight = isChatInFlightStatus(status) && !userStopped;
+  const {
+    unreadCount: inboxUnreadCount,
+    isSending: isSendingInbox,
+    sendInboxMessage,
+  } = useChatInbox(chatInfo.id, isChatInFlight);
   // Whether the composer currently has something to send/queue. Shared by
   // the submit button's disabled state and by the decision of whether the
   // composer button shows "stop" or "send" while a turn is in flight (see
@@ -3660,6 +3667,16 @@ export function SessionChatContent({
                           // once the current turn settles (see the drain
                           // effect near sendMessageWithPendingState above).
                           if (isChatInFlight || hasPendingResponse) {
+                            const rawText = input.trim();
+                            if (/^\/inbox\s+/i.test(rawText)) {
+                              const inboxText = rawText
+                                .replace(/^\/inbox\s+/i, "")
+                                .trim();
+                              if (inboxText) {
+                                void sendInboxMessage(inboxText);
+                                return;
+                              }
+                            }
                             enqueueComposerMessage(built);
                             return;
                           }
@@ -4084,6 +4101,48 @@ export function SessionChatContent({
                                 </TooltipContent>
                               </Tooltip>
                             )}
+                            {(isChatInFlight || hasPendingResponse) &&
+                              input.trim().length > 0 && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="relative inline-flex">
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="secondary"
+                                        disabled={
+                                          isArchived ||
+                                          Boolean(composerGate) ||
+                                          isSendingInbox
+                                        }
+                                        onClick={async () => {
+                                          const text = input.trim();
+                                          if (!text) return;
+                                          setInput("");
+                                          await sendInboxMessage(text);
+                                          inputRef.current?.blur();
+                                        }}
+                                        className="h-8 w-8 rounded-full border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+                                        aria-label="Send to agent inbox"
+                                      >
+                                        <Inbox className="h-4 w-4" />
+                                      </Button>
+                                      {inboxUnreadCount > 0 && (
+                                        <span
+                                          className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground ring-2 ring-background"
+                                          aria-hidden="true"
+                                        >
+                                          {inboxUnreadCount}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top">
+                                    Send to agent inbox (agent reads on next
+                                    step)
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
                           </div>
                         </div>
                       </form>

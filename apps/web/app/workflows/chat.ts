@@ -51,6 +51,7 @@ import {
   closeStream,
   clearActiveStream,
   dequeueNextQueuedUserMessageStep,
+  getUnreadInboxCountStep,
   releaseUserBillingTurnStep,
   reconcileSessionStatusStep,
   hasAutoCommitChangesStep,
@@ -2680,6 +2681,21 @@ export async function runAgentWorkflow(options: Options) {
         permissionMode: livePermissionMode,
       });
 
+      const { unreadCount: unreadInboxCount } = await getUnreadInboxCountStep(
+        options.chatId,
+      );
+      if (unreadInboxCount > 0) {
+        modelMessages.push({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `[HIGH-PRIORITY STEERING INBOX INTERVENTION]\nYou have ${unreadInboxCount} unread message(s) in your steering inbox.\nYou MUST call the \`inbox\` tool IMMEDIATELY before continuing other work so you read every new instruction (marked [NEW / UNREAD] vs [OLD / READ]) and adjust your course in real time without restarting or losing context.`,
+            },
+          ],
+        });
+      }
+
       try {
         // COMPACT TELEMETRY SCOPE (2026-09-17): the sink wraps the model
         // stream INSIDE runAgentStep ("use step"), not here in the workflow
@@ -3836,6 +3852,34 @@ const runAgentStep = async (
           // stale-but-real state at least fails with a clear error
           // instead of throwing here and losing the tool result.
           return current?.sandboxState ?? agentOptions.sandbox?.state ?? null;
+        },
+      },
+      inboxHooks: {
+        checkInbox: async ({ markAsRead = true } = {}) => {
+          const { listInboxMessages, markInboxMessagesRead } =
+            await import("@/lib/db/inbox");
+          const rows = await listInboxMessages(chatId);
+          const unreadIds = rows
+            .filter((r) => r.status === "unread")
+            .map((r) => r.id);
+          let newlyReadCount = 0;
+          if (markAsRead && unreadIds.length > 0) {
+            newlyReadCount = await markInboxMessagesRead(chatId, unreadIds);
+          }
+          return {
+            unreadCount: unreadIds.length,
+            totalCount: rows.length,
+            newlyReadCount,
+            messages: rows.map((row, idx) => ({
+              id: row.id,
+              sequence: idx + 1,
+              content: row.content,
+              status: row.status,
+              isNew: row.status === "unread",
+              createdAt: row.createdAt.toISOString(),
+              readAt: row.readAt ? row.readAt.toISOString() : null,
+            })),
+          };
         },
       },
     };
