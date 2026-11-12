@@ -9,8 +9,9 @@ export function nextSliceEnd(target: string, currentLength: number): number {
   const backlog = target.length - currentLength;
   if (backlog <= 0) return target.length;
 
-  // Reveal a chunk of 3-32 chars per frame, accelerating smoothly if backlog grows
-  const step = Math.min(64, Math.max(3, Math.ceil(backlog / 6)));
+  // Reveal a chunk of 2-64 chars per screen refresh frame (60Hz / 120Hz / 144Hz)
+  // Scaled so high-frequency LLM token streams glide smoothly without visual backlog delay
+  const step = Math.min(64, Math.max(2, Math.ceil(backlog / 6)));
   const end = Math.min(target.length, currentLength + step);
   const max = Math.min(target.length, end + 8);
 
@@ -25,8 +26,8 @@ export function nextSliceEnd(target: string, currentLength: number): number {
 
 /**
  * Paced text reveal hook inspired by OpenCode's paced-text-machine.
- * Smoothly streams text chunks so high-frequency LLM token deltas don't cause
- * frame stutter, layout shifts, or erratic scrolling during live streaming.
+ * Smoothly streams text chunks locked to the user's screen refresh rate (60Hz, 120Hz ProMotion, 144Hz)
+ * via requestAnimationFrame, avoiding token-burst jitter, layout shifts, or stuttering.
  * Automatically flushes when streaming completes.
  */
 export function usePacedText(text: string, isStreaming: boolean): string {
@@ -54,7 +55,10 @@ export function usePacedText(text: string, isStreaming: boolean): string {
       return;
     }
 
-    const timer = setTimeout(() => {
+    let frameId: number | undefined;
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+
+    const advanceStep = () => {
       setShownText((current) => {
         const target = targetRef.current;
         if (!isStreamingRef.current || current.length >= target.length) {
@@ -63,9 +67,32 @@ export function usePacedText(text: string, isStreaming: boolean): string {
         const nextEnd = nextSliceEnd(target, current.length);
         return target.slice(0, nextEnd);
       });
-    }, TEXT_RENDER_PACE_MS);
+    };
 
-    return () => clearTimeout(timer);
+    // Use requestAnimationFrame when running in the browser so frame pacing is locked
+    // to the user's display refresh rate (e.g. 60Hz = 16.6ms, 120Hz = 8.3ms, 144Hz = 6.9ms).
+    // Fall back to setTimeout for SSR or unit tests where window is undefined.
+    if (
+      typeof window !== "undefined" &&
+      typeof window.requestAnimationFrame === "function"
+    ) {
+      frameId = window.requestAnimationFrame(advanceStep);
+    } else {
+      timerId = setTimeout(advanceStep, TEXT_RENDER_PACE_MS);
+    }
+
+    return () => {
+      if (
+        frameId !== undefined &&
+        typeof window !== "undefined" &&
+        typeof window.cancelAnimationFrame === "function"
+      ) {
+        window.cancelAnimationFrame(frameId);
+      }
+      if (timerId !== undefined) {
+        clearTimeout(timerId);
+      }
+    };
   }, [text, isStreaming, shownText]);
 
   return isStreaming ? shownText : text;

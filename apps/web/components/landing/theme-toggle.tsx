@@ -63,7 +63,7 @@ export function ThemeToggle() {
             key={option.value}
             type="button"
             onClick={() => pick(option.value)}
-            className="flex size-7 items-center justify-center rounded-full transition-all duration-200"
+            className="flex size-7 items-center justify-center rounded-full transition-[background-color,color,box-shadow] duration-200"
             style={{
               backgroundColor: active ? "var(--l-surface)" : "transparent",
               boxShadow: active ? "0 1px 3px rgba(0,0,0,0.08)" : "none",

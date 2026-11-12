@@ -381,24 +381,17 @@ export function TaskRenderer({
   const meta = (
     <div className="flex items-center gap-2">
       {statParts.length > 0 && (
-        <span className="font-mono text-xs text-neutral-600 dark:text-neutral-400">
+        <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
           {statParts.join(" · ")}
         </span>
       )}
       {gitPanel && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            gitPanel.openSubagentTab(part.toolCallId, desc, subagentType);
-          }}
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-neutral-600 hover:bg-neutral-200 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100 transition-colors"
-          title="Open in dedicated subagent tab"
-          aria-label={`Open ${desc} in dedicated subagent tab`}
+        <span
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground group-hover:text-foreground transition-colors"
+          title="Click to open subagent chat"
         >
           <ExternalLink className="h-3 w-3" />
-          <span>View tab</span>
-        </button>
+        </span>
       )}
     </div>
   );
@@ -445,7 +438,7 @@ export function TaskRenderer({
     <ToolLayout
       name={getSubagentLabel(subagentType)}
       summary={desc}
-      summaryClassName="font-sans text-neutral-700 dark:text-neutral-300"
+      summaryClassName="font-sans text-neutral-700 dark:text-neutral-300 font-medium"
       meta={meta}
       rightAlignMeta
       state={state}
@@ -455,6 +448,13 @@ export function TaskRenderer({
       onApprove={onApprove}
       onDeny={onDeny}
       defaultExpanded={!isComplete}
+      onHeaderClick={
+        gitPanel
+          ? () => {
+              gitPanel.openSubagentTab(part.toolCallId, desc, subagentType);
+            }
+          : undefined
+      }
     >
       {approvalWarning}
     </ToolLayout>

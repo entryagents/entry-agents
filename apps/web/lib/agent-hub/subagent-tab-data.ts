@@ -191,12 +191,16 @@ export function deriveSubagentTabData(
     if (!raw || raw.role !== "assistant" || !Array.isArray(raw.parts)) continue;
 
     for (const part of raw.parts) {
-      if (
-        !part ||
-        typeof part !== "object" ||
-        (part as RawToolPart).type !== "tool-task" ||
-        (part as RawToolPart).toolCallId !== subagentId
-      ) {
+      if (!part || typeof part !== "object") continue;
+      const rawPart = part as RawToolPart & {
+        toolName?: string;
+        name?: string;
+      };
+      const isTask =
+        rawPart.type === "tool-task" ||
+        ((rawPart.type === "dynamic-tool" || rawPart.type === "tool-call") &&
+          (rawPart.toolName === "task" || rawPart.name === "task"));
+      if (!isTask || rawPart.toolCallId !== subagentId) {
         continue;
       }
 
