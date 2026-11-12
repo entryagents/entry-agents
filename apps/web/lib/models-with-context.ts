@@ -273,6 +273,56 @@ function applyFallbackCachePricing(model: AvailableModel): AvailableModel {
   };
 }
 
+const gatewayReasoningEffortItemSchema = z.union([
+  z.string(),
+  z.object({
+    value: z.string(),
+    label: z.string().optional(),
+  }),
+]);
+
+function formatGatewayEffortLabel(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "none" || normalized === "off") return "Off";
+  if (normalized === "xhigh") return "XHigh";
+  if (normalized === "xlow") return "XLow";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function normalizeGatewayReasoningLevels(
+  raw: unknown,
+): Array<{ value: string; label: string }> | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const levels: Array<{ value: string; label: string }> = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item === "string" && item.trim()) {
+      const value = item.trim();
+      if (!seen.has(value)) {
+        seen.add(value);
+        levels.push({ value, label: formatGatewayEffortLabel(value) });
+      }
+    } else if (
+      item &&
+      typeof item === "object" &&
+      "value" in item &&
+      typeof (item as { value?: unknown }).value === "string"
+    ) {
+      const value = (item as { value: string }).value.trim();
+      const rawLabel = (item as { label?: unknown }).label;
+      const label =
+        typeof rawLabel === "string" && rawLabel.trim()
+          ? rawLabel.trim()
+          : formatGatewayEffortLabel(value);
+      if (value && !seen.has(value)) {
+        seen.add(value);
+        levels.push({ value, label });
+      }
+    }
+  }
+  return levels;
+}
+
 const gatewayModelsResponseSchema = z.object({
   data: z.array(
     z
@@ -282,6 +332,26 @@ const gatewayModelsResponseSchema = z.object({
         description: z.string().nullish(),
         modelType: z.string().nullish(),
         capabilities: z.array(z.string()).optional(),
+        reasoning_efforts: z.array(gatewayReasoningEffortItemSchema).optional(),
+        reasoning_levels: z.array(gatewayReasoningEffortItemSchema).optional(),
+        supported_reasoning_efforts: z
+          .array(gatewayReasoningEffortItemSchema)
+          .optional(),
+        reasoningEffortLevels: z
+          .array(gatewayReasoningEffortItemSchema)
+          .optional(),
+        reasoning: z
+          .union([
+            z.boolean(),
+            z
+              .object({
+                supported: z.boolean().optional(),
+                efforts: z.array(gatewayReasoningEffortItemSchema).optional(),
+                levels: z.array(gatewayReasoningEffortItemSchema).optional(),
+              })
+              .passthrough(),
+          ])
+          .optional(),
         context_window: z.number().finite().positive().optional(),
         contextWindow: z.number().finite().positive().optional(),
         max_output_tokens: z.number().finite().positive().optional(),
@@ -411,8 +481,32 @@ async function fetchGatewayModelsUncached(): Promise<GatewayModel[]> {
     const compaction_threshold =
       model.compaction_threshold ?? model.compactionThreshold;
 
+    const reasoningObject =
+      model.reasoning && typeof model.reasoning === "object"
+        ? model.reasoning
+        : undefined;
+    const rawReasoningLevels =
+      model.reasoning_efforts ??
+      model.reasoning_levels ??
+      model.supported_reasoning_efforts ??
+      model.reasoningEffortLevels ??
+      reasoningObject?.efforts ??
+      reasoningObject?.levels;
+    const reasoningEffortLevels =
+      normalizeGatewayReasoningLevels(rawReasoningLevels);
+    const supportsReasoningEffort =
+      typeof model.reasoning === "boolean"
+        ? model.reasoning
+        : typeof reasoningObject?.supported === "boolean"
+          ? reasoningObject.supported
+          : reasoningEffortLevels !== undefined
+            ? reasoningEffortLevels.length > 0
+            : undefined;
+
+    const { reasoningEffortLevels: _rawEffortLevels, ...modelRest } = model;
+
     return {
-      ...model,
+      ...modelRest,
       ...(typeof context_window === "number" && context_window > 0
         ? { context_window }
         : {}),
@@ -421,6 +515,10 @@ async function fetchGatewayModelsUncached(): Promise<GatewayModel[]> {
         : {}),
       ...(typeof compaction_threshold === "number" && compaction_threshold > 0
         ? { compaction_threshold }
+        : {}),
+      ...(reasoningEffortLevels ? { reasoningEffortLevels } : {}),
+      ...(supportsReasoningEffort !== undefined
+        ? { supportsReasoningEffort }
         : {}),
       modelType: model.modelType ?? "language",
       name: model.name ?? model.id,

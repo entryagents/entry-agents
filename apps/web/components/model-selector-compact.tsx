@@ -49,6 +49,13 @@ interface ModelSelectorCompactProps {
   /** Called when a Free-tier user clicks "Upgrade" inside the locked-
    * model popup -- typically routes to /pricing. */
   onUpgradeRequired?: () => void;
+  /** Option A: integrated reasoning effort picker rendered in the popover footer. */
+  reasoningEffort?: {
+    value: string | null;
+    levels: Array<{ value: string; label: string }>;
+    onChange: (value: string | null) => void;
+    disabled?: boolean;
+  };
 }
 
 export function ModelSelectorCompact({
@@ -61,6 +68,7 @@ export function ModelSelectorCompact({
   freePlanModelId,
   freeTierUnlockedModelIds,
   onUpgradeRequired,
+  reasoningEffort,
 }: ModelSelectorCompactProps) {
   const unlockedModelIds = useMemo(
     () =>
@@ -159,6 +167,14 @@ export function ModelSelectorCompact({
               />
             )}
             <span className="max-w-[140px] truncate">{displayText}</span>
+            {reasoningEffort?.value && (
+              <span className="shrink-0 text-xs text-neutral-400">
+                ·{" "}
+                {reasoningEffort.levels.find(
+                  (l) => l.value === reasoningEffort.value,
+                )?.label ?? reasoningEffort.value}
+              </span>
+            )}
             <ChevronDown className="h-3 w-3" />
           </button>
         </PopoverTrigger>
@@ -245,6 +261,46 @@ export function ModelSelectorCompact({
               ))}
             </CommandList>
           </Command>
+          {reasoningEffort && reasoningEffort.levels.length > 0 && (
+            <div className="border-t border-border/60 bg-muted/30 p-2">
+              <div className="mb-1.5 flex items-center justify-between px-0.5">
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  Reasoning Effort
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                <button
+                  type="button"
+                  disabled={reasoningEffort.disabled}
+                  onClick={() => reasoningEffort.onChange(null)}
+                  className={cn(
+                    "rounded px-2 py-1 text-[11px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+                    reasoningEffort.value === null
+                      ? "bg-foreground text-background"
+                      : "bg-background/60 text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  Auto
+                </button>
+                {reasoningEffort.levels.map((level) => (
+                  <button
+                    key={level.value}
+                    type="button"
+                    disabled={reasoningEffort.disabled}
+                    onClick={() => reasoningEffort.onChange(level.value)}
+                    className={cn(
+                      "rounded px-2 py-1 text-[11px] font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+                      reasoningEffort.value === level.value
+                        ? "bg-foreground text-background"
+                        : "bg-background/60 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                  >
+                    {level.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </PopoverContent>
       </Popover>
       <Dialog

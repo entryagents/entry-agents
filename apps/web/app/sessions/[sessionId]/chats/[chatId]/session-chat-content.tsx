@@ -52,7 +52,6 @@ import { FileSuggestionsDropdown } from "@/components/file-suggestions-dropdown"
 import { ImageAttachmentsPreview } from "@/components/image-attachments-preview";
 import { TextAttachmentsPreview } from "@/components/text-attachments-preview";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
-import { ReasoningEffortSelector } from "@/components/reasoning-effort-selector";
 import { PermissionModeSelector } from "@/components/permission-mode-selector";
 import {
   getReasoningEffortLevels,
@@ -414,16 +413,16 @@ function ContextUsageIndicator({
   conversationCachedInputTokens: number;
   conversationOutputTokens: number;
   conversationCost?: ConversationCost;
-  contextLimit: number;
+  contextLimit: number | null;
 }) {
   if (inputTokens === 0) {
     return null;
   }
 
-  const percentage =
-    contextLimit > 0
-      ? Math.min(100, Math.round((inputTokens / contextLimit) * 100))
-      : 0;
+  const hasContextLimit = contextLimit !== null && contextLimit > 0;
+  const percentage = hasContextLimit
+    ? Math.min(100, Math.round((inputTokens / contextLimit) * 100))
+    : null;
   const uncachedConversationInputTokens = Math.max(
     0,
     conversationInputTokens - conversationCachedInputTokens,
@@ -437,8 +436,18 @@ function ContextUsageIndicator({
           aria-label="View context usage breakdown"
           className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground/70 transition-colors hover:bg-muted/60 hover:text-muted-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
-          <span>{percentage}%</span>
-          <CircularProgress percentage={percentage} size={14} strokeWidth={2} />
+          {percentage !== null ? (
+            <>
+              <span>{percentage}%</span>
+              <CircularProgress
+                percentage={percentage}
+                size={14}
+                strokeWidth={2}
+              />
+            </>
+          ) : (
+            <span>{formatTokens(inputTokens)} tok</span>
+          )}
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -449,9 +458,13 @@ function ContextUsageIndicator({
         <div className="p-3">
           {/* Header with percentage and token count */}
           <div className="flex items-center justify-between gap-6">
-            <span className="text-sm font-medium">{percentage}%</span>
+            <span className="text-sm font-medium">
+              {percentage !== null ? `${percentage}%` : "Context"}
+            </span>
             <span className="text-xs opacity-60">
-              {formatTokens(inputTokens)} / {formatTokens(contextLimit)}
+              {hasContextLimit
+                ? `${formatTokens(inputTokens)} / ${formatTokens(contextLimit)}`
+                : `${formatTokens(inputTokens)} tokens`}
             </span>
           </div>
         </div>
@@ -1055,7 +1068,7 @@ export function SessionChatContent({
     removeTextAttachment,
     clearTextAttachments,
   } = useTextAttachments();
-  const { containerRef, isAtBottom, scrollToBottom } =
+  const { containerRef, isAtBottom, scrollToBottom, scrollIfAtBottom } =
     useScrollToBottom<HTMLDivElement>();
   const {
     session,
@@ -2582,10 +2595,8 @@ export function SessionChatContent({
   ]);
 
   useEffect(() => {
-    if (isAtBottom) {
-      scrollToBottom();
-    }
-  }, [messages, isAtBottom, scrollToBottom]);
+    scrollIfAtBottom();
+  }, [messages, scrollIfAtBottom]);
 
   useEffect(() => {
     if (!isChatInFlight) {
@@ -3905,39 +3916,36 @@ export function SessionChatContent({
                                   onUpgradeRequired={() =>
                                     router.push("/pricing")
                                   }
+                                  reasoningEffort={
+                                    isReasoningCapableModel(
+                                      chatInfo.modelId,
+                                      modelOptions,
+                                    )
+                                      ? {
+                                          value: sanitizeReasoningEffort(
+                                            chatInfo.modelId,
+                                            chatInfo.reasoningEffort,
+                                            modelOptions,
+                                          ),
+                                          levels: getReasoningEffortLevels(
+                                            chatInfo.modelId,
+                                            modelOptions,
+                                          ),
+                                          disabled:
+                                            isChatInFlight ||
+                                            isUpdatingModel ||
+                                            modelOptionsLoading,
+                                          onChange: (effort) => {
+                                            void handleReasoningEffortChange(
+                                              effort,
+                                            );
+                                          },
+                                        }
+                                      : undefined
+                                  }
                                 />
                               </div>
                             )}
-                            {chatInfo.modelId &&
-                              isReasoningCapableModel(chatInfo.modelId) && (
-                                <div
-                                  className={
-                                    isChatInFlight ||
-                                    isUpdatingModel ||
-                                    modelOptionsLoading
-                                      ? "pointer-events-none opacity-60"
-                                      : undefined
-                                  }
-                                >
-                                  <ReasoningEffortSelector
-                                    value={sanitizeReasoningEffort(
-                                      chatInfo.modelId,
-                                      chatInfo.reasoningEffort,
-                                    )}
-                                    levels={getReasoningEffortLevels(
-                                      chatInfo.modelId,
-                                    )}
-                                    disabled={
-                                      isChatInFlight ||
-                                      isUpdatingModel ||
-                                      modelOptionsLoading
-                                    }
-                                    onChange={(effort) => {
-                                      void handleReasoningEffortChange(effort);
-                                    }}
-                                  />
-                                </div>
-                              )}
                             <PermissionModeSelector
                               value={permissionMode}
                               onChange={handlePermissionModeChange}

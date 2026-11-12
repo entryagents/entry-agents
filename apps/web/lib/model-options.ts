@@ -17,6 +17,8 @@ export interface ModelOption {
   contextWindow?: number;
   cost?: AvailableModelCost;
   provider: string;
+  reasoningEffortLevels?: Array<{ value: string; label: string }>;
+  supportsReasoningEffort?: boolean;
 }
 
 function toBaseModelOption(model: AvailableModel): ModelOption {
@@ -29,6 +31,12 @@ function toBaseModelOption(model: AvailableModel): ModelOption {
     description: model.description ?? undefined,
     contextWindow: model.context_window,
     ...(model.cost ? { cost: model.cost } : {}),
+    ...(model.reasoningEffortLevels
+      ? { reasoningEffortLevels: model.reasoningEffortLevels }
+      : {}),
+    ...(model.supportsReasoningEffort !== undefined
+      ? { supportsReasoningEffort: model.supportsReasoningEffort }
+      : {}),
     provider,
   };
 }

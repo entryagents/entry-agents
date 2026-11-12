@@ -92,6 +92,11 @@ export function isClaudeModelId(modelId: string): boolean {
   return modelId.includes("claude");
 }
 
+export interface GatewayReasoningEffortLevel {
+  value: string;
+  label: string;
+}
+
 export interface GatewayAvailableModel {
   id: string;
   name: string;
@@ -99,6 +104,10 @@ export interface GatewayAvailableModel {
   modelType?: string | null;
   /** Capabilities advertised to plugins and model-aware clients. */
   capabilities?: string[];
+  /** Reasoning effort levels advertised by the gateway for this model. */
+  reasoningEffortLevels?: GatewayReasoningEffortLevel[];
+  /** Explicit boolean from gateway indicating whether reasoning effort is supported. */
+  supportsReasoningEffort?: boolean;
 }
 
 export interface AvailableModelCostTier {

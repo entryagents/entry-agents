@@ -135,10 +135,64 @@ export function MessageModelPill({
     stepBreakdown,
   } = metadata ?? {};
 
-  const effectiveUsage = totalMessageUsage ?? lastStepUsage;
+  const stepAggregatedUsage =
+    stepBreakdown && stepBreakdown.length > 0
+      ? stepBreakdown.reduce(
+          (acc, step) => {
+            const u = step.usage;
+            if (!u) return acc;
+            const input = u.inputTokens ?? 0;
+            const output = u.outputTokens ?? 0;
+            const cacheRead =
+              u.inputTokenDetails?.cacheReadTokens ?? u.cachedInputTokens ?? 0;
+            const cacheWrite = u.inputTokenDetails?.cacheWriteTokens ?? 0;
+            const reasoning =
+              u.outputTokenDetails?.reasoningTokens ?? u.reasoningTokens ?? 0;
+            const total = u.totalTokens ?? input + output;
+            return {
+              inputTokens: acc.inputTokens + input,
+              outputTokens: acc.outputTokens + output,
+              cacheReadTokens: acc.cacheReadTokens + cacheRead,
+              cacheWriteTokens: acc.cacheWriteTokens + cacheWrite,
+              reasoningTokens: acc.reasoningTokens + reasoning,
+              totalTokens: acc.totalTokens + total,
+            };
+          },
+          {
+            inputTokens: 0,
+            outputTokens: 0,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
+            totalTokens: 0,
+          },
+        )
+      : undefined;
+
+  const rawUsage = totalMessageUsage ?? lastStepUsage;
+  const effectiveInputTokens =
+    rawUsage?.inputTokens ?? stepAggregatedUsage?.inputTokens ?? 0;
+  const effectiveOutputTokens =
+    rawUsage?.outputTokens ?? stepAggregatedUsage?.outputTokens ?? 0;
+  const effectiveCacheReadTokens =
+    rawUsage?.inputTokenDetails?.cacheReadTokens ??
+    rawUsage?.cachedInputTokens ??
+    stepAggregatedUsage?.cacheReadTokens ??
+    0;
+  const effectiveCacheWriteTokens =
+    rawUsage?.inputTokenDetails?.cacheWriteTokens ??
+    stepAggregatedUsage?.cacheWriteTokens ??
+    0;
+  const effectiveReasoningTokens =
+    rawUsage?.outputTokenDetails?.reasoningTokens ??
+    rawUsage?.reasoningTokens ??
+    stepAggregatedUsage?.reasoningTokens ??
+    0;
   const totalTokens =
-    effectiveUsage?.totalTokens ??
-    (effectiveUsage?.inputTokens ?? 0) + (effectiveUsage?.outputTokens ?? 0);
+    rawUsage?.totalTokens ??
+    (effectiveInputTokens + effectiveOutputTokens > 0
+      ? effectiveInputTokens + effectiveOutputTokens
+      : (stepAggregatedUsage?.totalTokens ?? 0));
 
   const hasDirectCost =
     typeof totalMessageCost === "number" &&
@@ -177,18 +231,54 @@ export function MessageModelPill({
     ? (option.shortLabel ?? stripProviderPrefix(option.label, provider))
     : displayLabel;
 
-  const estimatedCost =
-    !hasDirectCost && effectiveUsage && option?.cost
+  // Price per-step whenever stepBreakdown is available so multi-step summed
+  // input tokens never falsely trigger single-step context pricing tiers.
+  const perStepEstimatedCost =
+    !hasDirectCost && stepBreakdown && stepBreakdown.length > 0
+      ? stepBreakdown.reduce<number | undefined>((sum, step) => {
+          if (typeof step.cost === "number" && Number.isFinite(step.cost)) {
+            return (sum ?? 0) + step.cost;
+          }
+          if (!step.usage) return sum;
+          const stepOption = step.modelId
+            ? modelOptions.find((o) => o.id === step.modelId)
+            : option;
+          const stepCost = stepOption?.cost
+            ? estimateModelUsageCost(
+                {
+                  inputTokens: step.usage.inputTokens ?? 0,
+                  cachedInputTokens:
+                    step.usage.inputTokenDetails?.cacheReadTokens ??
+                    step.usage.cachedInputTokens ??
+                    0,
+                  cacheWriteInputTokens:
+                    step.usage.inputTokenDetails?.cacheWriteTokens ?? 0,
+                  outputTokens: step.usage.outputTokens ?? 0,
+                },
+                stepOption.cost,
+              )
+            : undefined;
+          return stepCost !== undefined ? (sum ?? 0) + stepCost : sum;
+        }, undefined)
+      : undefined;
+
+  const singleTurnFallbackCost =
+    !hasDirectCost &&
+    perStepEstimatedCost === undefined &&
+    rawUsage &&
+    option?.cost
       ? estimateModelUsageCost(
           {
-            inputTokens: effectiveUsage.inputTokens ?? 0,
-            cachedInputTokens:
-              effectiveUsage.inputTokenDetails?.cacheReadTokens ?? 0,
-            outputTokens: effectiveUsage.outputTokens ?? 0,
+            inputTokens: effectiveInputTokens,
+            cachedInputTokens: effectiveCacheReadTokens,
+            cacheWriteInputTokens: effectiveCacheWriteTokens,
+            outputTokens: effectiveOutputTokens,
           },
           option.cost,
         )
       : undefined;
+
+  const estimatedCost = perStepEstimatedCost ?? singleTurnFallbackCost;
 
   const displayCost = hasDirectCost
     ? (totalMessageCost as number)
@@ -237,9 +327,6 @@ export function MessageModelPill({
     return pill;
   }
 
-  const cachedTotal = effectiveUsage?.inputTokenDetails?.cacheReadTokens;
-  const reasoningTotal = effectiveUsage?.outputTokenDetails?.reasoningTokens;
-
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
@@ -265,13 +352,18 @@ export function MessageModelPill({
           )}
         </div>
         <div className="mb-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-          <span>total in {formatTokenCount(effectiveUsage?.inputTokens)}</span>
-          <span>out {formatTokenCount(effectiveUsage?.outputTokens)}</span>
-          {Boolean(reasoningTotal) && (
-            <span>reasoning {formatTokenCount(reasoningTotal)}</span>
+          <span>total in {formatTokenCount(effectiveInputTokens)}</span>
+          <span>out {formatTokenCount(effectiveOutputTokens)}</span>
+          {Boolean(effectiveReasoningTokens) && (
+            <span>reasoning {formatTokenCount(effectiveReasoningTokens)}</span>
           )}
-          {Boolean(cachedTotal) && (
-            <span>cached {formatTokenCount(cachedTotal)}</span>
+          {Boolean(effectiveCacheReadTokens) && (
+            <span>cached {formatTokenCount(effectiveCacheReadTokens)}</span>
+          )}
+          {Boolean(effectiveCacheWriteTokens) && (
+            <span>
+              cache write {formatTokenCount(effectiveCacheWriteTokens)}
+            </span>
           )}
         </div>
         {stepBreakdown && stepBreakdown.length > 0 && (
@@ -285,9 +377,6 @@ export function MessageModelPill({
             ))}
           </div>
         )}
-        <div className="mt-2 text-[10px] text-muted-foreground/60">
-          Real-time usage and gateway accounting for this turn.
-        </div>
       </PopoverContent>
     </Popover>
   );
