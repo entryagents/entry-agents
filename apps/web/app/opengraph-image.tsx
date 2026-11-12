@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { EntryMark } from "@/components/entry-mark";
+import { ENTRY_LOGO_DATA_URI } from "@/components/entry-mark";
 
 export const alt = "Entry Agents — AI coding agents that ship real code";
 export const size = { width: 1200, height: 630 };
@@ -91,7 +91,14 @@ export default function OgImage() {
               marginBottom: 40,
             }}
           >
-            <EntryMark style={{ width: 28, height: 28 }} />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={ENTRY_LOGO_DATA_URI}
+              alt=""
+              width={28}
+              height={28}
+              style={{ objectFit: "contain", borderRadius: 6 }}
+            />
             <span
               style={{
                 fontSize: 20,
