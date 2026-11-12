@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/popover";
 
 interface MessageModelPillProps {
-  metadata: WebAgentMessageMetadata;
+  metadata?: WebAgentMessageMetadata;
   modelOptions: ModelOption[];
 }
 
@@ -133,7 +133,7 @@ export function MessageModelPill({
     totalMessageUsage,
     lastStepUsage,
     stepBreakdown,
-  } = metadata;
+  } = metadata ?? {};
 
   const effectiveUsage = totalMessageUsage ?? lastStepUsage;
   const totalTokens =
@@ -214,6 +214,11 @@ export function MessageModelPill({
           <span className="tabular-nums font-medium text-foreground/80">
             {formatCostUsd(displayCost)}
           </span>
+          {totalTokens > 0 && (
+            <span className="tabular-nums text-muted-foreground/60 text-[10px]">
+              ({formatTokenCount(totalTokens)} tok)
+            </span>
+          )}
         </>
       ) : totalTokens > 0 ? (
         <>

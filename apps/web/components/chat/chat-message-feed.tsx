@@ -500,7 +500,7 @@ export function ChatMessageFeed({
                             ) : (
                               <div />
                             )}
-                            {isFinalAssistantTextPart && m.metadata && (
+                            {isFinalAssistantTextPart && (
                               <MessageModelPill
                                 metadata={m.metadata}
                                 modelOptions={modelOptions}
@@ -653,7 +653,7 @@ export function ChatMessageFeed({
                 {(isExpanded) => (
                   <>
                     {renderGroups(isExpanded)}
-                    {!hasTextPart && m.metadata && (
+                    {!hasTextPart && (
                       <div className="mt-2 flex items-center justify-end border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
                         <MessageModelPill
                           metadata={m.metadata}
