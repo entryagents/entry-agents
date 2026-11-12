@@ -187,9 +187,22 @@ const MODEL_REASONING_LEVELS: Record<string, ReasoningEffortLevel[]> = {
   ],
 };
 
+export interface ReasoningModelMetadata {
+  id: string;
+  reasoningEffortLevels?: ReasoningEffortLevel[];
+  supportsReasoningEffort?: boolean;
+}
+
 export function getReasoningEffortLevels(
   modelId: string,
+  modelOptions?: ReadonlyArray<ReasoningModelMetadata>,
 ): ReasoningEffortLevel[] {
+  const gatewayLevels = modelOptions?.find(
+    (m) => m.id === modelId,
+  )?.reasoningEffortLevels;
+  if (gatewayLevels && gatewayLevels.length > 0) {
+    return gatewayLevels;
+  }
   return MODEL_REASONING_LEVELS[modelId] ?? DEFAULT_LEVELS;
 }
 
@@ -315,7 +328,20 @@ const REASONING_CAPABLE_MODEL_IDS = new Set<string>([
   "qwen3.8-flash",
 ]);
 
-export function isReasoningCapableModel(modelId: string): boolean {
+export function isReasoningCapableModel(
+  modelId: string,
+  modelOptions?: ReadonlyArray<ReasoningModelMetadata>,
+): boolean {
+  const gatewayModel = modelOptions?.find((m) => m.id === modelId);
+  if (gatewayModel?.supportsReasoningEffort !== undefined) {
+    return gatewayModel.supportsReasoningEffort;
+  }
+  if (
+    gatewayModel?.reasoningEffortLevels &&
+    gatewayModel.reasoningEffortLevels.length > 0
+  ) {
+    return true;
+  }
   return REASONING_CAPABLE_MODEL_IDS.has(modelId);
 }
 
@@ -330,11 +356,12 @@ export function isReasoningCapableModel(modelId: string): boolean {
 export function sanitizeReasoningEffort(
   modelId: string,
   value: string | null | undefined,
+  modelOptions?: ReadonlyArray<ReasoningModelMetadata>,
 ): ReasoningEffort | null {
-  if (!value || !isReasoningCapableModel(modelId)) {
+  if (!value || !isReasoningCapableModel(modelId, modelOptions)) {
     return null;
   }
-  const levels = getReasoningEffortLevels(modelId);
+  const levels = getReasoningEffortLevels(modelId, modelOptions);
   return levels.some((level) => level.value === value) ? value : null;
 }
 

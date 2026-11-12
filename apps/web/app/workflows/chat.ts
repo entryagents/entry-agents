@@ -4378,14 +4378,18 @@ const runAgentStep = async (
       },
     };
 
-    if (stepsCost !== undefined) {
-      const carriedCost = (existingTotalMessageCost ?? 0) + stepsCost;
+    const resolvedTotalCost =
+      stepsCost !== undefined
+        ? (existingTotalMessageCost ?? 0) + stepsCost
+        : totalMessageCost;
+
+    if (resolvedTotalCost !== undefined) {
       responseMessage = {
         ...responseMessage,
         metadata: {
           ...responseMessage.metadata,
           lastStepCost,
-          totalMessageCost: carriedCost,
+          totalMessageCost: resolvedTotalCost,
         },
       };
     }
