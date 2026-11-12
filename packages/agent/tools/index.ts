@@ -35,6 +35,11 @@ export { vercelApiTool, type VercelApiToolInput } from "./vercel-api";
 export { sandboxControlTool, type SandboxControlToolInput } from "./sandbox";
 export { webSearchTool } from "./web-search";
 export {
+  processStatusTool,
+  killProcessTool,
+  type SandboxProcessEntry,
+} from "./process";
+export {
   createMcpToolSet,
   namespacedMcpToolName,
   type McpServerConfig,

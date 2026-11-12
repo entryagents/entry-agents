@@ -21,6 +21,11 @@ import {
   isModalSandboxGoneError,
 } from "./client.ts";
 import type { ModalState } from "./state.ts";
+import {
+  buildDetachedSpawnScript,
+  buildKillProcessScript,
+} from "../process-registry.ts";
+import { buildToolchainBootstrapScript } from "../toolchain.ts";
 
 /** Modal's own `Sandbox` handle. Imported ONLY as a type. */
 type ModalSdkSandbox = import("modal").Sandbox;
@@ -329,6 +334,11 @@ export class ModalCloudSandbox implements Sandbox {
           `git config user.email ${shellEscape(config.gitUser.email)}`,
       );
     }
+
+    // Best-effort modern CLI toolchain bootstrap (jq, rg, tmux, curl, python3, gh, vercel)
+    await this.runCommand(buildToolchainBootstrapScript(), {
+      timeoutMs: 60_000,
+    }).catch(() => undefined);
   }
 
   async readFile(path: string, _encoding: "utf-8"): Promise<string> {
@@ -598,19 +608,11 @@ export class ModalCloudSandbox implements Sandbox {
       return;
     }
     try {
-      await this.sdk.exec(
-        [
-          "bash",
-          "-c",
-          `kill -TERM ${shellEscape(cmdId)} 2>/dev/null || true; ` +
-            `sleep 1; kill -KILL ${shellEscape(cmdId)} 2>/dev/null || true`,
-        ],
-        {
-          workdir: this.workingDirectory,
-          env: this.getCommandEnv(),
-          timeoutMs: 20_000,
-        },
-      );
+      await this.sdk.exec(["bash", "-c", buildKillProcessScript(cmdId)], {
+        workdir: this.workingDirectory,
+        env: this.getCommandEnv(),
+        timeoutMs: 20_000,
+      });
     } catch {
       // The sandbox may already be gone -- nothing left to kill.
     }
@@ -618,7 +620,8 @@ export class ModalCloudSandbox implements Sandbox {
 
   /**
    * Execute a command in detached mode (returns immediately).
-   * The command continues running in the background.
+   * The command is daemonized via setsid + nohup + disown and registered in
+   * /tmp/entry_pids/ so it survives across agent steps and shell stream closes.
    */
   async execDetached(
     command: string,
@@ -627,18 +630,13 @@ export class ModalCloudSandbox implements Sandbox {
     if (this.stopped) {
       throw new Error("Sandbox is stopped");
     }
-    const proc = await this.sdk.exec(
-      [
-        "bash",
-        "-c",
-        `cd ${shellEscape(cwd)} && echo "${PID_MARKER}$$" && ` +
-          `exec bash -c ${shellEscape(command)}`,
-      ],
-      { workdir: this.workingDirectory, env: this.getCommandEnv() },
-    );
-    const commandId = await readPid(proc.stdout);
-    if (!commandId) {
-      throw new Error("Failed to capture the background command's pid");
+    const commandId = `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const script = `cd ${shellEscape(cwd)} && ${buildDetachedSpawnScript(command, commandId, cwd)}`;
+    const res = await this.runCommand(script, { timeoutMs: 15_000 });
+    if (res.exitCode !== 0) {
+      throw new Error(
+        `Failed to start background command: ${res.stderr.trim() || "unknown error"}`,
+      );
     }
     return { commandId };
   }
