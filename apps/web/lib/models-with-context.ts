@@ -282,11 +282,7 @@ const gatewayReasoningEffortItemSchema = z.union([
 ]);
 
 function formatGatewayEffortLabel(value: string): string {
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "none" || normalized === "off") return "Off";
-  if (normalized === "xhigh") return "XHigh";
-  if (normalized === "xlow") return "XLow";
-  return value.charAt(0).toUpperCase() + value.slice(1);
+  return value.trim();
 }
 
 function normalizeGatewayReasoningLevels(
@@ -340,6 +336,8 @@ const gatewayModelsResponseSchema = z.object({
         reasoningEffortLevels: z
           .array(gatewayReasoningEffortItemSchema)
           .optional(),
+        default_reasoning_effort: z.string().nullish(),
+        defaultReasoningEffort: z.string().nullish(),
         reasoning: z
           .union([
             z.boolean(),
@@ -348,6 +346,8 @@ const gatewayModelsResponseSchema = z.object({
                 supported: z.boolean().optional(),
                 efforts: z.array(gatewayReasoningEffortItemSchema).optional(),
                 levels: z.array(gatewayReasoningEffortItemSchema).optional(),
+                default_effort: z.string().nullish(),
+                defaultEffort: z.string().nullish(),
               })
               .passthrough(),
           ])
@@ -494,6 +494,15 @@ async function fetchGatewayModelsUncached(): Promise<GatewayModel[]> {
       reasoningObject?.levels;
     const reasoningEffortLevels =
       normalizeGatewayReasoningLevels(rawReasoningLevels);
+    const rawDefaultEffort =
+      reasoningObject?.default_effort ??
+      reasoningObject?.defaultEffort ??
+      model.default_reasoning_effort ??
+      model.defaultReasoningEffort;
+    const defaultReasoningEffort =
+      typeof rawDefaultEffort === "string" && rawDefaultEffort.trim()
+        ? rawDefaultEffort.trim()
+        : undefined;
     const supportsReasoningEffort =
       typeof model.reasoning === "boolean"
         ? model.reasoning
@@ -503,7 +512,11 @@ async function fetchGatewayModelsUncached(): Promise<GatewayModel[]> {
             ? reasoningEffortLevels.length > 0
             : undefined;
 
-    const { reasoningEffortLevels: _rawEffortLevels, ...modelRest } = model;
+    const {
+      reasoningEffortLevels: _rawEffortLevels,
+      defaultReasoningEffort: _rawDefaultReasoningEffort,
+      ...modelRest
+    } = model;
 
     return {
       ...modelRest,
@@ -517,6 +530,7 @@ async function fetchGatewayModelsUncached(): Promise<GatewayModel[]> {
         ? { compaction_threshold }
         : {}),
       ...(reasoningEffortLevels ? { reasoningEffortLevels } : {}),
+      ...(defaultReasoningEffort ? { defaultReasoningEffort } : {}),
       ...(supportsReasoningEffort !== undefined
         ? { supportsReasoningEffort }
         : {}),

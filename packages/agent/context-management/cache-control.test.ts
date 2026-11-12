@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { LanguageModel, ModelMessage, ToolSet } from "ai";
 import { addCacheControl } from "./cache-control";
+import { buildSystemPromptParts } from "../system-prompt";
 
 describe("addCacheControl", () => {
   const anthropicModel = {
@@ -98,5 +99,50 @@ describe("addCacheControl", () => {
     expect(result[0]?.providerOptions?.anthropic).toEqual({
       cacheControl: { type: "ephemeral" },
     });
+  });
+
+  test("keeps staticCore cached separately from dynamicContext for Anthropic models", () => {
+    const turn1 = buildSystemPromptParts({
+      modelId: "claude-sonnet-4-6",
+      cwd: "/workspace",
+      currentBranch: "main",
+    });
+    const turn2 = buildSystemPromptParts({
+      modelId: "claude-sonnet-4-6",
+      cwd: "/workspace",
+      currentBranch: "feat/new-branch",
+      guidedFrontendWorkflow: true,
+    });
+
+    expect(turn1.staticCore).toBe(turn2.staticCore);
+    expect(turn1.dynamicContext).not.toBe(turn2.dynamicContext);
+
+    const cached1 = addCacheControl({
+      instructions: [turn1.staticCore, turn1.dynamicContext],
+      model: anthropicModel,
+    });
+    const cached2 = addCacheControl({
+      instructions: [turn2.staticCore, turn2.dynamicContext],
+      model: anthropicModel,
+    });
+
+    expect(Array.isArray(cached1)).toBe(true);
+    expect(Array.isArray(cached2)).toBe(true);
+    if (Array.isArray(cached1) && Array.isArray(cached2)) {
+      expect(cached1).toHaveLength(2);
+      expect(cached1[0]?.content).toBe(cached2[0]?.content);
+      expect(cached1[0]?.providerOptions).toEqual({
+        anthropic: { cacheControl: { type: "ephemeral" } },
+      });
+      expect(cached1[1]?.providerOptions).toBeUndefined();
+    }
+  });
+
+  test("joins split instructions back to a plain string for non-Anthropic models", () => {
+    const joined = addCacheControl({
+      instructions: ["STATIC", "DYNAMIC"],
+      model: openaiModel,
+    });
+    expect(joined).toBe("STATIC\nDYNAMIC");
   });
 });

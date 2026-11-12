@@ -85,10 +85,10 @@ const DEFAULT_CACHE_CONTROL_OPTIONS: Record<
  * extra metadata for them, so there's no reason to wrap for those).
  */
 export function addCacheControl(options: {
-  instructions: string;
+  instructions: string | string[];
   model: LanguageModel;
   providerOptions?: ProviderOptions;
-}): string | SystemModelMessage;
+}): string | SystemModelMessage | SystemModelMessage[];
 
 export function addCacheControl<T extends ToolSet>(options: {
   tools: T;
@@ -128,15 +128,34 @@ export function addCacheControl<T extends ToolSet>({
 }: {
   tools?: T;
   messages?: ModelMessage[];
-  instructions?: string;
+  instructions?: string | string[];
   model: LanguageModel;
   providerOptions?: ProviderOptions;
-}): T | ModelMessage[] | string | SystemModelMessage {
+}): T | ModelMessage[] | string | SystemModelMessage | SystemModelMessage[] {
   if (!isAnthropicModel(model)) {
+    if (Array.isArray(instructions)) {
+      return instructions.filter(Boolean).join("\n");
+    }
     return (tools ?? messages ?? instructions)!;
   }
 
   if (instructions !== undefined) {
+    if (Array.isArray(instructions)) {
+      const nonEmpty = instructions.filter((part) => part.length > 0);
+      if (nonEmpty.length === 0) return "";
+      return nonEmpty.map((content, index) =>
+        index === 0
+          ? {
+              role: "system" as const,
+              content,
+              providerOptions,
+            }
+          : {
+              role: "system" as const,
+              content,
+            },
+      );
+    }
     if (!instructions) return instructions;
     return {
       role: "system",

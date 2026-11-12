@@ -133,7 +133,15 @@ export function MessageModelPill({
     totalMessageUsage,
     lastStepUsage,
     stepBreakdown,
+    tps,
   } = metadata ?? {};
+
+  const formattedTps =
+    typeof tps === "number" && Number.isFinite(tps) && tps > 0
+      ? tps >= 10
+        ? `${Math.round(tps)} tok/s`
+        : `${tps.toFixed(1)} tok/s`
+      : null;
 
   const stepAggregatedUsage =
     stepBreakdown && stepBreakdown.length > 0
@@ -293,7 +301,7 @@ export function MessageModelPill({
   );
 
   const pill = (
-    <span className="inline-flex max-w-[320px] items-center gap-1 rounded px-1.5 py-0.5 text-[11px] leading-tight text-muted-foreground/70 transition-colors hover:text-muted-foreground">
+    <span className="inline-flex max-w-[380px] items-center gap-1 rounded px-1.5 py-0.5 text-[11px] leading-tight text-muted-foreground/70 transition-colors hover:text-muted-foreground">
       <ProviderIcon provider={provider} className="size-3 shrink-0" />
       <span className="truncate">{shortLabel}</span>
       {displayCost !== undefined ? (
@@ -320,6 +328,16 @@ export function MessageModelPill({
           </span>
         </>
       ) : null}
+      {formattedTps && (
+        <>
+          <span aria-hidden className="text-muted-foreground/40">
+            ·
+          </span>
+          <span className="tabular-nums text-muted-foreground/75 text-[10px]">
+            {formattedTps}
+          </span>
+        </>
+      )}
     </span>
   );
 
@@ -365,6 +383,7 @@ export function MessageModelPill({
               cache write {formatTokenCount(effectiveCacheWriteTokens)}
             </span>
           )}
+          {formattedTps && <span>speed {formattedTps}</span>}
         </div>
         {stepBreakdown && stepBreakdown.length > 0 && (
           <div className="max-h-64 overflow-y-auto">

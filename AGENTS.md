@@ -6,6 +6,7 @@ This file provides guidance for AI coding agents working in this repository.
 
 ## Quick Links
 
+- **[How to Understand This Codebase](HOW_TO_UNDERSTAND_THIS_CODEBASE.md)** — Start here for visual architecture diagrams, lifecycle flows, and a task-by-task file index
 - [Architecture & Workspace Structure](docs/agents/architecture.md)
 - [Code Style & Patterns](docs/agents/code-style.md)
 - [Lessons Learned](docs/agents/lessons-learned.md)

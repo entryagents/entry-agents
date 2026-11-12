@@ -351,8 +351,8 @@ export async function getUsageWindowTotals(
   // Never fall back to users.createdAt (which would sum lifetime spend if
   // billingCycleAnchor is null). Bound fallback to 1 calendar month ago.
   const oneMonthAgoMs = subtractOneCalendarMonth(now).getTime();
-  const rawAnchorMs =
-    userRow[0]?.billingCycleAnchor?.getTime() ?? oneMonthAgoMs;
+  const billingCycleAnchor = userRow[0]?.billingCycleAnchor ?? null;
+  const rawAnchorMs = billingCycleAnchor?.getTime() ?? oneMonthAgoMs;
   const anchorMs = Math.max(rawAnchorMs, oneMonthAgoMs);
 
   let cutoff5hIso: string;
@@ -371,7 +371,7 @@ export async function getUsageWindowTotals(
     cutoff30d = new Date(boundaries.cycleStart30dMs);
     resetsAt5h = boundaries.resetsAt5h;
     resetsAt7d = boundaries.resetsAt7d;
-    resetsAt30d = boundaries.resetsAt30d;
+    resetsAt30d = billingCycleAnchor ? boundaries.resetsAt30d : null;
   } else {
     // Rolling / sliding 5h and 7d sub-windows; bounded by the 1-month subscription
     // cycle anchor so a new subscription cycle resets all allowances to 100%.
@@ -381,7 +381,7 @@ export async function getUsageWindowTotals(
     cutoff5hIso = new Date(cutoff5hMs).toISOString();
     cutoff7dIso = new Date(cutoff7dMs).toISOString();
     cutoff30d = new Date(boundaries.cutoff30dMs);
-    resetsAt30d = boundaries.resetsAt30d;
+    resetsAt30d = billingCycleAnchor ? boundaries.resetsAt30d : null;
   }
 
   const [row] = await db
