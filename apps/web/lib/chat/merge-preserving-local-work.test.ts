@@ -138,7 +138,11 @@ describe("mergePreservingLocalWork", () => {
             inputTokens: 1200,
             outputTokens: 350,
             totalTokens: 1550,
-            inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 1200 },
+            inputTokenDetails: {
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+              noCacheTokens: 1200,
+            },
             outputTokenDetails: { textTokens: 350, reasoningTokens: 0 },
           },
         },

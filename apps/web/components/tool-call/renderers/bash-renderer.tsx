@@ -33,16 +33,16 @@ function TerminalOutputCard({
   };
 
   return (
-    <div className="w-full overflow-hidden rounded-lg border border-border/80 bg-zinc-950 dark:bg-black font-mono text-xs shadow-xs">
+    <div className="w-full min-w-0 overflow-hidden rounded-lg border border-border/80 bg-zinc-950 dark:bg-black font-mono text-xs shadow-xs">
       {/* Terminal Header */}
-      <div className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400 select-none">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900/60 px-3 py-1.5 text-[11px] text-zinc-400 select-none min-w-0 gap-2">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="h-2 w-2 rounded-full bg-zinc-600/70" />
             <span className="h-2 w-2 rounded-full bg-zinc-600/70" />
             <span className="h-2 w-2 rounded-full bg-zinc-600/70" />
           </div>
-          <span className="truncate text-zinc-300 font-medium font-mono">
+          <span className="truncate text-zinc-300 font-medium font-mono min-w-0">
             {cwd ? `${cwd} $` : "$"} {command}
           </span>
         </div>
@@ -77,7 +77,7 @@ function TerminalOutputCard({
       </div>
 
       {/* Terminal Body */}
-      <div className="max-h-72 overflow-y-auto p-3 text-[12px] leading-relaxed selection:bg-emerald-900 selection:text-white">
+      <div className="max-h-72 overflow-x-auto overflow-y-auto p-3 text-[12px] leading-relaxed selection:bg-emerald-900 selection:text-white min-w-0">
         {stdout && (
           <pre className="whitespace-pre-wrap break-words break-all text-zinc-200">
             {stdout.trim()}
