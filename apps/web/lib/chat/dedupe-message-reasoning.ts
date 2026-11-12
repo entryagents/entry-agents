@@ -228,8 +228,35 @@ export function dedupeMessageList<T extends WebAgentUIMessage>(
     if (seenMessageIds.has(msg.id)) {
       const existingIdx = result.findIndex((m) => m.id === msg.id);
       if (existingIdx !== -1 && msg.role === "assistant") {
+        const existing = result[existingIdx];
+        const mergedMeta =
+          existing.metadata || msg.metadata
+            ? {
+                ...existing.metadata,
+                ...msg.metadata,
+                totalMessageCost:
+                  typeof msg.metadata?.totalMessageCost === "number" &&
+                  Number.isFinite(msg.metadata.totalMessageCost) &&
+                  msg.metadata.totalMessageCost >= 0
+                    ? msg.metadata.totalMessageCost
+                    : existing.metadata?.totalMessageCost,
+                totalMessageUsage:
+                  msg.metadata?.totalMessageUsage ??
+                  existing.metadata?.totalMessageUsage,
+                lastStepUsage:
+                  msg.metadata?.lastStepUsage ??
+                  existing.metadata?.lastStepUsage,
+                stepBreakdown:
+                  msg.metadata?.stepBreakdown &&
+                  msg.metadata.stepBreakdown.length > 0
+                    ? msg.metadata.stepBreakdown
+                    : existing.metadata?.stepBreakdown,
+              }
+            : undefined;
+
         result[existingIdx] = dedupeMessageParts({
           ...result[existingIdx],
+          metadata: mergedMeta,
           parts: [...result[existingIdx].parts, ...msg.parts],
         });
       }
@@ -240,11 +267,37 @@ export function dedupeMessageList<T extends WebAgentUIMessage>(
     if (msg.role === "assistant" && result.length > 0) {
       const prev = result[result.length - 1];
       if (prev.role === "assistant") {
+        const mergedMeta =
+          prev.metadata || msg.metadata
+            ? {
+                ...prev.metadata,
+                ...msg.metadata,
+                totalMessageCost:
+                  typeof msg.metadata?.totalMessageCost === "number" &&
+                  Number.isFinite(msg.metadata.totalMessageCost) &&
+                  msg.metadata.totalMessageCost >= 0
+                    ? msg.metadata.totalMessageCost
+                    : prev.metadata?.totalMessageCost,
+                totalMessageUsage:
+                  msg.metadata?.totalMessageUsage ??
+                  prev.metadata?.totalMessageUsage,
+                lastStepUsage:
+                  msg.metadata?.lastStepUsage ?? prev.metadata?.lastStepUsage,
+                stepBreakdown:
+                  msg.metadata?.stepBreakdown &&
+                  msg.metadata.stepBreakdown.length > 0
+                    ? msg.metadata.stepBreakdown
+                    : prev.metadata?.stepBreakdown,
+              }
+            : undefined;
+
         const merged = dedupeMessageParts({
           ...prev,
+          metadata: mergedMeta,
           parts: [...prev.parts, ...msg.parts],
         });
         if (merged.parts.length === prev.parts.length) {
+          result[result.length - 1] = merged;
           continue;
         }
       }

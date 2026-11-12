@@ -114,4 +114,41 @@ describe("mergePreservingLocalWork", () => {
     expect(merged[1]?.id).toBe("a1");
     expect(merged[1]?.parts.length).toBe(1);
   });
+
+  test("preserves usage, token counts, and cost metadata when merging server and local messages", () => {
+    const serverMsgs: WebAgentUIMessage[] = [
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "text", text: "Partial text" }],
+        metadata: {
+          selectedModelId: "claude-3-7-sonnet",
+        },
+      },
+    ];
+
+    const localMsgs: WebAgentUIMessage[] = [
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "text", text: "Partial text" }],
+        metadata: {
+          totalMessageCost: 0.0125,
+          totalMessageUsage: {
+            inputTokens: 1200,
+            outputTokens: 350,
+            totalTokens: 1550,
+            inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0, noCacheTokens: 1200 },
+            outputTokenDetails: { textTokens: 350, reasoningTokens: 0 },
+          },
+        },
+      },
+    ];
+
+    const merged = mergePreservingLocalWork(serverMsgs, localMsgs);
+    expect(merged.length).toBe(1);
+    expect(merged[0]?.metadata?.totalMessageCost).toBe(0.0125);
+    expect(merged[0]?.metadata?.totalMessageUsage?.totalTokens).toBe(1550);
+    expect(merged[0]?.metadata?.selectedModelId).toBe("claude-3-7-sonnet");
+  });
 });

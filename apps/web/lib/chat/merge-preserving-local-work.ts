@@ -50,9 +50,40 @@ export function mergePreservingLocalWork(
     if (!localMsg) {
       result.push(serverMsg);
     } else {
-      // Both exist: combine parts so neither loses work
+      // Both exist: combine parts and metadata so neither loses work or billing metrics
+      const mergedMetadata =
+        serverMsg.metadata || localMsg.metadata
+          ? {
+              ...localMsg.metadata,
+              ...serverMsg.metadata,
+              selectedModelId:
+                serverMsg.metadata?.selectedModelId ??
+                localMsg.metadata?.selectedModelId,
+              modelId:
+                serverMsg.metadata?.modelId ?? localMsg.metadata?.modelId,
+              totalMessageCost:
+                typeof serverMsg.metadata?.totalMessageCost === "number" &&
+                Number.isFinite(serverMsg.metadata.totalMessageCost) &&
+                serverMsg.metadata.totalMessageCost >= 0
+                  ? serverMsg.metadata.totalMessageCost
+                  : localMsg.metadata?.totalMessageCost,
+              totalMessageUsage:
+                serverMsg.metadata?.totalMessageUsage ??
+                localMsg.metadata?.totalMessageUsage,
+              lastStepUsage:
+                serverMsg.metadata?.lastStepUsage ??
+                localMsg.metadata?.lastStepUsage,
+              stepBreakdown:
+                serverMsg.metadata?.stepBreakdown &&
+                serverMsg.metadata.stepBreakdown.length > 0
+                  ? serverMsg.metadata.stepBreakdown
+                  : localMsg.metadata?.stepBreakdown,
+            }
+          : undefined;
+
       const mergedParts = dedupeMessageParts({
         ...serverMsg,
+        metadata: mergedMetadata,
         parts: [...serverMsg.parts, ...localMsg.parts],
       });
       result.push(mergedParts);
