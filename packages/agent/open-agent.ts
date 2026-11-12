@@ -26,12 +26,13 @@ import type {
   SandboxLifecycleHooksContext,
   VercelToolContext,
 } from "./types";
-import { buildSystemPrompt } from "./system-prompt";
+import { buildSystemPrompt, buildSystemPromptParts } from "./system-prompt";
 import {
   askUserQuestionTool,
   bashTool,
   dirListTool,
   editFileTool,
+  gitCloneTool,
   gitStatusTool,
   githubCliTool,
   globTool,
@@ -225,6 +226,7 @@ const tools = {
   skill: skillTool,
   web_fetch: webFetchTool,
   web_search: webSearchTool,
+  git_clone: gitCloneTool(),
   git_status: gitStatusTool(),
   github_cli: githubCliTool(),
   vercel_cli: vercelCliTool(),
@@ -316,7 +318,7 @@ export const openAgent = new ToolLoopAgent({
     const sandbox = options.sandbox;
     const skills = options.skills ?? [];
 
-    const instructions = buildSystemPrompt({
+    const promptParts = buildSystemPromptParts({
       cwd: sandbox?.workingDirectory,
       currentBranch: sandbox?.currentBranch,
       customInstructions,
@@ -353,7 +355,7 @@ export const openAgent = new ToolLoopAgent({
         model: callModel,
       }),
       instructions: addCacheControl({
-        instructions,
+        instructions: [promptParts.staticCore, promptParts.dynamicContext],
         model: callModel,
       }),
       experimental_context: {

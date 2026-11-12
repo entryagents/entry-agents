@@ -450,10 +450,20 @@ npx skills --help                      # all options
  * 6. Skills section (if skills registered)
  * 7. Guided frontend workflow section (if enabled)
  */
-export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
+export interface SystemPromptParts {
+  staticCore: string;
+  dynamicContext: string;
+}
+
+export function buildSystemPromptParts(
+  options: BuildSystemPromptOptions,
+): SystemPromptParts {
   const family = detectModelFamily(options.modelId);
 
-  const parts = [CORE_SYSTEM_PROMPT, getModelOverlay(family, options.modelId)];
+  const staticCore = [
+    CORE_SYSTEM_PROMPT,
+    getModelOverlay(family, options.modelId),
+  ].join("\n");
 
   // Stable date string (YYYY-MM-DD) without second-level jitter to preserve prompt cache hits
   // across consecutive turns and tool steps.
@@ -470,19 +480,19 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
     options.environmentDetails || undefined,
   ].filter(Boolean);
 
-  parts.push(`\n${envParts.join("\n\n")}`);
+  const dynamicParts: string[] = [`\n${envParts.join("\n\n")}`];
 
   if (options.currentBranch) {
     const cloudSandboxInstructions = CLOUD_SANDBOX_INSTRUCTIONS.replace(
       "{branch}",
       options.currentBranch,
     );
-    parts.push(`\nCurrent branch: ${options.currentBranch}`);
-    parts.push(`\n${cloudSandboxInstructions}`);
+    dynamicParts.push(`\nCurrent branch: ${options.currentBranch}`);
+    dynamicParts.push(`\n${cloudSandboxInstructions}`);
   }
 
   if (options.customInstructions) {
-    parts.push(
+    dynamicParts.push(
       `\n# Project-Specific Instructions\n\n${options.customInstructions}`,
     );
   }
@@ -491,13 +501,21 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
   if (options.skills && options.skills.length > 0) {
     const skillsPrompt = buildSkillsPrompt(options.skills);
     if (skillsPrompt) {
-      parts.push(skillsPrompt);
+      dynamicParts.push(skillsPrompt);
     }
   }
 
   if (options.guidedFrontendWorkflow) {
-    parts.push(`\n${GUIDED_FRONTEND_WORKFLOW_PROMPT}`);
+    dynamicParts.push(`\n${GUIDED_FRONTEND_WORKFLOW_PROMPT}`);
   }
 
-  return parts.join("\n");
+  return {
+    staticCore,
+    dynamicContext: dynamicParts.join("\n"),
+  };
+}
+
+export function buildSystemPrompt(options: BuildSystemPromptOptions): string {
+  const { staticCore, dynamicContext } = buildSystemPromptParts(options);
+  return [staticCore, dynamicContext].filter(Boolean).join("\n");
 }

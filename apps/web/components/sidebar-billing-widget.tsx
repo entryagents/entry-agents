@@ -39,6 +39,7 @@ export function formatExpirationDate(isoString: string): string {
       month: "short",
       day: "numeric",
       year: "numeric",
+      timeZone: "UTC",
     });
   } catch {
     return "";

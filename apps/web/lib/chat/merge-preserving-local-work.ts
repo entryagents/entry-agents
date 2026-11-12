@@ -50,6 +50,61 @@ export function mergePreservingLocalWork(
     if (!localMsg) {
       result.push(serverMsg);
     } else {
+      const serverUsage = serverMsg.metadata?.totalMessageUsage;
+      const localUsage = localMsg.metadata?.totalMessageUsage;
+      const serverTokens =
+        serverUsage?.totalTokens ??
+        (serverUsage?.inputTokens ?? 0) + (serverUsage?.outputTokens ?? 0);
+      const localTokens =
+        localUsage?.totalTokens ??
+        (localUsage?.inputTokens ?? 0) + (localUsage?.outputTokens ?? 0);
+      const preferredTotalUsage =
+        serverUsage && (!localUsage || serverTokens >= localTokens)
+          ? serverUsage
+          : localUsage;
+
+      const serverCost = serverMsg.metadata?.totalMessageCost;
+      const localCost = localMsg.metadata?.totalMessageCost;
+      const validServerCost =
+        typeof serverCost === "number" &&
+        Number.isFinite(serverCost) &&
+        serverCost >= 0
+          ? serverCost
+          : undefined;
+      const validLocalCost =
+        typeof localCost === "number" &&
+        Number.isFinite(localCost) &&
+        localCost >= 0
+          ? localCost
+          : undefined;
+      const preferredTotalCost =
+        validServerCost !== undefined &&
+        (validLocalCost === undefined || validServerCost >= validLocalCost)
+          ? validServerCost
+          : validLocalCost;
+
+      const serverSteps = serverMsg.metadata?.stepBreakdown;
+      const localSteps = localMsg.metadata?.stepBreakdown;
+      const preferredStepBreakdown =
+        serverSteps &&
+        serverSteps.length > 0 &&
+        (!localSteps || serverSteps.length >= localSteps.length)
+          ? serverSteps
+          : localSteps;
+
+      const serverTps = serverMsg.metadata?.tps;
+      const localTps = localMsg.metadata?.tps;
+      const preferredTps =
+        typeof serverTps === "number" &&
+        Number.isFinite(serverTps) &&
+        serverTps > 0
+          ? serverTps
+          : typeof localTps === "number" &&
+              Number.isFinite(localTps) &&
+              localTps > 0
+            ? localTps
+            : undefined;
+
       // Both exist: combine parts and metadata so neither loses work or billing metrics
       const mergedMetadata =
         serverMsg.metadata || localMsg.metadata
@@ -61,23 +116,13 @@ export function mergePreservingLocalWork(
                 localMsg.metadata?.selectedModelId,
               modelId:
                 serverMsg.metadata?.modelId ?? localMsg.metadata?.modelId,
-              totalMessageCost:
-                typeof serverMsg.metadata?.totalMessageCost === "number" &&
-                Number.isFinite(serverMsg.metadata.totalMessageCost) &&
-                serverMsg.metadata.totalMessageCost >= 0
-                  ? serverMsg.metadata.totalMessageCost
-                  : localMsg.metadata?.totalMessageCost,
-              totalMessageUsage:
-                serverMsg.metadata?.totalMessageUsage ??
-                localMsg.metadata?.totalMessageUsage,
+              totalMessageCost: preferredTotalCost,
+              totalMessageUsage: preferredTotalUsage,
               lastStepUsage:
                 serverMsg.metadata?.lastStepUsage ??
                 localMsg.metadata?.lastStepUsage,
-              stepBreakdown:
-                serverMsg.metadata?.stepBreakdown &&
-                serverMsg.metadata.stepBreakdown.length > 0
-                  ? serverMsg.metadata.stepBreakdown
-                  : localMsg.metadata?.stepBreakdown,
+              stepBreakdown: preferredStepBreakdown,
+              ...(preferredTps !== undefined ? { tps: preferredTps } : {}),
             }
           : undefined;
 

@@ -213,7 +213,7 @@ export const reasoningEffortSchema = z
   .string()
   .min(1)
   .max(32)
-  .regex(/^[a-z]+$/);
+  .regex(/^[a-z0-9_-]+$/i);
 
 // Models confirmed to accept `reasoningEffort` in the OpenAI-compatible
 // provider-options schema when routed through entry-gateway. Add a model id

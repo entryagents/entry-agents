@@ -110,8 +110,8 @@ export async function processChargeSuccess(
           billingSubscriptionCode: outcome.subscriptionId ?? undefined,
           plan: planId!,
           billingCycleAnchor: newAnchor,
-          creditBalanceCents: sql`${users.creditBalanceCents} + ${plan.creditGrantCents}`,
-          planGrantBalanceCents: sql`${users.planGrantBalanceCents} + ${plan.creditGrantCents}`,
+          creditBalanceCents: sql`greatest(0, ${users.creditBalanceCents} - ${users.planGrantBalanceCents}) + ${plan.creditGrantCents}`,
+          planGrantBalanceCents: plan.creditGrantCents,
         })
         .where(eq(users.id, userId))
         .returning({ creditBalanceCents: users.creditBalanceCents });

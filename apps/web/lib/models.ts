@@ -106,6 +106,8 @@ export interface GatewayAvailableModel {
   capabilities?: string[];
   /** Reasoning effort levels advertised by the gateway for this model. */
   reasoningEffortLevels?: GatewayReasoningEffortLevel[];
+  /** Default reasoning effort advertised by the gateway for this model. */
+  defaultReasoningEffort?: string;
   /** Explicit boolean from gateway indicating whether reasoning effort is supported. */
   supportsReasoningEffort?: boolean;
 }

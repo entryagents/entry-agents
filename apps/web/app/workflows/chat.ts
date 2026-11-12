@@ -3485,6 +3485,10 @@ const runAgentStep = async (
     let stepFinishReasons = existingStepFinishReasons;
     let totalMessageUsage = existingTotalMessageUsage;
     let totalMessageCost = existingTotalMessageCost;
+    let liveTps: number | undefined;
+    let liveStepBreakdown: WebAgentStepCostBreakdown[] = [
+      ...existingStepBreakdown,
+    ];
 
     // REAL-TIME SPEND CAPPING (owner 2026-09-15: "make the usage for
     // the entry plan real time so it doesn't miscalculate -- user can
@@ -4033,6 +4037,14 @@ const runAgentStep = async (
         let liveStreamedChars = 0;
         let midStreamDebited = false;
         let midStreamDebitedUsd = 0;
+        let stepGenerationStartMs: number | null = null;
+        let totalActiveGenerationMs = 0;
+        let totalOutputTokensGenerated = existingStepBreakdown.reduce(
+          (sum, step) => sum + (step.usage?.outputTokens ?? 0),
+          0,
+        );
+        let lastTpsEmitAt = 0;
+        const liveStepToolCalls: string[] = [];
 
         let stream: Awaited<ReturnType<typeof webAgent.stream>>;
         let streamAttempts = 0;
@@ -4160,14 +4172,22 @@ const runAgentStep = async (
           onError: toFriendlyChatErrorText,
           messageMetadata: ({ part: streamPart }) => {
             if (
-              !midStreamDebited &&
-              stepModelCost &&
-              (streamPart.type === "text-delta" ||
-                streamPart.type === "reasoning-delta" ||
-                streamPart.type === "tool-input-delta" ||
-                streamPart.type === "tool-call")
+              streamPart.type === "text-delta" ||
+              streamPart.type === "reasoning-delta" ||
+              streamPart.type === "tool-input-delta" ||
+              streamPart.type === "tool-call"
             ) {
+              const nowMs = Date.now();
+              if (stepGenerationStartMs === null) {
+                stepGenerationStartMs = nowMs;
+              }
               const partRecord = streamPart as Record<string, unknown>;
+              if (
+                streamPart.type === "tool-call" &&
+                typeof partRecord.toolName === "string"
+              ) {
+                liveStepToolCalls.push(partRecord.toolName);
+              }
               const chunkText =
                 typeof partRecord.text === "string"
                   ? partRecord.text
@@ -4182,62 +4202,133 @@ const runAgentStep = async (
                         : "";
               liveStreamedChars += chunkText.length;
               const liveOutputTokens = Math.ceil(liveStreamedChars / 3.8);
-              const liveStepCostUsd =
-                estInputCostUsd +
-                (liveOutputTokens / 1_000_000) * estMillionOutputCostUsd;
-              const liveStepCostCents = liveStepCostUsd * 100;
 
-              const wouldExhaustWindow =
-                remainingWindowBudgetCents !== null &&
-                !windowExhausted &&
-                remainingWindowBudgetCents - liveStepCostCents <= 0;
-              const wouldExhaustCredit =
-                enforceCreditBlock &&
-                !creditExhausted &&
-                remainingBalanceCents - liveStepCostCents <= 0;
+              const activeMs =
+                totalActiveGenerationMs +
+                Math.max(1, nowMs - stepGenerationStartMs);
+              if (activeMs >= 250 && liveOutputTokens >= 4) {
+                liveTps = Number(
+                  (
+                    (totalOutputTokensGenerated + liveOutputTokens) /
+                    (activeMs / 1000)
+                  ).toFixed(1),
+                );
+              }
 
-              if (wouldExhaustWindow || wouldExhaustCredit) {
-                midStreamDebited = true;
-                midStreamDebitedUsd = liveStepCostUsd;
-                lastStepCost = liveStepCostUsd;
-                totalMessageCost = (totalMessageCost ?? 0) + liveStepCostUsd;
-                recordDebit(liveStepCostUsd, {
-                  billingReference: `${workflowRunId}:main-step:${stepNumber}:midstream`,
-                  modelId,
-                  description: `Usage: ${modelId}`,
-                });
-                const debitedCents = Math.max(1, Math.ceil(liveStepCostCents));
-                if (enforceCreditBlock) {
-                  remainingBalanceCents -= debitedCents;
-                  if (remainingBalanceCents <= 0) {
-                    creditExhausted = true;
+              if (!midStreamDebited && stepModelCost) {
+                const liveStepCostUsd =
+                  estInputCostUsd +
+                  (liveOutputTokens / 1_000_000) * estMillionOutputCostUsd;
+                const liveStepCostCents = liveStepCostUsd * 100;
+
+                const wouldExhaustWindow =
+                  remainingWindowBudgetCents !== null &&
+                  !windowExhausted &&
+                  remainingWindowBudgetCents - liveStepCostCents <= 0;
+                const wouldExhaustCredit =
+                  enforceCreditBlock &&
+                  !creditExhausted &&
+                  remainingBalanceCents - liveStepCostCents <= 0;
+
+                if (wouldExhaustWindow || wouldExhaustCredit) {
+                  midStreamDebited = true;
+                  midStreamDebitedUsd = liveStepCostUsd;
+                  lastStepCost = liveStepCostUsd;
+                  totalMessageCost = (totalMessageCost ?? 0) + liveStepCostUsd;
+                  recordDebit(liveStepCostUsd, {
+                    billingReference: `${workflowRunId}:main-step:${stepNumber}:midstream`,
+                    modelId,
+                    description: `Usage: ${modelId}`,
+                  });
+                  const debitedCents = Math.max(
+                    1,
+                    Math.ceil(liveStepCostCents),
+                  );
+                  if (enforceCreditBlock) {
+                    remainingBalanceCents -= debitedCents;
+                    if (remainingBalanceCents <= 0) {
+                      creditExhausted = true;
+                    }
                   }
-                }
-                if (remainingWindowBudgetCents !== null) {
-                  remainingWindowBudgetCents -= debitedCents;
-                  if (remainingWindowBudgetCents <= 0) {
-                    windowExhausted = true;
+                  if (remainingWindowBudgetCents !== null) {
+                    remainingWindowBudgetCents -= debitedCents;
+                    if (remainingWindowBudgetCents <= 0) {
+                      windowExhausted = true;
+                    }
                   }
+                  abortController.abort();
+                  return {
+                    selectedModelId,
+                    modelId,
+                    lastStepCost,
+                    totalMessageCost,
+                    ...(liveTps !== undefined ? { tps: liveTps } : {}),
+                    ...(liveStepBreakdown.length > 0
+                      ? { stepBreakdown: liveStepBreakdown }
+                      : {}),
+                    ...(creditExhausted ? { creditExhausted: true } : {}),
+                    ...(windowExhausted ? { windowExhausted: true } : {}),
+                  } satisfies WebAgentMessageMetadata;
                 }
-                abortController.abort();
+              }
+
+              if (liveTps !== undefined && nowMs - lastTpsEmitAt >= 500) {
+                lastTpsEmitAt = nowMs;
                 return {
                   selectedModelId,
                   modelId,
-                  lastStepCost,
-                  totalMessageCost,
-                  ...(creditExhausted ? { creditExhausted: true } : {}),
-                  ...(windowExhausted ? { windowExhausted: true } : {}),
+                  tps: liveTps,
+                  ...(totalMessageUsage ? { totalMessageUsage } : {}),
+                  ...(lastStepUsage ? { lastStepUsage } : {}),
+                  ...(totalMessageCost !== undefined
+                    ? { totalMessageCost }
+                    : {}),
+                  ...(liveStepBreakdown.length > 0
+                    ? { stepBreakdown: liveStepBreakdown }
+                    : {}),
                 } satisfies WebAgentMessageMetadata;
               }
             }
 
             if (streamPart.type === "finish-step") {
+              const nowMs = Date.now();
+              const stepElapsedMs =
+                stepGenerationStartMs !== null
+                  ? Math.max(1, nowMs - stepGenerationStartMs)
+                  : 0;
+              totalActiveGenerationMs += stepElapsedMs;
+              stepGenerationStartMs = null;
+
               lastStepUsage = streamPart.usage;
               if (streamPart.usage) {
                 totalMessageUsage = totalMessageUsage
                   ? addLanguageModelUsage(totalMessageUsage, streamPart.usage)
                   : streamPart.usage;
               }
+              const stepOutputTokens =
+                streamPart.usage?.outputTokens ??
+                Math.ceil(liveStreamedChars / 3.8);
+              totalOutputTokensGenerated += stepOutputTokens;
+              liveStreamedChars = 0;
+
+              const stepTps =
+                stepElapsedMs >= 100 && stepOutputTokens > 0
+                  ? Number(
+                      (stepOutputTokens / (stepElapsedMs / 1000)).toFixed(1),
+                    )
+                  : undefined;
+              if (
+                totalActiveGenerationMs >= 100 &&
+                totalOutputTokensGenerated > 0
+              ) {
+                liveTps = Number(
+                  (
+                    totalOutputTokensGenerated /
+                    (totalActiveGenerationMs / 1000)
+                  ).toFixed(1),
+                );
+              }
+
               const stepCost = estimateStepCost(
                 streamPart.providerMetadata,
                 modelId,
@@ -4300,6 +4391,24 @@ const runAgentStep = async (
                   abortController.abort();
                 }
               }
+              liveStepBreakdown = [
+                ...liveStepBreakdown,
+                {
+                  stepNumber: liveStepBreakdown.length + 1,
+                  modelId,
+                  finishReason: streamPart.finishReason,
+                  rawFinishReason: streamPart.rawFinishReason,
+                  usage: streamPart.usage,
+                  cost: stepCost,
+                  toolCallNames:
+                    liveStepToolCalls.length > 0
+                      ? [...liveStepToolCalls]
+                      : undefined,
+                  ...(stepTps !== undefined ? { tps: stepTps } : {}),
+                },
+              ];
+              liveStepToolCalls.length = 0;
+
               stepFinishReasons = [
                 ...stepFinishReasons,
                 {
@@ -4314,6 +4423,8 @@ const runAgentStep = async (
                 totalMessageUsage,
                 lastStepCost,
                 totalMessageCost,
+                stepBreakdown: liveStepBreakdown,
+                ...(liveTps !== undefined ? { tps: liveTps } : {}),
                 lastStepFinishReason: streamPart.finishReason,
                 lastStepRawFinishReason: streamPart.rawFinishReason,
                 stepFinishReasons,
@@ -4399,26 +4510,35 @@ const runAgentStep = async (
     // Per-step breakdown for the "what made up this cost" dropdown on the
     // usage pill -- one entry per model step in this turn, carrying the
     // model, token usage, estimated cost, and which tools it called.
-    const newStepBreakdown: WebAgentStepCostBreakdown[] = steps.map((step) => ({
-      stepNumber: existingStepBreakdown.length + step.stepNumber + 1,
-      modelId: step.model?.modelId ?? modelId,
-      finishReason: step.finishReason,
-      rawFinishReason: step.rawFinishReason,
-      usage: step.usage,
-      cost: estimateStepCost(
-        step.providerMetadata,
-        modelId,
-        step.usage,
-        modelCostCatalog,
-      ),
-      toolCallNames: step.toolCalls.map((toolCall) => toolCall.toolName),
-    }));
+    const newStepBreakdown: WebAgentStepCostBreakdown[] = steps.map((step) => {
+      const targetStepNumber =
+        existingStepBreakdown.length + step.stepNumber + 1;
+      const liveStep = liveStepBreakdown.find(
+        (b) => b.stepNumber === targetStepNumber,
+      );
+      return {
+        stepNumber: targetStepNumber,
+        modelId: step.model?.modelId ?? modelId,
+        finishReason: step.finishReason,
+        rawFinishReason: step.rawFinishReason,
+        usage: step.usage,
+        cost: estimateStepCost(
+          step.providerMetadata,
+          modelId,
+          step.usage,
+          modelCostCatalog,
+        ),
+        toolCallNames: step.toolCalls.map((toolCall) => toolCall.toolName),
+        ...(liveStep?.tps !== undefined ? { tps: liveStep.tps } : {}),
+      };
+    });
     const stepBreakdown = [...existingStepBreakdown, ...newStepBreakdown];
     responseMessage = {
       ...responseMessage,
       metadata: {
         ...responseMessage.metadata,
         stepBreakdown,
+        ...(liveTps !== undefined ? { tps: liveTps } : {}),
       },
     };
 

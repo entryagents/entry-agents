@@ -30,6 +30,8 @@ export type WebAgentStepCostBreakdown = {
   cost?: number;
   /** Names of tools invoked during this step, if any (e.g. ["bash", "write"]). */
   toolCallNames?: string[];
+  /** Output tokens per second measured during this step's active generation. */
+  tps?: number;
 };
 
 export type WebAgentMessageMetadata = {
@@ -46,6 +48,8 @@ export type WebAgentMessageMetadata = {
   stepFinishReasons?: WebAgentStepFinishMetadata[];
   /** Full per-step cost/usage breakdown for the "what made up this cost" dropdown. */
   stepBreakdown?: WebAgentStepCostBreakdown[];
+  /** Live or final output generation speed in tokens per second. */
+  tps?: number;
   /**
    * True when the upstream model provider reported its own quota/capacity
    * as exhausted (e.g. a monthly token cap on the provider's side) but

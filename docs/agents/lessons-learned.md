@@ -1,5 +1,21 @@
 # Lessons Learned
 
+## 2026-11-12 — Satori OpenGraph, Gateway Reasoning Fidelity, Split Prompt Caching, Slow-Network Streaming, TPS & UTC Billing (PR #91, #92)
+
+- **Satori OpenGraph (`next/og`) Cannot Render `<svg><image href="data:..." /></svg>` (PR #91)**:
+  - `ImageResponse` (Satori) throws `TypeError: Cannot read properties of undefined (reading '0') at rr.next` during `next build` if an `<svg>` contains an embedded `<image>` with a `data:image/jpeg;base64,...` URI (e.g. `<EntryMark />`). Export the raw `ENTRY_LOGO_DATA_URI` constant and render `<img src={ENTRY_LOGO_DATA_URI} ... />` directly in `opengraph-image.tsx` routes.
+- **Gateway Reasoning Effort Exact Names & Schema**:
+  - Do not rewrite gateway reasoning effort names (`"none"` -> `"Off"`, `"xhigh"` -> `"XHigh"`) in `formatGatewayEffortLabel`; preserve the gateway's exact `value` (and `default_effort`) verbatim in real time, and allow `[a-z0-9_-]+` in `reasoningEffortSchema`.
+- **First-Step Prompt Caching Across Turns**:
+  - Concatenating static `CORE_SYSTEM_PROMPT + modelOverlay` (~10.5K+ tokens) with dynamic per-turn context (UTC date, `cwd`, `currentBranch`, custom instructions, skills, `guidedFrontendWorkflow`) into a single `SystemModelMessage` busts the entire prompt cache on Turn 2 Step 1 whenever any dynamic field changes. Use `buildSystemPromptParts()` (`staticCore`, `dynamicContext`) and pass `[staticCore, dynamicContext]` to `addCacheControl` so only `staticCore` holds the Anthropic cache breakpoint and stays warm across turns and sessions.
+- **Slow-Internet Streaming & Continuous `rAF` Pacing**:
+  - Including `shownText` in `usePacedText`'s `useEffect` dependency array cancels and re-schedules `requestAnimationFrame` on every single frame, and fixed `step <= 64` without `dt` scaling stalls behind bursty network chunks. Use a continuous `rAF` loop keyed only on `[text, isStreaming]` with `performance.now()` `dt` scaling and adaptive catch-up for large backlogs (`> 120` chars).
+- **Monotonic Usage Merge, Live Step Breakdown & Real-Time TPS**:
+  - Omitting `stepBreakdown` from `finish-step` `messageMetadata` until turn completion causes `MessageModelPill` to fall back to `singleTurnFallbackCost(totalMessageUsage)` mid-stream, falsely triggering >200K pricing tiers on multi-step turns. Emit progressive `stepBreakdown` on `finish-step`, track active generation `tps` (`tok/s`), and make `mergePreservingLocalWork` monotonic for `totalMessageUsage`, `totalMessageCost`, `stepBreakdown`, and `tps`.
+- **UTC Subscription Expiration & Renewal Rollover**:
+  - `addOneCalendarMonth` computes `expiresAt` in UTC (`Date.UTC`), so `formatExpirationDate` must pass `timeZone: "UTC"` to avoid off-by-1-day local timezone shifts.
+  - On subscription renewal (`processChargeSuccess`), expire unspent prior-cycle `planGrantBalanceCents` (`greatest(0, creditBalanceCents - planGrantBalanceCents) + plan.creditGrantCents`) instead of stacking old monthly grants; and when `billingCycleAnchor` is `null`, return `resetsAt30d: null` instead of computing `addOneCalendarMonth(subtractOneCalendarMonth(now))`.
+
 ## 2026-11-12 — Streaming Scroll, Gateway-Driven Reasoning/Context, Sandbox Process Survival & Inbox Steering (PR #88, #89, #90)
 
 - **Free Scrolling During Active Streaming (PR #88)**:

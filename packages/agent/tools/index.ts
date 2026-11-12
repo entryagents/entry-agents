@@ -16,6 +16,7 @@ export {
   type GitStatusInput,
   type GitStatusResult,
 } from "./git-status";
+export { gitCloneTool, type GitCloneInput } from "./git-clone";
 export {
   taskTool,
   type TaskPendingToolCall,

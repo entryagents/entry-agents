@@ -18,6 +18,7 @@ export interface ModelOption {
   cost?: AvailableModelCost;
   provider: string;
   reasoningEffortLevels?: Array<{ value: string; label: string }>;
+  defaultReasoningEffort?: string;
   supportsReasoningEffort?: boolean;
 }
 
@@ -33,6 +34,9 @@ function toBaseModelOption(model: AvailableModel): ModelOption {
     ...(model.cost ? { cost: model.cost } : {}),
     ...(model.reasoningEffortLevels
       ? { reasoningEffortLevels: model.reasoningEffortLevels }
+      : {}),
+    ...(model.defaultReasoningEffort
+      ? { defaultReasoningEffort: model.defaultReasoningEffort }
       : {}),
     ...(model.supportsReasoningEffort !== undefined
       ? { supportsReasoningEffort: model.supportsReasoningEffort }
