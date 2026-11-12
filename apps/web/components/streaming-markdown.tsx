@@ -35,7 +35,7 @@ function healStreamingMarkdown(text: string, isStreaming: boolean): string {
  * Features:
  * - OpenCode-inspired paced text reveal (no token-burst jitter or micro-stutters)
  * - Automatic syntax healing for unclosed streaming code blocks
- * - Sleek, non-distracting streaming cursor that smoothly advances with text
+ * - Native inline block caret via Streamdown that advances smoothly inside the stream
  * - Fully responsive prose typography optimized for mobile & desktop
  */
 export function StreamingMarkdown({
@@ -60,18 +60,13 @@ export function StreamingMarkdown({
     >
       <Streamdown
         mode={isStreaming ? "streaming" : "static"}
-        isAnimating={isStreaming}
+        isAnimating={false}
+        caret={isStreaming ? "block" : undefined}
         plugins={streamdownPlugins}
         components={components}
       >
         {healedContent}
       </Streamdown>
-      {isStreaming && (
-        <span
-          className="inline-block ml-1 h-[1.1em] w-[3px] translate-y-[2px] rounded-full bg-primary/80 animate-pulse transition-opacity"
-          aria-hidden="true"
-        />
-      )}
     </div>
   );
 }
