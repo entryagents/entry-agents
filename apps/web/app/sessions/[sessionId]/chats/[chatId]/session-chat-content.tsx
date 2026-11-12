@@ -81,7 +81,7 @@ import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
 import { SnippetChip } from "@/components/snippet-chip";
 import { AssistantMessageGroups } from "@/components/assistant-message-groups";
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
-import { AgentHubButton } from "@/components/agent-hub/agent-hub-button";
+import { SubagentChatView } from "@/components/subagent-chat/subagent-chat-view";
 import { MessageModelPill } from "@/components/message-model-pill";
 import {
   PinnedTodoPanel,
@@ -1110,6 +1110,8 @@ export function SessionChatContent({
   const isMobile = useIsMobile();
   const {
     activeView,
+    activeSubagentId,
+    closeSubagentTab,
     gitPanelOpen,
     openFileTab,
     shareRequested,
@@ -3559,6 +3561,7 @@ export function SessionChatContent({
     <WorkspacePanel
       session={session}
       devServer={devServer}
+      messages={messages}
       hasRepo={hasRepo}
       hasExistingPr={hasExistingPr}
       existingPrUrl={existingPrUrl}
@@ -3679,6 +3682,13 @@ export function SessionChatContent({
             <DiffTabView />
           ) : isMobile && activeView === "file" ? (
             <FileTabView />
+          ) : activeView === "subagent" && activeSubagentId ? (
+            <SubagentChatView
+              subagentId={activeSubagentId}
+              messages={messages}
+              onClose={closeSubagentTab}
+              onStopRun={() => void stopChatStream()}
+            />
           ) : (
             <>
               {/* Messages */}

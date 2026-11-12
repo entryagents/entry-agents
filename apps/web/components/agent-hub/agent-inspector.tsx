@@ -1,7 +1,8 @@
 "use client";
 
 import { formatTokens } from "@entry-agents/shared";
-import { ArrowLeft, Square } from "lucide-react";
+import { ArrowLeft, ExternalLink, Square } from "lucide-react";
+import { useOptionalGitPanel } from "@/app/sessions/[sessionId]/chats/[chatId]/git-panel-context";
 import type { AgentHubEntry } from "@/lib/agent-hub/derive-roster";
 import { isLiveStatus } from "@/lib/agent-hub/derive-roster";
 import { Button } from "@/components/ui/button";
@@ -60,6 +61,7 @@ export function AgentInspector({
     entry.startedAt !== null && live
       ? formatElapsed(now - entry.startedAt)
       : "—";
+  const gitPanel = useOptionalGitPanel();
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
@@ -88,8 +90,26 @@ export function AgentInspector({
           <h3 className="mt-1 text-base leading-snug font-semibold break-words">
             {entry.title}
           </h3>
-          <div className="mt-1">
+          <div className="mt-1 flex items-center gap-2">
             <StatusBadge status={entry.status} />
+            {gitPanel && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  gitPanel.openSubagentTab(
+                    entry.id,
+                    entry.title,
+                    entry.subagentType,
+                  );
+                }}
+                className="h-6 px-2 text-xs gap-1"
+                aria-label={`Open subagent ${entry.title} in chat tab`}
+              >
+                <ExternalLink className="h-3 w-3" />
+                <span>Open in Tab</span>
+              </Button>
+            )}
           </div>
         </div>
       </div>

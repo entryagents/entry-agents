@@ -101,6 +101,35 @@ describe("taskTool.toModelOutput", () => {
     expect(out.value).toBe("[Subagent error: Gateway rate limit exceeded]");
   });
 
+  test("surfaces clean markdown error and budget notices", () => {
+    const messages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content: "**Subagent execution halted**: Provider rate limit reached",
+      } as never,
+    ];
+    const out = (
+      taskTool as unknown as {
+        toModelOutput: (arg: unknown) => { type: string; value: string };
+      }
+    ).toModelOutput({ output: { final: messages } });
+    expect(out.value).toContain("**Subagent execution halted**");
+
+    const budgetMessages: ModelMessage[] = [
+      {
+        role: "assistant",
+        content:
+          "**Subagent limit reached**: Stopped by usage window. Partial progress preserved across 3 steps.",
+      } as never,
+    ];
+    const budgetOut = (
+      taskTool as unknown as {
+        toModelOutput: (arg: unknown) => { type: string; value: string };
+      }
+    ).toModelOutput({ output: { final: budgetMessages } });
+    expect(budgetOut.value).toContain("**Subagent limit reached**");
+  });
+
   test("surfaces budget limit notices explicitly", () => {
     const messages: ModelMessage[] = [
       {

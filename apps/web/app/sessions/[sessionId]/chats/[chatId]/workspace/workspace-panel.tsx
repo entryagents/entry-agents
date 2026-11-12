@@ -1,10 +1,9 @@
 "use client";
 
 import {
+  Bot,
   FileCode,
-  FolderGit2,
   GitCompare,
-  GitPullRequest,
   Globe,
   Maximize2,
   Minimize2,
@@ -14,6 +13,10 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  deriveAgentHubRoster,
+  summarizeAgentHub,
+} from "@/lib/agent-hub/derive-roster";
 import type { DevServerControls } from "../hooks/use-dev-server";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 import { Button } from "@/components/ui/button";
@@ -44,6 +47,7 @@ import { WorkspaceReviewTab } from "./workspace-review-tab";
 import { WorkspacePreviewTab } from "./workspace-preview-tab";
 import { WorkspaceTerminalTab } from "./workspace-terminal-tab";
 import { WorkspaceFileTab } from "./workspace-file-tab";
+import { WorkspaceAgentsTab } from "./workspace-agents-tab";
 
 export type WorkspacePanelProps = GitPanelProps & {
   devServer: DevServerControls;
@@ -52,6 +56,7 @@ export type WorkspacePanelProps = GitPanelProps & {
   refreshFiles?: () => void;
   isWorkspaceExpanded?: boolean;
   onToggleWorkspaceExpand?: () => void;
+  messages?: unknown;
 };
 
 type WorkspaceTabItem = {
@@ -67,8 +72,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   const {
     devServer,
     files,
-    filesLoading,
-    refreshFiles,
+    filesLoading: _filesLoading,
+    refreshFiles: _refreshFiles,
     isWorkspaceExpanded = false,
     onToggleWorkspaceExpand,
     ...gitPanelProps
@@ -81,27 +86,48 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     changesCount,
     hasActionNeeded,
     openFiles,
-    setOpenFiles,
+    setOpenFiles: _setOpenFiles,
     activeWorkspaceTab,
     setActiveWorkspaceTab,
     closeWorkspaceFile,
     openDiffToFile,
     openFileTab,
+    openSubagentTab,
   } = useGitPanel();
+
+  const subagentRoster = useMemo(
+    () => deriveAgentHubRoster(props.messages),
+    [props.messages],
+  );
+  const subagentTotals = useMemo(
+    () => summarizeAgentHub(subagentRoster),
+    [subagentRoster],
+  );
 
   // Dynamic tool tabs: which core tabs are open
   // If no repo is connected, default to preview + terminal rather than assuming git PR review
   const [openToolTabs, setOpenToolTabs] = useState<string[]>(() => {
-    if (hasRepo) {
-      return ["review", "preview"];
-    }
-    return changesCount > 0 ? ["review", "preview"] : ["preview", "terminal"];
+    const initial = hasRepo
+      ? ["review", "preview"]
+      : changesCount > 0
+        ? ["review", "preview"]
+        : ["preview", "terminal"];
+    return initial;
   });
 
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState("");
 
   const isDevServerReady = devServer.state.status === "ready";
+
+  // Automatically make agents tab visible when subagents appear
+  useEffect(() => {
+    if (subagentTotals.total > 0 && !openToolTabs.includes("agents")) {
+      setOpenToolTabs((prev) =>
+        prev.includes("agents") ? prev : [...prev, "agents"],
+      );
+    }
+  }, [subagentTotals.total, openToolTabs]);
 
   // Ensure default active tab is valid
   useEffect(() => {
@@ -213,6 +239,18 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       });
     }
 
+    if (openToolTabs.includes("agents") || subagentTotals.total > 0) {
+      list.push({
+        id: "agents",
+        label: "Subagents",
+        icon: Bot,
+        badge: subagentTotals.live > 0 ? String(subagentTotals.live) : null,
+        badgeColor:
+          "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold",
+        closeable: false,
+      });
+    }
+
     // Dynamic Open File Tabs
     for (const filePath of openFiles) {
       const fileName = filePath.split("/").pop() ?? filePath;
@@ -232,6 +270,8 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     changesCount,
     hasActionNeeded,
     isDevServerReady,
+    subagentTotals.total,
+    subagentTotals.live,
   ]);
 
   return (
@@ -450,6 +490,21 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           <WorkspaceTerminalTab
             sessionId={session.id}
             canRun={gitPanelProps.hasSandbox}
+          />
+        </div>
+
+        {/* Subagents Tab */}
+        <div
+          className={cn(
+            "h-full w-full overflow-hidden",
+            activeWorkspaceTab === "agents" ? "block" : "hidden",
+          )}
+        >
+          <WorkspaceAgentsTab
+            messages={props.messages}
+            onSelectSubagent={(id, title, type) =>
+              openSubagentTab(id, title, type)
+            }
           />
         </div>
 
