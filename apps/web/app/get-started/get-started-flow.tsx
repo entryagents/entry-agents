@@ -10,32 +10,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/hooks/use-session";
 import { authClient } from "@/lib/auth/client";
 import { sanitizeInternalRedirect } from "@/lib/redirect-safety";
+import { EntryMark } from "@/components/entry-mark";
 
 type StepId = 1 | 2;
 
 function EntryAgentLogo({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className={className}
-      aria-label="Entry Agents"
-    >
-      <path
-        d="M4 17L10 11L4 5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 19H20"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
+  return <EntryMark className={className} />;
 }
 
 export function GetStartedFlow() {
