@@ -115,6 +115,23 @@ export async function POST(req: Request) {
     );
   }
 
+  // Enforce maximum 5 attachments per message
+  const lastUserMessage = [...messages]
+    .toReversed()
+    .find((m) => m.role === "user");
+  if (lastUserMessage) {
+    const attachmentParts =
+      lastUserMessage.parts?.filter(
+        (p) => p.type === "file" || p.type === "data-snippet",
+      ) ?? [];
+    if (attachmentParts.length > 5) {
+      return Response.json(
+        { error: "Maximum 5 attachments allowed per message" },
+        { status: 400 },
+      );
+    }
+  }
+
   await Promise.all([
     persistLatestUserMessage(chatId, messages),
     persistAssistantMessagesWithToolResults(chatId, messages),

@@ -2,7 +2,10 @@
 
 import { useMemo } from "react";
 import { Streamdown } from "streamdown";
-import { streamdownPlugins } from "@/lib/streamdown-config";
+import {
+  chatStreamdownControls,
+  streamdownPlugins,
+} from "@/lib/streamdown-config";
 import { usePacedText } from "@/hooks/use-paced-text";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +39,7 @@ function healStreamingMarkdown(text: string, isStreaming: boolean): string {
  * - OpenCode-inspired paced text reveal (no token-burst jitter or micro-stutters)
  * - Automatic syntax healing for unclosed streaming code blocks
  * - Native inline block caret via Streamdown that advances smoothly inside the stream
+ * - Download icon removed from chat markdown while preserving copy actions
  * - Fully responsive prose typography optimized for mobile & desktop
  */
 export function StreamingMarkdown({
@@ -64,6 +68,7 @@ export function StreamingMarkdown({
         caret={isStreaming ? "block" : undefined}
         plugins={streamdownPlugins}
         components={components}
+        controls={chatStreamdownControls}
       >
         {healedContent}
       </Streamdown>

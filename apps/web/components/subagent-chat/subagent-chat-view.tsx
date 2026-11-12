@@ -266,7 +266,7 @@ export function SubagentChatView({
         <div className="mx-auto max-w-4xl flex items-center justify-between text-xs text-muted-foreground">
           {isLive ? (
             <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="h-1.5 w-1.5 rounded-full bg-foreground/50" />
               <span>Subagent running autonomously · Read-only view</span>
             </div>
           ) : data.status === "failed" ? (

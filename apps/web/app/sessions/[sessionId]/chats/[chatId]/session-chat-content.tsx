@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   useCallback,
   useEffect,
@@ -82,6 +83,11 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
@@ -419,14 +425,22 @@ function ContextUsageIndicator({
   );
 
   return (
-    <Tooltip delayDuration={200}>
-      <TooltipTrigger asChild>
-        <div className="flex cursor-default items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground/60 transition-colors hover:text-muted-foreground">
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="View context usage breakdown"
+          className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground/70 transition-colors hover:bg-muted/60 hover:text-muted-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
           <span>{percentage}%</span>
           <CircularProgress percentage={percentage} size={14} strokeWidth={2} />
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="top" align="start" className="min-w-[160px] p-0">
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="start"
+        className="min-w-[200px] p-0 shadow-lg border border-border/80 bg-popover"
+      >
         <div className="p-3">
           {/* Header with percentage and token count */}
           <div className="flex items-center justify-between gap-6">
@@ -473,8 +487,8 @@ function ContextUsageIndicator({
             </div>
           ) : null}
         </div>
-      </TooltipContent>
-    </Tooltip>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -879,6 +893,7 @@ export function SessionChatContent({
     panelPortalRef,
     isWorkspaceExpanded,
     setIsWorkspaceExpanded,
+    focusedFilePath,
   } = useGitPanel();
 
   // Header's "change repo" chevron sets changeRepoRequested; open the same
@@ -3387,11 +3402,11 @@ export function SessionChatContent({
           </DialogContent>
         </Dialog>
 
-        {/* Main content: chat messages on desktop; fallback on mobile */}
+        {/* Main content: chat messages, file preview, diff, or subagent */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {isMobile && activeView === "diff" ? (
+          {activeView === "diff" ? (
             <DiffTabView />
-          ) : isMobile && activeView === "file" ? (
+          ) : activeView === "file" && focusedFilePath ? (
             <FileTabView />
           ) : activeView === "subagent" && activeSubagentId ? (
             <SubagentChatView
@@ -3528,7 +3543,25 @@ export function SessionChatContent({
                     onChange={(e) => {
                       const files = e.target.files;
                       if (files && files.length > 0) {
-                        addImages(files);
+                        const totalCurrent =
+                          images.length + textAttachments.length;
+                        if (totalCurrent >= 5) {
+                          toast.error(
+                            "Maximum 5 attachments allowed per message",
+                          );
+                        } else {
+                          const remaining = 5 - totalCurrent;
+                          const filesToAdd = Array.from(files).slice(
+                            0,
+                            remaining,
+                          );
+                          if (files.length > remaining) {
+                            toast.error(
+                              "Maximum 5 attachments allowed per message",
+                            );
+                          }
+                          addImages(filesToAdd);
+                        }
                       }
                       e.target.value = "";
                     }}
@@ -3637,7 +3670,25 @@ export function SessionChatContent({
                           setIsDragging(false);
                           const files = e.dataTransfer.files;
                           if (files.length > 0) {
-                            addImages(files);
+                            const totalCurrent =
+                              images.length + textAttachments.length;
+                            if (totalCurrent >= 5) {
+                              toast.error(
+                                "Maximum 5 attachments allowed per message",
+                              );
+                              return;
+                            }
+                            const remaining = 5 - totalCurrent;
+                            const filesToAdd = Array.from(files).slice(
+                              0,
+                              remaining,
+                            );
+                            if (files.length > remaining) {
+                              toast.error(
+                                "Maximum 5 attachments allowed per message",
+                              );
+                            }
+                            addImages(filesToAdd);
                           }
                         }}
                       >
@@ -3652,7 +3703,7 @@ export function SessionChatContent({
 
                         {/* Attachments preview */}
                         {(images.length > 0 || textAttachments.length > 0) && (
-                          <div className="flex min-w-0 flex-wrap items-start gap-2 px-2 pb-1 pt-2">
+                          <div className="flex min-w-0 max-h-32 overflow-y-auto flex-wrap items-start gap-2 px-2 pb-1 pt-2">
                             {images.length > 0 && (
                               <ImageAttachmentsPreview
                                 images={images}
@@ -3746,6 +3797,16 @@ export function SessionChatContent({
                                     const file = item.getAsFile();
                                     if (file) {
                                       e.preventDefault();
+                                      if (
+                                        images.length +
+                                          textAttachments.length >=
+                                        5
+                                      ) {
+                                        toast.error(
+                                          "Maximum 5 attachments allowed per message",
+                                        );
+                                        return;
+                                      }
                                       addImage(file).catch(() => {
                                         // Silently ignore paste errors - rare edge case
                                       });
@@ -3760,6 +3821,15 @@ export function SessionChatContent({
                                 e.clipboardData?.getData("text/plain");
                               if (pastedText && isLargeText(pastedText)) {
                                 e.preventDefault();
+                                if (
+                                  images.length + textAttachments.length >=
+                                  5
+                                ) {
+                                  toast.error(
+                                    "Maximum 5 attachments allowed per message",
+                                  );
+                                  return;
+                                }
                                 addTextAttachment(pastedText);
                               }
                             }}

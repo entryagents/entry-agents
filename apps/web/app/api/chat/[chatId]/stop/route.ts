@@ -6,11 +6,11 @@ import {
 import type { WebAgentUIMessage } from "@/app/types";
 import {
   compareAndSetChatActiveStreamId,
-  createChatMessageIfNotExists,
   getSessionById,
   setChatRunStatus,
   updateChatAssistantActivity,
   updateSession,
+  upsertChatMessageScoped,
 } from "@/lib/db/sessions";
 import { canOperateOnSandbox } from "@/lib/sandbox/utils";
 import { sanitizeMessageForDatabase } from "@/lib/chat/sanitize-db-message";
@@ -148,17 +148,14 @@ async function persistAssistantSnapshot(
   chatId: string,
   message: WebAgentUIMessage,
 ): Promise<void> {
-  // Insert-only: if the workflow already persisted a fuller message, this
-  // is a no-op. Avoids overwriting server-side content with a stale
-  // (throttled) client snapshot.
   const sanitized = sanitizeMessageForDatabase(message);
-  const created = await createChatMessageIfNotExists({
+  const result = await upsertChatMessageScoped({
     id: message.id,
     chatId,
     role: "assistant",
     parts: sanitized,
   });
-  if (created) {
+  if (result.status === "inserted" || result.status === "updated") {
     await updateChatAssistantActivity(chatId, new Date());
   }
 }

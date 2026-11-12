@@ -165,3 +165,23 @@ const codePlugin = {
 export const streamdownPlugins = {
   code: codePlugin,
 };
+
+/**
+ * Streamdown controls configuration for chat markdown rendering.
+ * Disables download buttons on code blocks, tables, and diagrams
+ * in chat messages while preserving copy functionality.
+ */
+export const chatStreamdownControls = {
+  code: {
+    copy: true,
+    download: false,
+  },
+  table: {
+    copy: true,
+    download: false,
+  },
+  mermaid: {
+    copy: true,
+    download: false,
+  },
+} as const;

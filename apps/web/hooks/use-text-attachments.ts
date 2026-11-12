@@ -21,7 +21,10 @@ export function useTextAttachments() {
         lineCount,
         byteSize,
       };
-      setTextAttachments((prev) => [...prev, attachment]);
+      setTextAttachments((prev) => {
+        if (prev.length >= 5) return prev;
+        return [...prev, attachment];
+      });
       return attachment;
     },
     [],

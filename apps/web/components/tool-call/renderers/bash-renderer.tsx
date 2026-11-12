@@ -79,14 +79,14 @@ function TerminalOutputCard({
       {/* Terminal Body */}
       <div className="max-h-72 overflow-y-auto p-3 text-[12px] leading-relaxed selection:bg-emerald-900 selection:text-white">
         {stdout && (
-          <pre className="whitespace-pre-wrap text-zinc-200">
+          <pre className="whitespace-pre-wrap break-words break-all text-zinc-200">
             {stdout.trim()}
           </pre>
         )}
         {stderr && (
           <pre
             className={cn(
-              "whitespace-pre-wrap text-rose-400",
+              "whitespace-pre-wrap break-words break-all text-rose-400",
               stdout && "mt-2 pt-2 border-t border-zinc-800/60",
             )}
           >

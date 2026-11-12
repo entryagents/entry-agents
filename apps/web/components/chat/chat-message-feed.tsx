@@ -13,6 +13,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import type {
   WebAgentCommitDataPart,
   WebAgentPrDataPart,
+  WebAgentSnippetDataPart,
   WebAgentUIMessage,
   WebAgentUIMessagePart,
   WebAgentUIToolPart,
@@ -20,6 +21,7 @@ import type {
 import { AssistantMessageGroups } from "@/components/assistant-message-groups";
 import { MessageAttachmentChip } from "@/components/message-attachment-chip";
 import { MessageModelPill } from "@/components/message-model-pill";
+import { SnippetChip } from "@/components/snippet-chip";
 import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { ThinkingBlock } from "@/components/thinking-block";
 import { ToolCall } from "@/components/tool-call/tool-call";
@@ -75,6 +77,13 @@ function getPartIdentity(part: WebAgentUIMessagePart): string {
     if (part.url) return `file:${part.url}`;
     if (part.filename) return `file:${part.filename}`;
     return "file";
+  }
+
+  if (part.type === "data-snippet") {
+    const snippetPart = part as WebAgentSnippetDataPart;
+    return snippetPart.id
+      ? `snippet:${snippetPart.id}`
+      : `snippet:${snippetPart.data?.filename || "file"}`;
   }
 
   if (isGitDataPart(part)) {
@@ -439,11 +448,9 @@ export function ChatMessageFeed({
 
                         {/* Footer: copy, fork, and model pill */}
                         {(canCopyAssistantMessage ||
-                          (!isMessageStreaming &&
-                            isFinalAssistantTextPart &&
-                            m.metadata)) && (
+                          (isFinalAssistantTextPart && m.metadata)) && (
                           <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
-                            {canCopyAssistantMessage && (
+                            {canCopyAssistantMessage ? (
                               <div className="flex items-center gap-1">
                                 <button
                                   type="button"
@@ -490,15 +497,15 @@ export function ChatMessageFeed({
                                   </button>
                                 )}
                               </div>
+                            ) : (
+                              <div />
                             )}
-                            {!isMessageStreaming &&
-                              isFinalAssistantTextPart &&
-                              m.metadata && (
-                                <MessageModelPill
-                                  metadata={m.metadata}
-                                  modelOptions={modelOptions}
-                                />
-                              )}
+                            {isFinalAssistantTextPart && m.metadata && (
+                              <MessageModelPill
+                                metadata={m.metadata}
+                                modelOptions={modelOptions}
+                              />
+                            )}
                           </div>
                         )}
                       </div>
@@ -599,10 +606,35 @@ export function ChatMessageFeed({
                 );
               }
 
+              // Render text snippet attachments
+              if (p.type === "data-snippet") {
+                const snippet = (p as WebAgentSnippetDataPart).data;
+                if (!snippet) return null;
+                return (
+                  <div
+                    key={`${m.id}-${group.renderKey}`}
+                    className={cn(
+                      "flex",
+                      m.role === "user" ? "justify-end" : "justify-start",
+                    )}
+                  >
+                    <div className="max-w-[85%] sm:max-w-[80%]">
+                      <SnippetChip
+                        filename={snippet.filename}
+                        content={snippet.content}
+                      />
+                    </div>
+                  </div>
+                );
+              }
+
               return null;
             });
 
           if (m.role === "assistant") {
+            const hasTextPart = m.parts.some(
+              (part) => part.type === "text" && part.text.trim().length > 0,
+            );
             return (
               <AssistantMessageGroups
                 key={m.id}
@@ -618,7 +650,19 @@ export function ChatMessageFeed({
                     : null)
                 }
               >
-                {renderGroups}
+                {(isExpanded) => (
+                  <>
+                    {renderGroups(isExpanded)}
+                    {!hasTextPart && m.metadata && (
+                      <div className="mt-2 flex items-center justify-end border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
+                        <MessageModelPill
+                          metadata={m.metadata}
+                          modelOptions={modelOptions}
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
               </AssistantMessageGroups>
             );
           }

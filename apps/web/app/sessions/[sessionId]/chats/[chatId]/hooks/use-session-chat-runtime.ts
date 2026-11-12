@@ -167,6 +167,9 @@ export function useSessionChatRuntime({
         onFinish: () => {
           triggerBillingSync();
         },
+        onError: () => {
+          triggerBillingSync();
+        },
         sendAutomaticallyWhen: shouldAutoSubmit,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only create once per chatId; init values are only used at creation time
@@ -197,6 +200,7 @@ export function useSessionChatRuntime({
 
     void chatInstance.stop();
     abortChatInstanceTransport(chatId);
+    triggerBillingSync();
   }, [chatId, chatInstance]);
 
   // Compute resume only once on mount. If this tracks `chatInstance.status`
