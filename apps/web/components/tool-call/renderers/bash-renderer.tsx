@@ -77,7 +77,7 @@ function TerminalOutputCard({
       </div>
 
       {/* Terminal Body */}
-      <div className="max-h-72 overflow-x-auto overflow-y-auto p-3 text-[12px] leading-relaxed selection:bg-emerald-900 selection:text-white min-w-0">
+      <div className="max-h-[min(18rem,55vh)] overflow-x-auto overflow-y-auto p-3 text-[12px] leading-relaxed selection:bg-emerald-900 selection:text-white min-w-0">
         {stdout && (
           <pre className="whitespace-pre-wrap break-words break-all text-zinc-200">
             {stdout.trim()}

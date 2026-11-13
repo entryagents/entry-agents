@@ -52,7 +52,7 @@ export function WriteRenderer({
 
   const expandedContent =
     showCode && !mergedState.denied ? (
-      <div className="max-h-96 overflow-auto rounded-md border border-border">
+      <div className="max-h-[min(24rem,60vh)] overflow-auto rounded-md border border-border">
         <DiffsFile
           file={{ name: rawFilePath, contents: content }}
           options={fileOptions}

@@ -102,7 +102,7 @@ export function ProcessRenderer({
                 </div>
               )}
               {proc.recentLogs && (
-                <pre className="mt-1.5 max-h-36 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-1.5 text-[11px] text-muted-foreground">
+                <pre className="mt-1.5 max-h-[min(9rem,40vh)] overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-1.5 text-[11px] text-muted-foreground">
                   {proc.recentLogs}
                 </pre>
               )}
