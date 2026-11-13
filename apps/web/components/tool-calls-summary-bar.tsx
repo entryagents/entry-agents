@@ -172,12 +172,7 @@ export function ToolCallsSummaryBar({
             )}
           />
         </span>
-        <span
-          className={cn(
-            "min-w-0 flex-1 overflow-hidden whitespace-nowrap leading-none sm:flex-none sm:overflow-visible sm:whitespace-normal",
-            isStreaming && "animate-pulse motion-reduce:animate-none",
-          )}
-        >
+        <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap leading-none sm:flex-none sm:overflow-visible sm:whitespace-normal">
           {statusLabel}
           {mobileSegments.length > 0 && (
             <span className="inline-block max-w-full truncate align-bottom sm:hidden">

@@ -243,7 +243,7 @@ export default function AdminFeedbackPage() {
             return (
               <div
                 key={item.id}
-                className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-foreground/20"
+                className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-foreground/20"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-2">

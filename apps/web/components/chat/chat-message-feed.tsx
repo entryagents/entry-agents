@@ -432,10 +432,15 @@ export function ChatMessageFeed({
                         }}
                       >
                         {/* Markdown prose text */}
-                        <div className="text-sm leading-relaxed text-foreground select-text">
+                        <div className="text-[14.5px] leading-[1.65] text-foreground select-text">
                           <StreamingMarkdown
                             content={p.text}
-                            isStreaming={isMessageStreaming}
+                            isStreaming={
+                              isMessageStreaming &&
+                              !m.parts
+                                .slice(group.index + 1)
+                                .some(hasRenderableAssistantPart)
+                            }
                             components={streamdownComponents}
                           />
                         </div>

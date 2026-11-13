@@ -121,10 +121,10 @@ function BillingCallbackInner() {
               </div>
 
               <div className="space-y-2">
-                <h1 className="text-2xl font-bold tracking-tight">
+                <h1 className="text-2xl font-semibold tracking-tight">
                   {result.kind === "topup"
-                    ? "Credit Top-Up Successful 🎉"
-                    : "Subscription Activated 🎉"}
+                    ? "Credit top-up successful"
+                    : "Subscription activated"}
                 </h1>
                 <p className="text-xs leading-relaxed text-muted-foreground">
                   {result.kind === "topup"
@@ -137,10 +137,10 @@ function BillingCallbackInner() {
 
               {typeof result.creditBalanceCents === "number" && (
                 <div className="rounded-xl border border-border/80 bg-muted/30 p-4">
-                  <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-                    Available Credit Balance
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Available credit balance
                   </p>
-                  <p className="mt-1 font-mono text-3xl font-extrabold tracking-tight text-foreground">
+                  <p className="mt-1 font-mono text-3xl font-semibold tracking-tight tabular-nums text-foreground">
                     {formatUsdCents(result.creditBalanceCents)}
                   </p>
                 </div>

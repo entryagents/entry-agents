@@ -53,6 +53,7 @@ import { FileSuggestionsDropdown } from "@/components/file-suggestions-dropdown"
 import { ImageAttachmentsPreview } from "@/components/image-attachments-preview";
 import { TextAttachmentsPreview } from "@/components/text-attachments-preview";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
+import { ReasoningEffortSelector } from "@/components/reasoning-effort-selector";
 import { PermissionModeSelector } from "@/components/permission-mode-selector";
 import {
   getReasoningEffortLevels,
@@ -3933,36 +3934,39 @@ export function SessionChatContent({
                                   onUpgradeRequired={() =>
                                     router.push("/pricing")
                                   }
-                                  reasoningEffort={
-                                    isReasoningCapableModel(
-                                      chatInfo.modelId,
-                                      modelOptions,
-                                    )
-                                      ? {
-                                          value: sanitizeReasoningEffort(
-                                            chatInfo.modelId,
-                                            chatInfo.reasoningEffort,
-                                            modelOptions,
-                                          ),
-                                          levels: getReasoningEffortLevels(
-                                            chatInfo.modelId,
-                                            modelOptions,
-                                          ),
-                                          disabled:
-                                            isChatInFlight ||
-                                            isUpdatingModel ||
-                                            modelOptionsLoading,
-                                          onChange: (effort) => {
-                                            void handleReasoningEffortChange(
-                                              effort,
-                                            );
-                                          },
-                                        }
-                                      : undefined
-                                  }
                                 />
                               </div>
                             )}
+                            {chatInfo.modelId &&
+                              isReasoningCapableModel(
+                                chatInfo.modelId,
+                                modelOptions,
+                              ) && (
+                                <ReasoningEffortSelector
+                                  value={sanitizeReasoningEffort(
+                                    chatInfo.modelId,
+                                    chatInfo.reasoningEffort,
+                                    modelOptions,
+                                  )}
+                                  defaultEffort={
+                                    modelOptions.find(
+                                      (m) => m.id === chatInfo.modelId,
+                                    )?.defaultReasoningEffort
+                                  }
+                                  levels={getReasoningEffortLevels(
+                                    chatInfo.modelId,
+                                    modelOptions,
+                                  )}
+                                  disabled={
+                                    isChatInFlight ||
+                                    isUpdatingModel ||
+                                    modelOptionsLoading
+                                  }
+                                  onChange={(effort) => {
+                                    void handleReasoningEffortChange(effort);
+                                  }}
+                                />
+                              )}
                             <PermissionModeSelector
                               value={permissionMode}
                               onChange={handlePermissionModeChange}

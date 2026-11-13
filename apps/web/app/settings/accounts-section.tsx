@@ -328,7 +328,7 @@ function OrgRow({
         </div>
       </div>
 
-      <div className="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] text-muted-foreground/0 transition-all group-hover:text-muted-foreground">
+      <div className="ml-auto flex shrink-0 items-center gap-1 font-mono text-[11px] text-muted-foreground/0 transition-colors group-hover:text-muted-foreground">
         <span>Configure</span>
         <ExternalLink className="size-3" />
       </div>

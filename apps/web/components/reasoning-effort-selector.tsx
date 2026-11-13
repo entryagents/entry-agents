@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { CheckIcon, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ReasoningEffortLevel } from "@/lib/model-reasoning";
@@ -11,41 +12,55 @@ import {
 
 interface ReasoningEffortSelectorProps {
   value: string | null;
+  defaultEffort?: string | null;
   /**
    * The actual levels this specific model accepts (value + label pairs),
-   * from lib/model-reasoning.ts's getReasoningEffortLevels(modelId). Not
-   * a fixed low/medium/high -- some models have a different real
-   * vocabulary (e.g. qwen3.8-max-free's low/medium/xhigh), and this
-   * component renders exactly what's passed in rather than assuming.
+   * from the gateway model metadata / lib/model-reasoning.ts.
    */
   levels: ReasoningEffortLevel[];
-  onChange: (value: string | null) => void;
+  onChange: (value: string) => void;
   disabled?: boolean;
 }
 
 /**
- * Compact effort picker shown next to ModelSelectorCompact, only when the
- * currently selected model actually supports a reasoning-effort override
- * (see lib/model-reasoning.ts). null means "use the model's default".
+ * Compact effort picker shown next to ModelSelectorCompact only when the
+ * currently selected model supports reasoning effort. Renders only the
+ * gateway's actual reasoning levels (no hardcoded "Auto").
  */
 export function ReasoningEffortSelector({
   value,
+  defaultEffort,
   levels,
   onChange,
   disabled = false,
 }: ReasoningEffortSelectorProps) {
-  const selected = value
-    ? levels.find((level) => level.value === value)
+  const [open, setOpen] = useState(false);
+
+  if (levels.length === 0) {
+    return null;
+  }
+
+  const effectiveValue =
+    (value && levels.some((l) => l.value === value) ? value : null) ??
+    (defaultEffort && levels.some((l) => l.value === defaultEffort)
+      ? defaultEffort
+      : null) ??
+    levels[0]?.value ??
+    null;
+
+  const selected = effectiveValue
+    ? levels.find((level) => level.value === effectiveValue)
     : undefined;
-  const displayLabel = selected ? selected.label : "Auto";
+  const displayLabel = selected?.label ?? levels[0]?.label ?? "";
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
           disabled={disabled}
           title="Reasoning effort"
+          aria-label="Reasoning effort"
           className="flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-neutral-500 transition-colors hover:bg-white/5 hover:text-neutral-300 disabled:pointer-events-none disabled:opacity-60"
         >
           <span className="max-w-[80px] truncate">{displayLabel}</span>
@@ -53,34 +68,22 @@ export function ReasoningEffortSelector({
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-36 p-1" align="start">
-        <button
-          type="button"
-          onClick={() => onChange(null)}
-          className={cn(
-            "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
-          )}
-        >
-          <CheckIcon
-            className={cn(
-              "size-3.5 shrink-0",
-              value ? "opacity-0" : "opacity-100",
-            )}
-          />
-          Auto
-        </button>
         {levels.map((level) => (
           <button
             key={level.value}
             type="button"
-            onClick={() => onChange(level.value)}
+            onClick={() => {
+              onChange(level.value);
+              setOpen(false);
+            }}
             className={cn(
-              "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
+              "flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted",
             )}
           >
             <CheckIcon
               className={cn(
                 "size-3.5 shrink-0",
-                value === level.value ? "opacity-100" : "opacity-0",
+                effectiveValue === level.value ? "opacity-100" : "opacity-0",
               )}
             />
             {level.label}

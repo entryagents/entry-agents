@@ -106,6 +106,15 @@ function StepBreakdownRow({
         {Boolean(cachedTokens) && (
           <span>cached {formatTokenCount(cachedTokens)}</span>
         )}
+        {typeof step.tps === "number" &&
+          Number.isFinite(step.tps) &&
+          step.tps > 0 && (
+            <span className="tabular-nums">
+              {step.tps >= 10
+                ? `${Math.round(step.tps)} tok/s`
+                : `${step.tps.toFixed(1)} tok/s`}
+            </span>
+          )}
       </div>
       {step.toolCallNames && step.toolCallNames.length > 0 && (
         <div className="text-[11px] text-muted-foreground/80">
@@ -328,16 +337,6 @@ export function MessageModelPill({
           </span>
         </>
       ) : null}
-      {formattedTps && (
-        <>
-          <span aria-hidden className="text-muted-foreground/40">
-            ·
-          </span>
-          <span className="tabular-nums text-muted-foreground/75 text-[10px]">
-            {formattedTps}
-          </span>
-        </>
-      )}
     </span>
   );
 

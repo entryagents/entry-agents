@@ -52,10 +52,6 @@ const themeInitializationScript = `
 })();
 `;
 
-const isPreviewDeployment = process.env.VERCEL_ENV === "preview";
-const faviconPath = isPreviewDeployment
-  ? "/favicon-preview.svg"
-  : "/entry-icon.svg";
 const metadataBase =
   process.env.VERCEL_ENV === "production" &&
   process.env.VERCEL_PROJECT_PRODUCTION_URL
@@ -90,8 +86,20 @@ export const metadata: Metadata = {
   ],
   applicationName: "Entry Agents",
   icons: {
-    icon: faviconPath,
-    shortcut: faviconPath,
+    icon: [
+      {
+        url: "/logo-light.png",
+        media: "(prefers-color-scheme: light)",
+        type: "image/png",
+      },
+      {
+        url: "/logo-dark.png",
+        media: "(prefers-color-scheme: dark)",
+        type: "image/png",
+      },
+    ],
+    shortcut: "/logo-light.png",
+    apple: "/logo-dark.png",
   },
   openGraph: {
     type: "website",
@@ -127,7 +135,7 @@ const structuredData = {
       name: "Entry Agents",
       alternateName: ["Entry", "Entry AI", "Entry Agents AI"],
       url: SITE_URL,
-      logo: `${SITE_URL}/entry-logo.jpg`,
+      logo: `${SITE_URL}/logo-dark.png`,
     },
     {
       "@type": "WebSite",
