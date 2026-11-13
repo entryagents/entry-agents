@@ -48,6 +48,7 @@ import {
   todoWriteTool,
   vercelApiTool,
   vercelCliTool,
+  visualizeTool,
   webFetchTool,
   webSearchTool,
   writeFileTool,
@@ -235,6 +236,7 @@ const tools = {
   process_status: processStatusTool,
   kill_process: killProcessTool,
   inbox: inboxTool,
+  visualize: visualizeTool,
 } satisfies ToolSet;
 
 export const openAgent = new ToolLoopAgent({

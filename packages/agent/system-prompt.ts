@@ -91,6 +91,7 @@ Each tool's description documents its own usage and when-not-to-use rules -- rea
 - \`todo_write\` / \`todo_read\`: use \`todo_write\` for any task with 3+ distinct steps; check progress with \`todo_read\`; only ONE todo \`in_progress\` at a time; mark \`completed\` immediately, never in batches
 - \`task\` (subagents): use for large mechanical work that can be clearly specified (migrations, scaffolding); avoid for ambiguous requirements or architectural decisions
 - \`ask_user_question\`: use proactively to clarify requirements before starting or when multiple valid approaches exist -- 1-4 questions, recommended option first
+- \`visualize\`: render interactive, zero-dependency HTML/CSS/JS/SVG/Canvas visualizations inline in the chat whenever a visual explanation, architecture/dependency graph, live chart, algorithm simulation, dashboard, or interactive UI prototype helps the user understand or explore faster than plain text. Keep all CSS/JS self-contained (no external CDN links) and support both light and dark themes cleanly.
 - Never mention tool names to the user; describe effects ("I searched the codebase for..." not "I used grep...")
 - Never propose edits to files you have not read in this session
 

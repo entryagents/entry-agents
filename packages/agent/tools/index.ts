@@ -42,6 +42,12 @@ export {
 } from "./process";
 export { inboxTool, type InboxToolInput } from "./inbox";
 export {
+  visualizeTool,
+  type VisualizeKind,
+  type VisualizeToolInput,
+  type VisualizeToolOutput,
+} from "./visualize";
+export {
   createMcpToolSet,
   namespacedMcpToolName,
   type McpServerConfig,
