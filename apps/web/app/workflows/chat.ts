@@ -4234,8 +4234,15 @@ const runAgentStep = async (
                   enforceCreditBlock &&
                   !creditExhausted &&
                   remainingBalanceCents - liveStepCostCents <= 0;
+                // Turn cap (MAX_TURN_SPEND_CENTS) must abort MID-STREAM too:
+                // a single long step (agentic loop with many tool calls) can
+                // blow far past the cap if the check waits for finish-step.
+                const wouldCapTurn =
+                  !turnSpendCapped &&
+                  Math.round(((totalMessageCost ?? 0) + liveStepCostUsd) * 100) >=
+                    MAX_TURN_SPEND_CENTS;
 
-                if (wouldExhaustWindow || wouldExhaustCredit) {
+                if (wouldExhaustWindow || wouldExhaustCredit || wouldCapTurn) {
                   midStreamDebited = true;
                   midStreamDebitedUsd = liveStepCostUsd;
                   lastStepCost = liveStepCostUsd;
@@ -4261,18 +4268,22 @@ const runAgentStep = async (
                       windowExhausted = true;
                     }
                   }
+                  if (wouldCapTurn) {
+                    turnSpendCapped = true;
+                  }
                   abortController.abort();
                   return {
                     selectedModelId,
                     modelId,
                     lastStepCost,
                     totalMessageCost,
-                    ...(liveTps !== undefined ? { tps: liveTps } : {}),
+                    ...(liveTps !== undefined ? { liveTps } : {}),
                     ...(liveStepBreakdown.length > 0
                       ? { stepBreakdown: liveStepBreakdown }
                       : {}),
                     ...(creditExhausted ? { creditExhausted: true } : {}),
                     ...(windowExhausted ? { windowExhausted: true } : {}),
+                    ...(turnSpendCapped ? { turnSpendCapped: true } : {}),
                   } satisfies WebAgentMessageMetadata;
                 }
               }
