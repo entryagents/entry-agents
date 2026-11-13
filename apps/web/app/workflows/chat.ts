@@ -4036,6 +4036,7 @@ const runAgentStep = async (
             ) ?? 0)
           : 0;
         let liveStreamedChars = 0;
+        let liveDecodeChars = 0;
         let midStreamDebited = false;
         let midStreamDebitedUsd = 0;
         let stepFirstTokenMs: number | null = null;
@@ -4203,18 +4204,31 @@ const runAgentStep = async (
                           )
                         : "";
               liveStreamedChars += chunkText.length;
+              // TPS counts only what the model DECODED as language — text and
+              // reasoning deltas. Tool-call argument JSON is real billable
+              // output (it stays in liveStreamedChars for the cost estimate),
+              // but counting serialized JSON chars in the speed display made
+              // tok/s spike and dive with argument size, which is why it felt
+              // wrong.
+              if (
+                streamPart.type === "text-delta" ||
+                streamPart.type === "reasoning-delta"
+              ) {
+                liveDecodeChars += chunkText.length;
+              }
               const liveOutputTokens = Math.ceil(liveStreamedChars / 3.8);
+              const liveDecodeTokens = Math.ceil(liveDecodeChars / 3.8);
 
               const currentStepDecodeMs = Math.max(
                 0,
                 stepLastTokenMs - stepFirstTokenMs,
               );
               const activeDecodeMs = totalDecodeMs + currentStepDecodeMs;
-              if (activeDecodeMs >= 300 && liveOutputTokens >= 4) {
+              if (activeDecodeMs >= 300 && liveDecodeTokens >= 4) {
                 liveTps = Number(
                   (
                     (totalDecodeOutputTokens +
-                      Math.max(0, liveOutputTokens - 1)) /
+                      Math.max(0, liveDecodeTokens - 1)) /
                     (activeDecodeMs / 1000)
                   ).toFixed(1),
                 );

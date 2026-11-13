@@ -211,6 +211,14 @@ export function MessageModelPill({
       ? effectiveInputTokens + effectiveOutputTokens
       : (stepAggregatedUsage?.totalTokens ?? 0));
 
+  // Uncached input = full-price input tokens (in minus any cache read/write).
+  const effectiveUncachedInputTokens = Math.max(
+    0,
+    effectiveInputTokens -
+      effectiveCacheReadTokens -
+      effectiveCacheWriteTokens,
+  );
+
   const hasDirectCost =
     typeof totalMessageCost === "number" &&
     Number.isFinite(totalMessageCost) &&
@@ -321,9 +329,27 @@ export function MessageModelPill({
           <span className="tabular-nums font-medium text-foreground/80">
             {formatCostUsd(displayCost)}
           </span>
-          {totalTokens > 0 && (
-            <span className="tabular-nums text-muted-foreground/60 text-[10px]">
-              ({formatTokenCount(totalTokens)} tok)
+        </>
+      ) : null}
+      {effectiveInputTokens > 0 || effectiveOutputTokens > 0 ? (
+        <>
+          {displayCost !== undefined && (
+            <span aria-hidden className="text-muted-foreground/40">
+              ·
+            </span>
+          )}
+          <span className="tabular-nums text-muted-foreground/70 text-[10px]">
+            ↑{formatTokenCount(effectiveUncachedInputTokens || effectiveInputTokens)}
+          </span>
+          <span className="tabular-nums text-muted-foreground/70 text-[10px]">
+            ↓{formatTokenCount(effectiveOutputTokens)}
+          </span>
+          {Boolean(effectiveReasoningTokens) && (
+            <span
+              className="tabular-nums text-muted-foreground/60 text-[10px]"
+              title="reasoning tokens"
+            >
+              ✦{formatTokenCount(effectiveReasoningTokens)}
             </span>
           )}
         </>
@@ -369,7 +395,8 @@ export function MessageModelPill({
           )}
         </div>
         <div className="mb-2 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-          <span>total in {formatTokenCount(effectiveInputTokens)}</span>
+          <span>in {formatTokenCount(effectiveInputTokens)}</span>
+          <span>uncached {formatTokenCount(effectiveUncachedInputTokens)}</span>
           <span>out {formatTokenCount(effectiveOutputTokens)}</span>
           {Boolean(effectiveReasoningTokens) && (
             <span>reasoning {formatTokenCount(effectiveReasoningTokens)}</span>
