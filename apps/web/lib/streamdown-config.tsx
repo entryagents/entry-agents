@@ -1,4 +1,5 @@
 import { createCodePlugin } from "@streamdown/code";
+import { defaultRehypePlugins } from "streamdown";
 import { vercelDark, vercelLight } from "./vercel-themes";
 
 const baseCodePlugin = createCodePlugin({
@@ -166,20 +167,45 @@ export const streamdownPlugins = {
   code: codePlugin,
 };
 
+const defaultHardenPlugin = defaultRehypePlugins.harden;
+const chatHardenPlugin: typeof defaultRehypePlugins.harden = Array.isArray(
+  defaultHardenPlugin,
+)
+  ? [
+      defaultHardenPlugin[0],
+      {
+        ...(typeof defaultHardenPlugin[1] === "object" &&
+        defaultHardenPlugin[1] !== null
+          ? defaultHardenPlugin[1]
+          : {}),
+        linkBlockPolicy: "text-only",
+      },
+    ]
+  : defaultHardenPlugin;
+
+/**
+ * Rehype plugins for chat markdown rendering.
+ * Uses `linkBlockPolicy: "text-only"` so incomplete links mid-stream
+ * (e.g. `#workspace-file=...` before closing `)`) never flash `[blocked]`.
+ */
+export const chatRehypePlugins = [
+  defaultRehypePlugins.raw,
+  defaultRehypePlugins.sanitize,
+  chatHardenPlugin,
+].filter(Boolean);
+
 /**
  * Streamdown controls configuration for chat markdown rendering.
- * Disables download buttons on code blocks, tables, and diagrams
- * in chat messages while preserving copy functionality.
+ * Disables table wrapper controls (copy/fullscreen/download) so tables
+ * render full-width without extra chrome, and disables download buttons
+ * on code blocks and diagrams while preserving copy functionality.
  */
 export const chatStreamdownControls = {
   code: {
     copy: true,
     download: false,
   },
-  table: {
-    copy: true,
-    download: false,
-  },
+  table: false,
   mermaid: {
     copy: true,
     download: false,
