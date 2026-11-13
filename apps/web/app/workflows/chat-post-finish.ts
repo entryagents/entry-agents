@@ -166,6 +166,7 @@ export async function persistAssistantMessageWithToolResults(
       chatId,
       role: "assistant",
       parts: sanitized,
+      metadata: dedupedMessage.metadata,
     });
 
     if (result.status === "conflict") {
@@ -195,6 +196,7 @@ export async function persistAssistantMessage(
       chatId,
       role: "assistant",
       parts: sanitized,
+      metadata: dedupedMessage.metadata,
     });
 
     if (result.status === "conflict") {
@@ -234,6 +236,7 @@ export async function persistFinalAssistantMessage(
         chatId,
         role: "assistant",
         parts: sanitized,
+        metadata: dedupedMessage.metadata,
       },
       workflowRunId,
       { finalizeStatus: "completed" },
