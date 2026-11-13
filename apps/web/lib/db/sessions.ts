@@ -944,7 +944,7 @@ export async function upsertChatMessageScoped(
 
     const [updated] = await tx
       .update(chatMessages)
-      .set({ parts: data.parts })
+      .set({ parts: data.parts, metadata: data.metadata })
       .where(
         and(
           eq(chatMessages.id, data.id),
@@ -1010,7 +1010,7 @@ export async function upsertChatMessageAndClearActiveStream(
     if (!inserted) {
       const [updated] = await tx
         .update(chatMessages)
-        .set({ parts: data.parts })
+        .set({ parts: data.parts, metadata: data.metadata })
         .where(
           and(
             eq(chatMessages.id, data.id),
