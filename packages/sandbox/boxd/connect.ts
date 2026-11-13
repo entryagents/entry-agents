@@ -152,6 +152,16 @@ async function bootstrapWorkspace(
         BOXD_WORKING_DIRECTORY,
         180_000,
       );
+      // Scrub immediately — before any error path — so the credentialed URL
+      // never outlives this bootstrap on the machine (process args are
+      // visible to other local processes while it sits in the remote).
+      if (options?.githubToken) {
+        await sandbox.exec(
+          `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} remote set-url origin ${shellEscape(source.repo)}`,
+          BOXD_WORKING_DIRECTORY,
+          30_000,
+        );
+      }
       if (!result.success) {
         throw new Error(`Failed to prepare workspace: ${result.stderr.trim()}`);
       }
