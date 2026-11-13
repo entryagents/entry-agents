@@ -4037,12 +4037,10 @@ const runAgentStep = async (
         let liveStreamedChars = 0;
         let midStreamDebited = false;
         let midStreamDebitedUsd = 0;
-        let stepGenerationStartMs: number | null = null;
-        let totalActiveGenerationMs = 0;
-        let totalOutputTokensGenerated = existingStepBreakdown.reduce(
-          (sum, step) => sum + (step.usage?.outputTokens ?? 0),
-          0,
-        );
+        let stepFirstTokenMs: number | null = null;
+        let stepLastTokenMs: number | null = null;
+        let totalDecodeMs = 0;
+        let totalDecodeOutputTokens = 0;
         let lastTpsEmitAt = 0;
         const liveStepToolCalls: string[] = [];
 
@@ -4178,9 +4176,10 @@ const runAgentStep = async (
               streamPart.type === "tool-call"
             ) {
               const nowMs = Date.now();
-              if (stepGenerationStartMs === null) {
-                stepGenerationStartMs = nowMs;
+              if (stepFirstTokenMs === null) {
+                stepFirstTokenMs = nowMs;
               }
+              stepLastTokenMs = nowMs;
               const partRecord = streamPart as Record<string, unknown>;
               if (
                 streamPart.type === "tool-call" &&
@@ -4203,14 +4202,17 @@ const runAgentStep = async (
               liveStreamedChars += chunkText.length;
               const liveOutputTokens = Math.ceil(liveStreamedChars / 3.8);
 
-              const activeMs =
-                totalActiveGenerationMs +
-                Math.max(1, nowMs - stepGenerationStartMs);
-              if (activeMs >= 250 && liveOutputTokens >= 4) {
+              const currentStepDecodeMs = Math.max(
+                0,
+                stepLastTokenMs - stepFirstTokenMs,
+              );
+              const activeDecodeMs = totalDecodeMs + currentStepDecodeMs;
+              if (activeDecodeMs >= 300 && liveOutputTokens >= 4) {
                 liveTps = Number(
                   (
-                    (totalOutputTokensGenerated + liveOutputTokens) /
-                    (activeMs / 1000)
+                    (totalDecodeOutputTokens +
+                      Math.max(0, liveOutputTokens - 1)) /
+                    (activeDecodeMs / 1000)
                   ).toFixed(1),
                 );
               }
@@ -4291,13 +4293,12 @@ const runAgentStep = async (
             }
 
             if (streamPart.type === "finish-step") {
-              const nowMs = Date.now();
-              const stepElapsedMs =
-                stepGenerationStartMs !== null
-                  ? Math.max(1, nowMs - stepGenerationStartMs)
+              const stepDecodeMs =
+                stepFirstTokenMs !== null && stepLastTokenMs !== null
+                  ? Math.max(0, stepLastTokenMs - stepFirstTokenMs)
                   : 0;
-              totalActiveGenerationMs += stepElapsedMs;
-              stepGenerationStartMs = null;
+              stepFirstTokenMs = null;
+              stepLastTokenMs = null;
 
               lastStepUsage = streamPart.usage;
               if (streamPart.usage) {
@@ -4308,24 +4309,23 @@ const runAgentStep = async (
               const stepOutputTokens =
                 streamPart.usage?.outputTokens ??
                 Math.ceil(liveStreamedChars / 3.8);
-              totalOutputTokensGenerated += stepOutputTokens;
               liveStreamedChars = 0;
 
               const stepTps =
-                stepElapsedMs >= 100 && stepOutputTokens > 0
+                stepDecodeMs >= 50 && stepOutputTokens > 1
                   ? Number(
-                      (stepOutputTokens / (stepElapsedMs / 1000)).toFixed(1),
+                      ((stepOutputTokens - 1) / (stepDecodeMs / 1000)).toFixed(
+                        1,
+                      ),
                     )
                   : undefined;
-              if (
-                totalActiveGenerationMs >= 100 &&
-                totalOutputTokensGenerated > 0
-              ) {
+              if (stepDecodeMs >= 50 && stepOutputTokens > 1) {
+                totalDecodeMs += stepDecodeMs;
+                totalDecodeOutputTokens += stepOutputTokens - 1;
+              }
+              if (totalDecodeMs >= 50 && totalDecodeOutputTokens > 0) {
                 liveTps = Number(
-                  (
-                    totalOutputTokensGenerated /
-                    (totalActiveGenerationMs / 1000)
-                  ).toFixed(1),
+                  (totalDecodeOutputTokens / (totalDecodeMs / 1000)).toFixed(1),
                 );
               }
 

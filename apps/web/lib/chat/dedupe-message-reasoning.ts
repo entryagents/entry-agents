@@ -247,9 +247,11 @@ export function dedupeMessageList<T extends WebAgentUIMessage>(
                   msg.metadata?.lastStepUsage ??
                   existing.metadata?.lastStepUsage,
                 stepBreakdown:
-                  msg.metadata?.stepBreakdown &&
-                  msg.metadata.stepBreakdown.length > 0
-                    ? msg.metadata.stepBreakdown
+                  (msg.metadata?.stepBreakdown?.length ?? 0) >=
+                  (existing.metadata?.stepBreakdown?.length ?? 0)
+                    ? msg.metadata?.stepBreakdown?.length
+                      ? msg.metadata.stepBreakdown
+                      : existing.metadata?.stepBreakdown
                     : existing.metadata?.stepBreakdown,
               }
             : undefined;
@@ -284,9 +286,11 @@ export function dedupeMessageList<T extends WebAgentUIMessage>(
                 lastStepUsage:
                   msg.metadata?.lastStepUsage ?? prev.metadata?.lastStepUsage,
                 stepBreakdown:
-                  msg.metadata?.stepBreakdown &&
-                  msg.metadata.stepBreakdown.length > 0
-                    ? msg.metadata.stepBreakdown
+                  (msg.metadata?.stepBreakdown?.length ?? 0) >=
+                  (prev.metadata?.stepBreakdown?.length ?? 0)
+                    ? msg.metadata?.stepBreakdown?.length
+                      ? msg.metadata.stepBreakdown
+                      : prev.metadata?.stepBreakdown
                     : prev.metadata?.stepBreakdown,
               }
             : undefined;

@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { ENTRY_LOGO_DATA_URI } from "@/components/entry-mark";
+import { ENTRY_LOGO_DATA_URI } from "@/lib/entry-logo-data";
 
 export const alt = "Entry Agents — AI coding agents that ship real code";
 export const size = { width: 1200, height: 630 };

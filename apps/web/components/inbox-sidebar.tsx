@@ -1070,7 +1070,7 @@ export function InboxSidebar({
     <>
       <div className="flex h-full min-h-0 flex-col bg-sidebar p-2 select-none">
         {/* Authentic Header: Real EntryMark Logo + Active/Archive Switcher + New Button */}
-        <div className="mb-1.5 flex items-center justify-between px-1 py-0.5">
+        <div className="mb-2 flex items-center justify-between px-1 py-1">
           <div className="flex items-center gap-2">
             <EntryMark className="h-4 w-4 shrink-0 text-foreground" />
 
@@ -1086,7 +1086,7 @@ export function InboxSidebar({
               >
                 Active
                 {activeSessions.length > 0 ? (
-                  <span className="ml-1 font-mono text-[10px] text-muted-foreground">
+                  <span className="ml-1 font-mono text-[10px] tabular-nums text-muted-foreground">
                     {activeSessions.length}
                   </span>
                 ) : null}
@@ -1103,7 +1103,7 @@ export function InboxSidebar({
                 <Archive className="h-3 w-3" />
                 <span>Archive</span>
                 {archivedCount > 0 ? (
-                  <span className="ml-0.5 font-mono text-[10px] text-muted-foreground">
+                  <span className="ml-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
                     {archivedCount}
                   </span>
                 ) : null}

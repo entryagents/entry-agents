@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 import { eq, sql } from "drizzle-orm";
-import { ENTRY_LOGO_DATA_URI } from "@/components/entry-mark";
+import { ENTRY_LOGO_DATA_URI } from "@/lib/entry-logo-data";
 import { db } from "@/lib/db/client";
 import { chatMessages, users, workflowRuns } from "@/lib/db/schema";
 import { getChatById } from "@/lib/db/sessions";

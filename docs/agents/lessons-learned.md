@@ -1,5 +1,19 @@
 # Lessons Learned
 
+## 2026-11-13 — Native Streamdown, Decode-Only TPS, Gateway-Only Reasoning Selector, Theme-Aware Logos & Unslop
+
+- **Streamdown Native Streaming vs External `usePacedText` Wrappers**:
+  - Wrapping `<Streamdown isAnimating={false}>` with an external `usePacedText` hook resets `displayedLength` whenever a part re-mounts (e.g., when `dedupeMessageParts` filters an empty text part and shifts `partIdentityCounts`), causing already-streamed text to vanish and re-type. Pass `mode={isStreaming ? "streaming" : "static"}`, `isAnimating={isStreaming}`, `animated={{ animation: "blurIn", duration: 150 }}`, and `caret={isStreaming ? "block" : undefined}` directly to `<Streamdown>`, and only set `isStreaming` on the active trailing text part in `ChatMessageFeed`.
+- **Preventing `stepBreakdown` & Summary Bar Flickering Mid-Stream**:
+  - `dedupeMessageList` must always keep the longer `stepBreakdown` array when merging duplicate/partial assistant messages (`(msg.metadata?.stepBreakdown?.length ?? 0) >= (existing.metadata?.stepBreakdown?.length ?? 0)`), otherwise `Step 30` disappears and reappears during stream snapshots.
+  - Applying `animate-pulse` to the entire `ToolCallsSummaryBar` text span makes elapsed seconds and changed-file counts flicker rapidly during streaming; keep `animate-pulse` only on the 8px live status dot.
+- **Accurate Decode-Only TPS & Popover Placement**:
+  - Computing TPS from `stepGenerationStartMs` to `finish-step` (and initializing `totalOutputTokensGenerated` from `existingStepBreakdown` while `totalActiveGenerationMs` starts at `0`) inflates TPS and includes TTFT/tool-wait gaps. Track `stepFirstTokenMs` and `stepLastTokenMs` per step, and compute decode TPS on `finish-step` from `(outputTokens - 1) / ((stepLastTokenMs - stepFirstTokenMs) / 1000)` using actual `streamPart.usage.outputTokens`. Render TPS inside the `Turn Usage` popover context menu rather than inline in `MessageModelPill`.
+- **Theme-Aware Logos, Favicons & Client Bundle Size**:
+  - Store `ENTRY_LOGO_DATA_URI` in server/OG-only `apps/web/lib/entry-logo-data.ts` rather than `entry-mark.tsx` so client bundles stay small. Use `/logo-light.png` (`mix-blend-multiply dark:hidden`) and `/logo-dark.png` (`hidden dark:block mix-blend-screen`) in `EntryMark` and media-query `metadata.icons` in `layout.tsx`.
+- **Gateway-Only Reasoning Effort Selector**:
+  - Never hardcode `"Auto"` in `ReasoningEffortSelector`; display only the gateway's `reasoningEffortLevels` and default to `defaultReasoningEffort ?? levels[0]?.value`. Keep `ModelSelectorCompact` free of search bars and show `ReasoningEffortSelector` beside it only when the selected model supports reasoning effort.
+
 ## 2026-11-12 — Satori OpenGraph, Gateway Reasoning Fidelity, Split Prompt Caching, Slow-Network Streaming, TPS & UTC Billing (PR #91, #92)
 
 - **Satori OpenGraph (`next/og`) Cannot Render `<svg><image href="data:..." /></svg>` (PR #91)**:

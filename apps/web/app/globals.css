@@ -368,8 +368,12 @@
   /* Markdown prose typography for streaming and static chat messages (LobeHub / LobeChat inspired) */
   .streaming-markdown-root {
     color: var(--foreground);
-    line-height: 1.7;
-    font-size: 0.9375rem;
+    line-height: 1.68;
+    font-size: 0.90625rem;
+    letter-spacing: -0.005em;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
   .streaming-markdown-root p {
     margin-top: 0;
@@ -458,12 +462,10 @@
   }
   .streaming-markdown-root th {
     background-color: var(--muted);
-    padding: 0.55rem 0.75rem;
-    font-weight: 600;
+    padding: 0.5rem 0.75rem;
+    font-weight: 500;
     text-align: left;
     font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
     border-bottom: 1px solid var(--border);
   }
   .streaming-markdown-root td {
