@@ -34,6 +34,10 @@ import {
 import { cn } from "@/lib/utils";
 import { UserMessageFold } from "@/components/user-message-fold";
 import { GitDataPartCard } from "./git-data-part-card";
+import {
+  SmoothedAssistantMarkdown,
+  SmoothedThinkingBlock,
+} from "./smoothed-stream-parts";
 
 type ReasoningMessagePart = Extract<
   WebAgentUIMessagePart,
@@ -255,8 +259,13 @@ export function ChatMessageFeed({
                     key={`${m.id}-${group.renderKey}`}
                     className="min-w-0 w-full overflow-hidden pl-0 sm:pl-[22px]"
                   >
-                    <ThinkingBlock
+                    <SmoothedThinkingBlock
                       text={getReasoningGroupText(group.parts)}
+                      active={
+                        isMessageStreaming &&
+                        group.parts.some((part) => part.state === "streaming")
+                      }
+                      streamKey={`${m.id}-${group.renderKey}`}
                       isStreaming={shouldKeepCollapsedReasoningStreaming({
                         isMessageStreaming,
                         hasStreamingReasoningPart: group.parts.some(
@@ -283,8 +292,10 @@ export function ChatMessageFeed({
                     key={`${m.id}-${group.renderKey}`}
                     className="min-w-0 w-full overflow-hidden pl-0 sm:pl-[22px]"
                   >
-                    <ThinkingBlock
+                    <SmoothedThinkingBlock
                       text={p.text}
+                      active={isMessageStreaming && p.state === "streaming"}
+                      streamKey={`${m.id}-${group.renderKey}`}
                       isStreaming={shouldKeepCollapsedReasoningStreaming({
                         isMessageStreaming,
                         hasStreamingReasoningPart: p.state === "streaming",
@@ -433,8 +444,12 @@ export function ChatMessageFeed({
                       >
                         {/* Markdown prose text */}
                         <div className="text-[14.5px] leading-[1.65] text-foreground select-text">
-                          <StreamingMarkdown
+                          <SmoothedAssistantMarkdown
                             content={p.text}
+                            active={
+                              isMessageStreaming && p.state === "streaming"
+                            }
+                            streamKey={`${m.id}-${group.renderKey}`}
                             isStreaming={
                               isMessageStreaming &&
                               !m.parts
