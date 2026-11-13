@@ -83,7 +83,7 @@ export function ReadRenderer({
     : defaultFileOptions;
 
   const expandedContent = imagePreview ? (
-    <div className="flex max-h-[min(24rem,60vh)] items-center justify-center overflow-auto rounded-md border border-border bg-muted/20 p-3">
+    <div className="flex max-h-96 items-center justify-center overflow-auto rounded-md border border-border bg-muted/20 p-3">
       {/* oxlint-disable-next-line nextjs/no-img-element -- sandbox-served file preview; next/image cannot optimize session-scoped URLs */}
       <img
         src={imagePreview}
@@ -92,7 +92,7 @@ export function ReadRenderer({
       />
     </div>
   ) : cleanContent ? (
-    <div className="max-h-[min(24rem,60vh)] overflow-auto rounded-md border border-border">
+    <div className="max-h-96 overflow-auto rounded-md border border-border">
       <DiffsFile
         file={{ name: rawFilePath, contents: cleanContent }}
         options={fileOptions}

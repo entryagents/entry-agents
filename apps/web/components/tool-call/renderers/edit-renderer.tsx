@@ -71,7 +71,7 @@ export function EditRenderer({
 
   const expandedContent =
     showDiff && !mergedState.denied ? (
-      <div className="max-h-[min(24rem,60vh)] overflow-auto rounded-md border border-border">
+      <div className="max-h-96 overflow-auto rounded-md border border-border">
         <MultiFileDiff
           oldFile={{ name: rawFilePath, contents: oldString }}
           newFile={{ name: rawFilePath, contents: newString }}
