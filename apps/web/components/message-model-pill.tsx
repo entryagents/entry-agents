@@ -331,29 +331,16 @@ export function MessageModelPill({
           </span>
         </>
       ) : null}
-      {effectiveInputTokens > 0 || effectiveOutputTokens > 0 ? (
+      {totalTokens > 0 && displayCost === undefined ? (
         <>
-          {displayCost !== undefined && (
-            <span aria-hidden className="text-muted-foreground/40">
-              ·
-            </span>
-          )}
-          <span className="tabular-nums text-muted-foreground/70 text-[10px]">
-            ↑{formatTokenCount(effectiveUncachedInputTokens || effectiveInputTokens)}
+          <span aria-hidden className="text-muted-foreground/40">
+            ·
           </span>
-          <span className="tabular-nums text-muted-foreground/70 text-[10px]">
-            ↓{formatTokenCount(effectiveOutputTokens)}
+          <span className="tabular-nums text-muted-foreground/80">
+            {formatTokenCount(totalTokens)} tok
           </span>
-          {Boolean(effectiveReasoningTokens) && (
-            <span
-              className="tabular-nums text-muted-foreground/60 text-[10px]"
-              title="reasoning tokens"
-            >
-              ✦{formatTokenCount(effectiveReasoningTokens)}
-            </span>
-          )}
         </>
-      ) : totalTokens > 0 ? (
+      ) : null}
         <>
           <span aria-hidden className="text-muted-foreground/40">
             ·
