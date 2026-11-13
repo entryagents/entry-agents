@@ -1,5 +1,12 @@
 # Lessons Learned
 
+## 2026-11-13 — Streamdown `[blocked]` Link Flash & Full-Width Tables
+
+- **Preventing `[blocked]` Flash During Link Streaming**:
+  - When a markdown link like `[file.ts](#workspace-file=file.ts)` is mid-stream, `remend` heals it to `streamdown:incomplete-link`, `rehype-sanitize` strips the unknown `streamdown:` protocol to `href=""`, and `rehype-harden` (default `linkBlockPolicy: "indicator"`) renders `file.ts [blocked]` until the closing `)` arrives. Override `defaultRehypePlugins.harden` with `linkBlockPolicy: "text-only"` in `chatRehypePlugins` (`apps/web/lib/streamdown-config.tsx`) so incomplete links render cleanly as plain text while streaming.
+- **Full-Width Markdown Tables Without Wrapper Chrome**:
+  - Streamdown's default `table-wrapper` adds a `bg-sidebar p-2 rounded-lg border` card and a Copy/Fullscreen toolbar (unless `controls.table: false` AND custom `table`/`thead`/`th`/`td` components are supplied). Disabling `table` in `chatStreamdownControls` and providing clean `table` components in `StreamingMarkdown` lets tables render directly to full screen width.
+
 ## 2026-11-13 — Inter + JetBrains Mono Typography, +10% Thinking Block, and Antigravity `visualize` Generative UI
 
 - **Tailwind v4 `next/font/google` Variable Mapping**:
