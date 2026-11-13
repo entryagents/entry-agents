@@ -9,8 +9,11 @@ export async function getUserGitHubToken(
   userId: string,
 ): Promise<string | null> {
   try {
+    const { getProviderAccountId } = await import("@/lib/auth/account-token");
+    const accountId = await getProviderAccountId(userId, "github");
+    if (!accountId) return null;
     const result = await auth.api.getAccessToken({
-      body: { providerId: "github", userId },
+      body: { accountId, userId },
     });
 
     return result?.accessToken ?? null;

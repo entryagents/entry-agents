@@ -1,4 +1,5 @@
 import "server-only";
+import { getProviderAccountId } from "@/lib/auth/account-token";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/lib/auth/config";
 import { db } from "@/lib/db/client";
@@ -45,9 +46,11 @@ export async function getUserVercelAuthInfo(
   userId: string,
 ): Promise<UserVercelAuthInfo | null> {
   try {
+    const accountId = await getProviderAccountId(userId, "vercel");
+    if (!accountId) return null;
     const [result, externalId] = await Promise.all([
       auth.api.getAccessToken({
-        body: { providerId: "vercel", userId },
+        body: { accountId, userId },
       }),
       getVercelAccountId(userId),
     ]);
@@ -83,8 +86,10 @@ export async function refreshUserVercelToken(
   userId: string,
 ): Promise<string | null> {
   try {
+    const accountId = await getProviderAccountId(userId, "vercel");
+    if (!accountId) return null;
     const result = await auth.api.refreshToken({
-      body: { providerId: "vercel", userId },
+      body: { accountId, userId },
     });
     return result?.accessToken ?? null;
   } catch (error) {
@@ -120,8 +125,10 @@ export async function getUserVercelToken(
   userId: string,
 ): Promise<string | null> {
   try {
+    const accountId = await getProviderAccountId(userId, "vercel");
+    if (!accountId) return null;
     const result = await auth.api.getAccessToken({
-      body: { providerId: "vercel", userId },
+      body: { accountId, userId },
     });
 
     return result?.accessToken ?? null;
