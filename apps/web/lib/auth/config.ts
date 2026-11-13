@@ -300,6 +300,10 @@ export const auth = betterAuth({
     github: {
       clientId: process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID ?? "",
       clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
+      // user:email lets Better Auth fetch /user/emails and pick the user's
+      // primary verified email (including a real email when the user has one
+      // visible there, not just the noreply address).
+      scope: ["read:user", "user:email"],
       mapProfileToUser: mapGitHubProfileToUser,
     },
     google: {
