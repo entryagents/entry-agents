@@ -104,12 +104,39 @@ export function AssistantMessageGroups({
     : message.metadata?.creditExhausted
       ? "Ran out of credit mid-response, so generation stopped here. Top up or upgrade your plan to continue."
       : message.metadata?.turnSpendCapped
-        ? "This response got unusually expensive (a long tool-call loop) and was stopped early to protect your credit balance. Send a follow-up message to continue."
+        ? "This turn crossed its $5 spend cap"
         : null;
 
+  const stopNoticeTitle = stopNotice
+    ? stopNotice.split(". ")[0] + "."
+    : null;
+  const stopNoticeBody = stopNotice
+    ? stopNotice.slice(stopNotice.indexOf(". ") + 2)
+    : null;
+
   const stopNoticeCard = stopNotice ? (
-    <div className="w-fit max-w-[80%] rounded-2xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2 text-sm text-amber-700 dark:text-amber-400">
-      {stopNotice}
+    <div
+      role="status"
+      className="flex w-fit max-w-full items-start gap-2.5 rounded-2xl border border-amber-500/30 bg-gradient-to-b from-amber-500/10 to-amber-500/[0.04] px-4 py-3 text-sm text-amber-800 shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:border-amber-400/25 dark:from-amber-400/10 dark:to-amber-400/[0.03] dark:text-amber-300"
+    >
+      <svg
+        className="mt-0.5 h-4 w-4 shrink-0"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M12 9v4" />
+        <path d="M12 17h.01" />
+        <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+      </svg>
+      <div className="min-w-0">
+        <p className="font-medium">{stopNoticeTitle}</p>
+        <p className="mt-0.5 text-[13px] opacity-90">{stopNoticeBody}</p>
+      </div>
     </div>
   ) : null;
 
