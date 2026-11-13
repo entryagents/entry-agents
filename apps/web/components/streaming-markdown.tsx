@@ -1,7 +1,18 @@
 "use client";
 
-import { useMemo, type ComponentPropsWithoutRef } from "react";
-import { Streamdown } from "streamdown";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+} from "react";
+import { Check, Copy, Maximize2, X } from "lucide-react";
+import {
+  Streamdown,
+  extractTableDataFromElement,
+  tableDataToMarkdown,
+} from "streamdown";
 import {
   chatRehypePlugins,
   chatStreamdownControls,
@@ -15,15 +26,80 @@ type StreamdownComponents = NonNullable<
 
 type NodeProp = { node?: unknown };
 
-const cleanTableComponents: StreamdownComponents = {
-  table: ({
-    children,
-    className,
-    node: _node,
-    ...props
-  }: ComponentPropsWithoutRef<"table"> & NodeProp) => (
-    <div className="my-3 w-full overflow-x-auto">
+function MarkdownTable({
+  children,
+  className,
+  node: _node,
+  ...props
+}: ComponentPropsWithoutRef<"table"> & NodeProp) {
+  const tableRef = useRef<HTMLTableElement | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isFullscreen]);
+
+  const handleCopy = async () => {
+    const tableElement = tableRef.current;
+    if (
+      !tableElement ||
+      typeof navigator === "undefined" ||
+      !navigator.clipboard
+    ) {
+      return;
+    }
+    try {
+      const tableData = extractTableDataFromElement(tableElement);
+      const markdown = tableDataToMarkdown(tableData);
+      await navigator.clipboard.writeText(markdown);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Clipboard write may fail in restricted contexts
+    }
+  };
+
+  const actionButtons = (
+    <div className="flex items-center gap-1">
+      <button
+        type="button"
+        onClick={handleCopy}
+        className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        title="Copy table as Markdown"
+      >
+        {copied ? (
+          <Check className="h-3.5 w-3.5 text-emerald-500" />
+        ) : (
+          <Copy className="h-3.5 w-3.5" />
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={() => setIsFullscreen((prev) => !prev)}
+        className="inline-flex h-6 items-center gap-1 rounded px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        title={isFullscreen ? "Exit fullscreen" : "View table fullscreen"}
+      >
+        {isFullscreen ? (
+          <X className="h-3.5 w-3.5" />
+        ) : (
+          <Maximize2 className="h-3.5 w-3.5" />
+        )}
+      </button>
+    </div>
+  );
+
+  const tableEl = (
+    <div className="w-full overflow-x-auto">
       <table
+        ref={tableRef}
         className={cn(
           "w-full border-collapse text-left text-[13.5px] leading-snug",
           className,
@@ -33,7 +109,32 @@ const cleanTableComponents: StreamdownComponents = {
         {children}
       </table>
     </div>
-  ),
+  );
+
+  if (isFullscreen) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-background/95 p-4 backdrop-blur-xs sm:p-6">
+        <div className="mb-3 flex items-center justify-between border-b border-border pb-2">
+          <span className="text-xs font-medium text-muted-foreground">
+            Table View
+          </span>
+          {actionButtons}
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto">{tableEl}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-3 w-full">
+      <div className="mb-1 flex items-center justify-end">{actionButtons}</div>
+      {tableEl}
+    </div>
+  );
+}
+
+const cleanTableComponents: StreamdownComponents = {
+  table: MarkdownTable,
   thead: ({
     children,
     className,
@@ -91,7 +192,7 @@ type StreamingMarkdownProps = {
 /**
  * Streaming Markdown renderer powered directly by Streamdown.
  * Uses Streamdown's built-in block memoization, remend syntax healing,
- * token-level blurIn animation, and inline block caret without external
+ * fast token-level blurIn animation, and inline block caret without external
  * pacing wrappers that reset on step transitions.
  */
 export function StreamingMarkdown({
@@ -118,7 +219,7 @@ export function StreamingMarkdown({
       <Streamdown
         mode={isStreaming ? "streaming" : "static"}
         isAnimating={isStreaming}
-        animated={{ animation: "blurIn", duration: 150 }}
+        animated={{ animation: "blurIn", duration: 60 }}
         caret={isStreaming ? "block" : undefined}
         plugins={streamdownPlugins}
         rehypePlugins={chatRehypePlugins}

@@ -1,6 +1,11 @@
 # Lessons Learned
 
-## 2026-11-13 — Streamdown `[blocked]` Link Flash & Full-Width Tables
+## 2026-11-13 — Fast Coalesced Streaming, Compact Table Copy/Fullscreen & Streamdown `[blocked]` Fix
+
+- **Coalescing `text-delta` & `reasoning-delta` in `runAgentStep`**:
+  - Calling `await streamWriter.write(part)` serially on every 1-token `text-delta` / `reasoning-delta` caps streaming throughput at one durable-stream RPC roundtrip per token. `createCoalescingStreamWriter` (`apps/web/lib/chat/coalescing-stream-writer.ts`) writes the first delta immediately and coalesces subsequent same-id deltas in-memory while a write is in flight, then flushes before any non-delta chunk or step completion.
+- **Compact Table Copy/Fullscreen Without Wrapper Chrome**:
+  - `MarkdownTable` in `apps/web/components/streaming-markdown.tsx` renders sleek icon-only Copy (Markdown) and Fullscreen buttons above a full-width `overflow-x-auto` table without `bg-sidebar p-2` outer card padding.
 
 - **Preventing `[blocked]` Flash During Link Streaming**:
   - When a markdown link like `[file.ts](#workspace-file=file.ts)` is mid-stream, `remend` heals it to `streamdown:incomplete-link`, `rehype-sanitize` strips the unknown `streamdown:` protocol to `href=""`, and `rehype-harden` (default `linkBlockPolicy: "indicator"`) renders `file.ts [blocked]` until the closing `)` arrives. Override `defaultRehypePlugins.harden` with `linkBlockPolicy: "text-only"` in `chatRehypePlugins` (`apps/web/lib/streamdown-config.tsx`) so incomplete links render cleanly as plain text while streaming.
