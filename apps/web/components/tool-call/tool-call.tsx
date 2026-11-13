@@ -26,6 +26,7 @@ import { SkillRenderer } from "./renderers/skill-renderer";
 import { BrandToolRenderer } from "./renderers/brand-tool-renderer";
 import { ProcessRenderer } from "./renderers/process-renderer";
 import { InboxRenderer } from "./renderers/inbox-renderer";
+import { VisualizeToolRenderer } from "./renderers/visualize-tool-renderer";
 
 export type ToolCallProps = {
   part: WebAgentUIToolPart;
@@ -96,6 +97,10 @@ export function ToolCall({
       return <ProcessRenderer part={part} state={state} {...approvalProps} />;
     case "tool-inbox":
       return <InboxRenderer part={part} state={state} {...approvalProps} />;
+    case "tool-visualize":
+      return (
+        <VisualizeToolRenderer part={part} state={state} {...approvalProps} />
+      );
     default:
       return (
         <DefaultRenderer

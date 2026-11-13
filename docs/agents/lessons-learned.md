@@ -1,5 +1,15 @@
 # Lessons Learned
 
+## 2026-11-13 — Inter + JetBrains Mono Typography, +10% Thinking Block, and Antigravity `visualize` Generative UI
+
+- **Tailwind v4 `next/font/google` Variable Mapping**:
+  - In `apps/web/app/layout.tsx`, use distinct CSS variable names (`--font-inter-sans` for `Inter`, `--font-jetbrains-mono` for `JetBrains_Mono`) and map `--font-sans: var(--font-inter-sans);` and `--font-mono: var(--font-jetbrains-mono);` in `apps/web/app/globals.css` `@theme inline` to avoid Tailwind v4 self-referential CSS variable loops.
+- **Thinking Block Readability**:
+  - Increasing `ThinkingBlock` body text by 10% from `text-xs` (12px) to `text-[13.2px] leading-relaxed` improves long reasoning trace legibility without breaking compact tool layout alignment.
+- **Inline Interactive Visualizations (`visualize` Tool)**:
+  - `packages/agent/tools/visualize.ts` + `apps/web/components/tool-call/renderers/visualize-tool-renderer.tsx` enable Antigravity-style inline interactive HTML/CSS/JS/SVG/Canvas visualizations inside a sandboxed `<iframe sandbox="allow-scripts">` with live theme synchronization (`MutationObserver` on `document.documentElement.classList`), Preview/Code toggle, reload, `.html` download, and fullscreen modal.
+  - Keep `tool-visualize` always visible inline in `ChatMessageFeed` (alongside `tool-task`) even when `ToolCallsSummaryBar` is collapsed so visual outputs are never hidden behind a collapsed summary.
+
 ## 2026-11-13 — Native Streamdown, Decode-Only TPS, Gateway-Only Reasoning Selector, Theme-Aware Logos & Unslop
 
 - **Streamdown Native Streaming vs External `usePacedText` Wrappers**:

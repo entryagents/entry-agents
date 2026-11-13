@@ -451,16 +451,19 @@ export function ChatMessageFeed({
               }
 
               if (isToolUIPart(p)) {
-                const isSubagentTask =
+                const toolName = (p as { toolName?: string }).toolName;
+                const isAlwaysVisibleTool =
                   p.type === "tool-task" ||
-                  (p as { toolName?: string }).toolName === "task";
-                if (!isToolCallsExpanded && !isSubagentTask) return null;
+                  toolName === "task" ||
+                  p.type === "tool-visualize" ||
+                  toolName === "visualize";
+                if (!isToolCallsExpanded && !isAlwaysVisibleTool) return null;
                 return (
                   <div
                     key={`${m.id}-${group.renderKey}`}
                     className={cn(
                       "min-w-0 w-full overflow-hidden",
-                      isSubagentTask ? "py-1" : "pl-0 sm:pl-[22px]",
+                      isAlwaysVisibleTool ? "py-1" : "pl-0 sm:pl-[22px]",
                     )}
                   >
                     <ToolCall
