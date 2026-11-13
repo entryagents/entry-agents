@@ -36,6 +36,7 @@ import {
   computeRealtimeSpendCap,
   estimateNextStepInputTokens,
 } from "@/lib/chat/realtime-spend-cap";
+import { createCoalescingStreamWriter } from "@/lib/chat/coalescing-stream-writer";
 import type {
   WebAgentCommitData,
   WebAgentCommitDataPart,
@@ -4157,6 +4158,8 @@ const runAgentStep = async (
         }
 
         streamWriter = writable.getWriter();
+        const coalescingWriter =
+          createCoalescingStreamWriter<UIMessageChunk>(streamWriter);
 
         for await (const part of stream.toUIMessageStream<WebAgentUIMessage>({
           originalMessages,
@@ -4441,7 +4444,7 @@ const runAgentStep = async (
         })) {
           if (!streamWriteFailed) {
             try {
-              await streamWriter.write(part);
+              coalescingWriter.write(part);
             } catch (writeError) {
               streamWriteFailed = true;
               const errorName = (writeError as { name?: unknown })?.name;
@@ -4453,6 +4456,22 @@ const runAgentStep = async (
                   writeError,
                 );
               }
+            }
+          }
+        }
+        if (!streamWriteFailed) {
+          try {
+            await coalescingWriter.flush();
+          } catch (writeError) {
+            streamWriteFailed = true;
+            const errorName = (writeError as { name?: unknown })?.name;
+            const isDisconnect =
+              errorName === "AbortError" || errorName === "ResponseAborted";
+            if (!isDisconnect) {
+              console.warn(
+                "[workflow] Writable stream sink flush error in runAgentStep; continuing step execution and DB checkpointing:",
+                writeError,
+              );
             }
           }
         }
