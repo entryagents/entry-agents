@@ -2999,16 +2999,12 @@ export async function runAgentWorkflow(options: Options) {
     }
 
     if (wasTimedOut) {
-      const timeoutNotice =
-        "\n\n*[This task reached the maximum turn duration (1 hour) and was paused. You can send a follow-up message to continue.]*";
+      // Client renders the themed stop-notice card from turnTimedOut
+      // metadata — same design as the $5-cap / window / credit notices.
       const lastPart = pendingAssistantResponse.parts.at(-1);
       if (lastPart?.type === "text") {
         pendingAssistantResponse = {
           ...pendingAssistantResponse,
-          parts: [
-            ...pendingAssistantResponse.parts.slice(0, -1),
-            { ...lastPart, text: lastPart.text + timeoutNotice },
-          ],
           metadata: {
             ...pendingAssistantResponse.metadata,
             turnTimedOut: true,
@@ -3017,17 +3013,12 @@ export async function runAgentWorkflow(options: Options) {
       } else {
         pendingAssistantResponse = {
           ...pendingAssistantResponse,
-          parts: [
-            ...pendingAssistantResponse.parts,
-            { type: "text", text: timeoutNotice },
-          ],
           metadata: {
             ...pendingAssistantResponse.metadata,
             turnTimedOut: true,
           },
         };
       }
-      await sendTextMessage(writable, `${assistantId}:timeout`, timeoutNotice);
     }
 
     if (sandboxState) {

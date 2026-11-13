@@ -105,7 +105,9 @@ export function AssistantMessageGroups({
       ? "Ran out of credit mid-response, so generation stopped here. Top up or upgrade your plan to continue."
       : message.metadata?.turnSpendCapped
         ? "This turn crossed its $5 spend cap"
-        : null;
+        : message.metadata?.turnTimedOut
+          ? "This task reached the maximum turn duration"
+          : null;
 
   const stopNoticeTitle = stopNotice
     ? stopNotice.split(". ")[0] + "."
