@@ -1,25 +1,29 @@
 packages:
-- apps/*
-- packages/*
+  - "apps/*"
+  - "packages/*"
+
 catalog:
   ai: ^6.0.165
-  '@ai-sdk/anthropic': ^3.0.70
-  '@ai-sdk/google': ^3.0.107
-  '@ai-sdk/openai': ^3.0.53
-  '@ai-sdk/openai-compatible': ^2.0.48
-  '@ai-sdk/react': ^3.0.167
+  "@ai-sdk/anthropic": ^3.0.70
+  "@ai-sdk/google": ^3.0.107
+  "@ai-sdk/openai": ^3.0.53
+  "@ai-sdk/openai-compatible": ^2.0.48
+  "@ai-sdk/react": ^3.0.167
   zod: ^4.3.6
+
 overrides:
-  proxy-addr@<2.0.8: ^2.0.8
-  tinypool@<=2.1.2: ^2.2.0
-  source-map-js@<1.2.2: ^1.2.2
-  katex@<0.18.2: ^0.19.0
-  http-cache-semantics@<=4.2.0: ^4.3.0
+  "proxy-addr@<2.0.8": ^2.0.8
+  "tinypool@<=2.1.2": ^2.2.0
+  "source-map-js@<1.2.2": ^1.2.2
+  "katex@<0.18.2": ^0.19.0
+  "http-cache-semantics@<=4.2.0": ^4.3.0
   undici@>=7.0.0 <7.30.0: ^7.30.0
   undici@^7.0.0: ^7.30.0
   undici@>=6.0.0 <7.0.0: ^6.29.0
-  '@ai-sdk/provider-utils@<4.0.33': ^4.0.33
-  '@hono/node-server@<1.19.15': ^1.19.15
+  dompurify@>=3.0.0 <3.4.17: ^3.4.17
+  "@ai-sdk/provider-utils@<4.0.33": ^4.0.33
+  "@hono/node-server@<1.19.15": ^1.19.15
+  better-auth@>=1.1.3 <1.7.7: ^1.7.7
   brace-expansion@>=2.0.0 <2.1.2: ^2.1.2
   brace-expansion@>=2.0.0 <2.1.3: ^2.1.3
   brace-expansion@>=2.0.0 <2.1.7: ^2.1.7
@@ -45,6 +49,7 @@ overrides:
   nanoid@<3.3.16: ^3.3.16
   nanoid@<3.3.18: ^3.3.18
   nanoid@>=4.0.0 <5.1.16: ^5.1.16
+  next@<16.4.1: ^16.4.1
   next@>=16.0.0-beta.0 <16.2.3: ^16.2.3
   piscina@<=4.9.3: ^4.9.4
   postcss@<8.5.10: ^8.5.10
@@ -54,66 +59,76 @@ overrides:
   qs@<6.16.0: ^6.16.0
   sharp@<0.35.0: ^0.35.0
   sharp@<0.35.5: ^0.35.5
+  undici@<6.23.0: ^6.23.0
+  undici@<6.24.0: ^6.24.0
+  undici@<6.27.0: ^6.27.0
+  undici@<6.28.0: ^6.28.0
   undici@>=7.0.0 <7.28.0: ^7.28.0
   undici@>=7.23.0 <7.28.0: ^7.28.0
-  better-auth@>=1.1.3 <1.7.7: ^1.7.7
-  dompurify@>=3.0.0 <3.4.17: ^3.4.17
-  next@<16.4.1: ^16.4.1
-  decode-uri-component@<=0.5.0: ^0.5.1
-  body-parser@>=2.0.0 <2.4.0: ^2.4.0
-  undici@>=6.23.0 <6.29.1: ^6.29.1
+  "decode-uri-component@<=0.5.0": ^0.5.1
+  "body-parser@>=2.0.0 <2.4.0": ^2.4.0
+  "undici@>=6.23.0 <6.29.1": ^6.29.1
+
 minimumReleaseAge: 1440
 minimumReleaseAgeIgnoreMissingTime: false
 minimumReleaseAgeStrict: true
+
 allowBuilds:
-  '@nestjs/core': false
-  '@swc/core': true
+  "@nestjs/core": false
+  "@swc/core": true
   cbor-extract: true
   electron: false
   esbuild: true
+  # protobufjs is a direct dependency of the `modal` SDK and runs a
+  # `postinstall` that re-runs gulp + pbts. The tarball already ships
+  # index.js and dist/, so it is not required to build — but pnpm blocks
+  # it by default and Vercel's builder treats an ignored build script as
+  # a hard `pnpm install` failure. Opt in explicitly.
   protobufjs: true
   sharp: true
   sleep: false
+
 minimumReleaseAgeExclude:
-- esbuild@0.24.3
-- undici@7.30.0
-- dompurify@3.4.16
-- piscina@4.9.4
-- '@ai-sdk/provider-utils@4.0.33'
-- undici@6.23.0
-- undici@6.24.0
-- next@16.2.3
-- postcss@8.5.10
-- next@16.2.5
-- next@16.2.6
-- esbuild@0.28.1
-- piscina@4.9.3
-- undici@7.28.0
-- undici@6.27.0
-- brace-expansion@2.1.2
-- brace-expansion@5.0.7
-- hono@4.12.25
-- hono@4.12.27
-- dompurify@3.4.12
-- sharp@0.35.0
-- next@16.2.11
-- dompurify@3.4.11
-- dompurify@3.4.9
-- dompurify@3.4.8
-- postcss@8.5.12
-- better-auth@1.6.22
-- brace-expansion@2.1.3
-- brace-expansion@5.0.8
-- postcss@8.5.23
-- undici@7.29.0
-- undici@6.28.0
-- hono@4.12.34
-- brace-expansion@5.0.9
-- brace-expansion@2.1.4
-- mermaid@11.16.1
-- dompurify@3.4.13
-- nanoid@5.1.16
-- nanoid@3.3.16
-- '@hono/node-server@1.19.15'
-- nanoid@3.3.18
-- postcss@8.5.18
+  - esbuild@0.24.3
+  - undici@7.30.0
+  - dompurify@3.4.16
+  - piscina@4.9.4
+  - "@ai-sdk/provider-utils@4.0.33"
+  - undici@6.23.0
+  - undici@6.24.0
+  - next@16.2.3
+  - postcss@8.5.10
+  - next@16.2.5
+  - next@16.2.6
+  - esbuild@0.28.1
+  - piscina@4.9.3
+  - undici@7.28.0
+  - undici@6.27.0
+  - brace-expansion@2.1.2
+  - brace-expansion@5.0.7
+  - hono@4.12.25
+  - hono@4.12.27
+  - dompurify@3.4.12
+  - sharp@0.35.0
+  - next@16.2.11
+  - dompurify@3.4.11
+  - dompurify@3.4.9
+  - dompurify@3.4.8
+  - postcss@8.5.12
+  - better-auth@1.6.22
+  - brace-expansion@2.1.3
+  - brace-expansion@5.0.8
+  - postcss@8.5.23
+  - undici@7.29.0
+  - undici@6.28.0
+  - hono@4.12.34
+  - brace-expansion@5.0.9
+  - brace-expansion@2.1.4
+  - mermaid@11.16.1
+  - dompurify@3.4.13
+  - nanoid@5.1.16
+  - nanoid@3.3.16
+  - "@hono/node-server@1.19.15"
+  - nanoid@3.3.18
+  - postcss@8.5.18
+
