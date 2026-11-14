@@ -17,11 +17,9 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  ADMIN_TELEMETRY_WINDOW_LABELS,
-  ADMIN_TELEMETRY_WINDOWS,
-  type AdminTelemetryPayload,
-  type AdminTelemetryWindow,
+import type {
+  AdminTelemetryPayload,
+  AdminTelemetryWindow,
 } from "@/lib/db/admin-telemetry";
 import {
   formatDurationMs,
@@ -43,6 +41,46 @@ import {
 
 type PollIntervalMs = 5000 | 15000 | 30000 | 0;
 type TelemetrySectionFilter = "all" | "live" | "plugins" | "sandboxes" | "ops";
+
+const ADMIN_TELEMETRY_WINDOWS: readonly AdminTelemetryWindow[] = [
+  "1h",
+  "24h",
+  "7d",
+  "30d",
+  "2m",
+  "3m",
+  "4m",
+  "5m",
+  "6m",
+  "7m",
+  "8m",
+  "9m",
+  "10m",
+  "11m",
+  "1y",
+  "2y",
+  "all",
+];
+
+const ADMIN_TELEMETRY_WINDOW_LABELS: Record<AdminTelemetryWindow, string> = {
+  "1h": "1 hour",
+  "24h": "24 hours",
+  "7d": "7 days",
+  "30d": "30 days",
+  "2m": "2 months",
+  "3m": "3 months",
+  "4m": "4 months",
+  "5m": "5 months",
+  "6m": "6 months",
+  "7m": "7 months",
+  "8m": "8 months",
+  "9m": "9 months",
+  "10m": "10 months",
+  "11m": "11 months",
+  "1y": "1 year",
+  "2y": "2 years",
+  all: "All time",
+};
 
 const QUICK_WINDOW_OPTIONS: AdminTelemetryWindow[] = [
   "1h",
