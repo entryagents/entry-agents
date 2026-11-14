@@ -122,8 +122,8 @@ export function ActiveRunsAndSandboxesPanel({
               No active workflows streaming right now
             </div>
           ) : (
-            <div className="max-h-72 overflow-auto rounded-lg border">
-              <Table>
+            <div className="max-h-72 overflow-x-auto overflow-y-auto rounded-lg border">
+              <Table className="min-w-[520px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">Chat / User</TableHead>
@@ -306,8 +306,8 @@ export function ModelPerformanceTable({
             No model runs or usage events recorded in this window
           </div>
         ) : (
-          <div className="max-h-96 overflow-auto rounded-lg border">
-            <Table>
+          <div className="max-h-96 overflow-x-auto overflow-y-auto rounded-lg border">
+            <Table className="min-w-[680px]">
               <TableHeader>
                 <TableRow>
                   <TableHead className="text-xs">Model</TableHead>
@@ -337,7 +337,7 @@ export function ModelPerformanceTable({
                         {row.isDeepSeek && (
                           <Badge
                             variant="secondary"
-                            className="px-1.5 py-0 font-mono text-[10px] font-normal"
+                            className="px-1.5 py-0 font-mono text-[11px] font-normal"
                           >
                             DeepSeek KV
                           </Badge>

@@ -1,19 +1,39 @@
+import { BUILTIN_PLUGIN_CATALOG } from "@entry-agents/agent";
 import { desc, gte, sql } from "drizzle-orm";
+import {
+  deriveAgentHubRoster,
+  deriveTeamFeed,
+} from "../agent-hub/derive-roster";
 import { db } from "./client";
 import {
+  accounts,
+  authSessions,
+  benchmarkResults,
   benchmarkRuns,
+  billingUsageEvents,
+  billingWebhookEvents,
+  chatMessages,
+  chatReads,
   chatSteeringInbox,
   chats,
   compactionEvents,
+  composioSessions,
   creditTransactions,
   feedback,
+  githubInstallations,
+  githubRepoIndex,
   mcpServers,
+  modelOverrides,
   platformSettings,
   sessions,
   shares,
   usageEvents,
+  userPlugins,
+  userPreferences,
   userSecrets,
   users,
+  vercelProjectLinks,
+  verification,
   workflowRuns,
   workflowRunSteps,
 } from "./schema";
@@ -249,6 +269,116 @@ export interface AdminTelemetryPayload {
       suiteVersion: string;
       startedAt: string;
     } | null;
+  };
+  plugins: {
+    builtinCatalogCount: number;
+    totalUserPluginRows: number;
+    enabledPluginRows: number;
+    disabledPluginRows: number;
+    customPluginRows: number;
+    distinctUsers: number;
+    secretConfiguredPlugins: number;
+    totalTriggersAllTime: number;
+    triggeredInWindow: number;
+    totalSlashCommands: number;
+    byHook: Record<string, number>;
+    byCategory: Record<string, number>;
+    topPlugins: Array<{
+      slug: string;
+      name: string;
+      source: string;
+      category: string;
+      installs: number;
+      enabledCount: number;
+      triggers: number;
+      lastTriggeredAt: string | null;
+    }>;
+  };
+  teamsAndSubagents: {
+    subagentEventsInWindow: number;
+    subagentInputTokens: number;
+    subagentCachedInputTokens: number;
+    subagentOutputTokens: number;
+    subagentToolCalls: number;
+    subagentSpendUsd: number;
+    subagentShareOfEventsPct: number;
+    subagentShareOfTokensPct: number;
+    sampledChatsWithSubagents: number;
+    sampledChatsWithTeamBoard: number;
+    totalSubagentsSpawned: number;
+    byRole: Record<string, number>;
+    byStatus: Record<string, number>;
+    boardEntriesTotal: number;
+    boardEntriesByKind: Record<string, number>;
+    boardTasksTotal: number;
+    boardTasksByStatus: Record<string, number>;
+  };
+  integrationsAndAuth: {
+    activeAuthSessions: number;
+    totalAuthSessions: number;
+    activeVerifications: number;
+    oauthProviders: Array<{
+      provider: string;
+      linkedAccounts: number;
+      distinctUsers: number;
+    }>;
+    githubApp: {
+      totalInstallations: number;
+      orgInstallations: number;
+      userInstallations: number;
+      allReposInstallations: number;
+      selectedReposInstallations: number;
+      indexedRepoInstallations: number;
+      totalIndexedRepos: number;
+    };
+    vercelProjects: {
+      totalLinks: number;
+      distinctUsers: number;
+      distinctTeams: number;
+    };
+    composio: {
+      totalSessions: number;
+      activeUsersInWindow: number;
+    };
+  };
+  messagesAndPipeline: {
+    totalMessagesAllTime: number;
+    messagesInWindow: number;
+    userMessagesInWindow: number;
+    assistantMessagesInWindow: number;
+    totalChatReads: number;
+    stepsByFinishReason: Array<{ reason: string; count: number }>;
+    modelOverrides: {
+      totalOverrides: number;
+      disabledModels: number;
+      enabledOverrides: number;
+    };
+    preferences: {
+      configuredUsers: number;
+      autoCommitPushUsers: number;
+      autoCreatePrUsers: number;
+      guidedFrontendUsers: number;
+      byPermissionMode: Record<string, number>;
+      bySandboxType: Record<string, number>;
+    };
+    billingPipeline: {
+      usageLedgerEventsInWindow: number;
+      usageLedgerUsdInWindow: number;
+      webhookEventsAllTime: number;
+      webhookEventsInWindow: number;
+      webhooksByType: Array<{ eventType: string; count: number }>;
+    };
+    benchmarks: {
+      totalRuns: number;
+      totalResultRows: number;
+      passedResultRows: number;
+      passRatePct: number;
+      byBenchmark: Array<{
+        benchmark: string;
+        total: number;
+        passed: number;
+      }>;
+    };
   };
 }
 
@@ -968,9 +1098,439 @@ export async function getAdminTelemetry(
   const stepAgg = stepWindowRows[0];
   const settings = settingsRows[0];
   const latestBench = benchmarkRows[0];
+  const nowIso = new Date(now).toISOString();
+
+  // --- Extended telemetry across remaining schema tables ---
+  const [
+    pluginRows,
+    subagentUsageRows,
+    recentAssistantMsgRows,
+    authSessionAggRows,
+    verificationAggRows,
+    oauthProviderRows,
+    githubInstAggRows,
+    githubRepoIdxAggRows,
+    vercelLinksAggRows,
+    composioAggRows,
+    messagesAggRows,
+    chatReadsAggRows,
+    stepReasonRows,
+    modelOverridesAggRows,
+    prefsAggRows,
+    prefsPermRows,
+    prefsSandboxRows,
+    billingUsageAggRows,
+    billingWebhookAggRows,
+    billingWebhookTypeRows,
+    benchCountsRows,
+    benchBySuiteRows,
+  ] = await Promise.all([
+    db
+      .select({
+        slug: userPlugins.slug,
+        name: userPlugins.name,
+        source: userPlugins.source,
+        category: userPlugins.category,
+        enabled: userPlugins.enabled,
+        userId: userPlugins.userId,
+        manifest: userPlugins.manifest,
+        hasSecretConfig: sql<boolean>`${userPlugins.encryptedConfig} IS NOT NULL AND ${userPlugins.encryptedConfig} <> ''`,
+        triggerCount: userPlugins.triggerCount,
+        lastTriggeredAt: userPlugins.lastTriggeredAt,
+      })
+      .from(userPlugins)
+      .catch(() => []),
+
+    db
+      .select({
+        events: sql<number>`count(*)::int`,
+        inputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)::bigint`,
+        cachedInputTokens: sql<number>`coalesce(sum(${usageEvents.cachedInputTokens}), 0)::bigint`,
+        outputTokens: sql<number>`coalesce(sum(${usageEvents.outputTokens}), 0)::bigint`,
+        toolCalls: sql<number>`coalesce(sum(${usageEvents.toolCallCount}), 0)::int`,
+        spendUsd: sql<number>`coalesce(sum(${usageEvents.costUsd}), 0)::double precision`,
+      })
+      .from(usageEvents)
+      .where(
+        sql`${usageEvents.createdAt} >= ${sinceIso} AND ${usageEvents.agentType} = 'subagent'`,
+      )
+      .catch(() => []),
+
+    db
+      .select({
+        chatId: chatMessages.chatId,
+        parts: chatMessages.parts,
+      })
+      .from(chatMessages)
+      .where(
+        sql`${chatMessages.role} = 'assistant' AND ${chatMessages.createdAt} >= ${sinceIso}`,
+      )
+      .orderBy(desc(chatMessages.createdAt))
+      .limit(200)
+      .catch(() => []),
+
+    db
+      .select({
+        totalAuthSessions: sql<number>`count(*)::int`,
+        activeAuthSessions: sql<number>`coalesce(sum(case when ${authSessions.expiresAt} > ${nowIso} then 1 else 0 end), 0)::int`,
+      })
+      .from(authSessions)
+      .catch(() => []),
+
+    db
+      .select({
+        activeVerifications: sql<number>`coalesce(sum(case when ${verification.expiresAt} > ${nowIso} then 1 else 0 end), 0)::int`,
+      })
+      .from(verification)
+      .catch(() => []),
+
+    db
+      .select({
+        provider: accounts.providerId,
+        linkedAccounts: sql<number>`count(*)::int`,
+        distinctUsers: sql<number>`count(distinct ${accounts.userId})::int`,
+      })
+      .from(accounts)
+      .groupBy(accounts.providerId)
+      .catch(() => []),
+
+    db
+      .select({
+        totalInstallations: sql<number>`count(*)::int`,
+        orgInstallations: sql<number>`coalesce(sum(case when ${githubInstallations.accountType} = 'Organization' then 1 else 0 end), 0)::int`,
+        userInstallations: sql<number>`coalesce(sum(case when ${githubInstallations.accountType} = 'User' then 1 else 0 end), 0)::int`,
+        allReposInstallations: sql<number>`coalesce(sum(case when ${githubInstallations.repositorySelection} = 'all' then 1 else 0 end), 0)::int`,
+        selectedReposInstallations: sql<number>`coalesce(sum(case when ${githubInstallations.repositorySelection} = 'selected' then 1 else 0 end), 0)::int`,
+      })
+      .from(githubInstallations)
+      .catch(() => []),
+
+    db
+      .select({
+        indexedInstallations: sql<number>`count(*)::int`,
+        totalIndexedRepos: sql<number>`coalesce(sum(case when jsonb_typeof(${githubRepoIndex.repos}) = 'array' then jsonb_array_length(${githubRepoIndex.repos}) else 0 end), 0)::int`,
+      })
+      .from(githubRepoIndex)
+      .catch(() => []),
+
+    db
+      .select({
+        totalLinks: sql<number>`count(*)::int`,
+        distinctUsers: sql<number>`count(distinct ${vercelProjectLinks.userId})::int`,
+        distinctTeams: sql<number>`count(distinct ${vercelProjectLinks.teamId})::int`,
+      })
+      .from(vercelProjectLinks)
+      .catch(() => []),
+
+    db
+      .select({
+        totalSessions: sql<number>`count(*)::int`,
+        activeUsersInWindow: sql<number>`coalesce(sum(case when ${composioSessions.updatedAt} >= ${sinceIso} then 1 else 0 end), 0)::int`,
+      })
+      .from(composioSessions)
+      .catch(() => []),
+
+    db
+      .select({
+        totalMessagesAllTime: sql<number>`count(*)::int`,
+        messagesInWindow: sql<number>`coalesce(sum(case when ${chatMessages.createdAt} >= ${sinceIso} then 1 else 0 end), 0)::int`,
+        userMessagesInWindow: sql<number>`coalesce(sum(case when ${chatMessages.createdAt} >= ${sinceIso} and ${chatMessages.role} = 'user' then 1 else 0 end), 0)::int`,
+        assistantMessagesInWindow: sql<number>`coalesce(sum(case when ${chatMessages.createdAt} >= ${sinceIso} and ${chatMessages.role} = 'assistant' then 1 else 0 end), 0)::int`,
+      })
+      .from(chatMessages)
+      .catch(() => []),
+
+    db
+      .select({
+        totalChatReads: sql<number>`count(*)::int`,
+      })
+      .from(chatReads)
+      .catch(() => []),
+
+    db
+      .select({
+        reason: sql<string>`coalesce(${workflowRunSteps.finishReason}, 'unknown')`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(workflowRunSteps)
+      .where(sql`${workflowRunSteps.finishedAt} >= ${sinceIso}`)
+      .groupBy(sql`coalesce(${workflowRunSteps.finishReason}, 'unknown')`)
+      .catch(() => []),
+
+    db
+      .select({
+        totalOverrides: sql<number>`count(*)::int`,
+        disabledModels: sql<number>`coalesce(sum(case when ${modelOverrides.disabled} then 1 else 0 end), 0)::int`,
+        enabledOverrides: sql<number>`coalesce(sum(case when not ${modelOverrides.disabled} then 1 else 0 end), 0)::int`,
+      })
+      .from(modelOverrides)
+      .catch(() => []),
+
+    db
+      .select({
+        configuredUsers: sql<number>`count(*)::int`,
+        autoCommitPushUsers: sql<number>`coalesce(sum(case when ${userPreferences.autoCommitPush} then 1 else 0 end), 0)::int`,
+        autoCreatePrUsers: sql<number>`coalesce(sum(case when ${userPreferences.autoCreatePr} then 1 else 0 end), 0)::int`,
+        guidedFrontendUsers: sql<number>`coalesce(sum(case when ${userPreferences.guidedFrontendWorkflowEnabled} then 1 else 0 end), 0)::int`,
+      })
+      .from(userPreferences)
+      .catch(() => []),
+
+    db
+      .select({
+        mode: userPreferences.defaultPermissionMode,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(userPreferences)
+      .groupBy(userPreferences.defaultPermissionMode)
+      .catch(() => []),
+
+    db
+      .select({
+        sandboxType: sql<string>`coalesce(${userPreferences.defaultSandboxType}, 'boxd')`,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(userPreferences)
+      .groupBy(sql`coalesce(${userPreferences.defaultSandboxType}, 'boxd')`)
+      .catch(() => []),
+
+    db
+      .select({
+        eventsInWindow: sql<number>`count(*)::int`,
+        totalMicrosInWindow: sql<number>`coalesce(sum(${billingUsageEvents.costMicros}), 0)::bigint`,
+      })
+      .from(billingUsageEvents)
+      .where(sql`${billingUsageEvents.createdAt} >= ${sinceIso}`)
+      .catch(() => []),
+
+    db
+      .select({
+        webhookEventsAllTime: sql<number>`count(*)::int`,
+        webhookEventsInWindow: sql<number>`coalesce(sum(case when ${billingWebhookEvents.processedAt} >= ${sinceIso} then 1 else 0 end), 0)::int`,
+      })
+      .from(billingWebhookEvents)
+      .catch(() => []),
+
+    db
+      .select({
+        eventType: billingWebhookEvents.eventType,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(billingWebhookEvents)
+      .where(sql`${billingWebhookEvents.processedAt} >= ${sinceIso}`)
+      .groupBy(billingWebhookEvents.eventType)
+      .catch(() => []),
+
+    db
+      .select({
+        totalRuns: sql<number>`(select count(*)::int from benchmark_runs)`,
+        totalResultRows: sql<number>`count(*)::int`,
+        passedResultRows: sql<number>`coalesce(sum(case when ${benchmarkResults.passed} then 1 else 0 end), 0)::int`,
+      })
+      .from(benchmarkResults)
+      .catch(() => []),
+
+    db
+      .select({
+        benchmark: benchmarkResults.benchmark,
+        total: sql<number>`count(*)::int`,
+        passed: sql<number>`coalesce(sum(case when ${benchmarkResults.passed} then 1 else 0 end), 0)::int`,
+      })
+      .from(benchmarkResults)
+      .groupBy(benchmarkResults.benchmark)
+      .catch(() => []),
+  ]);
+
+  // --- Aggregate Plugins ---
+  const pluginUserSet = new Set<string>();
+  let enabledPluginRows = 0;
+  let disabledPluginRows = 0;
+  let customPluginRows = 0;
+  let secretConfiguredPlugins = 0;
+  let totalTriggersAllTime = 0;
+  let triggeredInWindow = 0;
+  let totalSlashCommands = 0;
+  const byHook: Record<string, number> = {};
+  const byCategory: Record<string, number> = {};
+  const pluginRollupMap = new Map<
+    string,
+    {
+      slug: string;
+      name: string;
+      source: string;
+      category: string;
+      installs: number;
+      enabledCount: number;
+      triggers: number;
+      lastTriggeredAt: string | null;
+    }
+  >();
+
+  // Seed built-in catalog so admins always see built-in plugins even before user overrides
+  for (const bp of BUILTIN_PLUGIN_CATALOG) {
+    byCategory[bp.category] = (byCategory[bp.category] ?? 0) + 1;
+    for (const hookKey of bp.hooks) {
+      byHook[hookKey] = (byHook[hookKey] ?? 0) + 1;
+    }
+    totalSlashCommands += bp.slashCommands.length;
+    pluginRollupMap.set(bp.slug, {
+      slug: bp.slug,
+      name: bp.name,
+      source: "builtin",
+      category: bp.category,
+      installs: 0,
+      enabledCount: 1,
+      triggers: 0,
+      lastTriggeredAt: null,
+    });
+  }
+
+  for (const row of pluginRows) {
+    pluginUserSet.add(row.userId);
+    if (row.enabled) enabledPluginRows += 1;
+    else disabledPluginRows += 1;
+    if (row.source === "custom") customPluginRows += 1;
+    if (row.hasSecretConfig) secretConfiguredPlugins += 1;
+    totalTriggersAllTime += row.triggerCount ?? 0;
+    if (
+      row.lastTriggeredAt &&
+      row.lastTriggeredAt.getTime() >= since.getTime()
+    ) {
+      triggeredInWindow += 1;
+    }
+
+    if (row.source === "custom") {
+      byCategory[row.category] = (byCategory[row.category] ?? 0) + 1;
+      const manifestObj = row.manifest;
+      if (manifestObj && Array.isArray(manifestObj.hooks)) {
+        for (const hookKey of manifestObj.hooks) {
+          byHook[hookKey] = (byHook[hookKey] ?? 0) + 1;
+        }
+      }
+      if (manifestObj && Array.isArray(manifestObj.slashCommands)) {
+        totalSlashCommands += manifestObj.slashCommands.length;
+      }
+    }
+
+    const existing = pluginRollupMap.get(row.slug);
+    const isoLast = row.lastTriggeredAt
+      ? row.lastTriggeredAt.toISOString()
+      : null;
+    if (existing) {
+      existing.installs += 1;
+      if (row.enabled) existing.enabledCount += 1;
+      existing.triggers += row.triggerCount ?? 0;
+      if (
+        isoLast &&
+        (!existing.lastTriggeredAt || isoLast > existing.lastTriggeredAt)
+      ) {
+        existing.lastTriggeredAt = isoLast;
+      }
+    } else {
+      pluginRollupMap.set(row.slug, {
+        slug: row.slug,
+        name: row.name,
+        source: row.source,
+        category: row.category,
+        installs: 1,
+        enabledCount: row.enabled ? 1 : 0,
+        triggers: row.triggerCount ?? 0,
+        lastTriggeredAt: isoLast,
+      });
+    }
+  }
+
+  const topPlugins = [...pluginRollupMap.values()]
+    .toSorted((a, b) => {
+      if (b.triggers !== a.triggers) return b.triggers - a.triggers;
+      return b.installs - a.installs;
+    })
+    .slice(0, 10);
+
+  // --- Aggregate Teams & Subagents ---
+  const subAgg = subagentUsageRows[0];
+  const subEvents = subAgg?.events ?? 0;
+  const subInTokens = Number(subAgg?.inputTokens ?? 0);
+  const subCachedTokens = Number(subAgg?.cachedInputTokens ?? 0);
+  const subOutTokens = Number(subAgg?.outputTokens ?? 0);
+  const subToolCalls = subAgg?.toolCalls ?? 0;
+  const subSpendUsd = Number(subAgg?.spendUsd ?? 0);
+  const totalWindowEvents = usageAgg?.totalEvents ?? 0;
+  const totalWindowTokens = totalInputTokens + totalOutputTokens;
+  const subTotalTokens = subInTokens + subOutTokens;
+
+  const byChatMessages = new Map<string, unknown[]>();
+  for (const msgRow of recentAssistantMsgRows) {
+    const list = byChatMessages.get(msgRow.chatId) ?? [];
+    list.push(msgRow.parts);
+    byChatMessages.set(msgRow.chatId, list);
+  }
+
+  let sampledChatsWithSubagents = 0;
+  let sampledChatsWithTeamBoard = 0;
+  let totalSubagentsSpawned = 0;
+  const byRole: Record<string, number> = {};
+  const byStatus: Record<string, number> = {};
+  let boardEntriesTotal = 0;
+  const boardEntriesByKind: Record<string, number> = {};
+  let boardTasksTotal = 0;
+  const boardTasksByStatus: Record<string, number> = {};
+
+  for (const [, msgs] of byChatMessages) {
+    const roster = deriveAgentHubRoster(msgs);
+    if (roster.length > 0) {
+      sampledChatsWithSubagents += 1;
+      totalSubagentsSpawned += roster.length;
+      for (const item of roster) {
+        const roleKey = item.subagentType || "general-purpose";
+        byRole[roleKey] = (byRole[roleKey] ?? 0) + 1;
+        byStatus[item.status] = (byStatus[item.status] ?? 0) + 1;
+      }
+    }
+    const feed = deriveTeamFeed(msgs);
+    if (feed.entries.length > 0 || feed.tasks.length > 0) {
+      sampledChatsWithTeamBoard += 1;
+      boardEntriesTotal += feed.entries.length;
+      for (const entry of feed.entries) {
+        boardEntriesByKind[entry.kind] =
+          (boardEntriesByKind[entry.kind] ?? 0) + 1;
+      }
+      boardTasksTotal += feed.tasks.length;
+      for (const task of feed.tasks) {
+        boardTasksByStatus[task.status] =
+          (boardTasksByStatus[task.status] ?? 0) + 1;
+      }
+    }
+  }
+
+  // --- Aggregate Preferences & Benchmarks ---
+  const byPermissionMode: Record<string, number> = {};
+  for (const r of prefsPermRows) {
+    byPermissionMode[r.mode ?? "ask"] = r.count;
+  }
+  const bySandboxType: Record<string, number> = {};
+  for (const r of prefsSandboxRows) {
+    bySandboxType[r.sandboxType ?? "boxd"] = r.count;
+  }
+
+  const authAgg = authSessionAggRows[0];
+  const verAgg = verificationAggRows[0];
+  const ghInstAgg = githubInstAggRows[0];
+  const ghIdxAgg = githubRepoIdxAggRows[0];
+  const vercelAgg = vercelLinksAggRows[0];
+  const compSessionAgg = composioAggRows[0];
+  const msgAgg = messagesAggRows[0];
+  const readsAgg = chatReadsAggRows[0];
+  const overridesAgg = modelOverridesAggRows[0];
+  const prefAgg = prefsAggRows[0];
+  const billUsageAgg = billingUsageAggRows[0];
+  const billWebhookAgg = billingWebhookAggRows[0];
+  const benchAgg = benchCountsRows[0];
+  const totalBenchResults = benchAgg?.totalResultRows ?? 0;
+  const passedBenchResults = benchAgg?.passedResultRows ?? 0;
 
   return {
-    generatedAt: new Date(now).toISOString(),
+    generatedAt: nowIso,
     window,
     dbLatencyMs,
     live: {
@@ -1132,6 +1692,121 @@ export async function getAdminTelemetry(
             startedAt: latestBench.startedAt.toISOString(),
           }
         : null,
+    },
+    plugins: {
+      builtinCatalogCount: BUILTIN_PLUGIN_CATALOG.length,
+      totalUserPluginRows: pluginRows.length,
+      enabledPluginRows,
+      disabledPluginRows,
+      customPluginRows,
+      distinctUsers: pluginUserSet.size,
+      secretConfiguredPlugins,
+      totalTriggersAllTime,
+      triggeredInWindow,
+      totalSlashCommands,
+      byHook,
+      byCategory,
+      topPlugins,
+    },
+    teamsAndSubagents: {
+      subagentEventsInWindow: subEvents,
+      subagentInputTokens: subInTokens,
+      subagentCachedInputTokens: subCachedTokens,
+      subagentOutputTokens: subOutTokens,
+      subagentToolCalls: subToolCalls,
+      subagentSpendUsd: subSpendUsd,
+      subagentShareOfEventsPct:
+        totalWindowEvents > 0
+          ? Math.min(100, (subEvents / totalWindowEvents) * 100)
+          : 0,
+      subagentShareOfTokensPct:
+        totalWindowTokens > 0
+          ? Math.min(100, (subTotalTokens / totalWindowTokens) * 100)
+          : 0,
+      sampledChatsWithSubagents,
+      sampledChatsWithTeamBoard,
+      totalSubagentsSpawned,
+      byRole,
+      byStatus,
+      boardEntriesTotal,
+      boardEntriesByKind,
+      boardTasksTotal,
+      boardTasksByStatus,
+    },
+    integrationsAndAuth: {
+      activeAuthSessions: authAgg?.activeAuthSessions ?? 0,
+      totalAuthSessions: authAgg?.totalAuthSessions ?? 0,
+      activeVerifications: verAgg?.activeVerifications ?? 0,
+      oauthProviders: oauthProviderRows.map((r) => ({
+        provider: r.provider,
+        linkedAccounts: r.linkedAccounts,
+        distinctUsers: r.distinctUsers,
+      })),
+      githubApp: {
+        totalInstallations: ghInstAgg?.totalInstallations ?? 0,
+        orgInstallations: ghInstAgg?.orgInstallations ?? 0,
+        userInstallations: ghInstAgg?.userInstallations ?? 0,
+        allReposInstallations: ghInstAgg?.allReposInstallations ?? 0,
+        selectedReposInstallations: ghInstAgg?.selectedReposInstallations ?? 0,
+        indexedRepoInstallations: ghIdxAgg?.indexedInstallations ?? 0,
+        totalIndexedRepos: ghIdxAgg?.totalIndexedRepos ?? 0,
+      },
+      vercelProjects: {
+        totalLinks: vercelAgg?.totalLinks ?? 0,
+        distinctUsers: vercelAgg?.distinctUsers ?? 0,
+        distinctTeams: vercelAgg?.distinctTeams ?? 0,
+      },
+      composio: {
+        totalSessions: compSessionAgg?.totalSessions ?? 0,
+        activeUsersInWindow: compSessionAgg?.activeUsersInWindow ?? 0,
+      },
+    },
+    messagesAndPipeline: {
+      totalMessagesAllTime: msgAgg?.totalMessagesAllTime ?? 0,
+      messagesInWindow: msgAgg?.messagesInWindow ?? 0,
+      userMessagesInWindow: msgAgg?.userMessagesInWindow ?? 0,
+      assistantMessagesInWindow: msgAgg?.assistantMessagesInWindow ?? 0,
+      totalChatReads: readsAgg?.totalChatReads ?? 0,
+      stepsByFinishReason: stepReasonRows
+        .map((r) => ({ reason: r.reason, count: r.count }))
+        .toSorted((a, b) => b.count - a.count),
+      modelOverrides: {
+        totalOverrides: overridesAgg?.totalOverrides ?? 0,
+        disabledModels: overridesAgg?.disabledModels ?? 0,
+        enabledOverrides: overridesAgg?.enabledOverrides ?? 0,
+      },
+      preferences: {
+        configuredUsers: prefAgg?.configuredUsers ?? 0,
+        autoCommitPushUsers: prefAgg?.autoCommitPushUsers ?? 0,
+        autoCreatePrUsers: prefAgg?.autoCreatePrUsers ?? 0,
+        guidedFrontendUsers: prefAgg?.guidedFrontendUsers ?? 0,
+        byPermissionMode,
+        bySandboxType,
+      },
+      billingPipeline: {
+        usageLedgerEventsInWindow: billUsageAgg?.eventsInWindow ?? 0,
+        usageLedgerUsdInWindow:
+          Number(billUsageAgg?.totalMicrosInWindow ?? 0) / 1_000_000,
+        webhookEventsAllTime: billWebhookAgg?.webhookEventsAllTime ?? 0,
+        webhookEventsInWindow: billWebhookAgg?.webhookEventsInWindow ?? 0,
+        webhooksByType: billingWebhookTypeRows
+          .map((r) => ({ eventType: r.eventType, count: r.count }))
+          .toSorted((a, b) => b.count - a.count),
+      },
+      benchmarks: {
+        totalRuns: benchAgg?.totalRuns ?? 0,
+        totalResultRows: totalBenchResults,
+        passedResultRows: passedBenchResults,
+        passRatePct:
+          totalBenchResults > 0
+            ? (passedBenchResults / totalBenchResults) * 100
+            : 0,
+        byBenchmark: benchBySuiteRows.map((r) => ({
+          benchmark: r.benchmark,
+          total: r.total,
+          passed: r.passed,
+        })),
+      },
     },
   };
 }

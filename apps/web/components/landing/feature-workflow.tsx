@@ -72,7 +72,7 @@ export function FeatureWorkflow() {
                     {step.label}
                   </span>
                 </div>
-                <span className="shrink-0 text-[10px] tabular-nums text-(--l-panel-fg-4)">
+                <span className="shrink-0 text-[11px] tabular-nums text-(--l-panel-fg-4)">
                   {isDone
                     ? `${(step.ms / 1000).toFixed(1)}s`
                     : isActive

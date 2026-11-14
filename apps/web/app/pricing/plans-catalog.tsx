@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { CreditCard } from "lucide-react";
 import Link from "next/link";
-import { formatUsdCents } from "@/lib/format-usd";
-import { LandingNav } from "@/components/landing/nav";
+import { useEffect, useState } from "react";
 import { LandingFooter } from "@/components/landing/footer";
+import { LandingNav } from "@/components/landing/nav";
+import { formatUsdCents } from "@/lib/format-usd";
 
 interface PlanRow {
   id: string;
@@ -42,32 +43,10 @@ const PLAN_BLURB: Record<string, string> = {
   max: "$180 of credit. Our biggest monthly pool.",
 };
 
-/**
- * Live status card for the Entry plan's rolling usage windows, rendered
- * on the billing page under the current-plan banner. Exclusive to the
- * Entry plan -- /api/billing/me returns usageWindows only for it, so
- * every other plan (Free/Plus/Pro/Max) never sees this card. Each bar
- * shows spend against its window limit; windows refill continuously as
- * the oldest usage slides out, so there is no fixed reset timestamp to
- * display.
- */
-
-/**
- * The public plan catalog (was /billing/plans, now mounted at /pricing
- * -- owner 2026-09-15). Fully public: viewing plans needs no login; only
- * checkout (Bachs hosted checkout) does.
- */
 export function PlansCatalog() {
   const [plans, setPlans] = useState<PlanRow[] | null>(null);
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  // Current subscription state, if the visitor is logged in and already
-  // on a plan -- undefined while still loading, null once we know
-  // they're logged out / /api/billing/me 401'd. Added 2026-08-17: this
-  // page previously never checked this at all, so an already-subscribed
-  // user clicking the sidebar balance pill landed on the exact same
-  // "pick a plan" marketing page a first-time visitor sees, with no
-  // acknowledgement they were already paying for something.
   const [me, setMe] = useState<BillingMeResponse | null | undefined>(undefined);
   const [goatModalOpen, setGoatModalOpen] = useState(false);
   const [selectedGoatMode, setSelectedGoatMode] = useState<"rolling" | "fixed">(
@@ -115,9 +94,6 @@ export function PlansCatalog() {
       if (!res.ok) {
         throw new Error(data.error ?? "Checkout failed");
       }
-      // In-place plan change (already a subscriber): no hosted checkout
-      // to visit, the plan is already switched. Just reload so the page
-      // reflects the new plan and balance.
       if (data.updated) {
         window.location.reload();
         return;
@@ -130,27 +106,32 @@ export function PlansCatalog() {
   }
 
   return (
-    <div className="landing relative isolate min-h-screen bg-(--l-bg) text-(--l-fg) selection:bg-(--l-fg)/20">
+    <div className="landing relative isolate min-h-dvh bg-(--l-bg) text-(--l-fg) selection:bg-(--l-fg)/20">
       <div className="relative z-10">
         <LandingNav showSignIn />
 
-        <section className="pt-32 pb-16 md:pt-44 md:pb-24">
-          <div className="mx-auto max-w-[1320px] px-6">
-            <div className="max-w-[740px]">
-              <h1 className="text-4xl font-semibold leading-[1.03] tracking-tighter sm:text-5xl md:text-6xl">
-                Pricing.
+        <section className="pt-28 pb-16 sm:pt-36 md:pt-40 md:pb-24">
+          <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-10">
+            <div className="max-w-[720px]">
+              <h1 className="text-3xl font-semibold leading-[1.06] tracking-tight sm:text-5xl md:text-6xl">
+                Pricing
               </h1>
-              <p className="mt-4 text-balance text-base leading-relaxed text-(--l-fg-2) sm:mt-6 sm:text-xl">
-                Credit-based pricing -- $1 in credit is $1 of usage, no markup.
+              <p className="mt-4 text-pretty text-base leading-relaxed text-(--l-fg-2) sm:mt-5 sm:text-lg">
+                Credit-based pricing — $1 in credit is $1 of usage, no markup.
                 Subscriptions include a bonus credit top-up every month.
               </p>
-              <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-(--l-border) px-4 py-2 text-sm text-(--l-fg-2)">
-                🇳🇬 Nigerian debit &amp; credit cards, bank transfer and mobile
-                money accepted -- you pay in your local currency, we price in
-                dollars.
+              <div className="mt-4 inline-flex items-start gap-2.5 rounded-xl border border-(--l-border) bg-(--l-surface) px-3.5 py-2.5 text-xs leading-relaxed text-(--l-fg-2) sm:items-center sm:text-sm">
+                <CreditCard
+                  className="mt-0.5 size-4 shrink-0 text-(--l-fg-3) sm:mt-0"
+                  strokeWidth={1.5}
+                />
+                <span>
+                  Nigerian debit &amp; credit cards, bank transfer and mobile
+                  money accepted — you pay in your local currency, we price in
+                  dollars.
+                </span>
               </div>
               <div className="mt-3 text-sm text-(--l-fg-2)">
-                {/* oxlint-disable-next-line nextjs/no-html-link-for-pages */}
                 {/* oxlint-disable-next-line nextjs/no-html-link-for-pages */}
                 <a
                   href="/model"
@@ -166,7 +147,7 @@ export function PlansCatalog() {
             )}
 
             {me && (
-              <div className="mt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-(--l-border) bg-(--l-fg)/[0.04] px-5 py-4">
+              <div className="mt-6 flex flex-col justify-between gap-3 rounded-xl border border-(--l-border) bg-(--l-surface) px-5 py-4 sm:flex-row sm:items-center">
                 <p className="text-sm text-(--l-fg-2)">
                   Current subscription:{" "}
                   <span className="font-semibold text-(--l-fg)">
@@ -183,56 +164,64 @@ export function PlansCatalog() {
               </div>
             )}
 
-            <div className="mt-12 grid gap-4 md:mt-16 md:grid-cols-4">
+            <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               {(plans ?? []).map((plan) => {
                 const isCurrentPlan = me?.plan === plan.id;
+                const isFlagship = plan.id === "goat";
                 return (
                   <div
                     key={plan.id}
-                    className={`flex flex-col justify-between rounded-2xl border p-6 ${
-                      isCurrentPlan
+                    className={`flex flex-col justify-between rounded-2xl border bg-(--l-surface) p-5 sm:p-6 ${
+                      isCurrentPlan || isFlagship
                         ? "border-(--l-fg) ring-1 ring-(--l-fg)/20"
                         : "border-(--l-border)"
                     }`}
                   >
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="text-lg font-semibold">{plan.name}</div>
-                        {isCurrentPlan && (
-                          <span className="rounded-full bg-(--l-fg) px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-(--l-bg)">
+                        {isCurrentPlan ? (
+                          <span className="rounded-md bg-(--l-fg) px-2 py-0.5 text-[11px] font-medium text-(--l-bg)">
                             Current plan
                           </span>
+                        ) : (
+                          isFlagship && (
+                            <span className="rounded-md border border-(--l-border) bg-(--l-surface-2) px-2 py-0.5 text-[11px] font-medium text-(--l-fg-2)">
+                              3.8x credit
+                            </span>
+                          )
                         )}
                       </div>
-                      <div className="mt-2 text-3xl font-semibold tracking-tight">
+                      <div className="mt-3 text-3xl font-semibold tracking-tight tabular-nums">
                         {formatUsdCents(plan.priceUsdCents)}
                         <span className="text-sm font-normal text-(--l-fg-3)">
                           /mo
                         </span>
                       </div>
                       {plan.priceUsdCents > 0 && (
-                        <div className="mt-1 text-sm text-(--l-fg-3)">
-                          Billed in USD; charged in your local currency at
-                          checkout.
+                        <div className="mt-1 text-xs text-(--l-fg-3)">
+                          Billed in USD; charged in local currency at checkout.
                         </div>
                       )}
-                      <p className="mt-3 text-sm text-(--l-fg-2)">
+                      <p className="mt-3 text-sm leading-relaxed text-(--l-fg-2)">
                         {PLAN_BLURB[plan.id]}
                       </p>
-                      <p className="mt-3 text-sm text-(--l-fg-2)">
-                        {plan.creditGrantCents > 0
-                          ? `${formatUsdCents(plan.creditGrantCents)} credit ${
-                              plan.priceUsdCents === 0
-                                ? "one-time"
-                                : "every renewal"
-                            }`
-                          : "No credit included"}
-                      </p>
-                      <p className="mt-1 text-sm text-(--l-fg-2)">
-                        {plan.modelAccess === "all"
-                          ? "Every model, full access"
-                          : "Included starter models"}
-                      </p>
+                      <div className="mt-4 space-y-1 border-t border-(--l-border-subtle) pt-3 text-xs text-(--l-fg-2)">
+                        <p className="tabular-nums">
+                          {plan.creditGrantCents > 0
+                            ? `${formatUsdCents(plan.creditGrantCents)} credit ${
+                                plan.priceUsdCents === 0
+                                  ? "one-time"
+                                  : "every renewal"
+                              }`
+                            : "No credit included"}
+                        </p>
+                        <p>
+                          {plan.modelAccess === "all"
+                            ? "Every model, full access"
+                            : "Included starter models"}
+                        </p>
+                      </div>
                     </div>
 
                     <button
@@ -243,10 +232,10 @@ export function PlansCatalog() {
                         isCurrentPlan
                       }
                       onClick={() => handleSubscribe(plan.id)}
-                      className={`mt-6 rounded-full px-6 py-2.5 text-sm font-medium disabled:opacity-50 ${
+                      className={`mt-6 rounded-lg px-4 py-2.5 text-sm font-medium transition-opacity duration-150 disabled:opacity-50 ${
                         isCurrentPlan
                           ? "border border-(--l-border) bg-transparent text-(--l-fg)"
-                          : "bg-(--l-fg) text-(--l-bg)"
+                          : "bg-(--l-btn-bg) text-(--l-btn-fg) hover:opacity-90"
                       }`}
                     >
                       {isCurrentPlan
@@ -271,7 +260,7 @@ export function PlansCatalog() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl border border-(--l-border) bg-(--l-bg) p-6 text-(--l-fg) shadow-2xl">
             <h2 className="text-lg font-semibold">
-              Choose your Entry (GOAT) Window Method
+              Choose your Entry (GOAT) window method
             </h2>
             <p className="mt-1.5 text-xs leading-relaxed text-(--l-fg-2)">
               Select how your 5-hour ($10), 7-day ($25), and 30-day ($50) usage
@@ -292,7 +281,7 @@ export function PlansCatalog() {
                   <span className="text-sm font-semibold">
                     1. Sliding Window (Continuous)
                   </span>
-                  <span className="rounded-full border border-(--l-border) px-2 py-0.5 text-[10px] uppercase">
+                  <span className="rounded-md border border-(--l-border) px-2 py-0.5 text-[11px] font-medium">
                     Default
                   </span>
                 </div>
@@ -334,14 +323,14 @@ export function PlansCatalog() {
               <button
                 type="button"
                 onClick={() => setGoatModalOpen(false)}
-                className="rounded-full border border-(--l-border) px-4 py-2 text-xs font-medium text-(--l-fg-2) hover:text-(--l-fg)"
+                className="rounded-lg border border-(--l-border) px-4 py-2 text-xs font-medium text-(--l-fg-2) hover:text-(--l-fg)"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => handleSubscribe("goat", selectedGoatMode)}
-                className="rounded-full bg-(--l-fg) px-5 py-2 text-xs font-semibold text-(--l-bg)"
+                className="rounded-lg bg-(--l-btn-bg) px-5 py-2 text-xs font-semibold text-(--l-btn-fg)"
               >
                 Confirm &amp; Continue
               </button>

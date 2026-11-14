@@ -62,7 +62,7 @@ export function AdminSubNav() {
   const pathname = usePathname();
 
   return (
-    <div className="flex flex-wrap gap-1 rounded-md border p-0.5">
+    <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-border/80 bg-muted/20 p-1">
       {ADMIN_TABS.map((tab) => {
         const isActive =
           tab.href === "/settings/admin"
@@ -73,13 +73,13 @@ export function AdminSubNav() {
             key={tab.id}
             href={tab.href}
             className={cn(
-              "flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium transition-colors",
+              "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150",
               isActive
-                ? "bg-secondary text-foreground"
+                ? "bg-background text-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            <tab.icon className="size-3.5" />
+            <tab.icon className="size-3.5" strokeWidth={1.5} />
             {tab.label}
           </Link>
         );

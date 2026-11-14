@@ -112,10 +112,10 @@ export function FeatureAgent() {
   const role = ROLES[roleIdx] ?? ROLES[0];
 
   return (
-    <div className="flex h-[290px] flex-col justify-between bg-(--l-code-bg) px-5 py-4 font-mono text-[11px]">
+    <div className="flex min-h-[280px] flex-col justify-between bg-(--l-code-bg) px-4 py-4 font-mono text-xs sm:px-5">
       <div>
-        <div className="flex items-center justify-between gap-2 border-b border-(--l-panel-border) pb-2.5">
-          <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) pb-2.5">
+          <div className="flex items-center gap-1 overflow-x-auto">
             {ROLES.map((item, i) => {
               const active = i === roleIdx;
               return (
@@ -126,7 +126,7 @@ export function FeatureAgent() {
                     setPaused(true);
                     setRoleIdx(i);
                   }}
-                  className={`rounded px-2 py-0.5 transition-colors cursor-pointer ${
+                  className={`shrink-0 rounded px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
                     active
                       ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                       : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg-2)"
@@ -137,7 +137,7 @@ export function FeatureAgent() {
               );
             })}
           </div>
-          <span className="text-[10px] text-(--l-panel-fg-4)">
+          <span className="text-[11px] text-(--l-panel-fg-4)">
             {role.scope}
           </span>
         </div>
@@ -146,7 +146,7 @@ export function FeatureAgent() {
           {role.steps.map((step, i) => (
             <div
               key={`${role.id}-${step.tool}-${i}`}
-              className="flex items-center justify-between gap-3 py-0.5"
+              className="flex items-center justify-between gap-3 py-0.5 text-[11px]"
             >
               <div className="flex min-w-0 items-center gap-2.5">
                 <span className="text-(--l-panel-fg-2)">▸</span>
@@ -157,7 +157,7 @@ export function FeatureAgent() {
                   {step.arg}
                 </span>
               </div>
-              <span className="shrink-0 text-[10px] tabular-nums text-(--l-panel-fg-4)">
+              <span className="shrink-0 text-[11px] tabular-nums text-(--l-panel-fg-4)">
                 {step.duration}
               </span>
             </div>
@@ -165,7 +165,7 @@ export function FeatureAgent() {
         </div>
       </div>
 
-      <div className="border-t border-(--l-panel-border) pt-3 font-sans text-[12px] leading-relaxed text-(--l-panel-fg-2)">
+      <div className="border-t border-(--l-panel-border) pt-3 font-sans text-xs leading-relaxed text-(--l-panel-fg-2)">
         {role.note}
       </div>
     </div>

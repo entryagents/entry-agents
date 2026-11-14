@@ -199,8 +199,8 @@ export function McpAndFailuresPanel({ data }: { data: AdminTelemetryPayload }) {
               Zero workflow failures in the {window} window
             </div>
           ) : (
-            <div className="max-h-72 overflow-auto rounded-lg border">
-              <Table>
+            <div className="max-h-72 overflow-x-auto overflow-y-auto rounded-lg border">
+              <Table className="min-w-[520px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">Model / Chat</TableHead>
@@ -306,8 +306,8 @@ export function CompactionSecretsBillingPanel({
               No compaction events triggered in this window
             </div>
           ) : (
-            <div className="max-h-52 overflow-auto rounded-lg border">
-              <Table>
+            <div className="max-h-52 overflow-x-auto overflow-y-auto rounded-lg border">
+              <Table className="min-w-[460px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="text-xs">Model</TableHead>

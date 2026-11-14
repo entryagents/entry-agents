@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  Boxes,
   Loader2,
   RefreshCw,
   ShieldAlert,

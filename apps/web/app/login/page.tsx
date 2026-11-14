@@ -43,22 +43,22 @@ export default async function LoginPage({
       : "/sessions";
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-6 py-12">
+    <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12 sm:px-6">
       <div className="w-full max-w-sm">
         <Link
           href="/"
-          className="mb-10 flex items-center justify-center gap-2 text-sm font-semibold tracking-tight"
+          className="mb-8 flex items-center justify-center gap-2 text-sm font-semibold tracking-tight sm:mb-10"
         >
           <Logo className="text-foreground" />
         </Link>
 
-        <div className="rounded-2xl border border-border/60 bg-card p-7 shadow-sm sm:p-8">
+        <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-xs sm:p-8">
           <div className="text-center">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Welcome back
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+              Sign in to Entry
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Sign in to start shipping with an autonomous coding agent.
+              Continue with Vercel, Google, or GitHub to open your workspaces.
             </p>
           </div>
 

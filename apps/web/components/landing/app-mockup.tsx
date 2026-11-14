@@ -552,6 +552,9 @@ function ToolIcon({ kind }: { readonly kind: ToolRow["kind"] }) {
 export function AppMockup() {
   const [selectedId, setSelectedId] = useState<SessionId>("oauth");
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("changes");
+  const [mobilePane, setMobilePane] = useState<"chat" | "changes" | "team">(
+    "chat",
+  );
   const session =
     WORKSPACE_SESSIONS.find((s) => s.id === selectedId) ??
     WORKSPACE_SESSIONS[0];
@@ -562,36 +565,18 @@ export function AppMockup() {
       style={{ boxShadow: "var(--l-window-shadow)" }}
     >
       {/* Workspace Header Bar */}
-      <div className="flex items-center justify-between gap-2 border-b border-(--l-panel-border) px-3 py-2 lg:px-4">
-        <div className="flex min-w-0 items-center gap-2 text-[11px]">
-          <span className="font-medium text-(--l-panel-fg)">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) px-3 py-2.5 lg:px-4">
+        <div className="flex min-w-0 items-center gap-2 text-xs">
+          <span className="truncate font-medium text-(--l-panel-fg)">
             entryagents/entry-agents
           </span>
           <span className="text-(--l-panel-fg-4)">/</span>
-          <span className="truncate font-mono text-[10px] text-(--l-panel-fg-2)">
+          <span className="truncate font-mono text-[11px] text-(--l-panel-fg-2)">
             {session.branch}
           </span>
         </div>
 
-        {/* Mobile session selector */}
-        <div className="flex items-center gap-1 sm:hidden">
-          {WORKSPACE_SESSIONS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setSelectedId(s.id)}
-              className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
-                s.id === selectedId
-                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                  : "text-(--l-panel-fg-3)"
-              }`}
-            >
-              {s.title.split(" ")[0]}
-            </button>
-          ))}
-        </div>
-
-        <div className="hidden items-center gap-3 font-mono text-[10px] text-(--l-panel-fg-3) sm:flex">
+        <div className="flex items-center gap-3 font-mono text-[11px] text-(--l-panel-fg-3)">
           <span className="inline-flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-emerald-500" />
             <span>sandbox active</span>
@@ -603,18 +588,80 @@ export function AppMockup() {
         </div>
       </div>
 
+      {/* Mobile & Tablet (<lg) Session + Pane Switcher Bar */}
+      <div className="flex flex-col gap-2 border-b border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 lg:hidden">
+        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:hidden">
+          {WORKSPACE_SESSIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSelectedId(s.id)}
+              className={`shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+                s.id === selectedId
+                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
+                  : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg-2)"
+              }`}
+            >
+              {s.title}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1 rounded-md border border-(--l-panel-border) bg-(--l-panel) p-0.5 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setMobilePane("chat")}
+              className={`rounded px-2.5 py-1 font-medium transition-colors ${
+                mobilePane === "chat"
+                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
+                  : "text-(--l-panel-fg-3)"
+              }`}
+            >
+              Transcript
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobilePane("changes")}
+              className={`rounded px-2.5 py-1 font-medium transition-colors ${
+                mobilePane === "changes"
+                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
+                  : "text-(--l-panel-fg-3)"
+              }`}
+            >
+              Diff (+{session.diffStats.additions} −
+              {session.diffStats.deletions})
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobilePane("team")}
+              className={`rounded px-2.5 py-1 font-medium transition-colors ${
+                mobilePane === "team"
+                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
+                  : "text-(--l-panel-fg-3)"
+              }`}
+            >
+              Team ({session.teamAgents.length})
+            </button>
+          </div>
+          <span className="hidden font-mono text-[11px] text-(--l-panel-fg-3) sm:inline">
+            {session.model}
+          </span>
+        </div>
+      </div>
+
       {/* 3-Pane Workspace Body */}
       <div className="flex">
         {/* Left Pane: Sessions List */}
-        <div className="hidden w-48 shrink-0 border-r border-(--l-panel-border) sm:block lg:w-52">
+        <div className="hidden w-52 shrink-0 border-r border-(--l-panel-border) sm:block lg:w-56">
           <div className="p-2.5">
             <div className="mb-1.5 flex items-center justify-between px-2 py-1 text-[11px] text-(--l-panel-fg-3)">
               <span className="font-medium">Sessions</span>
-              <span className="font-mono text-[10px] text-(--l-panel-fg-4)">
+              <span className="font-mono text-[11px] text-(--l-panel-fg-4)">
                 ⌘K
               </span>
             </div>
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {WORKSPACE_SESSIONS.map((s) => {
                 const active = s.id === selectedId;
                 return (
@@ -622,21 +669,21 @@ export function AppMockup() {
                     key={s.id}
                     type="button"
                     onClick={() => setSelectedId(s.id)}
-                    className={`flex w-full flex-col rounded-md px-2 py-1.5 text-left transition-colors cursor-pointer ${
+                    className={`flex w-full flex-col rounded-md px-2.5 py-2 text-left transition-colors cursor-pointer ${
                       active
                         ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                         : "text-(--l-panel-fg-3) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg-2)"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-[11px] font-medium">
+                      <span className="truncate text-xs font-medium">
                         {s.title}
                       </span>
-                      <span className="shrink-0 font-mono text-[9px] tabular-nums text-(--l-panel-fg-4)">
+                      <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--l-panel-fg-4)">
                         {s.age}
                       </span>
                     </div>
-                    <span className="mt-0.5 truncate font-mono text-[9px] text-(--l-panel-fg-4)">
+                    <span className="mt-0.5 truncate font-mono text-[11px] text-(--l-panel-fg-4)">
                       {s.branch}
                     </span>
                   </button>
@@ -646,9 +693,13 @@ export function AppMockup() {
           </div>
         </div>
 
-        {/* Center Pane: Chat Transcript & Composer */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="min-h-[340px] flex-1 overflow-hidden sm:min-h-[410px]">
+        {/* Center Pane: Chat Transcript & Composer (visible on desktop or when mobilePane === 'chat') */}
+        <div
+          className={`min-w-0 flex-1 flex-col ${
+            mobilePane === "chat" ? "flex" : "hidden lg:flex"
+          }`}
+        >
+          <div className="min-h-[320px] flex-1 overflow-hidden sm:min-h-[400px]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={session.id}
@@ -660,14 +711,14 @@ export function AppMockup() {
               >
                 {/* User Message */}
                 <div className="flex justify-end">
-                  <div className="max-w-[88%] rounded-2xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3.5 py-2">
-                    <p className="text-[12px] leading-relaxed text-(--l-panel-fg)">
+                  <div className="max-w-[90%] rounded-2xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3.5 py-2">
+                    <p className="text-xs leading-relaxed text-(--l-panel-fg)">
                       {session.prompt}
                     </p>
                   </div>
                 </div>
 
-                {/* Compact Tool Call Feed (matches Entry's real ToolLayout rows) */}
+                {/* Compact Tool Call Feed */}
                 <div className="space-y-1 py-0.5">
                   {session.tools.map((tool, idx) => (
                     <div
@@ -679,11 +730,11 @@ export function AppMockup() {
                         <span className="shrink-0 font-medium text-(--l-panel-fg-2)">
                           {tool.label}
                         </span>
-                        <span className="truncate font-mono text-[10px] text-(--l-panel-fg-3)">
+                        <span className="truncate font-mono text-[11px] text-(--l-panel-fg-3)">
                           {tool.arg}
                         </span>
                       </div>
-                      <span className="shrink-0 font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
+                      <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--l-panel-fg-4)">
                         {tool.meta}
                       </span>
                     </div>
@@ -691,7 +742,7 @@ export function AppMockup() {
                 </div>
 
                 {/* Assistant Response */}
-                <p className="text-[12px] leading-[1.65] text-(--l-panel-fg-2)">
+                <p className="text-xs leading-[1.65] text-(--l-panel-fg-2)">
                   {session.response}
                 </p>
 
@@ -700,7 +751,7 @@ export function AppMockup() {
                   {session.files.map((file) => (
                     <span
                       key={file}
-                      className="inline-flex items-center gap-1.5 rounded border border-(--l-panel-border) bg-(--l-panel-surface) px-2 py-0.5 font-mono text-[10px] text-(--l-panel-fg-2)"
+                      className="inline-flex items-center gap-1.5 rounded border border-(--l-panel-border) bg-(--l-panel-surface) px-2 py-0.5 font-mono text-[11px] text-(--l-panel-fg-2)"
                     >
                       {file}
                     </span>
@@ -719,12 +770,12 @@ export function AppMockup() {
                 </span>
               </div>
               <div className="flex items-center justify-between border-t border-(--l-panel-border) px-3 py-1.5">
-                <div className="flex items-center gap-2 font-mono text-[10px] text-(--l-panel-fg-3)">
+                <div className="flex items-center gap-2 font-mono text-[11px] text-(--l-panel-fg-3)">
                   <span className="text-(--l-panel-fg-2)">{session.model}</span>
                   <span className="text-(--l-panel-fg-4)">·</span>
                   <span>{session.effort}</span>
                 </div>
-                <div className="flex size-5 items-center justify-center rounded-full bg-(--l-btn-bg)">
+                <div className="flex size-5 items-center justify-center rounded-md bg-(--l-btn-bg)">
                   <svg
                     viewBox="0 0 16 16"
                     fill="none"
@@ -741,9 +792,13 @@ export function AppMockup() {
           </div>
         </div>
 
-        {/* Right Pane: Changes & Team Inspector */}
-        <div className="hidden w-72 shrink-0 flex-col border-l border-(--l-panel-border) lg:flex">
-          <div className="flex items-center justify-between border-b border-(--l-panel-border) px-3 py-2">
+        {/* Right Pane: Changes & Team Inspector (always visible on lg+, or on <lg when mobilePane !== 'chat') */}
+        <div
+          className={`w-full shrink-0 flex-col border-(--l-panel-border) lg:flex lg:w-80 lg:border-l ${
+            mobilePane === "chat" ? "hidden" : "flex"
+          }`}
+        >
+          <div className="hidden items-center justify-between border-b border-(--l-panel-border) px-3 py-2 lg:flex">
             <div className="flex items-center gap-1 rounded-md bg-(--l-panel-surface) p-0.5 text-[11px]">
               <button
                 type="button"
@@ -768,17 +823,18 @@ export function AppMockup() {
                 Team ({session.teamAgents.length})
               </button>
             </div>
-            <span className="font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
+            <span className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-4)">
               {inspectorTab === "changes"
                 ? `${session.files.length} files`
                 : `${session.teamTasks.length} tasks`}
             </span>
           </div>
 
-          <div className="flex-1 overflow-hidden p-3">
-            {inspectorTab === "changes" ? (
+          <div className="flex-1 overflow-hidden p-3.5">
+            {mobilePane === "changes" ||
+            (mobilePane === "chat" && inspectorTab === "changes") ? (
               <div className="space-y-2.5">
-                <div className="flex items-center justify-between font-mono text-[10px]">
+                <div className="flex items-center justify-between font-mono text-[11px]">
                   <span className="truncate text-(--l-panel-fg-2)">
                     {session.diffFile}
                   </span>
@@ -787,7 +843,7 @@ export function AppMockup() {
                     {session.diffStats.deletions}
                   </span>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-(--l-panel-border) bg-(--l-code-bg) py-1.5 font-mono text-[10px] leading-[1.6]">
+                <div className="overflow-x-auto rounded-lg border border-(--l-panel-border) bg-(--l-code-bg) py-1.5 font-mono text-[11px] leading-[1.6]">
                   {session.diffLines.map((line, idx) => (
                     <div
                       key={idx}
@@ -799,7 +855,7 @@ export function AppMockup() {
                             : "text-(--l-panel-fg-3)"
                       }`}
                     >
-                      <span className="w-5 shrink-0 select-none text-right tabular-nums opacity-45 pr-1.5">
+                      <span className="w-6 shrink-0 select-none pr-1.5 text-right tabular-nums opacity-45">
                         {line.newNum ?? line.oldNum ?? ""}
                       </span>
                       <span className="w-3 shrink-0 select-none opacity-70">
@@ -820,7 +876,7 @@ export function AppMockup() {
                   {session.files.map((file) => (
                     <div
                       key={file}
-                      className="flex items-center justify-between rounded px-1.5 py-1 font-mono text-[10px] text-(--l-panel-fg-3)"
+                      className="flex items-center justify-between rounded px-1.5 py-1 font-mono text-[11px] text-(--l-panel-fg-3)"
                     >
                       <span className="truncate">{file}</span>
                       <span className="text-(--l-panel-fg-4)">M</span>
@@ -837,17 +893,17 @@ export function AppMockup() {
                   {session.teamAgents.map((agent) => (
                     <div
                       key={agent.role}
-                      className="rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) px-2.5 py-1.5"
+                      className="rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) px-2.5 py-2"
                     >
-                      <div className="flex items-center justify-between text-[11px]">
+                      <div className="flex items-center justify-between text-xs">
                         <span className="font-medium text-(--l-panel-fg)">
                           {agent.role}
                         </span>
-                        <span className="font-mono text-[9px] tabular-nums text-(--l-panel-fg-4)">
+                        <span className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-4)">
                           {agent.tokens} · {agent.duration}
                         </span>
                       </div>
-                      <p className="mt-0.5 truncate text-[10px] text-(--l-panel-fg-3)">
+                      <p className="mt-0.5 truncate text-[11px] text-(--l-panel-fg-3)">
                         {agent.task}
                       </p>
                     </div>
@@ -861,14 +917,14 @@ export function AppMockup() {
                   {session.teamTasks.map((task) => (
                     <div
                       key={task.id}
-                      className="flex items-start gap-2 rounded px-1.5 py-1 text-[10px]"
+                      className="flex items-start gap-2 rounded px-1.5 py-1 text-[11px]"
                     >
-                      <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                      <span className="mt-1 size-1.5 shrink-0 rounded-full bg-emerald-500" />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-(--l-panel-fg-2)">
                           {task.title}
                         </div>
-                        <div className="font-mono text-[9px] text-(--l-panel-fg-4)">
+                        <div className="font-mono text-[11px] text-(--l-panel-fg-4)">
                           {task.id} · {task.role}
                         </div>
                       </div>

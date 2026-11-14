@@ -3,12 +3,14 @@
 import { formatTokens } from "@entry-agents/shared";
 import {
   Activity,
+  Blocks,
   Box,
   Database,
   DollarSign,
   Gauge,
   RefreshCw,
   ShieldCheck,
+  Users,
   Zap,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -32,8 +34,13 @@ import {
   CompactionSecretsBillingPanel,
   McpAndFailuresPanel,
 } from "./telemetry-ops-panels";
+import {
+  IntegrationsAndPipelinePanel,
+  PluginsAndTeamsPanel,
+} from "./telemetry-plugins-teams-panels";
 
 type PollIntervalMs = 5000 | 15000 | 30000 | 0;
+type TelemetrySectionFilter = "all" | "live" | "plugins" | "sandboxes" | "ops";
 
 const WINDOW_OPTIONS: AdminTelemetryWindow[] = ["1h", "24h", "7d", "30d"];
 const POLL_OPTIONS: Array<{ value: PollIntervalMs; label: string }> = [
@@ -42,10 +49,18 @@ const POLL_OPTIONS: Array<{ value: PollIntervalMs; label: string }> = [
   { value: 30000, label: "30s" },
   { value: 0, label: "Paused" },
 ];
+const SECTION_TABS: Array<{ id: TelemetrySectionFilter; label: string }> = [
+  { id: "all", label: "All 30 tables" },
+  { id: "live", label: "Live & models" },
+  { id: "plugins", label: "Plugins & teams" },
+  { id: "sandboxes", label: "Sandboxes & MCP" },
+  { id: "ops", label: "Auth, billing & ops" },
+];
 
 export function AdminLiveTelemetryDashboard() {
   const [windowRange, setWindowRange] = useState<AdminTelemetryWindow>("24h");
   const [pollMs, setPollMs] = useState<PollIntervalMs>(15000);
+  const [section, setSection] = useState<TelemetrySectionFilter>("all");
   const [data, setData] = useState<AdminTelemetryPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -119,9 +134,9 @@ export function AdminLiveTelemetryDashboard() {
     : 0;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-3">
-        <div className="flex flex-wrap items-center gap-3 text-xs">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card px-3.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+        <div className="flex flex-wrap items-center gap-2.5 text-xs">
           <span className="flex items-center gap-2 font-medium text-foreground">
             <span
               className={`size-2 rounded-full ${
@@ -208,6 +223,24 @@ export function AdminLiveTelemetryDashboard() {
         </div>
       </div>
 
+      {/* Section filter bar (scrollable on mobile) */}
+      <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-border/80 bg-muted/20 p-1">
+        {SECTION_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setSection(tab.id)}
+            className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150 ${
+              section === tab.id
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {error && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive">
           {error}
@@ -215,8 +248,8 @@ export function AdminLiveTelemetryDashboard() {
       )}
 
       {loading && !data ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, idx) => (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {Array.from({ length: 8 }).map((_, idx) => (
             <Card key={idx} className="rounded-xl">
               <CardHeader className="pb-2">
                 <div className="h-3.5 w-24 rounded bg-muted/70" />
@@ -231,7 +264,7 @@ export function AdminLiveTelemetryDashboard() {
       ) : (
         data && (
           <>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Card className="rounded-xl">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
                   <CardTitle className="text-xs font-medium text-muted-foreground">
@@ -243,7 +276,7 @@ export function AdminLiveTelemetryDashboard() {
                   />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-medium tracking-tight tabular-nums">
+                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
                     {liveRunsTotal}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
@@ -265,13 +298,12 @@ export function AdminLiveTelemetryDashboard() {
                   />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-medium tracking-tight tabular-nums">
+                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
                     {formatUsd(data.usage.totalSpendUsd)}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    {data.usage.totalEvents} requests ({data.usage.webEvents}{" "}
-                    web / {data.usage.desktopEvents} desktop ·{" "}
-                    {data.usage.subagentEvents} subagent)
+                    {data.usage.totalEvents} turns ({data.usage.webEvents} web /{" "}
+                    {data.usage.desktopEvents} desktop)
                   </p>
                 </CardContent>
               </Card>
@@ -287,7 +319,7 @@ export function AdminLiveTelemetryDashboard() {
                   />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-medium tracking-tight tabular-nums">
+                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
                     {data.cache.overallHitPct.toFixed(1)}%
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
@@ -308,7 +340,7 @@ export function AdminLiveTelemetryDashboard() {
                   />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-medium tracking-tight tabular-nums">
+                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
                     {data.runs.errorRatePct.toFixed(1)}%{" "}
                     <span className="text-xs font-normal text-muted-foreground">
                       errors
@@ -316,8 +348,55 @@ export function AdminLiveTelemetryDashboard() {
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                     P95 {formatDurationMs(data.runs.p95DurationMs)} ·{" "}
-                    {data.runs.totalSteps} steps (
-                    {formatDurationMs(data.runs.avgStepDurationMs)})
+                    {data.runs.totalSteps} steps
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-xl">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+                  <CardTitle className="text-xs font-medium text-muted-foreground">
+                    Plugins &amp; hooks
+                  </CardTitle>
+                  <Blocks
+                    className="size-4 text-muted-foreground"
+                    strokeWidth={1.5}
+                  />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                    {data.plugins.enabledPluginRows}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      / {data.plugins.builtinCatalogCount} built-in
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                    {data.plugins.triggeredInWindow} triggered ({data.window}) ·{" "}
+                    {data.plugins.totalSlashCommands} slash cmds
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-xl">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+                  <CardTitle className="text-xs font-medium text-muted-foreground">
+                    Agent teams
+                  </CardTitle>
+                  <Users
+                    className="size-4 text-muted-foreground"
+                    strokeWidth={1.5}
+                  />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                    {data.teamsAndSubagents.subagentEventsInWindow}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      subagent turns
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                    {data.teamsAndSubagents.totalSubagentsSpawned} spawned ·{" "}
+                    {data.teamsAndSubagents.boardEntriesTotal} board notes
                   </p>
                 </CardContent>
               </Card>
@@ -333,15 +412,14 @@ export function AdminLiveTelemetryDashboard() {
                   />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-medium tracking-tight tabular-nums">
+                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
                     {data.sandboxes.sessionsRunningStatus}{" "}
                     <span className="text-xs font-normal text-muted-foreground">
-                      / {data.sandboxes.activeCommands} active commands
+                      / {data.sandboxes.activeCommands} cmds
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
                     MCP {data.mcp.enabledServers} active ·{" "}
-                    {data.mcp.failingServers} failing ·{" "}
                     {data.mcp.totalDiscoveredTools} tools
                   </p>
                 </CardContent>
@@ -350,7 +428,7 @@ export function AdminLiveTelemetryDashboard() {
               <Card className="rounded-xl">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
                   <CardTitle className="text-xs font-medium text-muted-foreground">
-                    Vault &amp; compaction
+                    Auth, vault &amp; compact
                   </CardTitle>
                   <ShieldCheck
                     className="size-4 text-muted-foreground"
@@ -358,33 +436,51 @@ export function AdminLiveTelemetryDashboard() {
                   />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-medium tracking-tight tabular-nums">
-                    {data.secrets.totalSecrets}{" "}
+                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                    {data.integrationsAndAuth.activeAuthSessions}{" "}
                     <span className="text-xs font-normal text-muted-foreground">
-                      secrets
+                      live sessions
                     </span>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    {data.secrets.distinctUsersWithSecrets} users ·{" "}
-                    {data.compaction.eventsInWindow} compactions (
-                    {formatTokens(data.compaction.totalTokensReclaimed)})
+                    {data.secrets.totalSecrets} secrets ·{" "}
+                    {formatTokens(data.compaction.totalTokensReclaimed)}{" "}
+                    reclaimed
                   </p>
                 </CardContent>
               </Card>
             </div>
 
-            <TelemetryTimeSeriesPanel
-              buckets={data.timeSeries}
-              window={data.window}
-            />
+            {(section === "all" || section === "live") && (
+              <>
+                <TelemetryTimeSeriesPanel
+                  buckets={data.timeSeries}
+                  window={data.window}
+                />
+                <ModelPerformanceTable data={data} />
+              </>
+            )}
 
-            <ActiveRunsAndSandboxesPanel data={data} />
+            {(section === "all" ||
+              section === "live" ||
+              section === "sandboxes") && (
+              <ActiveRunsAndSandboxesPanel data={data} />
+            )}
 
-            <ModelPerformanceTable data={data} />
+            {(section === "all" || section === "plugins") && (
+              <PluginsAndTeamsPanel data={data} />
+            )}
 
-            <McpAndFailuresPanel data={data} />
+            {(section === "all" || section === "sandboxes") && (
+              <McpAndFailuresPanel data={data} />
+            )}
 
-            <CompactionSecretsBillingPanel data={data} />
+            {(section === "all" || section === "ops") && (
+              <>
+                <IntegrationsAndPipelinePanel data={data} />
+                <CompactionSecretsBillingPanel data={data} />
+              </>
+            )}
           </>
         )
       )}

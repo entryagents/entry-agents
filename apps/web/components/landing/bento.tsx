@@ -1,115 +1,184 @@
 import Link from "next/link";
 
-const items = [
-  {
-    id: "001",
-    title: "Agent Team & Board",
-    body: "Main agent delegates to Architect, Explorer, Executor, Reviewer, and Design subagents sharing a real-time Team Board.",
-  },
-  {
-    id: "002",
-    title: "Plugin SDK & Vault",
-    body: "Typed lifecycle hooks, custom /commands, and AES-256-GCM runtime secrets with automatic output redaction.",
-  },
-  {
-    id: "003",
-    title: "Cloud Workspaces",
-    body: "Isolated Linux sandboxes per session with filesystem, terminal, MCP bridge, and copy-on-write hibernation.",
-  },
-  {
-    id: "004",
-    title: "Workflow SDK",
-    body: "Resumable step checkpoints, real-time token metering, diff caching, and background queue draining.",
-  },
-] as const;
-
-function Mark({ index }: { readonly index: number }) {
-  if (index === 0) {
-    return (
-      <div className="relative h-6 w-8" aria-hidden="true">
-        <span className="absolute left-0 top-0 size-2 border border-(--l-fg-4)" />
-        <span className="absolute right-0 top-0 size-2 border border-(--l-fg-4)" />
-        <span className="absolute bottom-0 left-1/2 size-2 -translate-x-1/2 border border-(--l-fg-4)" />
-      </div>
-    );
-  }
-  if (index === 1) {
-    return (
-      <div className="flex items-center gap-1" aria-hidden="true">
-        <span className="size-2 border border-(--l-fg-4)" />
-        <span className="h-px w-3 bg-(--l-fg-4)" />
-        <span className="size-2 border border-(--l-fg-4)" />
-      </div>
-    );
-  }
-  if (index === 2) {
-    return (
-      <div className="grid grid-cols-2 gap-1" aria-hidden="true">
-        <span className="size-2 border border-(--l-fg-4)" />
-        <span className="size-2 border border-(--l-fg-4)" />
-        <span className="size-2 border border-(--l-fg-4)" />
-        <span className="size-2 border border-(--l-fg-4)" />
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-center gap-1.5" aria-hidden="true">
-      <span className="h-px w-4 bg-(--l-fg-4)" />
-      <span className="h-px w-6 bg-(--l-fg-4)" />
-      <span className="h-px w-3 bg-(--l-fg-4)" />
-    </div>
-  );
-}
-
 export function LandingBento() {
   return (
     <section>
-      <div className="mx-auto max-w-[1320px] border-t border-(--l-border-subtle)">
-        <div className="grid gap-6 border-b border-(--l-border) px-6 py-14 pb-10 sm:gap-10 sm:px-10 md:grid-cols-2 md:gap-0 md:py-24 md:pb-14">
-          <div>
-            <h2 className="text-balance text-3xl font-semibold leading-[1.05] tracking-tighter sm:text-4xl md:text-6xl">
-              Infrastructure
-              <br />
-              that ships.
-            </h2>
-          </div>
-          <div className="md:pl-10">
-            <p className="max-w-md text-balance text-base leading-relaxed text-(--l-fg-2)">
-              Built on focused primitives: specialist subagent teams, typed
-              lifecycle plugins, isolated cloud workspaces, and durable workflow
-              execution.
-            </p>
-            <div className="mt-6">
-              <Link
-                href="/login"
-                className="inline-flex min-h-9 items-center rounded-md bg-(--l-fg) px-4 text-sm font-medium text-(--l-bg) transition-opacity duration-150 hover:opacity-85"
-              >
-                Get started
-              </Link>
+      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-10">
+        <div className="border-t border-(--l-border) py-16 md:py-24">
+          <div className="grid gap-6 lg:grid-cols-12 lg:items-end">
+            <div className="lg:col-span-7">
+              <h2 className="text-balance text-3xl font-semibold leading-[1.08] tracking-tight sm:text-4xl md:text-5xl">
+                Infrastructure built for real engineering teams
+              </h2>
+            </div>
+            <div className="lg:col-span-5">
+              <p className="max-w-[54ch] text-pretty text-base leading-relaxed text-(--l-fg-2)">
+                Built on four composable primitives: multi-agent team
+                orchestration, typed lifecycle plugins, zero-knowledge secret
+                injection, and prefix-cached durable workflows.
+              </p>
             </div>
           </div>
-        </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-4">
-          {items.map((item, index) => (
-            <article
-              key={item.id}
-              className="flex h-full flex-col border-b border-(--l-border) px-6 py-8 md:border-b-0 md:border-r md:px-9 md:py-9 md:last:border-r-0"
-            >
-              <div className="font-mono text-xs tabular-nums text-(--l-fg-4)">
-                {item.id}
+          {/* Asymmetric 12-column architectural grid (7 + 5, then 5 + 7) */}
+          <div className="mt-10 grid gap-4 lg:mt-12 lg:grid-cols-12">
+            {/* Primary Card 1 (7 cols) */}
+            <article className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7">
+              <div>
+                <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
+                  <span className="font-medium text-(--l-fg-2)">
+                    Multi-agent orchestration
+                  </span>
+                  <span className="font-mono text-[11px] tabular-nums">
+                    team_board · spawn_agent
+                  </span>
+                </div>
+                <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
+                  Specialist roles sharing a structured Team Board
+                </h3>
+                <p className="mt-2.5 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
+                  Instead of one overloaded context window, Entry delegates
+                  planning, codebase discovery, implementation, and security
+                  review to dedicated subagents that post decisions and
+                  checklists to a shared board.
+                </p>
               </div>
-              <div className="mt-8 flex h-12 items-center">
-                <Mark index={index} />
+
+              <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {[
+                  { role: "Architect", mode: "Plan & boundaries" },
+                  { role: "Explorer", mode: "Fast AST & grep" },
+                  { role: "Executor", mode: "Edit & test" },
+                  { role: "Reviewer", mode: "Diff & security audit" },
+                ].map((item) => (
+                  <div
+                    key={item.role}
+                    className="rounded-xl border border-(--l-border) bg-(--l-surface-2) px-3 py-2.5"
+                  >
+                    <div className="font-mono text-xs font-medium text-(--l-fg)">
+                      {item.role}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-(--l-fg-3)">
+                      {item.mode}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <h3 className="mt-6 text-balance text-xl font-semibold tracking-tight sm:text-2xl">
-                {item.title}
-              </h3>
-              <p className="mt-3 text-pretty text-sm leading-relaxed text-(--l-fg-2)">
-                {item.body}
-              </p>
             </article>
-          ))}
+
+            {/* Supporting Card 1 (5 cols) */}
+            <article className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5">
+              <div>
+                <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
+                  <span className="font-medium text-(--l-fg-2)">
+                    Plugin SDK &amp; Vault
+                  </span>
+                  <span className="font-mono text-[11px]">AES-256-GCM</span>
+                </div>
+                <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
+                  Lifecycle hooks and zero-knowledge secrets
+                </h3>
+                <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
+                  Configure built-in or custom plugins that hook into{" "}
+                  <code>context.system</code>, <code>tool.execute.before</code>,
+                  and <code>tool.execute.after</code> while scrubbing API keys
+                  from transcripts.
+                </p>
+              </div>
+
+              <div className="mt-6 rounded-xl border border-(--l-border) bg-(--l-code-bg) p-3.5 font-mono text-[11px] leading-relaxed text-(--l-panel-fg-2)">
+                <div className="text-(--l-panel-fg-3)">
+                  # Runtime secret injection &amp; redaction
+                </div>
+                <div className="mt-1 text-emerald-500">
+                  ✓ STRIPE_SECRET_KEY injected into sandbox env
+                </div>
+                <div className="text-(--l-panel-fg)">
+                  ✓ tool.execute.after scrubbed 2 token matches
+                </div>
+              </div>
+            </article>
+
+            {/* Supporting Card 2 (5 cols) */}
+            <article className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5">
+              <div>
+                <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
+                  <span className="font-medium text-(--l-fg-2)">
+                    Cloud Workspaces &amp; MCP
+                  </span>
+                  <span className="font-mono text-[11px]">
+                    http · sse · stdio
+                  </span>
+                </div>
+                <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
+                  Full Linux sandboxes with universal MCP
+                </h3>
+                <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
+                  Connect remote HTTP/SSE MCP servers or spawn `npx`, `uvx`, and
+                  binary stdio MCP servers directly inside the session container
+                  with automatic tool discovery.
+                </p>
+              </div>
+
+              <div className="mt-6 flex flex-wrap gap-2 font-mono text-[11px]">
+                <span className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 text-(--l-fg-2)">
+                  Copy-on-write hibernate
+                </span>
+                <span className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 text-(--l-fg-2)">
+                  Live port preview
+                </span>
+                <span className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 text-(--l-fg-2)">
+                  Scoped GitHub App tokens
+                </span>
+              </div>
+            </article>
+
+            {/* Primary Card 2 (7 cols) */}
+            <article className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7">
+              <div>
+                <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
+                  <span className="font-medium text-(--l-fg-2)">
+                    Workflow SDK &amp; Prompt Caching
+                  </span>
+                  <span className="font-mono text-[11px] tabular-nums">
+                    stablePrefix + dynamicTail
+                  </span>
+                </div>
+                <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
+                  Prefix-cached turns and instant stream reconnection
+                </h3>
+                <p className="mt-2.5 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
+                  Static instructions and deterministically sorted tools stay
+                  byte-identical across turns so DeepSeek V3.2, Claude 4.6, and
+                  GPT-5 hit the provider KV cache — while mid-turn tool
+                  checkpoints let any browser tab resume live.
+                </p>
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-(--l-border) pt-4">
+                <div className="flex flex-wrap gap-6 font-mono text-xs tabular-nums">
+                  <div>
+                    <span className="text-(--l-fg-3)">KV prefix</span>{" "}
+                    <span className="font-medium text-(--l-fg)">
+                      deterministic
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-(--l-fg-3)">Compaction</span>{" "}
+                    <span className="font-medium text-(--l-fg)">
+                      observation pruning
+                    </span>
+                  </div>
+                </div>
+                <Link
+                  href="/login"
+                  className="inline-flex h-9 items-center rounded-lg bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-opacity duration-150 hover:opacity-90"
+                >
+                  Start a session
+                </Link>
+              </div>
+            </article>
+          </div>
         </div>
       </div>
     </section>

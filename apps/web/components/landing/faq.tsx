@@ -53,17 +53,15 @@ export function LandingFaq() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
       />
-      <div className="mx-auto max-w-[1320px] md:border-t md:border-(--l-border)">
-        <div className="grid gap-10 px-6 py-16 sm:px-10 md:py-24 lg:grid-cols-[minmax(240px,340px)_1fr]">
+      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-10">
+        <div className="grid gap-10 border-t border-(--l-border) py-16 md:py-24 lg:grid-cols-[minmax(240px,360px)_1fr]">
           <div>
-            <h2 className="text-balance text-2xl font-semibold tracking-tighter sm:text-3xl md:text-4xl">
-              Questions,
-              <br />
-              answered.
+            <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
+              Frequently asked questions
             </h2>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">
-              What Entry Agents is, how the agent team works, and how plugins
-              and sandboxes stay secure. More on the{" "}
+              How Entry Agents works, how the specialist agent team coordinates,
+              and how sandboxes and runtime secrets stay isolated. See{" "}
               <a
                 href={`${SITE_URL}/pricing`}
                 className="underline underline-offset-4 hover:text-(--l-fg)"
@@ -75,9 +73,9 @@ export function LandingFaq() {
                 href={`${SITE_URL}/model`}
                 className="underline underline-offset-4 hover:text-(--l-fg)"
               >
-                model
+                models
               </a>{" "}
-              pages.
+              for token rates.
             </p>
           </div>
 

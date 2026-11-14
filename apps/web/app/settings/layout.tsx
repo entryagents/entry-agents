@@ -146,12 +146,20 @@ function SettingsLayout({
   const sidebarItems = isAdmin
     ? [...baseSidebarItems, adminSidebarItem]
     : baseSidebarItems;
-  const activeItem = sidebarItems.find((item) => item.href === pathname);
+  const isAdminRoute = pathname.startsWith("/settings/admin");
+  const activeItem = sidebarItems.find((item) =>
+    item.href === "/settings/admin"
+      ? isAdminRoute
+      : pathname === item.href || pathname.startsWith(`${item.href}/`),
+  );
 
   const navItems = (
     <ul className="space-y-1">
       {sidebarItems.map((item) => {
-        const isActive = pathname === item.href;
+        const isActive =
+          item.href === "/settings/admin"
+            ? isAdminRoute
+            : pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
           <li key={item.id}>
             <Link
@@ -174,8 +182,8 @@ function SettingsLayout({
   );
 
   return (
-    <div className="flex h-screen bg-background text-foreground">
-      <aside className="hidden w-64 shrink-0 border-r border-border md:flex">
+    <div className="flex h-dvh bg-background text-foreground">
+      <aside className="hidden w-60 shrink-0 border-r border-border md:flex lg:w-64">
         <div className="flex h-full w-full flex-col overflow-y-auto">
           <div className="flex items-center gap-4 px-6 py-4">
             <Link
@@ -239,20 +247,32 @@ function SettingsLayout({
         </SheetContent>
       </Sheet>
 
-      <main className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex items-center gap-3 border-b border-border px-4 py-3 md:hidden">
+      <main className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+        <div className="sticky top-0 z-20 flex items-center gap-3 border-b border-border bg-background/95 px-4 py-3 backdrop-blur-xs md:hidden">
           <button
             type="button"
+            aria-label="Open settings navigation"
             onClick={() => setMobileSidebarOpen(true)}
-            className="text-muted-foreground hover:text-foreground"
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
-            <Menu className="h-4 w-4" />
+            <Menu className="size-4" strokeWidth={1.5} />
           </button>
           <span className="flex-1 truncate text-sm font-medium">
             {activeItem?.label ?? "Settings"}
           </span>
+          <Link
+            href="/sessions"
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            Sessions
+          </Link>
         </div>
-        <div className="mx-auto max-w-5xl space-y-6 px-3 py-8 md:px-4 md:py-10">
+        <div
+          className={cn(
+            "mx-auto w-full space-y-6 px-4 py-6 sm:px-6 md:py-8",
+            isAdminRoute ? "max-w-[1440px] lg:px-8" : "max-w-5xl",
+          )}
+        >
           {children}
         </div>
       </main>

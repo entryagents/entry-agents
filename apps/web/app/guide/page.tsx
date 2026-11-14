@@ -136,22 +136,20 @@ function PageLink({
 
 export default function GuidePage() {
   return (
-    <div className="landing min-h-screen bg-(--l-bg) text-(--l-fg)">
+    <div className="landing min-h-dvh bg-(--l-bg) text-(--l-fg)">
       <LandingNav showSignIn />
-      <main className="mx-auto max-w-[1080px] px-6 pb-24 pt-32 md:pt-44">
+      <main className="mx-auto max-w-[1080px] px-4 pb-24 pt-28 sm:px-6 sm:pt-36 md:pt-40">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
           }}
         />
-        <p className="font-mono text-xs uppercase tracking-widest text-(--l-fg-3)">
-          Start here
-        </p>
-        <h1 className="mt-4 max-w-5xl text-4xl font-semibold tracking-tighter sm:text-5xl md:text-6xl">
-          The complete Entry Agents guide for new vibe coders.
+        <p className="font-mono text-xs text-(--l-fg-3)">Beginner guide</p>
+        <h1 className="mt-3 max-w-5xl text-3xl font-semibold tracking-tight sm:text-5xl md:text-6xl">
+          The complete Entry Agents guide for new builders
         </h1>
-        <p className="mt-6 max-w-4xl text-lg leading-relaxed text-(--l-fg-2)">
+        <p className="mt-5 max-w-4xl text-base leading-relaxed text-(--l-fg-2) sm:text-lg">
           You do not need an existing project, a GitHub account, or coding
           experience to begin. This guide starts at the beginning and explains
           what each main part of Entry means, what to click, what to type, and

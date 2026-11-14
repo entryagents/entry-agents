@@ -14,6 +14,10 @@ import {
   Search,
   Mail,
   User,
+  Heart,
+  ThumbsUp,
+  Minus,
+  ThumbsDown,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,11 +50,30 @@ interface FeedbackApiResponse {
   };
 }
 
-const SENTIMENT_EMOJIS: Record<string, string> = {
-  love: "😍",
-  good: "👍",
-  neutral: "😐",
-  bad: "👎",
+const SENTIMENT_META: Record<
+  FeedbackItem["sentiment"],
+  { icon: typeof Heart; label: string; className: string }
+> = {
+  love: {
+    icon: Heart,
+    label: "Loved it",
+    className: "border-emerald-500/30 bg-emerald-500/10 text-emerald-500",
+  },
+  good: {
+    icon: ThumbsUp,
+    label: "Good",
+    className: "border-border bg-muted/40 text-foreground",
+  },
+  neutral: {
+    icon: Minus,
+    label: "Neutral",
+    className: "border-border bg-muted/40 text-muted-foreground",
+  },
+  bad: {
+    icon: ThumbsDown,
+    label: "Needs work",
+    className: "border-amber-500/30 bg-amber-500/10 text-amber-500",
+  },
 };
 
 export default function AdminFeedbackPage() {
@@ -249,59 +272,65 @@ export default function AdminFeedbackPage() {
         <div className="space-y-3">
           {filteredItems.map((item) => {
             const isPending = updatingId === item.id;
+            const sentimentMeta =
+              SENTIMENT_META[item.sentiment] ?? SENTIMENT_META.neutral;
+            const SentimentIcon = sentimentMeta.icon;
             return (
               <div
                 key={item.id}
                 className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 transition-colors hover:border-foreground/20"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl leading-none">
-                      {SENTIMENT_EMOJIS[item.sentiment] ?? "💬"}
-                    </span>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-sm text-foreground">
-                          {item.title || "User Feedback"}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <div
+                      className={`mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border ${sentimentMeta.className}`}
+                      title={sentimentMeta.label}
+                    >
+                      <SentimentIcon className="size-4" strokeWidth={1.5} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-medium text-foreground">
+                          {item.title || "User feedback"}
                         </span>
                         <Badge
                           variant="outline"
                           className={
                             item.category === "bug"
-                              ? "border-red-500/30 text-red-500 bg-red-500/10 text-[10px]"
+                              ? "border-destructive/30 bg-destructive/10 text-[11px] font-normal text-destructive"
                               : item.category === "feature"
-                                ? "border-blue-500/30 text-blue-500 bg-blue-500/10 text-[10px]"
-                                : "border-border text-muted-foreground text-[10px]"
+                                ? "border-border bg-muted/50 text-[11px] font-normal text-foreground"
+                                : "border-border text-[11px] font-normal text-muted-foreground"
                           }
                         >
-                          {item.category.toUpperCase()}
+                          {item.category}
                         </Badge>
                         <Badge
                           variant="secondary"
                           className={
                             item.status === "new"
-                              ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 text-[10px]"
+                              ? "bg-amber-500/15 text-[11px] font-normal text-amber-600 dark:text-amber-400"
                               : item.status === "resolved"
-                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px]"
-                                : "text-[10px]"
+                                ? "bg-emerald-500/15 text-[11px] font-normal text-emerald-600 dark:text-emerald-400"
+                                : "text-[11px] font-normal"
                           }
                         >
                           {item.status}
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
-                          <User className="h-3 w-3" />
+                          <User className="size-3" strokeWidth={1.5} />
                           {item.userName || "Anonymous"}
                         </span>
                         {item.userEmail && (
-                          <span className="flex items-center gap-1">
-                            <Mail className="h-3 w-3" />
+                          <span className="flex items-center gap-1 truncate">
+                            <Mail className="size-3" strokeWidth={1.5} />
                             {item.userEmail}
                           </span>
                         )}
                         <span>
-                          •{" "}
+                          ·{" "}
                           {formatDistanceToNow(new Date(item.createdAt), {
                             addSuffix: true,
                           })}
@@ -321,7 +350,10 @@ export default function AdminFeedbackPage() {
                         }
                         disabled={isPending}
                       >
-                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
+                        <CheckCircle2
+                          className="mr-1 size-3.5"
+                          strokeWidth={1.5}
+                        />
                         Resolve
                       </Button>
                     )}
@@ -335,7 +367,7 @@ export default function AdminFeedbackPage() {
                         }
                         disabled={isPending}
                       >
-                        <Archive className="mr-1 h-3.5 w-3.5" />
+                        <Archive className="mr-1 size-3.5" strokeWidth={1.5} />
                         Archive
                       </Button>
                     )}

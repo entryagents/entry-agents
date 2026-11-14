@@ -11,7 +11,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Bug, Sparkles, MessageSquare, Loader2, Send } from "lucide-react";
+import {
+  Bug,
+  Heart,
+  Loader2,
+  MessageSquare,
+  Minus,
+  Send,
+  Sparkles,
+  ThumbsDown,
+  ThumbsUp,
+} from "lucide-react";
 
 interface FeedbackDialogProps {
   open: boolean;
@@ -19,16 +29,16 @@ interface FeedbackDialogProps {
 }
 
 const CATEGORIES = [
-  { id: "bug", label: "Bug Report", icon: Bug },
-  { id: "feature", label: "Feature Request", icon: Sparkles },
-  { id: "general", label: "General Feedback", icon: MessageSquare },
+  { id: "bug", label: "Bug report", icon: Bug },
+  { id: "feature", label: "Feature request", icon: Sparkles },
+  { id: "general", label: "General", icon: MessageSquare },
 ] as const;
 
 const SENTIMENTS = [
-  { id: "love", emoji: "😍", label: "Loved it" },
-  { id: "good", emoji: "👍", label: "Good" },
-  { id: "neutral", emoji: "😐", label: "Neutral" },
-  { id: "bad", emoji: "👎", label: "Needs work" },
+  { id: "love", icon: Heart, label: "Loved it" },
+  { id: "good", icon: ThumbsUp, label: "Good" },
+  { id: "neutral", icon: Minus, label: "Neutral" },
+  { id: "bad", icon: ThumbsDown, label: "Needs work" },
 ] as const;
 
 export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
@@ -66,8 +76,8 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
         throw new Error("Failed to submit feedback");
       }
 
-      toast.success("Feedback submitted!", {
-        description: "Thank you for helping us improve Entry Agents.",
+      toast.success("Feedback submitted", {
+        description: "Thank you for helping improve Entry.",
       });
       setTitle("");
       setMessage("");
@@ -83,21 +93,20 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md p-6">
         <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">
-            Send Feedback
+          <DialogTitle className="text-lg font-medium">
+            Send feedback
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Have a suggestion, noticed a bug, or want a feature? Let the
-            founders know directly.
+            Report a bug, request a capability, or share direct feedback with
+            the engineering team.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-          {/* Category Chips */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">
-              Feedback Category
-            </label>
+          <fieldset className="space-y-1.5">
+            <legend className="text-xs font-medium text-foreground">
+              Category
+            </legend>
             <div className="grid grid-cols-3 gap-2">
               {CATEGORIES.map((c) => {
                 const Icon = c.icon;
@@ -107,76 +116,80 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
                     key={c.id}
                     type="button"
                     onClick={() => setCategory(c.id)}
-                    className={`flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-all cursor-pointer ${
+                    className={`flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors duration-150 cursor-pointer ${
                       isSelected
-                        ? "border-primary bg-primary/10 text-primary shadow-2xs font-semibold"
+                        ? "border-foreground bg-foreground text-background"
                         : "border-border bg-background/50 text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                   >
-                    <Icon className="h-3.5 w-3.5" />
+                    <Icon className="size-3.5" strokeWidth={1.5} />
                     <span>{c.label}</span>
                   </button>
                 );
               })}
             </div>
-          </div>
+          </fieldset>
 
-          {/* Sentiment Selection */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-foreground">
-              How has your experience been?
-            </label>
-            <div className="flex items-center justify-between gap-2">
+          <fieldset className="space-y-1.5">
+            <legend className="text-xs font-medium text-foreground">
+              Experience
+            </legend>
+            <div className="grid grid-cols-4 gap-2">
               {SENTIMENTS.map((s) => {
+                const Icon = s.icon;
                 const isSelected = sentiment === s.id;
                 return (
                   <button
                     key={s.id}
                     type="button"
                     onClick={() => setSentiment(s.id)}
-                    className={`flex flex-1 flex-col items-center gap-1 rounded-lg border py-2 text-center transition-all cursor-pointer ${
+                    className={`flex flex-col items-center gap-1.5 rounded-lg border py-2.5 text-center transition-colors duration-150 cursor-pointer ${
                       isSelected
-                        ? "border-primary bg-primary/10 shadow-2xs"
-                        : "border-border/60 bg-muted/20 hover:bg-muted"
+                        ? "border-foreground bg-muted text-foreground"
+                        : "border-border/60 bg-muted/20 text-muted-foreground hover:bg-muted hover:text-foreground"
                     }`}
                   >
-                    <span className="text-lg leading-none">{s.emoji}</span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {s.label}
-                    </span>
+                    <Icon className="size-4" strokeWidth={1.5} />
+                    <span className="text-[11px]">{s.label}</span>
                   </button>
                 );
               })}
             </div>
-          </div>
+          </fieldset>
 
-          {/* Title input */}
           <div className="space-y-1">
-            <label className="text-xs font-medium text-foreground">
-              Subject (Optional)
+            <label
+              htmlFor="feedback-subject-input"
+              className="text-xs font-medium text-foreground"
+            >
+              Subject (optional)
             </label>
             <input
+              id="feedback-subject-input"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Sandbox reconnect issue or Dark mode styling"
+              placeholder="e.g. Sandbox reconnect or diff viewer"
               maxLength={120}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none"
             />
           </div>
 
-          {/* Message textarea */}
           <div className="space-y-1">
-            <label className="text-xs font-medium text-foreground">
-              Details &amp; Feedback *
+            <label
+              htmlFor="feedback-details-textarea"
+              className="text-xs font-medium text-foreground"
+            >
+              Details
             </label>
             <textarea
+              id="feedback-details-textarea"
               required
               rows={4}
               value={message}
               onChange={(e) => setMessage(e.target.value)}
-              placeholder="Tell us what happened, what you liked, or what you would love to see added..."
-              className="w-full rounded-lg border border-border bg-background p-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none resize-none"
+              placeholder="Describe what happened or what you would like to see..."
+              className="w-full resize-none rounded-lg border border-border bg-background p-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-foreground focus:outline-none"
             />
           </div>
 
@@ -193,13 +206,16 @@ export function FeedbackDialog({ open, onOpenChange }: FeedbackDialogProps) {
             <Button type="submit" size="sm" disabled={submitting}>
               {submitting ? (
                 <>
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  <Loader2
+                    className="mr-1.5 size-3.5 animate-spin"
+                    strokeWidth={1.5}
+                  />
                   Sending...
                 </>
               ) : (
                 <>
-                  <Send className="mr-1.5 h-3.5 w-3.5" />
-                  Send Feedback
+                  <Send className="mr-1.5 size-3.5" strokeWidth={1.5} />
+                  Send feedback
                 </>
               )}
             </Button>
