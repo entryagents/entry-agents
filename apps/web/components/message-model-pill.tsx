@@ -341,15 +341,6 @@ export function MessageModelPill({
           </span>
         </>
       ) : null}
-        <>
-          <span aria-hidden className="text-muted-foreground/40">
-            ·
-          </span>
-          <span className="tabular-nums text-muted-foreground/80">
-            {formatTokenCount(totalTokens)} tok
-          </span>
-        </>
-      ) : null}
     </span>
   );
 
