@@ -69,6 +69,7 @@ import {
   refreshLifecycleActivity,
   runAutoCommitStep,
   runAutoCreatePrStep,
+  runPostTurnPluginsStep,
   sendFinish,
 } from "./chat-post-finish";
 import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
@@ -3326,26 +3327,35 @@ export async function runAgentWorkflow(options: Options) {
       await reconcileSessionStatusStep(options.sessionId, terminalState);
     } finally {
       const runFinishedAt = new Date();
-      await recordWorkflowUsage(
-        options.userId,
-        modelId,
-        totalUsage,
-        pendingAssistantResponse,
-        previousResponseMessage,
-        {
-          workflowRunId,
-          chatId: options.chatId,
+      await Promise.all([
+        recordWorkflowUsage(
+          options.userId,
+          modelId,
+          totalUsage,
+          pendingAssistantResponse,
+          previousResponseMessage,
+          {
+            workflowRunId,
+            chatId: options.chatId,
+            sessionId: options.sessionId,
+            status: workflowStatus,
+            startedAt: runStartedAt.toISOString(),
+            finishedAt: runFinishedAt.toISOString(),
+            totalDurationMs: runFinishedAt.getTime() - runStartedAt.getTime(),
+            stepTimings,
+            errorMessage: caughtError
+              ? serializeErrorForDiagnostics(caughtError)
+              : undefined,
+          },
+        ),
+        runPostTurnPluginsStep({
+          userId: options.userId,
           sessionId: options.sessionId,
+          chatId: options.chatId,
+          workflowRunId,
           status: workflowStatus,
-          startedAt: runStartedAt.toISOString(),
-          finishedAt: runFinishedAt.toISOString(),
-          totalDurationMs: runFinishedAt.getTime() - runStartedAt.getTime(),
-          stepTimings,
-          errorMessage: caughtError
-            ? serializeErrorForDiagnostics(caughtError)
-            : undefined,
-        },
-      );
+        }),
+      ]);
     }
   }
 
@@ -3540,6 +3550,7 @@ const runAgentStep = async (
   let streamWriteFailed = false;
   let stepSecretRedactor: SecretRedactor | undefined;
   const usedSecretNames = new Set<string>();
+  const triggeredPluginSlugs = new Set<string>();
   const trackSecretUsed = (names: string[]) => {
     for (const name of names) {
       if (name) {
@@ -5108,6 +5119,13 @@ const runAgentStep = async (
       if (usedSecretNames.size > 0) {
         await import("@/lib/db/secrets")
           .then((m) => m.recordUserSecretsUsed(userId, [...usedSecretNames]))
+          .catch(() => {});
+      }
+      if (triggeredPluginSlugs.size > 0) {
+        await import("@/lib/db/plugins")
+          .then((m) =>
+            m.recordUserPluginsTriggered(userId, [...triggeredPluginSlugs]),
+          )
           .catch(() => {});
       }
     }

@@ -3,15 +3,18 @@
 import {
   AlertCircle,
   ArrowRight,
+  Check,
   CheckCircle2,
   Circle,
   Clock,
+  Copy,
   FileCode2,
   GitBranch,
   HelpCircle,
   Lightbulb,
   Share2,
 } from "lucide-react";
+import { useState } from "react";
 import type {
   TeamFeedEntry,
   TeamFeedState,
@@ -31,25 +34,22 @@ const KIND_META: Record<
   decision: {
     label: "Decision",
     icon: GitBranch,
-    badge:
-      "border-indigo-500/25 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
+    badge: "border-border/80 bg-muted/60 text-foreground",
   },
   finding: {
     label: "Finding",
     icon: Lightbulb,
-    badge: "border-cyan-500/25 bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
+    badge: "border-border/80 bg-muted/60 text-foreground",
   },
   artifact: {
     label: "Artifact",
     icon: FileCode2,
-    badge:
-      "border-violet-500/25 bg-violet-500/10 text-violet-600 dark:text-violet-400",
+    badge: "border-border/80 bg-muted/60 text-foreground",
   },
   handoff: {
     label: "Handoff",
     icon: Share2,
-    badge:
-      "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+    badge: "border-border/80 bg-muted/60 text-foreground",
   },
   blocker: {
     label: "Blocker",
@@ -77,7 +77,43 @@ function TaskStatusIcon({ status }: { status: TeamFeedTask["status"] }) {
   }
 }
 
+function formatBoardAsMarkdown(feed: TeamFeedState): string {
+  const lines: string[] = ["# Team Board"];
+  if (feed.tasks.length > 0) {
+    lines.push("", "## Tasks");
+    for (const task of feed.tasks) {
+      const box = task.status === "completed" ? "[x]" : "[ ]";
+      lines.push(
+        `- ${box} **${task.id}** ${task.title} _(${task.assignedRole}, ${task.status})_`,
+      );
+      if (task.notes) {
+        lines.push(`  - ${task.notes}`);
+      }
+    }
+  }
+  if (feed.entries.length > 0) {
+    lines.push("", "## Decisions & Handoffs");
+    for (const entry of feed.entries) {
+      const target = entry.targetRole ? ` → ${entry.targetRole}` : "";
+      lines.push(
+        `### [${entry.kind}] ${entry.title} (${entry.authorRole}${target})`,
+      );
+      lines.push(entry.content);
+      if (entry.files && entry.files.length > 0) {
+        lines.push(`Files: ${entry.files.map((f) => `\`${f}\``).join(", ")}`);
+      }
+      lines.push("");
+    }
+  }
+  return lines.join("\n").trim();
+}
+
 export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
+  const [kindFilter, setKindFilter] = useState<"all" | TeamFeedEntry["kind"]>(
+    "all",
+  );
+  const [copied, setCopied] = useState(false);
+
   if (feed.entries.length === 0 && feed.tasks.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center">
@@ -96,13 +132,74 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
     );
   }
 
+  const filteredEntries =
+    kindFilter === "all"
+      ? feed.entries
+      : feed.entries.filter((e) => e.kind === kindFilter);
+
+  const handleCopyMarkdown = async () => {
+    try {
+      await navigator.clipboard.writeText(formatBoardAsMarkdown(feed));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Ignore clipboard failure
+    }
+  };
+
   return (
     <div className="flex h-full flex-col gap-5 overflow-y-auto bg-background p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1">
+          {(
+            [
+              { id: "all", label: "All" },
+              { id: "decision", label: "Decisions" },
+              { id: "finding", label: "Findings" },
+              { id: "handoff", label: "Handoffs" },
+              { id: "blocker", label: "Blockers" },
+            ] as const
+          ).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setKindFilter(tab.id)}
+              className={cn(
+                "rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer",
+                kindFilter === tab.id
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void handleCopyMarkdown()}
+          className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+        >
+          {copied ? (
+            <>
+              <Check className="size-3 text-emerald-500" />
+              <span>Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy className="size-3" />
+              <span>Copy markdown</span>
+            </>
+          )}
+        </button>
+      </div>
+
       {feed.tasks.length > 0 && (
-        <section className="space-y-2.5">
+        <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Team Tasks (
+            <h3 className="text-xs font-medium text-muted-foreground tabular-nums">
+              Team tasks (
               {feed.tasks.filter((t) => t.status === "completed").length}/
               {feed.tasks.length})
             </h3>
@@ -135,7 +232,7 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
                     </p>
                   )}
                 </div>
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
                   {task.id}
                 </span>
               </div>
@@ -144,13 +241,13 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
         </section>
       )}
 
-      {feed.entries.length > 0 && (
-        <section className="space-y-2.5">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Teammate Handoffs &amp; Decisions ({feed.entries.length})
+      {filteredEntries.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium text-muted-foreground tabular-nums">
+            Decisions &amp; handoffs ({filteredEntries.length})
           </h3>
           <div className="space-y-2.5">
-            {feed.entries.map((entry) => {
+            {filteredEntries.map((entry) => {
               const meta = KIND_META[entry.kind] ?? KIND_META.finding;
               const KindIcon = meta.icon;
               return (
@@ -162,7 +259,7 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span
                         className={cn(
-                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
                           meta.badge,
                         )}
                       >

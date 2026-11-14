@@ -210,6 +210,33 @@ export const ChatComposer = memo(
       [addTextAttachment],
     );
 
+    useEffect(() => {
+      const handleInsertPrompt = (event: Event) => {
+        const custom = event as CustomEvent<{ text?: string }>;
+        const text = custom.detail?.text;
+        if (typeof text !== "string" || !text) return;
+        setInput(text);
+        setCursorPosition(text.length);
+        setTimeout(() => {
+          if (inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.setSelectionRange(text.length, text.length);
+          }
+        }, 0);
+      };
+
+      window.addEventListener(
+        "entry:insert-composer-prompt",
+        handleInsertPrompt,
+      );
+      return () => {
+        window.removeEventListener(
+          "entry:insert-composer-prompt",
+          handleInsertPrompt,
+        );
+      };
+    }, []);
+
     const handleTextareaFocus = useCallback(() => {}, []);
 
     // Auto-resize textarea up to 3 lines

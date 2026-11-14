@@ -6,7 +6,7 @@ import {
   type PluginSlashCommand,
   type ResolvedEntryPlugin,
 } from "@entry-agents/agent";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   decryptPluginConfig,
@@ -453,4 +453,84 @@ export async function getEnabledPluginSlashCommands(
   }
 
   return commands;
+}
+
+export async function recordUserPluginsTriggered(
+  userId: string,
+  slugs: string[],
+): Promise<void> {
+  const uniqueSlugs = [...new Set(slugs.map((s) => s.trim()).filter(Boolean))];
+  if (!userId || uniqueSlugs.length === 0) {
+    return;
+  }
+
+  try {
+    const now = new Date();
+    const existingRows = await db
+      .select({
+        id: userPlugins.id,
+        slug: userPlugins.slug,
+      })
+      .from(userPlugins)
+      .where(
+        and(
+          eq(userPlugins.userId, userId),
+          inArray(userPlugins.slug, uniqueSlugs),
+        ),
+      );
+
+    const existingSlugs = new Set(existingRows.map((r) => r.slug));
+
+    if (existingRows.length > 0) {
+      await db
+        .update(userPlugins)
+        .set({
+          triggerCount: sql`${userPlugins.triggerCount} + 1`,
+          lastTriggeredAt: now,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(userPlugins.userId, userId),
+            inArray(userPlugins.slug, [...existingSlugs]),
+          ),
+        );
+    }
+
+    const missingBuiltins = uniqueSlugs
+      .filter((slug) => !existingSlugs.has(slug))
+      .map((slug) => getBuiltinPluginBySlug(slug))
+      .filter((manifest): manifest is PluginManifest => manifest !== undefined);
+
+    if (missingBuiltins.length > 0) {
+      await db
+        .insert(userPlugins)
+        .values(
+          missingBuiltins.map((builtin) => ({
+            id: nanoid(),
+            userId,
+            slug: builtin.slug,
+            name: builtin.name,
+            description: builtin.description,
+            category: builtin.category,
+            source: "builtin" as const,
+            enabled: DEFAULT_ENABLED_BUILTINS.has(builtin.slug),
+            manifest: builtin,
+            encryptedConfig: null,
+            configKeys: [],
+            triggerCount: 1,
+            lastTriggeredAt: now,
+          })),
+        )
+        .onConflictDoNothing();
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!msg.includes("POSTGRES_URL environment variable is required")) {
+      console.warn(
+        `[plugins] Failed to record plugin trigger telemetry for user ${userId}:`,
+        err,
+      );
+    }
+  }
 }

@@ -5,6 +5,7 @@ import {
   Blocks,
   Check,
   Code2,
+  KeyRound,
   Loader2,
   Plus,
   Shield,
@@ -25,29 +26,117 @@ import { useUserPlugins } from "@/hooks/use-user-plugins";
 import type { UserPluginSummary } from "@/lib/db/plugins";
 import { cn } from "@/lib/utils";
 
-const CUSTOM_PLUGIN_TEMPLATE = JSON.stringify(
+const PLUGIN_PRESETS = [
   {
-    slug: "strict-typescript-guard",
-    name: "Strict TypeScript Guard",
-    version: "1.0.0",
-    description:
-      "Reminds agents to avoid `any`, preserve docstrings, and expose /ts-check.",
-    category: "quality",
-    hooks: ["session.context", "tool.execute.after"],
-    slashCommands: [
-      {
-        name: "ts-check",
-        description: "Run typecheck cleanly across all workspace packages",
-        promptTemplate:
-          "Run the repository typecheck script cleanly, fix all TypeScript errors introduced by recent edits, and summarize what passed.",
+    id: "strict-ts",
+    label: "Strict TypeScript Guard",
+    manifest: {
+      slug: "strict-typescript-guard",
+      name: "Strict TypeScript Guard",
+      version: "1.0.0",
+      description:
+        "Enforces zero `any` types, explicit Zod narrowing, and exposes /ts-check.",
+      category: "quality",
+      hooks: ["session.context", "tool.execute.after"],
+      slashCommands: [
+        {
+          name: "ts-check",
+          description: "Run typecheck cleanly across all workspace packages",
+          promptTemplate:
+            "Run the repository typecheck script cleanly, fix all TypeScript errors introduced by recent edits, and summarize what passed.",
+        },
+      ],
+      rules: {
+        appendSystemPrompt:
+          "[Strict TS] Never use `any`; narrow unknown inputs with Zod or explicit type guards.",
+        compactionHint: "Keep exact compiler error messages when compacting.",
       },
-    ],
-    rules: {
-      appendSystemPrompt:
-        "[Strict TS] Never use `any`; narrow unknown inputs with Zod or explicit type guards.",
-      compactionHint: "Keep exact compiler error messages when compacting.",
     },
   },
+  {
+    id: "conventional-commits",
+    label: "Conventional Commits",
+    manifest: {
+      slug: "conventional-commits-guard",
+      name: "Conventional Commits Enforcer",
+      version: "1.0.0",
+      description:
+        "Standardizes git commit messages and PR titles using conventional commit prefixes.",
+      category: "git",
+      hooks: ["session.context"],
+      slashCommands: [
+        {
+          name: "commit-msg",
+          description:
+            "Draft a conventional commit summary for current staged diff",
+          promptTemplate:
+            "Inspect `git status` and `git diff --stat` and draft a concise Conventional Commit title and bullet body.",
+        },
+      ],
+      rules: {
+        appendSystemPrompt:
+          "[Git Convention] Format all commit titles as `feat(scope): ...`, `fix(scope): ...`, or `chore(scope): ...`.",
+      },
+    },
+  },
+  {
+    id: "sensitive-file-guard",
+    label: "Sensitive Path Blocker",
+    manifest: {
+      slug: "sensitive-path-blocker",
+      name: "Sensitive Path & Secret Guard",
+      version: "1.0.0",
+      description:
+        "Scrubs private key blocks from tool outputs and warns before modifying production env files.",
+      category: "security",
+      hooks: ["session.context", "tool.execute.after"],
+      slashCommands: [],
+      rules: {
+        appendSystemPrompt:
+          "[Security Guard] Never write raw credentials to `.env.production` or commit `.pem` files.",
+        redactRegexes: [
+          {
+            pattern:
+              "-----BEGIN [A-Z ]+ PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]+ PRIVATE KEY-----",
+            replacement: "[REDACTED_PRIVATE_KEY]",
+          },
+        ],
+      },
+    },
+  },
+  {
+    id: "test-first",
+    label: "Test-First Workflow",
+    manifest: {
+      slug: "test-first-workflow",
+      name: "Test-First Workflow",
+      version: "1.0.0",
+      description:
+        "Guides Executor and Reviewer subagents to add or update unit tests alongside every code change.",
+      category: "quality",
+      hooks: ["session.context", "session.compacting"],
+      slashCommands: [
+        {
+          name: "tdd",
+          description:
+            "Write a failing test first, implement the fix, and verify green",
+          promptTemplate:
+            "Follow a strict TDD loop: reproduce or specify the behavior with a focused test first, implement the minimal fix, and run the test file to confirm it passes.",
+          targetAgent: "executor",
+        },
+      ],
+      rules: {
+        appendSystemPrompt:
+          "[Test-First] Whenever you modify business logic, add or update the colocated `.test.ts` file in the same turn.",
+        compactionHint:
+          "Preserve the list of test files executed and their pass/fail status.",
+      },
+    },
+  },
+] as const;
+
+const DEFAULT_MANIFEST_JSON = JSON.stringify(
+  PLUGIN_PRESETS[0].manifest,
   null,
   2,
 );
@@ -92,6 +181,7 @@ export function PluginsSection() {
     error,
     togglePlugin,
     createCustomPlugin,
+    updatePluginConfig,
     deletePlugin,
   } = useUserPlugins();
 
@@ -100,10 +190,17 @@ export function PluginsSection() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   const [showBuilder, setShowBuilder] = useState(false);
-  const [manifestJson, setManifestJson] = useState(CUSTOM_PLUGIN_TEMPLATE);
+  const [manifestJson, setManifestJson] = useState(DEFAULT_MANIFEST_JSON);
   const [configKey, setConfigKey] = useState("");
   const [configValue, setConfigValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  const [editingConfigSlug, setEditingConfigSlug] = useState<string | null>(
+    null,
+  );
+  const [inlineKey, setInlineKey] = useState("");
+  const [inlineValue, setInlineValue] = useState("");
+  const [savingConfigSlug, setSavingConfigSlug] = useState<string | null>(null);
 
   const handleToggle = async (plugin: UserPluginSummary, enabled: boolean) => {
     setActionError(null);
@@ -116,6 +213,28 @@ export function PluginsSection() {
       );
     } finally {
       setTogglingSlug(null);
+    }
+  };
+
+  const handleSaveInlineConfig = async (plugin: UserPluginSummary) => {
+    const trimmedKey = inlineKey.trim();
+    if (!trimmedKey) {
+      setActionError("Config key is required.");
+      return;
+    }
+    setActionError(null);
+    setSavingConfigSlug(plugin.slug);
+    try {
+      await updatePluginConfig(plugin, { [trimmedKey]: inlineValue });
+      setEditingConfigSlug(null);
+      setInlineKey("");
+      setInlineValue("");
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Failed to save plugin config",
+      );
+    } finally {
+      setSavingConfigSlug(null);
     }
   };
 
@@ -180,6 +299,7 @@ export function PluginsSection() {
     const cat = CATEGORY_META[plugin.category] ?? CATEGORY_META.custom;
     const CatIcon = cat.icon;
     const busy = togglingSlug === plugin.slug || deletingId === plugin.id;
+    const isEditingConfig = editingConfigSlug === plugin.slug;
 
     return (
       <div
@@ -218,7 +338,30 @@ export function PluginsSection() {
                 {plugin.description}
               </p>
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={busy}
+                onClick={() => {
+                  if (isEditingConfig) {
+                    setEditingConfigSlug(null);
+                  } else {
+                    setEditingConfigSlug(plugin.slug);
+                    setInlineKey(
+                      plugin.manifest.configFields[0]?.key ??
+                        plugin.configuredKeys[0] ??
+                        "",
+                    );
+                    setInlineValue("");
+                  }
+                }}
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                aria-label={`Configure ${plugin.name}`}
+              >
+                <KeyRound className="size-3.5" />
+              </Button>
               {plugin.source === "custom" && (
                 <Button
                   type="button"
@@ -296,11 +439,65 @@ export function PluginsSection() {
               Encrypted config keys: {plugin.configuredKeys.join(", ")}
             </div>
           )}
+
+          {isEditingConfig && (
+            <div className="space-y-2 rounded-md border border-border/70 bg-muted/30 p-2.5">
+              <div className="text-[11px] font-medium text-foreground">
+                Encrypted plugin config (AES-256-GCM)
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Input
+                  placeholder="CONFIG_KEY"
+                  value={inlineKey}
+                  onChange={(e) => setInlineKey(e.target.value)}
+                  className="h-8 font-mono text-xs"
+                />
+                <Input
+                  type="password"
+                  placeholder="Secret or value"
+                  value={inlineValue}
+                  onChange={(e) => setInlineValue(e.target.value)}
+                  className="h-8 font-mono text-xs"
+                />
+              </div>
+              <div className="flex justify-end gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-xs"
+                  onClick={() => setEditingConfigSlug(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs"
+                  disabled={savingConfigSlug === plugin.slug}
+                  onClick={() => void handleSaveInlineConfig(plugin)}
+                >
+                  {savingConfigSlug === plugin.slug && (
+                    <Loader2 className="mr-1 size-3 animate-spin" />
+                  )}
+                  Save key
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="mt-3 flex items-center justify-between border-t border-border/40 pt-2.5 text-[11px] text-muted-foreground">
           <span className="font-mono">{plugin.slug}</span>
-          <span>v{plugin.manifest.version}</span>
+          <div className="flex items-center gap-2.5 tabular-nums">
+            {plugin.triggerCount > 0 && (
+              <span>
+                {plugin.triggerCount}{" "}
+                {plugin.triggerCount === 1 ? "run" : "runs"}
+              </span>
+            )}
+            <span>v{plugin.manifest.version}</span>
+          </div>
         </div>
       </div>
     );
@@ -328,7 +525,7 @@ export function PluginsSection() {
             setActionError(null);
             setShowBuilder((v) => !v);
           }}
-          className="cursor-pointer active:scale-[0.97]"
+          className="cursor-pointer"
         >
           <Plus className="mr-1.5 size-3.5" />
           {showBuilder ? "Close manifest editor" : "Install custom plugin"}
@@ -346,24 +543,31 @@ export function PluginsSection() {
           onSubmit={(e) => void handleCreateCustom(e)}
           className="space-y-4 rounded-lg border border-border bg-card p-4"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-semibold">
                 Custom Plugin Manifest (JSON)
               </h2>
               <p className="text-xs text-muted-foreground">
-                Defines typed hooks, slash commands, system additions, tool
-                policies, and regex output redaction rules.
+                Pick a starter preset below or write your own manifest schema.
               </p>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setManifestJson(CUSTOM_PLUGIN_TEMPLATE)}
-            >
-              Reset template
-            </Button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {PLUGIN_PRESETS.map((preset) => (
+                <Button
+                  key={preset.id}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  onClick={() =>
+                    setManifestJson(JSON.stringify(preset.manifest, null, 2))
+                  }
+                >
+                  {preset.label}
+                </Button>
+              ))}
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -420,7 +624,7 @@ export function PluginsSection() {
               {submitting && (
                 <Loader2 className="mr-1.5 size-3.5 animate-spin" />
               )}
-              Save & Enable Plugin
+              Save &amp; Enable Plugin
             </Button>
           </div>
         </form>
@@ -428,8 +632,8 @@ export function PluginsSection() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            First-Party Plugins ({builtins.filter((b) => b.enabled).length}/
+          <h2 className="text-sm font-medium text-muted-foreground tabular-nums">
+            First-party plugins ({builtins.filter((b) => b.enabled).length}/
             {builtins.length} active)
           </h2>
         </div>
@@ -440,8 +644,8 @@ export function PluginsSection() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground">
-            Custom Plugins ({custom.length})
+          <h2 className="text-sm font-medium text-muted-foreground tabular-nums">
+            Custom plugins ({custom.length})
           </h2>
         </div>
         {custom.length === 0 ? (

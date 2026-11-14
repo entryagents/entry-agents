@@ -15,6 +15,7 @@ import {
   Settings,
   SlidersHorizontal,
   Sun,
+  Terminal,
   User,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -34,6 +35,12 @@ import type { SessionWithUnread } from "@/hooks/use-sessions";
 
 const MAX_PALETTE_SESSIONS = 10;
 
+interface PalettePluginCommand {
+  name: string;
+  description: string;
+  pluginName?: string;
+}
+
 export function CommandPalette({
   theme,
   setTheme,
@@ -43,6 +50,9 @@ export function CommandPalette({
 }) {
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionWithUnread[]>([]);
+  const [pluginCommands, setPluginCommands] = useState<PalettePluginCommand[]>(
+    [],
+  );
   const [loadingSessions, setLoadingSessions] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -99,6 +109,18 @@ export function CommandPalette({
         }
       });
 
+    fetch("/api/plugins/commands", { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) return;
+        const data = (await res.json().catch(() => null)) as {
+          commands?: PalettePluginCommand[];
+        } | null;
+        if (Array.isArray(data?.commands)) {
+          setPluginCommands(data.commands);
+        }
+      })
+      .catch(() => {});
+
     return () => {
       controller.abort();
     };
@@ -116,7 +138,7 @@ export function CommandPalette({
       title="Command Palette"
       description="Jump to sessions, plugins, settings, or workspace controls"
     >
-      <CommandInput placeholder="Search sessions, settings, or commands..." />
+      <CommandInput placeholder="Search sessions, settings, or /commands..." />
       <CommandList>
         <CommandEmpty>No matching commands or sessions found.</CommandEmpty>
 
@@ -143,6 +165,35 @@ export function CommandPalette({
             </CommandItem>
           )}
         </CommandGroup>
+
+        {isInSession && pluginCommands.length > 0 && (
+          <>
+            <CommandSeparator />
+            <CommandGroup heading="Plugin Slash Commands">
+              {pluginCommands.map((cmd) => (
+                <CommandItem
+                  key={cmd.name}
+                  value={`/${cmd.name} ${cmd.description} ${cmd.pluginName ?? ""}`}
+                  onSelect={() =>
+                    runAction(() => {
+                      window.dispatchEvent(
+                        new CustomEvent("entry:insert-composer-prompt", {
+                          detail: { text: `/${cmd.name} ` },
+                        }),
+                      );
+                    })
+                  }
+                >
+                  <Terminal />
+                  <span className="font-mono font-medium">/{cmd.name}</span>
+                  <span className="ml-2 truncate text-xs text-muted-foreground">
+                    {cmd.description}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </>
+        )}
 
         {(sessions.length > 0 || loadingSessions) && (
           <>

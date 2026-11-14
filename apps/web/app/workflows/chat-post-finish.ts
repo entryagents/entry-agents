@@ -921,3 +921,27 @@ export async function getUnreadInboxCountStep(
     return { unreadCount: 0 };
   }
 }
+
+export async function runPostTurnPluginsStep(params: {
+  userId: string;
+  sessionId: string;
+  chatId: string;
+  workflowRunId: string;
+  status: WorkflowRunStatus;
+}): Promise<void> {
+  "use step";
+  try {
+    const { getEnabledPluginsForExecution, recordUserPluginsTriggered } =
+      await import("@/lib/db/plugins");
+    const enabledPlugins = await getEnabledPluginsForExecution(params.userId);
+    const idleSlugs = enabledPlugins
+      .filter((plugin) => plugin.manifest.hooks.includes("session.idle"))
+      .map((plugin) => plugin.slug);
+
+    if (idleSlugs.length > 0) {
+      await recordUserPluginsTriggered(params.userId, idleSlugs);
+    }
+  } catch (error) {
+    console.error("[workflow] Failed to run post-turn plugins step:", error);
+  }
+}

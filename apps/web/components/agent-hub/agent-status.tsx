@@ -31,46 +31,41 @@ export const SUBAGENT_TYPE_META: Record<
     label: "Architect",
     description: "System design, dependency mapping & team planning",
     icon: Layers,
-    colorClass: "text-indigo-600 dark:text-indigo-400",
-    badgeClass:
-      "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/25",
-    borderClass: "border-indigo-500/30",
+    colorClass: "text-foreground/85",
+    badgeClass: "bg-muted/60 text-foreground border-border/80",
+    borderClass: "border-border",
   },
   executor: {
     label: "Executor",
     description: "Code implementation & build execution",
     icon: Cpu,
-    colorClass: "text-violet-600 dark:text-violet-400",
-    badgeClass:
-      "bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/25",
-    borderClass: "border-violet-500/30",
+    colorClass: "text-foreground/85",
+    badgeClass: "bg-muted/60 text-foreground border-border/80",
+    borderClass: "border-border",
   },
   explorer: {
     label: "Explorer",
     description: "Codebase discovery & pattern search",
     icon: Compass,
-    colorClass: "text-cyan-600 dark:text-cyan-400",
-    badgeClass:
-      "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/25",
-    borderClass: "border-cyan-500/30",
+    colorClass: "text-foreground/85",
+    badgeClass: "bg-muted/60 text-foreground border-border/80",
+    borderClass: "border-border",
   },
   reviewer: {
     label: "Reviewer",
     description: "Code review, security & diff checks",
     icon: ShieldCheck,
-    colorClass: "text-amber-600 dark:text-amber-400",
-    badgeClass:
-      "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/25",
-    borderClass: "border-amber-500/30",
+    colorClass: "text-foreground/85",
+    badgeClass: "bg-muted/60 text-foreground border-border/80",
+    borderClass: "border-border",
   },
   design: {
     label: "Design",
     description: "Frontend design, styling & micro-interactions",
     icon: Sparkles,
-    colorClass: "text-rose-600 dark:text-rose-400",
-    badgeClass:
-      "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/25",
-    borderClass: "border-rose-500/30",
+    colorClass: "text-foreground/85",
+    badgeClass: "bg-muted/60 text-foreground border-border/80",
+    borderClass: "border-border",
   },
 };
 
