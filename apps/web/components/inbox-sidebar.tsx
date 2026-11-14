@@ -1290,18 +1290,6 @@ export function InboxSidebar({
                   </div>
 
                   <div className="border-t border-border py-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProfileMenuOpen(false);
-                        if (isMobile) setOpenMobile(false);
-                        router.push("/pricing");
-                      }}
-                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
-                    >
-                      <span>Plan</span>
-                      <SidebarPlanBadge showIcon />
-                    </button>
 
                     {billingData?.expiresAt ? (
                       <div className="flex w-full items-center justify-between px-3.5 py-1.5 text-[12px] text-muted-foreground">
@@ -1327,18 +1315,6 @@ export function InboxSidebar({
                       </span>
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setProfileMenuOpen(false);
-                        if (isMobile) setOpenMobile(false);
-                        router.push("/pricing");
-                      }}
-                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
-                    >
-                      <span>Pricing &amp; Plans</span>
-                      <CreditCard className="h-4 w-4 text-muted-foreground" />
-                    </button>
 
                     <button
                       type="button"
