@@ -1,43 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import type { WebAgentUIToolPart } from "@/app/types";
-import { ToolLayout } from "../tool-layout";
 import type { ToolRenderState } from "@/app/lib/render-tool";
+import { ChevronDown, ChevronUp, Inbox } from "lucide-react";
 
 interface InboxRendererProps {
   part: WebAgentUIToolPart;
   state: ToolRenderState;
-  onApprove?: (id: string) => void;
-  onDeny?: (id: string, reason?: string) => void;
 }
 
-/**
- * LobeHub-style crisp Inbox vector icon for the `inbox` steering tool.
- */
-function LobeInboxIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.75}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden="true"
-    >
-      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
-      <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-    </svg>
-  );
-}
-
-export function InboxRenderer({
-  part,
-  state,
-  onApprove,
-  onDeny,
-}: InboxRendererProps) {
+export function InboxRenderer({ part, state }: InboxRendererProps) {
+  const [expanded, setExpanded] = useState(false);
   const input = (part.input ?? {}) as { action?: "check" | "list" };
   const output = (part.output ?? {}) as {
     success?: boolean;
@@ -55,59 +29,29 @@ export function InboxRenderer({
   };
 
   const messages = output.messages ?? [];
-  const newCount =
-    output.newlyReadCount ?? messages.filter((m) => m.isNew).length;
-  const summary =
-    input.action === "list"
-      ? "List steering inbox"
-      : "Check user steering inbox";
-  const meta =
-    part.state === "output-available"
-      ? newCount > 0
-        ? `${newCount} new · ${messages.length} total`
-        : `${messages.length} total`
-      : undefined;
+  const unread = output.unreadCount ?? messages.filter((m) => m.isNew).length;
+  const newlyRead = output.newlyReadCount ?? 0;
+  const action = input.action ?? "check";
+  const isRunning = part.state === "input-available" || part.state === "input-streaming";
+
+  const parts = [
+    action === "list" ? "Listed" : "Read",
+    `${messages.length} message${messages.length !== 1 ? "s" : ""}`,
+    unread > 0 ? `${unread} unread` : null,
+    newlyRead > 0 ? `${newlyRead} marked read` : null,
+  ].filter(Boolean);
 
   return (
-    <ToolLayout
-      name="Inbox"
-      icon={<LobeInboxIcon className="h-3.5 w-3.5 text-primary" />}
-      summary={summary}
-      meta={meta}
-      state={state}
-      onApprove={onApprove}
-      onDeny={onDeny}
+    <button
+      type="button"
+      className="flex w-full items-center gap-2 px-1 py-0.5 text-left text-xs text-muted-foreground/70 transition-colors hover:text-muted-foreground"
+      onClick={() => messages.length > 0 && setExpanded(!expanded)}
     >
-      {part.state === "output-available" && messages.length > 0 && (
-        <div className="space-y-1.5 text-xs">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`rounded border p-2 ${
-                msg.isNew
-                  ? "border-primary/40 bg-primary/5"
-                  : "border-border/50 bg-muted/20 opacity-80"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2 text-[11px]">
-                <span
-                  className={`font-medium ${
-                    msg.isNew ? "text-primary" : "text-muted-foreground"
-                  }`}
-                >
-                  #{msg.sequence} · {msg.isNew ? "NEW / UNREAD" : "OLD / READ"}
-                </span>
-                <span className="text-muted-foreground">
-                  {new Date(msg.createdAt).toLocaleTimeString()}
-                </span>
-              </div>
-              <div className="mt-1 whitespace-pre-wrap break-words text-foreground">
-                {msg.content}
-              </div>
-            </div>
-          ))}
-        </div>
+      <Inbox className={`h-3.5 w-3.5 shrink-0 ${isRunning ? "animate-pulse text-blue-400/70" : "opacity-50"}`} />
+      <span>{isRunning ? "Checking inbox…" : parts.join(" · ")}</span>
+      {messages.length > 0 && (
+        expanded ? <ChevronUp className="h-3 w-3 shrink-0 opacity-40" /> : <ChevronDown className="h-3 w-3 shrink-0 opacity-40" />
       )}
-    </ToolLayout>
+    </button>
   );
 }
