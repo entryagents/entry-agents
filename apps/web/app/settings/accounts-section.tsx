@@ -315,9 +315,32 @@ function OrgRow({
     );
   }
 
+  if (!org.installationUrl) {
+    return (
+      <div className="flex w-full items-center gap-3 rounded-md -mx-2 px-2 py-2 opacity-80">
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          <Avatar className="size-5 rounded-full text-[8px]">
+            <AvatarImage src={avatarSrc} alt={org.login} />
+            <AvatarFallback className="rounded-full text-[8px]">
+              {org.login.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-xs font-medium">{org.login}</span>
+            <InstallBadge
+              status={org.installStatus}
+              repositorySelection={org.repositorySelection}
+              className="size-3"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Link
-      href={org.installationUrl ?? "#"}
+      href={org.installationUrl}
       target="_blank"
       rel="noreferrer"
       className="group flex w-full items-center gap-3 rounded-md -mx-2 px-2 py-2 first:mt-0 last:mb-0 transition-colors hover:bg-muted/40"

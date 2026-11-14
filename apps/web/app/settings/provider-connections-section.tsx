@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
@@ -69,27 +69,30 @@ export function ProviderConnectionsSection() {
   }
 
   return (
-    <div className="rounded-lg border border-border/50 bg-muted/10">
-      <div className="border-b border-border/50 px-4 py-3">
+    <div className="flex flex-col justify-between rounded-xl border border-border/70 bg-card">
+      <div className="border-b border-border/60 px-4 py-3">
         <div className="flex items-center gap-2.5">
           <GoogleIcon className="size-4" />
           <span className="text-sm font-medium">Google</span>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Connect Google as an additional sign-in method.
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Sign-in method for cross-device sessions
         </p>
       </div>
       <div className="flex items-center justify-between gap-3 p-4">
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2.5 text-sm">
           <GoogleIcon className="size-5" />
-          <span>
-            {connected ? "Google account connected" : "Google account"}
+          <span className="font-medium">
+            {connected ? "Google account linked" : "Google account"}
           </span>
         </div>
         {isLoading ? (
-          <span className="text-xs text-muted-foreground">Loading...</span>
+          <span className="text-xs text-muted-foreground">Checking</span>
         ) : connected ? (
-          <span className="text-xs text-muted-foreground">Connected</span>
+          <span className="inline-flex items-center gap-1 font-mono text-xs font-medium text-emerald-600 dark:text-emerald-400">
+            <Check className="size-3.5" strokeWidth={1.75} />
+            Connected
+          </span>
         ) : (
           <Button
             type="button"

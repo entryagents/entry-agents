@@ -3,20 +3,21 @@ import Link from "next/link";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNav } from "@/components/landing/nav";
 import { SITE_URL } from "@/lib/site";
+import { GuideJumpNav, type GuideJumpSection } from "./guide-jump-nav";
 
-const title = "Entry Agents Complete Beginner Guide";
+const title = "Entry Agents Complete Builder Guide";
 const description =
-  "Learn Entry Agents from zero: how to sign in, start your first project without GitHub, navigate every main page, prompt a coding agent, use Workspaces, understand models and credits, connect GitHub, and review your work.";
+  "Learn Entry Agents from scratch: signing in, starting with or without GitHub, using Direct or Team Wave mode inside chat, connecting workplace apps, understanding 99% prompt caching and $5–$40 plans, and reviewing live previews and diffs.";
 
 export const metadata: Metadata = {
   title,
   description,
   keywords: [
-    "Entry Agents tutorial",
-    "vibe coding for beginners",
+    "Entry Agents guide",
     "AI coding agent tutorial",
+    "multi-agent team workflow",
     "how to use Entry Agents",
-    "build an app with AI",
+    "cloud coding workspace",
   ],
   alternates: { canonical: "/guide" },
   openGraph: { url: "/guide", title, description },
@@ -31,27 +32,27 @@ const structuredData = {
       name: title,
       description,
       url: `${SITE_URL}/guide`,
-      totalTime: "PT30M",
+      totalTime: "PT15M",
       step: [
         {
           "@type": "HowToStep",
-          name: "Create an account",
-          text: "Open Entry, choose a sign-in provider, and complete the account setup.",
+          name: "Sign in",
+          text: "Open Entry and sign in with your Vercel, GitHub, or Google account.",
         },
         {
           "@type": "HowToStep",
-          name: "Start without a project",
-          text: "Create a blank Workspace and describe the app you want to build in ordinary language.",
+          name: "Open a session",
+          text: "Start with a blank cloud workspace, upload files, or select a connected GitHub repository.",
         },
         {
           "@type": "HowToStep",
-          name: "Give the agent a clear task",
-          text: "Describe the user, desired result, important screens, and how success should be checked.",
+          name: "Prompt in Direct or Team Wave mode",
+          text: "Describe the goal, target files or screens, constraints, and how Entry should verify checks.",
         },
         {
           "@type": "HowToStep",
-          name: "Review the result",
-          text: "Use the chat, files, diff, editor, preview, and checks to inspect and improve the work.",
+          name: "Review live diffs and preview",
+          text: "Inspect file diffs, open the live desktop or mobile preview, and push commits when ready.",
         },
       ],
     },
@@ -60,26 +61,26 @@ const structuredData = {
       mainEntity: [
         {
           "@type": "Question",
-          name: "Do I need GitHub to use Entry Agents?",
+          name: "Do I need GitHub to use Entry Agents",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "No. You can start with a blank Workspace or uploaded files. GitHub is optional.",
+            text: "No. You can build and preview apps inside a blank workspace or upload files, then optionally connect GitHub later.",
           },
         },
         {
           "@type": "Question",
-          name: "Can a complete beginner build an app?",
+          name: "How do Team Waves work inside the main chat",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Yes. Start with a plain-language idea, then ask the agent to build one small part at a time and explain unfamiliar terms.",
+            text: "For broad features spanning multiple files, Entry can split work into dependency waves directly inside your chat turn: Wave 0 maps files and locks interface contracts, parallel builders modify disjoint files, and a reviewer verifies tests.",
           },
         },
         {
           "@type": "Question",
-          name: "What do Entry credits pay for?",
+          name: "How do plans and 99% prompt caching work",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Credits pay for model usage. The amount depends on the selected model and the tokens used by each request. The live pricing and model pages show current details.",
+            text: "Paid plans range from $5/mo Plus ($10 credit) and $13/mo Goat ($50 credit, 3.8x) to $20/mo Pro ($100) and $40/mo Max ($180) with zero per-token markup, while prompt caching cuts repeated context costs by up to 99%.",
           },
         },
       ],
@@ -87,9 +88,20 @@ const structuredData = {
   ],
 };
 
-function CodePrompt({ children }: { children: string }) {
+const GUIDE_SECTIONS: readonly GuideJumpSection[] = [
+  { id: "first-project", index: "01", label: "Start from zero" },
+  { id: "direct-vs-team", index: "02", label: "Direct & Team Waves" },
+  { id: "prompting", index: "03", label: "Prompt patterns" },
+  { id: "navigation", index: "04", label: "Pages & settings" },
+  { id: "session", index: "05", label: "Inside a session" },
+  { id: "connections", index: "06", label: "Connected stack & MCP" },
+  { id: "credits", index: "07", label: "Plans & 99% caching" },
+  { id: "glossary", index: "08", label: "Glossary" },
+];
+
+function CodePrompt({ children }: { readonly children: string }) {
   return (
-    <pre className="overflow-x-auto rounded-xl bg-(--l-fg) p-5 font-mono text-sm leading-relaxed text-(--l-bg)">
+    <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-(--l-border) bg-(--l-code-bg) p-4 font-mono text-xs leading-relaxed text-(--l-panel-fg) sm:p-5 sm:text-sm">
       <code>{children}</code>
     </pre>
   );
@@ -100,17 +112,19 @@ function Section({
   title: heading,
   children,
 }: {
-  id?: string;
-  title: string;
-  children: React.ReactNode;
+  readonly id: string;
+  readonly title: string;
+  readonly children: React.ReactNode;
 }) {
   return (
     <section
       id={id}
       className="scroll-mt-24 border-t border-(--l-border) pt-12"
     >
-      <h2 className="text-3xl font-semibold tracking-tight">{heading}</h2>
-      <div className="mt-6 space-y-5 leading-relaxed text-(--l-fg-2)">
+      <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+        {heading}
+      </h2>
+      <div className="mt-5 space-y-5 text-sm leading-relaxed text-(--l-fg-2) sm:text-base">
         {children}
       </div>
     </section>
@@ -121,12 +135,12 @@ function PageLink({
   href,
   children,
 }: {
-  href: string;
-  children: React.ReactNode;
+  readonly href: string;
+  readonly children: React.ReactNode;
 }) {
   return (
     <Link
-      className="font-medium text-(--l-fg) underline underline-offset-4"
+      className="font-medium text-(--l-fg) underline underline-offset-4 transition-colors duration-150 hover:opacity-80"
       href={href}
     >
       {children}
@@ -136,603 +150,324 @@ function PageLink({
 
 export default function GuidePage() {
   return (
-    <div className="landing min-h-dvh bg-(--l-bg) text-(--l-fg)">
+    <div className="landing min-h-dvh overflow-x-clip bg-(--l-bg) text-(--l-fg)">
       <LandingNav showSignIn />
-      <main className="mx-auto max-w-[1080px] px-4 pb-24 pt-28 sm:px-6 sm:pt-36 md:pt-40">
+      <main className="mx-auto max-w-[1040px] px-4 pb-24 pt-24 sm:px-6 sm:pt-32 md:pt-36">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
           }}
         />
-        <p className="font-mono text-xs text-(--l-fg-3)">Beginner guide</p>
-        <h1 className="mt-3 max-w-5xl text-3xl font-semibold tracking-tight sm:text-5xl md:text-6xl">
-          The complete Entry Agents guide for new builders
+        <p className="font-mono text-xs text-(--l-fg-3)">Builder guide</p>
+        <h1 className="mt-3 max-w-4xl text-balance text-3xl font-semibold leading-[1.08] tracking-tight sm:text-5xl md:text-6xl">
+          The complete Entry Agents guide
         </h1>
-        <p className="mt-5 max-w-4xl text-base leading-relaxed text-(--l-fg-2) sm:text-lg">
-          You do not need an existing project, a GitHub account, or coding
-          experience to begin. This guide starts at the beginning and explains
-          what each main part of Entry means, what to click, what to type, and
-          how credits and model usage work.
+        <p className="mt-5 max-w-[66ch] text-pretty text-base leading-relaxed text-(--l-fg-2) sm:text-lg">
+          Whether you are shipping your first app with zero local setup or
+          orchestrating multi-file refactors across connected tools, this guide
+          covers sessions, Direct vs Team Wave mode, app connections, durable
+          runs, and plan credits.
         </p>
 
-        <nav
-          aria-label="Guide contents"
-          className="mt-12 rounded-xl border border-(--l-border) p-6"
-        >
-          <h2 className="font-semibold text-(--l-fg)">On this page</h2>
-          <div className="mt-4 grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
-            <PageLink href="#first-project">Build your first project</PageLink>
-            <PageLink href="#prompting">Prompt examples</PageLink>
-            <PageLink href="#navigation">Every main page</PageLink>
-            <PageLink href="#session">Inside a coding session</PageLink>
-            <PageLink href="#credits">Pricing and credits</PageLink>
-            <PageLink href="#github">GitHub and sharing</PageLink>
-            <PageLink href="#troubleshooting">
-              When something goes wrong
-            </PageLink>
-            <PageLink href="#glossary">Beginner glossary</PageLink>
+        <GuideJumpNav sections={GUIDE_SECTIONS} />
+
+        <div className="mt-12 space-y-12">
+          <Section id="first-project" title="1. Start from zero in the cloud">
+            <p>
+              You do not need an existing codebase or local toolchain. Each
+              session creates an isolated Linux workspace with its own files,
+              package runtime, terminal, editor, diffs, and live app preview.
+            </p>
+            <ol className="list-decimal space-y-3 pl-5">
+              <li>
+                Open <PageLink href="/login">Sign in</PageLink> and continue
+                with Vercel, GitHub, or Google.
+              </li>
+              <li>
+                Head to <PageLink href="/sessions">Sessions</PageLink> and start
+                a blank Workspace for a new idea, upload existing files, or
+                attach a GitHub repository.
+              </li>
+              <li>
+                Give Entry a concrete outcome and how it should check the work.
+                Start with a solid foundation first, inspect the preview and
+                diff, then iterate step by step.
+              </li>
+              <li>
+                Feel free to turn off your device, switch networks, or move
+                between desktop and phone mid-turn — runs continue on cloud
+                checkpoints and sync cleanly when you reconnect.
+              </li>
+            </ol>
+          </Section>
+
+          <Section id="direct-vs-team" title="2. Direct runs vs Team Waves">
+            <p>
+              Entry chooses the simplest execution model that fits the job, or
+              lets you invoke Team coordination directly inside the same chat
+              conversation without opening a separate mode page:
+            </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-5">
+                <h3 className="text-base font-semibold text-(--l-fg)">
+                  Direct execution
+                </h3>
+                <p className="mt-2 text-sm text-(--l-fg-2)">
+                  Best for targeted fixes, single-file updates, UI polish, and
+                  questions. One agent executes edits and tests end to end with
+                  minimal overhead.
+                </p>
+              </div>
+              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-5">
+                <h3 className="text-base font-semibold text-(--l-fg)">
+                  Team Wave coordination
+                </h3>
+                <p className="mt-2 text-sm text-(--l-fg-2)">
+                  Best when work spans database, API, and UI. Wave 0 scouts the
+                  codebase and locks shared interface contracts; Wave 1
+                  implements disjoint files in parallel; the verification wave
+                  checks types, tests, and diffs right inside your chat
+                  timeline.
+                </p>
+              </div>
+            </div>
+          </Section>
+
+          <Section id="prompting" title="3. Prompt patterns that ship cleanly">
+            <p>
+              Clear prompts specify context, target files or screens, boundaries
+              not to break, and proof checks.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <h3 className="mb-2 text-base font-semibold text-(--l-fg)">
+                  Start a focused project
+                </h3>
+                <CodePrompt>{`Build a mobile-first invoice tracker for freelance designers.
+Include invoice creation, line-item math, paid/pending status filters, and print view.
+Check 375px and 1440px viewports in Playwright and run typecheck before finishing.`}</CodePrompt>
+              </div>
+              <div>
+                <h3 className="mb-2 text-base font-semibold text-(--l-fg)">
+                  Trigger a coordinated multi-file Team Wave
+                </h3>
+                <CodePrompt>{`Use a Team Wave to add webhook signature verification end to end:
+Wave 0: map existing webhook routes and lock shared payload schema contracts.
+Wave 1: implement route validation and database migration in disjoint files.
+Wave 2: run unit tests and summarize every touched file.`}</CodePrompt>
+              </div>
+              <div>
+                <h3 className="mb-2 text-base font-semibold text-(--l-fg)">
+                  Debug with proof
+                </h3>
+                <CodePrompt>{`Submitting the settings form drops saved headers after refresh.
+Reproduce the bug, inspect network and server route responses, apply the smallest fix, and verify persistence with a test.`}</CodePrompt>
+              </div>
+            </div>
+          </Section>
+
+          <Section id="navigation" title="4. Navigating pages & settings">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4">
+                <h3 className="font-semibold text-(--l-fg)">
+                  <PageLink href="/sessions">Sessions</PageLink>
+                </h3>
+                <p className="mt-1 text-sm">
+                  Project dashboard to create workspaces, search conversations,
+                  attach repos, or resume active turns from any device.
+                </p>
+              </div>
+              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4">
+                <h3 className="font-semibold text-(--l-fg)">
+                  <PageLink href="/model">Models</PageLink> &amp;{" "}
+                  <PageLink href="/pricing">Pricing</PageLink>
+                </h3>
+                <p className="mt-1 text-sm">
+                  Compare frontier models across Claude, GPT, Gemini, DeepSeek,
+                  and Grok with per-token rates and live plan capacity.
+                </p>
+              </div>
+              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4">
+                <h3 className="font-semibold text-(--l-fg)">
+                  <PageLink href="/settings/connections">
+                    Connections, MCP &amp; API Keys
+                  </PageLink>
+                </h3>
+                <p className="mt-1 text-sm">
+                  Connect GitHub, Vercel, Gmail, Slack, Linear, Notion, and 500+
+                  apps, attach custom MCP tools, or bind private API keys.
+                </p>
+              </div>
+              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4">
+                <h3 className="font-semibold text-(--l-fg)">
+                  <PageLink href="/settings/skills">Skills</PageLink> &amp;{" "}
+                  <PageLink href="/settings/usage">Usage</PageLink>
+                </h3>
+                <p className="mt-1 text-sm">
+                  Configure reusable skills (such as UI polish or workflow
+                  rules) and audit token caching savings and credit consumption.
+                </p>
+              </div>
+            </div>
+          </Section>
+
+          <Section id="session" title="5. Inside a coding session">
+            <div className="grid gap-4 sm:grid-cols-2">
+              {[
+                {
+                  name: "Main Chat & Inline Waves",
+                  desc: "Watch thinking streams while the agent works, inspect individual specialist outputs inline, and pick up right where you scrolled after viewing any file.",
+                },
+                {
+                  name: "Files & Side-by-Side Diffs",
+                  desc: "Inspect modified files line by line before committing, or open the built-in code editor for quick manual adjustments.",
+                },
+                {
+                  name: "Live App Preview",
+                  desc: "Run the dev server inside the cloud container and test interactive flows at desktop and mobile dimensions.",
+                },
+                {
+                  name: "Git Branches & PRs",
+                  desc: "Review diffs, run CI checks inside the sandbox, commit cleanly, and push branches or pull requests back to GitHub.",
+                },
+              ].map((panel) => (
+                <div
+                  key={panel.name}
+                  className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4"
+                >
+                  <h3 className="font-semibold text-(--l-fg)">{panel.name}</h3>
+                  <p className="mt-1.5 text-sm">{panel.desc}</p>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          <Section id="connections" title="6. Connected stack, MCP & API keys">
+            <p>
+              Entry brings external context directly into your coding loop via
+              three connected surfaces under Settings:
+            </p>
+            <ul className="list-disc space-y-2.5 pl-5">
+              <li>
+                <strong className="text-(--l-fg)">Connected Apps:</strong>{" "}
+                Authorize Gmail, Slack, Notion, Linear, Google Calendar, GitHub,
+                and Vercel so agents can read tickets, post summaries, and
+                trigger deployments directly from chat.
+              </li>
+              <li>
+                <strong className="text-(--l-fg)">Custom MCP Tools:</strong>{" "}
+                Attach remote HTTP/SSE or sandbox stdio servers via JSON import
+                or quick presets.
+              </li>
+              <li>
+                <strong className="text-(--l-fg)">API Keys:</strong> Bind
+                private provider keys (Stripe, Resend, Supabase, OpenAI) via{" "}
+                <code className="rounded bg-(--l-surface-2) px-1.5 py-0.5 font-mono text-xs">
+                  $KEY_NAME
+                </code>{" "}
+                or header templates without ever pasting credentials into chat.
+              </li>
+            </ul>
+          </Section>
+
+          <Section id="credits" title="7. Plans, $5–$40 pricing & 99% caching">
+            <p>
+              Entry charges zero token markup. Every workspace also benefits
+              from multi-turn prompt caching that reuses up to 99% of unchanged
+              repo and conversation context on subsequent tool calls.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { plan: "Plus", price: "$5/mo", detail: "$10 credit (2.0x)" },
+                {
+                  plan: "Goat",
+                  price: "$13/mo",
+                  detail: "$50 credit (3.8x) · $10/5h, $25/7d",
+                },
+                { plan: "Pro", price: "$20/mo", detail: "$100 credit (5.0x)" },
+                { plan: "Max", price: "$40/mo", detail: "$180 credit (4.5x)" },
+              ].map((tier) => (
+                <div
+                  key={tier.plan}
+                  className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4 font-mono text-xs tabular-nums"
+                >
+                  <div className="font-semibold text-(--l-fg)">{tier.plan}</div>
+                  <div className="mt-1 text-base font-semibold text-(--l-fg)">
+                    {tier.price}
+                  </div>
+                  <div className="mt-1 text-(--l-fg-3)">{tier.detail}</div>
+                </div>
+              ))}
+            </div>
+            <p className="text-sm">
+              Free accounts start with a $1 trial credit and no card required.
+              See live balances on <PageLink href="/pricing">Pricing</PageLink>{" "}
+              and per-model rates on <PageLink href="/model">Models</PageLink>.
+            </p>
+          </Section>
+
+          <Section id="glossary" title="8. Builder glossary">
+            <dl className="grid gap-4 md:grid-cols-2">
+              {[
+                {
+                  term: "Session",
+                  def: "A workspace project container along with its chat threads, files, diffs, and git state.",
+                },
+                {
+                  term: "Team Wave",
+                  def: "A dependency-ordered group of specialist subtasks executing inline with locked contracts and non-overlapping file claims.",
+                },
+                {
+                  term: "Interface Contract",
+                  def: "A schema or API signature published in Wave 0 so parallel Wave 1 builders integrate cleanly without conflicts.",
+                },
+                {
+                  term: "Diff",
+                  def: "Line-by-line summary of additions and deletions across workspace files ready to inspect or commit.",
+                },
+                {
+                  term: "MCP Server",
+                  def: "External tool endpoint connected cleanly into the agent sandbox toolset.",
+                },
+                {
+                  term: "Durable Run",
+                  def: "Server-checkpointed execution that completes even when your browser disconnects or goes offline.",
+                },
+              ].map((item) => (
+                <div
+                  key={item.term}
+                  className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4"
+                >
+                  <dt className="font-semibold text-(--l-fg)">{item.term}</dt>
+                  <dd className="mt-1 text-sm">{item.def}</dd>
+                </div>
+              ))}
+            </dl>
+          </Section>
+        </div>
+
+        <section className="mt-14 rounded-2xl border border-(--l-border) bg-(--l-surface) p-6">
+          <h2 className="text-xl font-semibold text-(--l-fg)">
+            Ready to build
+          </h2>
+          <p className="mt-2 text-sm text-(--l-fg-2)">
+            Open a blank cloud sandbox or connect your repository in seconds.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Link
+              href="/login"
+              className="inline-flex h-9 items-center rounded-lg bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-opacity duration-150 hover:opacity-90"
+            >
+              Sign in and start
+            </Link>
+            <Link
+              href="/sessions"
+              className="inline-flex h-9 items-center rounded-lg border border-(--l-border) bg-(--l-surface-2) px-4 text-xs font-medium text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+            >
+              Open sessions
+            </Link>
           </div>
-        </nav>
-
-        <Section id="first-project" title="1. Start from zero, with no project">
-          <p>
-            Entry is a place where you describe software and an AI coding agent
-            helps create it. If you have never built software before, begin with
-            a small idea such as a personal landing page, a habit tracker, a
-            simple calculator, or a small business booking page.
-          </p>
-          <ol className="list-decimal space-y-3 pl-6">
-            <li>
-              Open <PageLink href="/login">Sign in</PageLink> and choose one of
-              the available sign-in providers.
-            </li>
-            <li>
-              After signing in, use{" "}
-              <PageLink href="/get-started">Get Started</PageLink> if Entry
-              shows the setup flow. Complete the account step. GitHub is
-              optional, so do not connect it unless you want repository
-              features.
-            </li>
-            <li>
-              Open <PageLink href="/sessions">Sessions</PageLink> and create a
-              new session. Choose a blank Workspace when you are starting a new
-              idea.
-            </li>
-            <li>
-              Give the agent a small first request. Do not ask for a huge
-              company-sized product in one message. Ask for a foundation,
-              inspect it, then add the next feature.
-            </li>
-            <li>
-              Keep the session open while Entry creates files, runs commands,
-              and explains its work. Read the result before asking for the next
-              change.
-            </li>
-          </ol>
-          <p>
-            A Workspace is the working environment for the session. It is where
-            the project files, commands, builds, tests, and previews live. You
-            can start empty, upload files, or connect an existing repository
-            later.
-          </p>
-        </Section>
-
-        <Section
-          id="prompting"
-          title="2. Prompting when you are new to vibe coding"
-        >
-          <p>
-            You do not need special prompt words. Tell Entry what you are
-            making, who it is for, what it should look like, and how you will
-            know it works. Ask it to explain unfamiliar words instead of
-            pretending you understand them.
-          </p>
-          <h3 className="text-xl font-semibold text-(--l-fg)">
-            First project: a simple website
-          </h3>
-          <CodePrompt>{`I am new to coding. Build a simple one-page website for a small Lagos bakery called Sunrise Bakes.
-Use a warm, friendly style. Include a hero section, menu cards, opening hours, location, WhatsApp contact button, and a mobile layout.
-Start by inspecting the blank Workspace, explain the files you create in simple language, then run the available checks.`}</CodePrompt>
-          <h3 className="text-xl font-semibold text-(--l-fg)">
-            First project: a useful personal tool
-          </h3>
-          <CodePrompt>{`Build a simple expense tracker for someone who is new to coding.
-I need to add an expense, choose a category, see the total for this month, and delete an entry.
-Use a clean mobile-first interface. Keep the first version small. After building it, tell me how each main file works and test the add, total, and delete flows.`}</CodePrompt>
-          <h3 className="text-xl font-semibold text-(--l-fg)">
-            Ask for a change
-          </h3>
-          <CodePrompt>{`The page looks good, but the main button is hard to notice on a phone.
-Make the button clearer, improve spacing on small screens, and do not change the colors of the rest of the page.
-Show me what you changed and check that the layout still works on desktop and mobile.`}</CodePrompt>
-          <h3 className="text-xl font-semibold text-(--l-fg)">
-            Ask for an explanation
-          </h3>
-          <CodePrompt>{`Explain this project like I have never coded before.
-Tell me what the entry point is, where the page layout lives, where the data is stored, and what command checks whether the project works.
-Do not change any files while explaining.`}</CodePrompt>
-          <h3 className="text-xl font-semibold text-(--l-fg)">
-            Ask for debugging help
-          </h3>
-          <CodePrompt>{`The app shows a blank screen after I click the Save button.
-Please reproduce the problem, inspect the browser and server errors, find the smallest safe fix, test the fix, and explain the cause in beginner-friendly language.`}</CodePrompt>
-          <h3 className="text-xl font-semibold text-(--l-fg)">
-            A useful prompt pattern
-          </h3>
-          <p>
-            <strong className="text-(--l-fg)">Context:</strong> what you are
-            building. <strong className="text-(--l-fg)">Task:</strong> what
-            should change. <strong className="text-(--l-fg)">Limits:</strong>{" "}
-            what must not change.{" "}
-            <strong className="text-(--l-fg)">Proof:</strong> how Entry should
-            test or demonstrate success.
-          </p>
-        </Section>
-
-        <Section id="navigation" title="3. How to navigate Entry’s pages">
-          <div className="grid gap-6 md:grid-cols-2">
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">Home</h3>
-              <p>
-                Explains Entry and gives you the main path into sign-in or a new
-                session. Use it when you are deciding whether Entry fits your
-                task.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                AI coding agent
-              </h3>
-              <p>
-                <PageLink href="/ai-coding-agent">AI coding agent</PageLink>{" "}
-                explains the product in more detail. It is useful when you want
-                to understand the Workspace and coding-agent workflow before
-                signing in.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                Get Started
-              </h3>
-              <p>
-                <PageLink href="/get-started">Get Started</PageLink> is
-                onboarding. It confirms your account and offers GitHub
-                connection. GitHub is optional for a blank project.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">Sessions</h3>
-              <p>
-                <PageLink href="/sessions">Sessions</PageLink> is your project
-                and conversation home. Create a session for a project, open an
-                existing one, search your sessions, or archive old work.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                Session chat
-              </h3>
-              <p>
-                A chat is the conversation inside a session. Use it to give
-                tasks, answer questions, request changes, stop a running turn,
-                and continue iterating on the same Workspace.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">Pricing</h3>
-              <p>
-                <PageLink href="/pricing">Pricing</PageLink> shows current plans
-                and what each plan includes. Use it for plan comparison, not
-                this guide, because prices and limits can change.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">Models</h3>
-              <p>
-                <PageLink href="/model">Models</PageLink> shows available model
-                choices and their current cost information. A stronger or more
-                expensive model may be useful for a difficult task, while a
-                cheaper model may be enough for a small edit.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                Shared pages
-              </h3>
-              <p>
-                A shared session or chat link lets another person view permitted
-                shared work. Treat shared links like access links and only share
-                them with the people you intend to see the content.
-              </p>
-            </div>
-          </div>
-          <h3 className="mt-8 text-xl font-semibold text-(--l-fg)">
-            Settings pages
-          </h3>
-          <div className="mt-4 grid gap-6 md:grid-cols-2">
-            <div>
-              <h4 className="font-semibold text-(--l-fg)">Profile</h4>
-              <p>Review your account identity and profile details.</p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-(--l-fg)">Accounts</h4>
-              <p>Review connected sign-in accounts and account links.</p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-(--l-fg)">Models</h4>
-              <p>Choose or inspect model availability for your sessions.</p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-(--l-fg)">Usage</h4>
-              <p>
-                Review usage and credit activity so you can understand where
-                your credits went.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-(--l-fg)">Preferences</h4>
-              <p>Adjust personal behavior and interface preferences.</p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-(--l-fg)">Connections</h4>
-              <p>
-                Manage service connections such as GitHub and other supported
-                providers.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-semibold text-(--l-fg)">MCP servers</h4>
-              <p>
-                Advanced tools that add external capabilities to an agent. Do
-                not add one unless you understand what access it gives.
-              </p>
-            </div>
-          </div>
-        </Section>
-
-        <Section id="session" title="4. Everything inside a coding session">
-          <p>
-            Once a session opens, think of the screen as a project control room.
-            The chat is where you speak to the agent. The surrounding panels
-            help you inspect the result.
-          </p>
-          <div className="space-y-6">
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">Chat</h3>
-              <p>
-                Send a request, read the agent’s explanation, inspect tool
-                activity, and answer approval questions. If a task is running in
-                the wrong direction, stop it and send a clearer request.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">Files</h3>
-              <p>
-                Browse the files in the Workspace. Open a file when you want to
-                inspect what the agent created or changed. Ask Entry to explain
-                a file before editing it yourself.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">Diff</h3>
-              <p>
-                A diff shows what changed compared with the previous state.
-                Added lines, removed lines, and modified files are the fastest
-                way to review an agent’s work.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">Editor</h3>
-              <p>
-                The code editor lets you inspect and edit project files
-                directly. Use the agent for larger changes and the editor for
-                small, precise corrections.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                Preview and development server
-              </h3>
-              <p>
-                When the project can run as an application, start its
-                development server and open the preview. Test the same flow a
-                real user would use, not just whether the code compiles.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                Git and commits
-              </h3>
-              <p>
-                If the Workspace is connected to GitHub, inspect the branch and
-                diff before committing. Ask Entry to create a commit message,
-                then review and commit only changes you understand.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">Sharing</h3>
-              <p>
-                Use sharing when you want someone else to review a session or
-                chat. Do not put passwords, private keys, or sensitive customer
-                data in a shared session.
-              </p>
-            </div>
-          </div>
-        </Section>
-
-        <Section
-          id="credits"
-          title="5. Pricing, plans, and the credit lifecycle"
-        >
-          <p>
-            Use the live <PageLink href="/pricing">pricing page</PageLink> for
-            current plan names, prices, limits, and payment details. This guide
-            explains the flow without hard-coding numbers that may change.
-          </p>
-          <ol className="list-decimal space-y-3 pl-6">
-            <li>
-              You sign in and have an account with a plan or available credit
-              balance.
-            </li>
-            <li>
-              You choose a model for a session, or use the model default
-              provided by Entry.
-            </li>
-            <li>
-              You send a request. The request includes your conversation and the
-              context needed for the agent’s next step.
-            </li>
-            <li>
-              The selected model processes the request. Longer context, more
-              output, tool-heavy work, and more complex tasks can use more
-              credits.
-            </li>
-            <li>
-              Entry records the usage and updates the balance through its normal
-              billing path. The Usage area is where you review activity.
-            </li>
-            <li>
-              When your balance or plan limit is low, choose a suitable model,
-              shorten unnecessary context, wait for a reset where applicable, or
-              use the billing page to manage your plan.
-            </li>
-          </ol>
-          <p>
-            There is no separate Workspace or sandbox charge. Credits pay for
-            model usage, and the live pricing page is the source of truth for
-            current plan prices and limits.
-          </p>
-          <h3 className="mt-8 text-xl font-semibold text-(--l-fg)">
-            What happens from plan to renewal
-          </h3>
-          <ol className="mt-4 list-decimal space-y-3 pl-6">
-            <li>
-              Start on Free with a one-time $1 credit and access to the Free
-              model. No card is required for the trial.
-            </li>
-            <li>
-              Choose a paid plan when you need more credit or access to all
-              models. Plus is $5/month for $10 credit, Entry is $13/month for
-              $50 credit, Pro is $20/month for $100 credit, and Max is $40/month
-              for $180 credit.
-            </li>
-            <li>
-              Complete checkout. Your plan becomes active and its included
-              credit is added to your balance.
-            </li>
-            <li>
-              Each model request spends credit based on the model and the work
-              involved. Longer conversations, larger answers, and tool-heavy
-              tasks normally use more.
-            </li>
-            <li>
-              Check the remaining balance and usage in Pricing or Settings →
-              Usage. A top-up can add separate pay-as-you-go credit when that
-              option is available.
-            </li>
-            <li>
-              At the next successful monthly renewal, the plan charge is made
-              and that plan’s included credit is added again. Existing balance
-              is not silently replaced by the renewal grant.
-            </li>
-            <li>
-              Entry has extra rolling usage windows: $10 over five hours, $25
-              over seven days, and $50 over 30 days. These refill continuously
-              as older usage leaves each window.
-            </li>
-            <li>
-              If you cancel, checkout fails, or the balance is too low, review
-              the billing page before starting expensive work. The plan page
-              always shows the current prices and availability.
-            </li>
-          </ol>
-          <div className="grid gap-6 md:grid-cols-3">
-            <div>
-              <h3 className="font-semibold text-(--l-fg)">Small edit</h3>
-              <p>
-                Use a lower-cost model when you only need a focused text or code
-                change.
-              </p>
-            </div>
-            <div>
-              <h3 className="font-semibold text-(--l-fg)">New feature</h3>
-              <p>
-                Give the agent enough context and ask it to build and test one
-                feature at a time.
-              </p>
-            </div>
-            <div>
-              <h3 className="font-semibold text-(--l-fg)">
-                Large investigation
-              </h3>
-              <p>
-                Ask for a plan first, then approve implementation. This avoids
-                spending credits on a direction you did not want.
-              </p>
-            </div>
-          </div>
-        </Section>
-
-        <Section id="github" title="6. GitHub, files, and sharing are optional">
-          <p>
-            You can learn vibe coding without GitHub. A blank Workspace is the
-            best starting point for a new creator. Add uploaded files when you
-            already have material to inspect. Connect GitHub when you want to
-            work with a repository, branch, commits, diffs, or pull requests.
-          </p>
-          <ol className="list-decimal space-y-3 pl-6">
-            <li>Start with a blank Workspace if you have only an idea.</li>
-            <li>
-              Upload files if the project exists on your computer but is not in
-              GitHub.
-            </li>
-            <li>
-              Connect GitHub during onboarding or from Connections when the
-              repository already exists.
-            </li>
-            <li>
-              Choose the repository and branch carefully. Ask Entry to inspect
-              before making broad changes.
-            </li>
-            <li>
-              Review the diff, run checks, and decide whether to commit or
-              create a pull request.
-            </li>
-          </ol>
-        </Section>
-
-        <Section id="troubleshooting" title="7. When something goes wrong">
-          <div className="space-y-5">
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                The agent misunderstood
-              </h3>
-              <p>
-                State the wrong assumption, the desired behavior, and one
-                concrete example. Ask it to restate the plan before changing
-                files.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                The result has an error
-              </h3>
-              <p>
-                Paste the exact error or ask Entry to reproduce it. Request the
-                smallest fix, a test, and a plain-language explanation.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                The preview is blank
-              </h3>
-              <p>
-                Ask Entry to inspect the browser console, server output, route,
-                and build command. Do not guess by changing many files at once.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                You are unsure what changed
-              </h3>
-              <p>
-                Open the diff and ask: “Explain every changed file, why it
-                changed, and which changes are necessary.” Revert or revise
-                anything you cannot explain.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-xl font-semibold text-(--l-fg)">
-                A Workspace is unavailable
-              </h3>
-              <p>
-                Check the session status, wait for a restore if it is waking up,
-                and ask Entry to reconnect or inspect the Workspace state.
-              </p>
-            </div>
-          </div>
-        </Section>
-
-        <Section id="glossary" title="8. Beginner glossary">
-          <dl className="grid gap-6 md:grid-cols-2">
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Agent</dt>
-              <dd>The AI worker that plans and performs a task.</dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Vibe coding</dt>
-              <dd>
-                Building by describing intent in natural language, reviewing
-                results, and iterating with an AI coding tool.
-              </dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Session</dt>
-              <dd>A project-level workspace and its conversations.</dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Chat</dt>
-              <dd>
-                The conversation where you give the agent instructions and
-                receive results.
-              </dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Workspace</dt>
-              <dd>
-                The private working environment containing files, commands,
-                builds, and tests.
-              </dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Model</dt>
-              <dd>The AI system selected to process a request.</dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Credits</dt>
-              <dd>The usage balance applied to model requests.</dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Diff</dt>
-              <dd>A view showing added, removed, and changed lines.</dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Branch</dt>
-              <dd>A separate line of Git work used to isolate changes.</dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Commit</dt>
-              <dd>A saved checkpoint of changes in Git.</dd>
-            </div>
-            <div>
-              <dt className="font-semibold text-(--l-fg)">Pull request</dt>
-              <dd>
-                A request for changes from one Git branch to be reviewed and
-                merged into another.
-              </dd>
-            </div>
-          </dl>
-        </Section>
-
-        <section className="mt-16 rounded-xl border border-(--l-border) p-6">
-          <h2 className="text-2xl font-semibold">Your first five minutes</h2>
-          <ol className="mt-5 list-decimal space-y-3 pl-6 leading-relaxed text-(--l-fg-2)">
-            <li>Sign in.</li>
-            <li>Create a blank Workspace.</li>
-            <li>
-              Paste the bakery, expense tracker, or personal website prompt
-              above.
-            </li>
-            <li>Ask Entry to explain the files it created.</li>
-            <li>
-              Open the preview, try the main flow, and ask for one improvement.
-            </li>
-          </ol>
-          <p className="mt-6">
-            <PageLink href="/get-started">Start with Get Started</PageLink> or{" "}
-            <PageLink href="/sessions">open Sessions</PageLink>.
-          </p>
         </section>
       </main>
       <LandingFooter />

@@ -120,6 +120,8 @@ export function useSessionChatRuntime({
     contextLimitRef.current = contextLimit;
   }, [contextLimit]);
 
+  const forceReconcileOnFinishRef = useRef(false);
+
   const transport = useMemo(
     () =>
       new AbortableChatTransport({
@@ -138,11 +140,9 @@ export function useSessionChatRuntime({
               : {}),
           };
         },
-        // A fresh page has already hydrated persisted assistant checkpoints.
-        // Starting resumable streams at index 0 replays the entire workflow
-        // into the client and can make completed tool/model output appear a
-        // second time. The Workflow transport supports a negative index and
-        // uses the stream tail header to resume only the recent live tail.
+        onReconnectNeeded: () => {
+          forceReconcileOnFinishRef.current = true;
+        },
         // Always start from chunk 0 so the stream's `start` (messageId) and
         // `*-start` chunks are received on every reload and secondary device,
         // preventing @workflow/ai's orphanFilter from dropping live deltas.
@@ -168,6 +168,8 @@ export function useSessionChatRuntime({
         },
         onFinish: () => {
           triggerBillingSync();
+          const shouldReconcileAfterDrop = forceReconcileOnFinishRef.current;
+          forceReconcileOnFinishRef.current = false;
           const lastMsg =
             chatInstance.messages[chatInstance.messages.length - 1];
           const hasRenderableReply =
@@ -178,7 +180,7 @@ export function useSessionChatRuntime({
                 p.type.startsWith("tool-") ||
                 p.type === "reasoning",
             );
-          if (!hasRenderableReply) {
+          if (!hasRenderableReply || shouldReconcileAfterDrop) {
             void fetch(`/api/sessions/${sessionId}/chats/${chatId}`, {
               cache: "no-store",
             })

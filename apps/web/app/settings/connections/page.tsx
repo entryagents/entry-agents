@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import { StackHeader } from "../_components/stack-header";
 import { AccountsSection, AccountsSectionSkeleton } from "../accounts-section";
 import { VercelSection, VercelSectionSkeleton } from "../vercel-section";
 import { ProviderConnectionsSection } from "../provider-connections-section";
@@ -10,23 +11,29 @@ import {
 
 export const metadata: Metadata = {
   title: "Connections",
-  description: "Manage your connected accounts and integrations.",
+  description:
+    "Manage connected apps, developer platforms, and workspace tools.",
 };
 
 export default function ConnectionsPage() {
   return (
-    <>
-      <h1 className="text-2xl font-semibold">Connections</h1>
-      <Suspense fallback={<VercelSectionSkeleton />}>
-        <VercelSection />
-      </Suspense>
-      <ProviderConnectionsSection />
+    <div className="space-y-6">
+      <StackHeader
+        title="Apps & accounts"
+        description="Connect GitHub, Vercel, Gmail, Slack, Linear, Notion, and 500+ workplace apps so agents can inspect issues, docs, and deploy directly from chat."
+      />
+      <div className="grid gap-4 md:grid-cols-2">
+        <Suspense fallback={<VercelSectionSkeleton />}>
+          <VercelSection />
+        </Suspense>
+        <ProviderConnectionsSection />
+      </div>
       <Suspense fallback={<AccountsSectionSkeleton />}>
         <AccountsSection />
       </Suspense>
       <Suspense fallback={<ComposioToolkitsSectionSkeleton />}>
         <ComposioToolkitsSection />
       </Suspense>
-    </>
+    </div>
   );
 }

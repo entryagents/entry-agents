@@ -4,12 +4,17 @@ const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "What is Entry Agents",
     answer:
-      "Entry Agents is a cloud software engineering workspace where every session runs inside an isolated Linux environment with git branches, terminal, live preview, connected workplace apps, and optional specialist multi-agent teams.",
+      "Entry Agents is a cloud software engineering workspace where every session runs inside an isolated Linux environment with git branches, terminal, live preview, connected workplace apps, and wave-coordinated specialist multi-agent teams.",
   },
   {
     question: "How is Team Mode different from single-agent mode",
     answer:
-      "By default, Entry executes directly in a single fast loop so bug fixes and focused edits finish immediately. For multi-file builds or explicit team requests, Architect, Explorer, Executor, and Reviewer run visibly inside your main chat turn with file-claim coordination so changes never collide.",
+      "By default, Entry executes directly in a fast single-agent loop so focused fixes finish immediately. For broad multi-file builds, Team Mode coordinates dependency waves visibly inside your main chat: Wave 0 locks interface contracts, parallel builders edit disjoint files, and reviewers verify tests and diffs.",
+  },
+  {
+    question: "What do plans cost and how does 99% prompt caching work",
+    answer:
+      "Paid plans start at $5/mo (Plus, $10 credit) and go up to $13/mo Goat ($50 credit, 3.8x value), $20/mo Pro ($100 credit), and $40/mo Max ($180 credit) with zero per-token markup. Prompt caching reuses repository context and workspace history across turns, cutting repeat token costs by up to 99%.",
   },
   {
     question: "What happens if I lose internet or close my browser mid-turn",
@@ -19,12 +24,7 @@ const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "Which tools and workplace apps can the agent use",
     answer:
-      "Beyond native GitHub repositories and Vercel previews, you can connect Gmail, Slack, Notion, Linear, Google Calendar, Google Drive, Jira, Figma, and hundreds of other apps directly in Settings → Connections.",
-  },
-  {
-    question: "Which AI models are supported",
-    answer:
-      "Entry supports frontier models from Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek, and xAI Grok, and lets you switch models or reasoning depth between turns in any workspace.",
+      "Beyond native GitHub repositories and Vercel previews, you can connect Gmail, Slack, Notion, Linear, Google Calendar, Google Drive, Jira, Figma, and custom MCP tools from Settings → Connections.",
   },
   {
     question: "Do I need a GitHub repository to start",

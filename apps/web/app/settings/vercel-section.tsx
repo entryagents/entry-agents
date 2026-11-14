@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Lock } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
@@ -26,8 +26,8 @@ function VercelIcon({ className }: { className?: string }) {
 
 export function VercelSectionSkeleton() {
   return (
-    <div className="rounded-lg border border-border/50 bg-muted/10">
-      <div className="border-b border-border/50 px-4 py-3">
+    <div className="rounded-xl border border-border/70 bg-card">
+      <div className="border-b border-border/60 px-4 py-3">
         <div className="flex items-center gap-2.5">
           <VercelIcon className="h-4 w-4" />
           <span className="text-sm font-medium">Vercel</span>
@@ -107,14 +107,14 @@ export function VercelSection() {
   }
 
   return (
-    <div className="rounded-lg border border-border/50 bg-muted/10">
-      <div className="border-b border-border/50 px-4 py-3">
+    <div className="flex flex-col justify-between rounded-xl border border-border/70 bg-card">
+      <div className="border-b border-border/60 px-4 py-3">
         <div className="flex items-center gap-2.5">
           <VercelIcon className="h-4 w-4" />
           <span className="text-sm font-medium">Vercel</span>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Connect your Vercel account to enable deployments.
+        <p className="mt-1.5 text-xs text-muted-foreground">
+          Deploy workspace previews directly to Vercel
         </p>
       </div>
 
@@ -138,8 +138,8 @@ export function VercelSection() {
           </div>
 
           {linked ? (
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Lock className="size-3" />
+            <div className="inline-flex shrink-0 items-center gap-1 font-mono text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              <Check className="size-3.5" strokeWidth={1.75} />
               <span>Connected</span>
             </div>
           ) : (

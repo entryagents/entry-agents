@@ -5,7 +5,10 @@ import {
   requireOwnedChatById,
 } from "@/app/api/chat/_lib/chat-context";
 import type { WebAgentUIMessage } from "@/app/types";
-import { compareAndSetChatActiveStreamId } from "@/lib/db/sessions";
+import {
+  ACTIVE_CHAT_RUN_STATUSES,
+  compareAndSetChatActiveStreamId,
+} from "@/lib/db/sessions";
 import { getLatestCompletedWorkflowRunIdForChat } from "@/lib/db/workflow-runs";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
 import { verifyRunState } from "@/lib/workflow-run-recovery";
@@ -91,9 +94,9 @@ export async function GET(request: Request, context: RouteContext) {
 
   const { chat } = chatContext;
   const { startIndex } = parsedStartIndex;
+  const isMidTurnHeader = request.headers.get("x-entry-mid-turn") === "1";
   const isMidStreamReconnect =
-    (typeof startIndex === "number" && startIndex > 0) ||
-    request.headers.get("x-entry-mid-turn") === "1";
+    (typeof startIndex === "number" && startIndex > 0) || isMidTurnHeader;
 
   if (!chat.activeStreamId) {
     // When a client was already reading a live stream (startIndex > 0 or active mid-turn)
@@ -112,6 +115,20 @@ export async function GET(request: Request, context: RouteContext) {
         if (tailResponse) {
           return tailResponse;
         }
+      }
+
+      // If the client was mid-turn and DB status shows a freshly started run
+      // whose workflow step hasn't claimed activeStreamId yet, tell the client
+      // to retry briefly instead of sending 204 and terminating the turn early.
+      const isRecentlyActive =
+        ACTIVE_CHAT_RUN_STATUSES.some((s) => s === chat.status) &&
+        (!chat.runStatusUpdatedAt ||
+          Date.now() - new Date(chat.runStatusUpdatedAt).getTime() < 45_000);
+      if (isMidTurnHeader && isRecentlyActive) {
+        return new Response("Stream initializing", {
+          status: 503,
+          headers: { "Retry-After": "1" },
+        });
       }
     }
     return new Response(null, { status: 204 });
@@ -139,11 +156,15 @@ export async function GET(request: Request, context: RouteContext) {
     }
     return new Response(null, { status: 204 });
   }
-  // "unknown" (the probe itself kept failing transiently) hands back 204
-  // WITHOUT clearing: the client's dead-turn recovery can regenerate, and
-  // that new submit reconciles the stored id with fresh platform calls.
+
+  // "unknown" means the Workflow API probe itself kept failing transiently.
+  // Never clear activeStreamId and NEVER return 204 (which kills an active turn):
+  // signal 503 so AbortableChatTransport cleanly waits and retries.
   if (outcome === "unknown") {
-    return new Response(null, { status: 204 });
+    return new Response("Workflow status temporarily unavailable", {
+      status: 503,
+      headers: { "Retry-After": "2" },
+    });
   }
 
   const liveResponse = await openReadableStreamResponse(runId, startIndex);
@@ -151,5 +172,10 @@ export async function GET(request: Request, context: RouteContext) {
     return liveResponse;
   }
 
-  return new Response(null, { status: 204 });
+  // An active run failed transiently to open its readable stream; retry instead
+  // of terminating the turn early with 204.
+  return new Response("Stream temporarily unavailable", {
+    status: 503,
+    headers: { "Retry-After": "2" },
+  });
 }

@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { ToolkitPresetIcon } from "@/components/toolkit-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,66 @@ import {
   type UserSecretSummary,
 } from "@/hooks/use-user-secrets";
 import { formatRelativeTime } from "@/lib/format-relative-time";
+
+interface SecretQuickPreset {
+  readonly slug: string;
+  readonly label: string;
+  readonly name: string;
+  readonly description: string;
+  readonly hosts: string;
+  readonly placeholder: string;
+}
+
+const SECRET_QUICK_PRESETS: readonly SecretQuickPreset[] = [
+  {
+    slug: "stripe",
+    label: "Stripe",
+    name: "STRIPE_SECRET_KEY",
+    description: "Stripe API key for billing checks and webhooks",
+    hosts: "api.stripe.com",
+    placeholder: "sk_live_...",
+  },
+  {
+    slug: "resend",
+    label: "Resend",
+    name: "RESEND_API_KEY",
+    description: "Resend transactional email delivery key",
+    hosts: "api.resend.com",
+    placeholder: "re_...",
+  },
+  {
+    slug: "openai",
+    label: "OpenAI",
+    name: "OPENAI_API_KEY",
+    description: "OpenAI API key for scripts and eval runs",
+    hosts: "api.openai.com",
+    placeholder: "sk-proj-...",
+  },
+  {
+    slug: "supabase",
+    label: "Supabase",
+    name: "SUPABASE_SERVICE_ROLE_KEY",
+    description: "Supabase project key for migrations and database checks",
+    hosts: "*.supabase.co",
+    placeholder: "eyJhbGciOi...",
+  },
+  {
+    slug: "posthog",
+    label: "PostHog",
+    name: "POSTHOG_API_KEY",
+    description: "PostHog key for event verification and analytics scripts",
+    hosts: "us.i.posthog.com, app.posthog.com",
+    placeholder: "phx_...",
+  },
+  {
+    slug: "cloudflare",
+    label: "Cloudflare",
+    name: "CLOUDFLARE_API_TOKEN",
+    description: "Cloudflare token for Worker deploys and DNS tooling",
+    hosts: "api.cloudflare.com",
+    placeholder: "cf_...",
+  },
+];
 
 function parseAllowedHosts(raw: string): string[] {
   return raw
@@ -41,7 +102,7 @@ export function SecretsSectionSkeleton() {
         <Skeleton className="h-6 w-48" />
         <Skeleton className="h-4 w-96 max-w-full" />
       </div>
-      <div className="rounded-lg border border-border/70">
+      <div className="rounded-xl border border-border/70 bg-card">
         {Array.from({ length: 3 }).map((_, idx) => (
           <div
             key={idx}
@@ -65,6 +126,7 @@ export function SecretsSection() {
   );
   const [name, setName] = useState("");
   const [value, setValue] = useState("");
+  const [valuePlaceholder, setValuePlaceholder] = useState("sk_live_...");
   const [description, setDescription] = useState("");
   const [allowedHostsRaw, setAllowedHostsRaw] = useState("");
   const [injectInSandbox, setInjectInSandbox] = useState(true);
@@ -77,8 +139,20 @@ export function SecretsSection() {
     setEditingSecret(null);
     setName("");
     setValue("");
+    setValuePlaceholder("sk_live_...");
     setDescription("");
     setAllowedHostsRaw("");
+    setInjectInSandbox(true);
+    setFormError(null);
+  };
+
+  const applyPreset = (preset: SecretQuickPreset) => {
+    setEditingSecret(null);
+    setName(preset.name);
+    setValue("");
+    setValuePlaceholder(preset.placeholder);
+    setDescription(preset.description);
+    setAllowedHostsRaw(preset.hosts);
     setInjectInSandbox(true);
     setFormError(null);
   };
@@ -99,12 +173,12 @@ export function SecretsSection() {
 
     const normalizedName = name.trim().toUpperCase();
     if (!normalizedName) {
-      setFormError("Secret name is required");
+      setFormError("Variable name is required");
       return;
     }
 
     if (!editingSecret && !value.trim()) {
-      setFormError("Secret value is required");
+      setFormError("Key value is required");
       return;
     }
 
@@ -131,7 +205,7 @@ export function SecretsSection() {
       resetForm();
     } catch (err) {
       setFormError(
-        err instanceof Error ? err.message : "Failed to save secret",
+        err instanceof Error ? err.message : "Failed to save API key",
       );
     } finally {
       setIsSubmitting(false);
@@ -165,36 +239,26 @@ export function SecretsSection() {
 
   return (
     <div className="space-y-6">
-      <div className="space-y-1.5">
-        <h2 className="text-lg font-semibold">API keys &amp; secrets vault</h2>
-        <p className="text-sm text-muted-foreground">
-          Store third-party API keys securely without pasting raw secrets into
-          chat prompts or exposing them to the model.
-        </p>
-      </div>
-
-      <div className="flex items-start gap-3 rounded-xl border border-border/80 bg-muted/20 px-4 py-3 text-sm">
+      <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-card px-4 py-3.5 text-sm">
         <ShieldCheck
           className="mt-0.5 size-4 shrink-0 text-muted-foreground"
           strokeWidth={1.5}
         />
         <div className="space-y-1 text-xs leading-relaxed text-muted-foreground">
           <p className="font-medium text-foreground">
-            Zero-exposure encryption and automatic redaction
+            Private credentials kept out of chat history
           </p>
           <p>
-            Secrets are encrypted with AES-256-GCM at rest. The agent only sees
-            secret names, descriptions, and allowed hosts — never raw values.
-            Reference them via{" "}
+            Agents only see key names, notes, and allowed domains — never raw
+            values. Reference them as{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] text-foreground">
-              $SECRET_NAME
+              $KEY_NAME
             </code>{" "}
-            in sandbox commands or{" "}
+            in terminal commands or{" "}
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] text-foreground">
-              {"{{SECRET:SECRET_NAME}}"}
+              {"{{SECRET:KEY_NAME}}"}
             </code>{" "}
-            in HTTP requests and MCP configs. Accidental echoes in tool outputs
-            are redacted automatically.
+            in MCP headers and web requests.
           </p>
         </div>
       </div>
@@ -207,11 +271,11 @@ export function SecretsSection() {
       )}
 
       {secrets.length > 0 && (
-        <div className="divide-y divide-border/70 rounded-lg border border-border/70">
+        <div className="divide-y divide-border/70 overflow-hidden rounded-xl border border-border/70 bg-card">
           {secrets.map((secret) => (
             <div
               key={secret.id}
-              className="flex flex-col gap-2.5 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              className="flex flex-col gap-2.5 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0 flex-1 space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -229,12 +293,12 @@ export function SecretsSection() {
                     {secret.injectInSandbox ? (
                       <>
                         <Terminal className="size-2.5" />
-                        Bash + Fetch/MCP
+                        Shell + MCP
                       </>
                     ) : (
                       <>
                         <Globe className="size-2.5" />
-                        Fetch/MCP only
+                        HTTP / MCP only
                       </>
                     )}
                   </Badge>
@@ -246,14 +310,14 @@ export function SecretsSection() {
                   </p>
                 )}
 
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground tabular-nums">
                   {secret.allowedHosts.length > 0 ? (
                     <span className="inline-flex items-center gap-1">
                       <Globe className="size-3" />
-                      Hosts: {secret.allowedHosts.join(", ")}
+                      Domains: {secret.allowedHosts.join(", ")}
                     </span>
                   ) : (
-                    <span>Any public host</span>
+                    <span>Any public domain</span>
                   )}
                   <span>
                     Used {secret.usageCount}{" "}
@@ -274,14 +338,14 @@ export function SecretsSection() {
                   variant="ghost"
                   size="sm"
                   onClick={() => handleCopyReference(secret)}
-                  title="Copy {{SECRET:...}} template for MCP or web_fetch"
+                  title="Copy template reference for MCP headers or requests"
                 >
                   {copiedId === secret.id ? (
                     <Check className="size-3.5 text-emerald-500" />
                   ) : (
                     <Copy className="size-3.5" />
                   )}
-                  <span className="sr-only sm:not-sr-only sm:ml-1 text-xs">
+                  <span className="sr-only text-xs sm:not-sr-only sm:ml-1">
                     {copiedId === secret.id ? "Copied" : "Template"}
                   </span>
                 </Button>
@@ -316,19 +380,19 @@ export function SecretsSection() {
 
       <form
         onSubmit={handleSubmit}
-        className="space-y-4 rounded-lg border border-dashed border-border/70 p-4"
+        className="space-y-4 rounded-xl border border-border/70 bg-card p-4 sm:p-5"
       >
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm font-medium">
             {editingSecret ? (
               <>
-                <Pencil className="size-4" />
+                <Pencil className="size-4" strokeWidth={1.5} />
                 Editing {editingSecret.name}
               </>
             ) : (
               <>
-                <Plus className="size-4" />
-                Add a Secret or API Key
+                <Plus className="size-4" strokeWidth={1.5} />
+                Add API key
               </>
             )}
           </div>
@@ -346,9 +410,34 @@ export function SecretsSection() {
           )}
         </div>
 
+        {!editingSecret && (
+          <div className="space-y-2">
+            <div className="text-xs text-muted-foreground">
+              One-click templates prefill variable names and domain guards
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {SECRET_QUICK_PRESETS.map((preset) => (
+                <button
+                  key={preset.slug}
+                  type="button"
+                  onClick={() => applyPreset(preset)}
+                  className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors duration-150 ${
+                    name === preset.name
+                      ? "border-foreground/30 bg-muted text-foreground"
+                      : "border-border/70 bg-background text-muted-foreground hover:border-border hover:text-foreground"
+                  }`}
+                >
+                  <ToolkitPresetIcon slug={preset.slug} className="size-3.5" />
+                  <span>{preset.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-1.5">
-            <Label htmlFor="secret-name">Variable Name</Label>
+            <Label htmlFor="secret-name">Variable name</Label>
             <Input
               id="secret-name"
               placeholder="STRIPE_SECRET_KEY"
@@ -362,8 +451,8 @@ export function SecretsSection() {
           <div className="grid gap-1.5">
             <Label htmlFor="secret-value">
               {editingSecret
-                ? "New Secret Value (leave blank to keep)"
-                : "Value"}
+                ? "New value (leave blank to keep existing)"
+                : "Key value"}
             </Label>
             <Input
               id="secret-value"
@@ -372,7 +461,7 @@ export function SecretsSection() {
               placeholder={
                 editingSecret
                   ? `${editingSecret.maskedHint} (unchanged)`
-                  : "sk_live_..."
+                  : valuePlaceholder
               }
               value={value}
               onChange={(e) => setValue(e.target.value)}
@@ -384,18 +473,18 @@ export function SecretsSection() {
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-1.5">
             <Label htmlFor="secret-description">
-              Description for Agent (optional)
+              Note for agent (optional)
             </Label>
             <Input
               id="secret-description"
-              placeholder="Stripe API key for billing smoke tests"
+              placeholder="Stripe API key for billing checks"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="secret-hosts">
-              Allowed Domains for Fetch / MCP (optional)
+              Allowed domains for fetch / MCP (optional)
             </Label>
             <Input
               id="secret-hosts"
@@ -407,17 +496,15 @@ export function SecretsSection() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-4 rounded-md border border-border/60 bg-muted/20 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-4 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5">
           <div className="space-y-0.5">
             <Label htmlFor="secret-inject-sandbox" className="text-sm">
-              Inject into sandbox bash commands
+              Expose in terminal commands
             </Label>
             <p className="text-xs text-muted-foreground">
-              Exposes{" "}
-              <code className="font-mono">${name || "SECRET_NAME"}</code>{" "}
-              ephemerally during bash runs. Turn off for HTTP-only credentials
-              used strictly via{" "}
-              <code className="font-mono">{"{{SECRET:...}}"}</code>.
+              Makes <code className="font-mono">${name || "KEY_NAME"}</code>{" "}
+              available in shell runs. Disable to restrict usage to HTTP
+              requests and MCP headers only.
             </p>
           </div>
           <Switch
@@ -433,7 +520,7 @@ export function SecretsSection() {
           {isSubmitting ? (
             <Loader2 className="mr-2 size-4 animate-spin" />
           ) : null}
-          {editingSecret ? "Save Changes" : "Save Encrypted Secret"}
+          {editingSecret ? "Save changes" : "Save API key"}
         </Button>
       </form>
     </div>

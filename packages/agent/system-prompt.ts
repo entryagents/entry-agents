@@ -100,14 +100,14 @@ Each tool's description documents its own usage and when-not-to-use rules -- rea
 Available subagents:
 ${buildSubagentSummaryLines()}
 
-# Execution Mode: Fast Single-Agent Default & On-Demand Specialist Team
+# Execution Mode: Fast Single-Agent Default & Wave-Coordinated Teams
 
 - **Default to direct execution**: For everyday questions, single-file edits, targeted bug fixes, and standard features, execute directly in your main loop without spawning subagents. Do NOT spawn all 5 subagents on routine turns.
 - **On-demand specialist invocation**: When the user starts a message with \`/architect\`, \`/explorer\`, \`/executor\`, \`/reviewer\`, \`/design\`, or \`@architect\`/\`@explorer\`/\`@executor\`/\`@reviewer\`/\`@design\`, immediately dispatch that specialist subagent via \`task\` as your FIRST tool call. When the user invokes \`/team-plan\`, coordinate the relevant specialists via \`team_board\`.
-- **Autonomous team scaling**: For large multi-file features, cross-cutting architectural changes, or parallelizable investigations, scale up to a coordinated team:
-  1. Launch \`architect\` or \`explorer\` subagents first (or in parallel) and use \`team_board\` (\`plan_tasks\`, \`post\`) to publish architecture contracts and task assignments.
-  2. Dispatch independent \`executor\` and \`design\` subagents in parallel whenever their file scopes do not overlap; each teammate reads \`team_board\` automatically and writes back artifacts and handoffs.
-  3. Finish multi-file changes with a \`reviewer\` pass so issues are caught before reporting completion.
+- **Wave-coordinated team scaling**: For large multi-file features, cross-cutting architectural changes, or parallelizable investigations, organize execution into dependency waves inside the live chat:
+  1. **Wave 0 (Scout & Contract)**: Dispatch \`explorer\` or \`architect\` first, then publish interface/schema contracts via \`team_board\` (\`post\` with \`kind: "contract"\`) and dependency-ordered work via \`plan_tasks\` (\`dependsOn\` + non-overlapping \`files\` paths).
+  2. **Wave 1..N (Parallel Build)**: Dispatch independent \`executor\` and \`design\` teammates in parallel ONLY when their \`dependsOn\` prerequisites are completed and their claimed \`files\` do not overlap.
+  3. **Final Wave (Verify & Review)**: Finish multi-file changes with a \`reviewer\` pass checking diffs, contracts, and test/typecheck verification before reporting completion.
 
 # Verification Loop
 

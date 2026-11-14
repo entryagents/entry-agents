@@ -436,14 +436,14 @@ export function PluginsSection() {
 
           {plugin.configuredKeys.length > 0 && (
             <div className="text-[11px] text-muted-foreground">
-              Encrypted config keys: {plugin.configuredKeys.join(", ")}
+              Configured keys: {plugin.configuredKeys.join(", ")}
             </div>
           )}
 
           {isEditingConfig && (
             <div className="space-y-2 rounded-md border border-border/70 bg-muted/30 p-2.5">
               <div className="text-[11px] font-medium text-foreground">
-                Encrypted plugin config (AES-256-GCM)
+                Plugin settings
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
                 <Input

@@ -1,6 +1,7 @@
 import { tool, type UIToolInvocation } from "ai";
 import { z } from "zod";
 import {
+  computeExecutionWaves,
   findFileOwnershipConflicts,
   getOrCreateTeamBoard,
   type TeamBoardEntry,
@@ -11,6 +12,7 @@ import {
 const teamBoardEntryKindSchema = z.enum([
   "finding",
   "decision",
+  "contract",
   "artifact",
   "handoff",
   "blocker",
@@ -198,6 +200,7 @@ Actions:
         });
         const tasks = board.listTasks();
         const fileConflicts = findFileOwnershipConflicts(tasks);
+        const waves = computeExecutionWaves(tasks);
         return {
           action: "read",
           teamId,
@@ -207,6 +210,7 @@ Actions:
             entries: filteredEntries,
             tasks,
             ...(fileConflicts.length > 0 ? { fileConflicts } : {}),
+            ...(waves.length > 0 ? { waves } : {}),
           },
         };
       }

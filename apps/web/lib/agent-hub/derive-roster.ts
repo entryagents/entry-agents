@@ -204,6 +204,7 @@ export interface TeamFeedEntry {
   kind:
     | "finding"
     | "decision"
+    | "contract"
     | "artifact"
     | "handoff"
     | "blocker"
@@ -235,10 +236,17 @@ export interface TeamFeedFileConflict {
   taskIds: string[];
 }
 
+export interface TeamFeedWave {
+  wave: number;
+  taskIds: string[];
+  status: "completed" | "active" | "queued" | "blocked";
+}
+
 export interface TeamFeedState {
   entries: TeamFeedEntry[];
   tasks: TeamFeedTask[];
   fileConflicts: TeamFeedFileConflict[];
+  waves: TeamFeedWave[];
 }
 
 function isTeamBoardPart(part: unknown): part is RawToolPart {
@@ -253,6 +261,66 @@ function isTeamBoardPart(part: unknown): part is RawToolPart {
     ((p.type === "dynamic-tool" || p.type === "tool-call") &&
       (p.toolName === "team_board" || p.name === "team_board"))
   );
+}
+
+function computeFeedWaves(tasks: TeamFeedTask[]): TeamFeedWave[] {
+  if (tasks.length === 0) return [];
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const waveById = new Map<string, number>();
+  const visiting = new Set<string>();
+
+  const getWave = (taskId: string): number => {
+    const cached = waveById.get(taskId);
+    if (cached !== undefined) return cached;
+    if (visiting.has(taskId)) return 1;
+    visiting.add(taskId);
+    const task = byId.get(taskId);
+    let depth = 1;
+    if (task?.dependsOn?.length) {
+      for (const dep of task.dependsOn) {
+        if (!byId.has(dep) || dep === taskId) continue;
+        depth = Math.max(depth, getWave(dep) + 1);
+      }
+    }
+    visiting.delete(taskId);
+    waveById.set(taskId, depth);
+    return depth;
+  };
+
+  for (const t of tasks) getWave(t.id);
+
+  const buckets = new Map<number, TeamFeedTask[]>();
+  for (const t of tasks) {
+    const w = waveById.get(t.id) ?? 1;
+    const list = buckets.get(w) ?? [];
+    list.push(t);
+    buckets.set(w, list);
+  }
+
+  return [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([wave, items]) => {
+      let status: TeamFeedWave["status"] = "queued";
+      if (items.every((i) => i.status === "completed")) {
+        status = "completed";
+      } else if (items.some((i) => i.status === "blocked")) {
+        status = "blocked";
+      } else if (
+        items.some((i) => i.status === "in_progress") ||
+        items.every(
+          (i) =>
+            !i.dependsOn?.length ||
+            i.dependsOn.every((dep) => byId.get(dep)?.status === "completed"),
+        )
+      ) {
+        status = "active";
+      }
+      return {
+        wave,
+        taskIds: items.map((i) => i.id),
+        status,
+      };
+    });
 }
 
 function computeTaskFileConflicts(
@@ -291,7 +359,7 @@ function computeTaskFileConflicts(
 
 export function deriveTeamFeed(messages: unknown): TeamFeedState {
   if (!Array.isArray(messages)) {
-    return { entries: [], tasks: [], fileConflicts: [] };
+    return { entries: [], tasks: [], fileConflicts: [], waves: [] };
   }
 
   const entryMap = new Map<string, TeamFeedEntry>();
@@ -310,6 +378,7 @@ export function deriveTeamFeed(messages: unknown): TeamFeedState {
           [
             "finding",
             "decision",
+            "contract",
             "artifact",
             "handoff",
             "blocker",
@@ -406,5 +475,6 @@ export function deriveTeamFeed(messages: unknown): TeamFeedState {
     entries: [...entryMap.values()].sort((a, b) => a.createdAt - b.createdAt),
     tasks,
     fileConflicts: computeTaskFileConflicts(tasks),
+    waves: computeFeedWaves(tasks),
   };
 }

@@ -3,6 +3,7 @@ import type { ModelMessage } from "ai";
 export type TeamBoardEntryKind =
   | "finding"
   | "decision"
+  | "contract"
   | "artifact"
   | "handoff"
   | "blocker"
@@ -41,11 +42,18 @@ export interface TeamFileConflict {
   taskIds: string[];
 }
 
+export interface TeamExecutionWave {
+  wave: number;
+  taskIds: string[];
+  status: "completed" | "active" | "queued" | "blocked";
+}
+
 export interface TeamBoardSnapshot {
   teamId: string;
   entries: TeamBoardEntry[];
   tasks: TeamWorkItem[];
   fileConflicts?: TeamFileConflict[];
+  waves?: TeamExecutionWave[];
 }
 
 const MAX_BOARD_ENTRIES = 80;
@@ -62,6 +70,77 @@ function normalizeFileClaimList(files: string[] | undefined): string[] {
     normalized.push(cleaned);
   }
   return normalized;
+}
+
+/**
+ * Computes dependency-ordered execution waves from task `dependsOn` edges.
+ * Independent tasks land in the same parallel wave; dependent tasks wait for
+ * upstream prerequisites. Cycles fall back safely into subsequent waves.
+ */
+export function computeExecutionWaves(
+  tasks: TeamWorkItem[],
+): TeamExecutionWave[] {
+  if (tasks.length === 0) return [];
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const waveIndexById = new Map<string, number>();
+  const visiting = new Set<string>();
+
+  const getWave = (taskId: string): number => {
+    const cached = waveIndexById.get(taskId);
+    if (cached !== undefined) return cached;
+    if (visiting.has(taskId)) return 1;
+    visiting.add(taskId);
+
+    const task = byId.get(taskId);
+    let depth = 1;
+    if (task?.dependsOn && task.dependsOn.length > 0) {
+      for (const depId of task.dependsOn) {
+        if (!byId.has(depId) || depId === taskId) continue;
+        depth = Math.max(depth, getWave(depId) + 1);
+      }
+    }
+
+    visiting.delete(taskId);
+    waveIndexById.set(taskId, depth);
+    return depth;
+  };
+
+  for (const t of tasks) {
+    getWave(t.id);
+  }
+
+  const buckets = new Map<number, TeamWorkItem[]>();
+  for (const t of tasks) {
+    const w = waveIndexById.get(t.id) ?? 1;
+    const list = buckets.get(w) ?? [];
+    list.push(t);
+    buckets.set(w, list);
+  }
+
+  return [...buckets.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([wave, items]) => {
+      let status: TeamExecutionWave["status"] = "queued";
+      if (items.every((i) => i.status === "completed")) {
+        status = "completed";
+      } else if (items.some((i) => i.status === "blocked")) {
+        status = "blocked";
+      } else if (
+        items.some((i) => i.status === "in_progress") ||
+        items.every(
+          (i) =>
+            !i.dependsOn?.length ||
+            i.dependsOn.every((dep) => byId.get(dep)?.status === "completed"),
+        )
+      ) {
+        status = "active";
+      }
+      return {
+        wave,
+        taskIds: items.map((i) => i.id),
+        status,
+      };
+    });
 }
 
 /**
@@ -260,11 +339,13 @@ export class TeamBoard {
   snapshot(): TeamBoardSnapshot {
     const tasks = this.listTasks();
     const fileConflicts = findFileOwnershipConflicts(tasks);
+    const waves = computeExecutionWaves(tasks);
     return {
       teamId: this.teamId,
       entries: [...this.entries],
       tasks,
       ...(fileConflicts.length > 0 ? { fileConflicts } : {}),
+      ...(waves.length > 0 ? { waves } : {}),
     };
   }
 }
@@ -351,17 +432,29 @@ export function formatTeamContextSummary(board: TeamBoard): string {
     "Coordinate with teammates by reading/updating this shared board via `team_board`:",
   ];
 
+  if (snap.waves && snap.waves.length > 0) {
+    lines.push("", "### Execution Waves");
+    for (const wave of snap.waves) {
+      lines.push(
+        `- Wave ${wave.wave} [${wave.status}]: ${wave.taskIds.join(", ")}`,
+      );
+    }
+  }
+
   if (snap.tasks.length > 0) {
     lines.push("", "### Team Tasks");
     for (const task of snap.tasks.slice(-15)) {
       const files = task.files?.length
         ? ` [files: ${task.files.slice(0, 6).join(", ")}]`
         : "";
+      const deps = task.dependsOn?.length
+        ? ` (after: ${task.dependsOn.join(", ")})`
+        : "";
       const verified = task.verification
         ? ` | verified: ${task.verification}`
         : "";
       lines.push(
-        `- [${task.status}] \`${task.id}\` (${task.assignedRole}): ${task.title}${files}${task.notes ? ` — ${task.notes}` : ""}${verified}`,
+        `- [${task.status}] \`${task.id}\` (${task.assignedRole}): ${task.title}${deps}${files}${task.notes ? ` — ${task.notes}` : ""}${verified}`,
       );
     }
   }
@@ -375,9 +468,21 @@ export function formatTeamContextSummary(board: TeamBoard): string {
     }
   }
 
-  if (snap.entries.length > 0) {
+  const contracts = snap.entries.filter((e) => e.kind === "contract");
+  if (contracts.length > 0) {
+    lines.push("", "### Locked Interface Contracts");
+    for (const contract of contracts.slice(-8)) {
+      const target = contract.targetRole ? ` -> ${contract.targetRole}` : "";
+      lines.push(
+        `- **${contract.authorRole}${target}** — ${contract.title}: ${contract.content.slice(0, 320)}`,
+      );
+    }
+  }
+
+  const notes = snap.entries.filter((e) => e.kind !== "contract");
+  if (notes.length > 0) {
     lines.push("", "### Recent Teammate Findings & Handoffs");
-    for (const entry of snap.entries.slice(-12)) {
+    for (const entry of notes.slice(-12)) {
       const target = entry.targetRole ? ` -> ${entry.targetRole}` : "";
       const files = entry.files?.length
         ? ` [files: ${entry.files.slice(0, 5).join(", ")}]`

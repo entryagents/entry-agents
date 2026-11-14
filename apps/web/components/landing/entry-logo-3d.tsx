@@ -108,7 +108,44 @@ function buildTaperedRibbonGeometry(
   return geom;
 }
 
-export function EntryLogo3D({ className }: { readonly className?: string }) {
+type EntryLogoTone = "auto" | "obsidian";
+
+function resolveMaterialPalette(tone: EntryLogoTone, isDarkPage: boolean) {
+  const useDarkStudio = tone === "obsidian" || isDarkPage;
+  if (useDarkStudio) {
+    return {
+      envIsDark: true,
+      ribbonColor: "#9ca3b5",
+      metalness: 0.92,
+      roughness: 0.15,
+      envMapIntensity: 2.25,
+      outerRingColor: "#7e869c",
+      outerRingEmissive: "#1a1d26",
+      arcColor: "#ff8a3d",
+      arcEmissiveIntensity: 0.96,
+    };
+  }
+
+  return {
+    envIsDark: false,
+    ribbonColor: "#1b1d24",
+    metalness: 0.9,
+    roughness: 0.14,
+    envMapIntensity: 2.15,
+    outerRingColor: "#464b59",
+    outerRingEmissive: "#000000",
+    arcColor: "#e57a2e",
+    arcEmissiveIntensity: 0.85,
+  };
+}
+
+export function EntryLogo3D({
+  className,
+  tone = "auto",
+}: {
+  readonly className?: string;
+  readonly tone?: EntryLogoTone;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [webglFailed, setWebglFailed] = useState(false);
 
@@ -134,7 +171,7 @@ export function EntryLogo3D({ className }: { readonly className?: string }) {
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.24;
+    renderer.toneMappingExposure = 1.32;
     renderer.setSize(
       Math.max(1, container.clientWidth),
       Math.max(1, container.clientHeight),
@@ -151,11 +188,12 @@ export function EntryLogo3D({ className }: { readonly className?: string }) {
       0.1,
       50,
     );
-    camera.position.set(0, 0.04, 7.25);
+    camera.position.set(0, 0.04, 7.05);
 
     const pmrem = new THREE.PMREMGenerator(renderer);
     let currentIsDark = document.documentElement.classList.contains("dark");
-    let rawEnvTex = createStudioEnvTexture(currentIsDark);
+    let palette = resolveMaterialPalette(tone, currentIsDark);
+    let rawEnvTex = createStudioEnvTexture(palette.envIsDark);
     let envRT = pmrem.fromEquirectangular(rawEnvTex);
     scene.environment = envRT.texture;
 
@@ -204,7 +242,7 @@ export function EntryLogo3D({ className }: { readonly className?: string }) {
     const ribbonGeometry = buildTaperedRibbonGeometry(
       mainCurve,
       240,
-      0.21,
+      0.215,
       36,
       false,
       (u) => {
@@ -225,55 +263,56 @@ export function EntryLogo3D({ className }: { readonly className?: string }) {
     const crossGeometry = buildTaperedRibbonGeometry(
       crossCurve,
       96,
-      0.135,
+      0.138,
       28,
       false,
       (u) => Math.max(0.12, Math.sin(u * Math.PI) * 0.96),
     );
 
     const ribbonMaterial = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(currentIsDark ? "#2a2d36" : "#121318"),
-      metalness: currentIsDark ? 0.94 : 0.88,
-      roughness: currentIsDark ? 0.12 : 0.16,
+      color: new THREE.Color(palette.ribbonColor),
+      metalness: palette.metalness,
+      roughness: palette.roughness,
       clearcoat: 1,
       clearcoatRoughness: 0.06,
-      envMapIntensity: currentIsDark ? 1.85 : 1.75,
+      envMapIntensity: palette.envMapIntensity,
     });
 
     const mainMesh = new THREE.Mesh(ribbonGeometry, ribbonMaterial);
     const crossMesh = new THREE.Mesh(crossGeometry, ribbonMaterial);
     group.add(mainMesh, crossMesh);
 
-    // Framed orbital ring & warm amber optical filament (sized to stay inside card bounds)
-    const outerRingGeometry = new THREE.TorusGeometry(1.9, 0.012, 16, 128);
+    // Crisp orbital ring & warm amber optical filament (sized to stay inside card bounds)
+    const outerRingGeometry = new THREE.TorusGeometry(1.9, 0.022, 16, 128);
     const outerRingMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(currentIsDark ? "#454956" : "#8b8f9a"),
-      metalness: 0.85,
-      roughness: 0.28,
+      color: new THREE.Color(palette.outerRingColor),
+      emissive: new THREE.Color(palette.outerRingEmissive),
+      metalness: 0.86,
+      roughness: 0.24,
     });
     const outerRing = new THREE.Mesh(outerRingGeometry, outerRingMaterial);
     outerRing.rotation.x = Math.PI * 0.08;
     group.add(outerRing);
 
     const warmArcCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-1.88, -0.28, 0.11),
-      new THREE.Vector3(-1.2, -1.49, 0.14),
-      new THREE.Vector3(0, -1.9, 0.16),
-      new THREE.Vector3(1.22, -1.46, 0.11),
+      new THREE.Vector3(-1.88, -0.28, 0.12),
+      new THREE.Vector3(-1.2, -1.49, 0.15),
+      new THREE.Vector3(0, -1.9, 0.17),
+      new THREE.Vector3(1.22, -1.46, 0.12),
     ]);
     const warmArcGeometry = new THREE.TubeGeometry(
       warmArcCurve,
       64,
-      0.013,
-      10,
+      0.022,
+      12,
       false,
     );
     const warmArcMaterial = new THREE.MeshStandardMaterial({
-      color: new THREE.Color("#e57a2e"),
+      color: new THREE.Color(palette.arcColor),
       emissive: new THREE.Color("#e57a2e"),
-      emissiveIntensity: currentIsDark ? 0.82 : 0.44,
-      roughness: 0.3,
-      metalness: 0.45,
+      emissiveIntensity: palette.arcEmissiveIntensity,
+      roughness: 0.26,
+      metalness: 0.42,
     });
     const warmArc = new THREE.Mesh(warmArcGeometry, warmArcMaterial);
     warmArc.rotation.x = Math.PI * 0.08;
@@ -360,7 +399,9 @@ export function EntryLogo3D({ className }: { readonly className?: string }) {
       if (nextDark === currentIsDark) return;
       currentIsDark = nextDark;
 
-      const nextRawEnv = createStudioEnvTexture(nextDark);
+      const nextPalette = resolveMaterialPalette(tone, nextDark);
+      palette = nextPalette;
+      const nextRawEnv = createStudioEnvTexture(nextPalette.envIsDark);
       const nextEnvRT = pmrem.fromEquirectangular(nextRawEnv);
       envRT.dispose();
       rawEnvTex.dispose();
@@ -368,13 +409,15 @@ export function EntryLogo3D({ className }: { readonly className?: string }) {
       envRT = nextEnvRT;
       scene.environment = envRT.texture;
 
-      ribbonMaterial.color.set(nextDark ? "#2a2d36" : "#121318");
-      ribbonMaterial.metalness = nextDark ? 0.94 : 0.88;
-      ribbonMaterial.roughness = nextDark ? 0.12 : 0.16;
-      ribbonMaterial.envMapIntensity = nextDark ? 1.85 : 1.75;
+      ribbonMaterial.color.set(nextPalette.ribbonColor);
+      ribbonMaterial.metalness = nextPalette.metalness;
+      ribbonMaterial.roughness = nextPalette.roughness;
+      ribbonMaterial.envMapIntensity = nextPalette.envMapIntensity;
 
-      outerRingMaterial.color.set(nextDark ? "#454956" : "#8b8f9a");
-      warmArcMaterial.emissiveIntensity = nextDark ? 0.82 : 0.44;
+      outerRingMaterial.color.set(nextPalette.outerRingColor);
+      outerRingMaterial.emissive.set(nextPalette.outerRingEmissive);
+      warmArcMaterial.color.set(nextPalette.arcColor);
+      warmArcMaterial.emissiveIntensity = nextPalette.arcEmissiveIntensity;
     });
     themeObserver.observe(document.documentElement, {
       attributes: true,
@@ -450,15 +493,15 @@ export function EntryLogo3D({ className }: { readonly className?: string }) {
         canvasEl.remove();
       }
     };
-  }, []);
+  }, [tone]);
 
   if (webglFailed) {
     return (
       <div
         className={`relative flex items-center justify-center ${className ?? ""}`}
       >
-        <div className="flex size-36 items-center justify-center rounded-full border border-(--l-border) bg-(--l-surface)">
-          <EntryMark className="size-20 text-(--l-fg)" />
+        <div className="flex size-32 items-center justify-center rounded-full border border-white/15 bg-black/50 backdrop-blur-xs">
+          <EntryMark className="size-20" />
         </div>
       </div>
     );

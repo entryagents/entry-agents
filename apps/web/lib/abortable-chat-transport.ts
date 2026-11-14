@@ -11,15 +11,18 @@ type FetchFunction = typeof globalThis.fetch;
 type AbortableWorkflowChatTransportOptions<UI_MESSAGE extends UIMessage> =
   WorkflowChatTransportOptions<UI_MESSAGE> & {
     body?: RequestBody | RequestBodyFactory;
+    onReconnectNeeded?: () => void;
   };
 
 /**
- * Keep trying to reconnect for up to 6 minutes (360,000 ms) when network
- * drops mid-turn so a temporary disconnect never kills the live stream or
- * forces the user to stop and type "continue".
+ * Keep trying to reconnect for up to 30 minutes (1,800,000 ms) when network
+ * drops mid-send or mid-stream so a temporary disconnect or subway/elevator
+ * dead zone never kills the live turn.
  */
-export const STREAM_RECONNECT_MAX_DURATION_MS = 6 * 60 * 1000;
+export const STREAM_RECONNECT_MAX_DURATION_MS = 30 * 60 * 1000;
 const STREAM_RECONNECT_RETRY_DELAY_MS = 1_500;
+const OFFLINE_HEARTBEAT_DELAY_MS = 12_000;
+const TRANSIENT_HTTP_STATUSES = new Set([429, 502, 503, 504]);
 
 function resolveBody(body: RequestBody | RequestBodyFactory | undefined) {
   return typeof body === "function" ? body() : body;
@@ -64,6 +67,46 @@ function getStartIndexParam(url: string): number {
   }
 }
 
+function isBrowserOffline(): boolean {
+  return typeof navigator !== "undefined" && navigator.onLine === false;
+}
+
+function parseIdentifiersFromBody(
+  body: BodyInit | null | undefined,
+): { sessionId: string; chatId: string; lastUserMessageId?: string } | null {
+  if (typeof body !== "string" || body.length === 0) return null;
+  try {
+    const parsed = JSON.parse(body) as {
+      sessionId?: unknown;
+      chatId?: unknown;
+      messages?: Array<{ id?: unknown; role?: unknown }>;
+    };
+    if (
+      typeof parsed.sessionId !== "string" ||
+      typeof parsed.chatId !== "string"
+    ) {
+      return null;
+    }
+    let lastUserMessageId: string | undefined;
+    if (Array.isArray(parsed.messages)) {
+      for (let i = parsed.messages.length - 1; i >= 0; i -= 1) {
+        const msg = parsed.messages[i];
+        if (msg?.role === "user" && typeof msg.id === "string") {
+          lastUserMessageId = msg.id;
+          break;
+        }
+      }
+    }
+    return {
+      sessionId: parsed.sessionId,
+      chatId: parsed.chatId,
+      lastUserMessageId,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function waitForRetryOrOnline(
   delayMs: number,
   signal: AbortSignal,
@@ -73,6 +116,10 @@ function waitForRetryOrOnline(
       reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
       return;
     }
+
+    const effectiveDelay = isBrowserOffline()
+      ? Math.max(delayMs, OFFLINE_HEARTBEAT_DELAY_MS)
+      : delayMs;
 
     let settled = false;
     const cleanup = () => {
@@ -101,13 +148,14 @@ function waitForRetryOrOnline(
     const onVisibility = () => {
       if (
         typeof document !== "undefined" &&
-        document.visibilityState === "visible"
+        document.visibilityState === "visible" &&
+        !isBrowserOffline()
       ) {
         onWake();
       }
     };
 
-    const timer = setTimeout(onWake, delayMs);
+    const timer = setTimeout(onWake, effectiveDelay);
     signal.addEventListener("abort", onAbort, { once: true });
     if (typeof window !== "undefined") {
       window.addEventListener("online", onWake, { once: true });
@@ -118,21 +166,26 @@ function waitForRetryOrOnline(
   });
 }
 
-function createSyntheticFinishSseResponse(): Response {
+function createSyntheticFinishSseResponse(workflowRunId?: string): Response {
   const body = 'data: {"type":"finish"}\n\n';
+  const headers: Record<string, string> = {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    "x-entry-synthetic-finish": "1",
+  };
+  if (workflowRunId) {
+    headers["x-workflow-run-id"] = workflowRunId;
+  }
   return new Response(body, {
     status: 200,
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache, no-transform",
-    },
+    headers,
   });
 }
 
 /**
  * A chat transport that allows aborting ALL active fetch connections,
- * including `reconnectToStream` requests, while providing a 6-minute
- * network resilience window for stream reconnection.
+ * including `reconnectToStream` requests, while providing a 30-minute
+ * network resilience window across initial send POSTs and stream reconnection.
  */
 export class AbortableChatTransport<
   UI_MESSAGE extends UIMessage = UIMessage,
@@ -176,6 +229,61 @@ export class AbortableChatTransport<
       });
     };
 
+    const probeExistingRunAfterPostFailure = async (
+      identifiers: {
+        sessionId: string;
+        chatId: string;
+        lastUserMessageId?: string;
+      },
+      signal: AbortSignal,
+    ): Promise<Response | null> => {
+      try {
+        const snapshotRes = await outerFetch(
+          `/api/sessions/${identifiers.sessionId}/chats/${identifiers.chatId}`,
+          { cache: "no-store", signal },
+        );
+        if (!snapshotRes.ok) return null;
+        const snapshot = (await snapshotRes.json()) as {
+          status?: string;
+          isStreaming?: boolean;
+          chat?: { activeStreamId?: string | null };
+          messages?: Array<{ id?: string; role?: string }>;
+        };
+        if (snapshot.isStreaming || snapshot.chat?.activeStreamId) {
+          const streamRes = await outerFetch(
+            `/api/chat/${identifiers.chatId}/stream?startIndex=0`,
+            {
+              headers: { "x-entry-mid-turn": "1" },
+              cache: "no-store",
+              signal,
+            },
+          );
+          if (streamRes.ok && streamRes.body) {
+            options.onReconnectNeeded?.();
+            return tapSseResponse(streamRes);
+          }
+        }
+        // If server already persisted and completed this turn while the POST
+        // response dropped mid-flight, finish gracefully so UI reconciles DB.
+        const msgs = Array.isArray(snapshot.messages) ? snapshot.messages : [];
+        const lastMsg = msgs[msgs.length - 1];
+        const hasCompletedReplyForUserMsg =
+          identifiers.lastUserMessageId &&
+          msgs.some((m) => m.id === identifiers.lastUserMessageId) &&
+          lastMsg?.role === "assistant" &&
+          snapshot.status === "completed";
+        if (hasCompletedReplyForUserMsg) {
+          options.onReconnectNeeded?.();
+          return createSyntheticFinishSseResponse(
+            snapshot.chat?.activeStreamId ?? "completed",
+          );
+        }
+      } catch {
+        // Probe failed; caller decides whether to retry POST
+      }
+      return null;
+    };
+
     const fetchWithAbort: FetchFunction = Object.assign(
       async (
         input: Parameters<FetchFunction>[0],
@@ -188,18 +296,93 @@ export class AbortableChatTransport<
         const url = getRequestUrl(input);
         const isStream = isStreamReconnectUrl(url);
         const startIndex = isStream ? getStartIndexParam(url) : 0;
-
-        if (!isStream) {
-          const response = await outerFetch(input, {
-            ...init,
-            signal: combinedSignal,
-          });
-          return tapSseResponse(response);
-        }
-
         const deadline = Date.now() + STREAM_RECONNECT_MAX_DURATION_MS;
 
+        if (!isStream) {
+          const isPost = (init?.method ?? "GET").toUpperCase() === "POST";
+          const identifiers = isPost
+            ? parseIdentifiersFromBody(init?.body)
+            : null;
+          let attemptedSend = false;
+
+          while (true) {
+            if (isBrowserOffline() && !combinedSignal.aborted) {
+              if (Date.now() >= deadline) {
+                throw new Error("Network offline timeout exceeded");
+              }
+              await waitForRetryOrOnline(
+                STREAM_RECONNECT_RETRY_DELAY_MS,
+                combinedSignal,
+              );
+              continue;
+            }
+
+            // Before re-POSTing after a dropped connection, verify the server
+            // didn't already accept the request and start the workflow.
+            if (attemptedSend && identifiers) {
+              const recovered = await probeExistingRunAfterPostFailure(
+                identifiers,
+                combinedSignal,
+              );
+              if (recovered) {
+                return recovered;
+              }
+            }
+
+            attemptedSend = true;
+            try {
+              const response = await outerFetch(input, {
+                ...init,
+                signal: combinedSignal,
+              });
+
+              if (response.status === 409 && identifiers) {
+                const reconciled = await probeExistingRunAfterPostFailure(
+                  identifiers,
+                  combinedSignal,
+                );
+                if (reconciled) {
+                  return reconciled;
+                }
+              }
+
+              if (
+                TRANSIENT_HTTP_STATUSES.has(response.status) &&
+                Date.now() < deadline &&
+                !combinedSignal.aborted
+              ) {
+                await waitForRetryOrOnline(
+                  STREAM_RECONNECT_RETRY_DELAY_MS,
+                  combinedSignal,
+                );
+                continue;
+              }
+
+              return tapSseResponse(response);
+            } catch (error) {
+              if (combinedSignal.aborted || Date.now() >= deadline) {
+                throw error;
+              }
+              await waitForRetryOrOnline(
+                STREAM_RECONNECT_RETRY_DELAY_MS,
+                combinedSignal,
+              );
+            }
+          }
+        }
+
         while (true) {
+          if (isBrowserOffline() && !combinedSignal.aborted) {
+            if (Date.now() >= deadline) {
+              throw new Error("Network offline timeout exceeded");
+            }
+            await waitForRetryOrOnline(
+              STREAM_RECONNECT_RETRY_DELAY_MS,
+              combinedSignal,
+            );
+            continue;
+          }
+
           try {
             const headers = new Headers(init?.headers);
             if (state.activeSendMessagesCount > 0) {
@@ -217,14 +400,12 @@ export class AbortableChatTransport<
               (startIndex > 0 || state.activeSendMessagesCount > 0)
             ) {
               state.lastChunkAt = Date.now();
+              options.onReconnectNeeded?.();
               return createSyntheticFinishSseResponse();
             }
 
             if (
-              (response.status === 502 ||
-                response.status === 503 ||
-                response.status === 504 ||
-                response.status === 429) &&
+              TRANSIENT_HTTP_STATUSES.has(response.status) &&
               Date.now() < deadline &&
               !combinedSignal.aborted
             ) {
@@ -253,7 +434,7 @@ export class AbortableChatTransport<
     );
 
     super({
-      maxConsecutiveErrors: 240,
+      maxConsecutiveErrors: 600,
       ...options,
       fetch: fetchWithAbort,
       prepareSendMessagesRequest: async (request) => {

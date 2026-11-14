@@ -1,15 +1,17 @@
 import { CheckCircle2, Layers, Plug, Terminal, Users } from "lucide-react";
 import Link from "next/link";
+import { ToolkitPresetIcon } from "@/components/toolkit-icons";
 
 const CONNECTED_APPS = [
-  "GitHub",
-  "Vercel",
-  "Gmail",
-  "Slack",
-  "Linear",
-  "Notion",
-  "Google Calendar",
-  "Jira",
+  { slug: "github", name: "GitHub" },
+  { slug: "vercel", name: "Vercel" },
+  { slug: "gmail", name: "Gmail" },
+  { slug: "slack", name: "Slack" },
+  { slug: "linear", name: "Linear" },
+  { slug: "notion", name: "Notion" },
+  { slug: "googlecalendar", name: "Google Calendar" },
+  { slug: "figma", name: "Figma" },
+  { slug: "jira", name: "Jira" },
 ] as const;
 
 export function LandingBento() {
@@ -27,14 +29,14 @@ export function LandingBento() {
               <p className="max-w-[54ch] text-pretty text-base leading-relaxed text-(--l-fg-2)">
                 Stay inside one workspace from first prompt to verified pull
                 request, whether a single agent knocks out a fix or a specialist
-                team builds across files together.
+                team ships dependency waves together.
               </p>
             </div>
           </div>
 
           {/* Asymmetric 12-column grid (7 + 5, then 5 + 7) */}
           <div className="mt-10 grid gap-4 lg:mt-12 lg:grid-cols-12">
-            {/* Primary Card 1 (7 cols): Live In-Chat Team Mode */}
+            {/* Primary Card 1 (7 cols): Live In-Chat Team Wave Mode */}
             <article className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7">
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
@@ -43,29 +45,32 @@ export function LandingBento() {
                       className="size-4 text-(--l-fg-3)"
                       strokeWidth={1.5}
                     />
-                    <span>Live in-chat Team mode</span>
+                    <span>Live in-chat Team waves</span>
                   </span>
                   <span className="font-mono text-xs tabular-nums">
-                    4 specialists · 1 conversation
+                    Dependency DAG · 1 conversation
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
                   Watch the whole team work right inside your main chat
                 </h3>
                 <p className="mt-3 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
-                  No hidden side drawers required to follow multi-agent runs.
-                  Architect, Explorer, Executor, and Reviewer stream their task
-                  claims, touched files, and test checks live inside the turn
-                  before handing back a single verified summary.
+                  Complex builds split into dependency waves: scout specs lock
+                  shared types first, builders implement disjoint files in
+                  parallel, and reviewers verify the real diff inline before
+                  handing back a clean summary.
                 </p>
               </div>
 
               <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
                 {[
-                  { role: "Architect", focus: "Plan & file locks" },
-                  { role: "Explorer", focus: "Codebase discovery" },
-                  { role: "Executor", focus: "Scoped implementation" },
-                  { role: "Reviewer", focus: "Checks & edge cases" },
+                  {
+                    role: "Wave 0 · Architect",
+                    focus: "Contracts & wave plan",
+                  },
+                  { role: "Wave 0 · Explorer", focus: "Codebase discovery" },
+                  { role: "Wave 1 · Executor", focus: "Disjoint file edits" },
+                  { role: "Wave 2 · Reviewer", focus: "Tests & edge cases" },
                 ].map((item) => (
                   <div
                     key={item.role}
@@ -153,16 +158,17 @@ export function LandingBento() {
               <div className="mt-6 flex flex-wrap gap-2">
                 {CONNECTED_APPS.map((app) => (
                   <span
-                    key={app}
-                    className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 font-mono text-xs text-(--l-fg-2)"
+                    key={app.slug}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1.5 font-mono text-xs text-(--l-fg-2)"
                   >
-                    {app}
+                    <ToolkitPresetIcon slug={app.slug} className="size-3.5" />
+                    <span>{app.name}</span>
                   </span>
                 ))}
               </div>
             </article>
 
-            {/* Primary Card 2 (7 cols): Frontier Model Routing & Durable Execution */}
+            {/* Primary Card 2 (7 cols): Frontier Model Routing, Caching & Durable Execution */}
             <article className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7">
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
@@ -178,28 +184,35 @@ export function LandingBento() {
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                  Switch models mid-session and never lose work to flaky Wi-Fi
+                  99% prompt caching, $5–$40 plans, and runs that survive
+                  offline drops
                 </h3>
                 <p className="mt-3 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
-                  Route everyday tasks to fast frontier models or step up to
-                  deep reasoning architectures on the next turn. Because
-                  execution runs in checkpointed cloud workflows, toggling
-                  airplane mode or closing your browser never stalls progress.
+                  Switch models or reasoning effort between turns with zero
+                  token markup. Multi-turn workspace caching cuts repeat prompt
+                  cost by up to 99%, while server-side checkpoints keep work
+                  alive even if your Wi-Fi drops.
                 </p>
               </div>
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-(--l-border) pt-4">
                 <div className="flex flex-wrap gap-6 font-mono text-xs tabular-nums">
                   <div>
-                    <span className="text-(--l-fg-3)">Stream sync</span>{" "}
+                    <span className="text-(--l-fg-3)">Prompt cache</span>{" "}
                     <span className="font-medium text-(--l-fg)">
-                      Resumes on reconnect
+                      Up to 99% reuse
                     </span>
                   </div>
                   <div>
-                    <span className="text-(--l-fg-3)">Billing</span>{" "}
+                    <span className="text-(--l-fg-3)">Goat plan</span>{" "}
                     <span className="font-medium text-(--l-fg)">
-                      Zero token markup
+                      $13/mo → $50 credit
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-(--l-fg-3)">Stream sync</span>{" "}
+                    <span className="font-medium text-(--l-fg)">
+                      Resumes on reconnect
                     </span>
                   </div>
                 </div>

@@ -1,15 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Logo } from "@/components/landing/logo";
 import { SignInButton } from "@/components/auth/sign-in-button";
 
 /**
- * The dedicated sign-in page (Vercel-login style: one centered card,
- * full-width provider buttons, nothing else to click).
- *
- * All three configured providers are offered: Vercel, Google, GitHub.
- * Marketing CTAs ("Start building", nav "Sign in") funnel here instead
- * of embedding the OAuth handoff in the landing page.
+ * The dedicated sign-in page (one centered card, full-width provider buttons).
  *
  * `?next=` carries a same-origin post-login destination (the OAuth
  * round trip loses client state, so the path travels in the query).
@@ -17,13 +11,8 @@ import { SignInButton } from "@/components/auth/sign-in-button";
 export const metadata: Metadata = {
   title: "Sign in",
   description:
-    "Sign in to Entry Agents with Vercel, Google, or GitHub to start shipping with an autonomous coding agent.",
+    "Sign in with Vercel, Google, or GitHub to open your cloud engineering workspaces.",
   alternates: {
-    // Indexable on purpose: "entry agents login" is a real query, and an
-    // indexed sign-in page is also what Google needs before it can offer
-    // one as a sitelink under the brand result. The canonical collapses
-    // the ?next= variants (same page, only the post-login target differs)
-    // onto this one URL.
     canonical: "/login",
   },
 };
@@ -45,17 +34,10 @@ export default async function LoginPage({
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12 sm:px-6">
       <div className="w-full max-w-sm">
-        <Link
-          href="/"
-          className="mb-8 flex items-center justify-center gap-2 text-sm font-semibold tracking-tight sm:mb-10"
-        >
-          <Logo className="text-foreground" />
-        </Link>
-
         <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-xs sm:p-8">
           <div className="text-center">
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-              Sign in to Entry
+              Sign in
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               Continue with Vercel, Google, or GitHub to open your workspaces.
@@ -81,7 +63,7 @@ export default async function LoginPage({
           </div>
 
           <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
-            By continuing, you agree to use Entry Agents responsibly and only
+            By continuing, you agree to use this workspace responsibly and only
             connect accounts you control.
           </p>
         </div>
@@ -91,7 +73,7 @@ export default async function LoginPage({
             href="/"
             className="underline underline-offset-4 hover:text-foreground"
           >
-            Back to Entry Agents
+            Back to home
           </Link>
         </p>
       </div>

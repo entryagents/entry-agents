@@ -387,16 +387,12 @@ export function McpServersSection() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-xl border border-border/70 bg-card px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold">MCP servers</h2>
-          <p className="text-sm text-muted-foreground">
-            Connect remote HTTP/SSE endpoints or run stdio MCP servers inside
-            your session sandbox. Tools appear to the agent as{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-              mcp__&lt;server&gt;__&lt;tool&gt;
-            </code>
-            .
+          <h2 className="text-sm font-semibold">Registered endpoints</h2>
+          <p className="text-xs text-muted-foreground">
+            Run remote HTTP/SSE tools or npx/uvx stdio servers inside your
+            sandbox
           </p>
         </div>
         <Button
@@ -419,7 +415,7 @@ export function McpServersSection() {
       )}
 
       {showJsonImport && (
-        <div className="space-y-3 rounded-lg border border-border bg-muted/20 p-4">
+        <div className="space-y-3 rounded-xl border border-border bg-card p-4">
           <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <div className="text-sm font-medium">
@@ -428,10 +424,7 @@ export function McpServersSection() {
               <p className="text-xs text-muted-foreground">
                 Paste a standard{" "}
                 <code className="font-mono">{'{ "mcpServers": { ... } }'}</code>{" "}
-                block. Supports remote URLs and{" "}
-                <code className="font-mono">command</code> /{" "}
-                <code className="font-mono">args</code> /{" "}
-                <code className="font-mono">env</code>.
+                block for remote URLs or command servers
               </p>
             </div>
             <Button
@@ -470,7 +463,7 @@ export function McpServersSection() {
       )}
 
       {servers.length > 0 && (
-        <div className="divide-y divide-border/70 rounded-lg border border-border/70">
+        <div className="divide-y divide-border/70 overflow-hidden rounded-xl border border-border/70 bg-card">
           {servers.map((server) => {
             const isTesting = testingIds.has(server.id);
             const isPending = pendingIds.has(server.id);
@@ -491,7 +484,7 @@ export function McpServersSection() {
               server.lastConnectionCheckedAt !== null;
 
             return (
-              <div key={server.id} className="space-y-2.5 px-4 py-3">
+              <div key={server.id} className="space-y-2.5 px-4 py-3.5">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <div className="flex min-w-0 flex-1 items-start gap-3">
                     <div className="relative mt-0.5">
@@ -534,8 +527,9 @@ export function McpServersSection() {
                         {(server.hasHeaders || server.hasEnv) && (
                           <span className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
                             <KeyRound className="size-2.5" />
-                            Encrypted{" "}
-                            {server.transport === "stdio" ? "env" : "headers"}
+                            {server.transport === "stdio"
+                              ? "Env bound"
+                              : "Auth configured"}
                           </span>
                         )}
                       </div>
@@ -666,7 +660,7 @@ export function McpServersSection() {
 
       <form
         onSubmit={handleSubmit}
-        className="space-y-4 rounded-lg border border-dashed border-border/70 p-4"
+        className="space-y-4 rounded-xl border border-border/70 bg-card p-4 sm:p-5"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-sm font-medium">
@@ -695,8 +689,8 @@ export function McpServersSection() {
             </Button>
           ) : (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-muted-foreground">
-                Presets:
+              <span className="text-xs text-muted-foreground">
+                Quick presets
               </span>
               {MCP_QUICK_PRESETS.map((preset, index) => (
                 <button
@@ -704,7 +698,7 @@ export function McpServersSection() {
                   type="button"
                   title={preset.description}
                   onClick={() => applyPreset(index)}
-                  className="rounded-md border border-border/70 bg-muted/30 px-2 py-0.5 text-[11px] text-foreground transition-colors hover:bg-muted"
+                  className="cursor-pointer rounded-md border border-border/70 bg-muted/30 px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-muted"
                 >
                   {preset.label}
                 </button>
@@ -715,7 +709,7 @@ export function McpServersSection() {
 
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
           <div className="grid gap-1.5">
-            <Label htmlFor="mcp-name">Server identifier</Label>
+            <Label htmlFor="mcp-name">Server name</Label>
             <Input
               id="mcp-name"
               placeholder="linear"
@@ -730,7 +724,7 @@ export function McpServersSection() {
           </div>
 
           <div className="grid gap-1.5">
-            <Label>Transport</Label>
+            <Label>Connection type</Label>
             <div className="grid grid-cols-3 rounded-md border border-border bg-muted/30 p-0.5">
               {(["http", "sse", "stdio"] as const).map((kind) => {
                 const Icon = TRANSPORT_META[kind].icon;
@@ -741,7 +735,7 @@ export function McpServersSection() {
                     type="button"
                     onClick={() => setTransport(kind)}
                     title={TRANSPORT_META[kind].hint}
-                    className={`flex items-center justify-center gap-1.5 rounded px-2.5 py-1.5 font-mono text-xs font-medium transition-colors ${
+                    className={`flex cursor-pointer items-center justify-center gap-1.5 rounded px-2.5 py-1.5 font-mono text-xs font-medium transition-colors ${
                       active
                         ? "bg-background text-foreground shadow-xs"
                         : "text-muted-foreground hover:text-foreground"
@@ -799,7 +793,7 @@ export function McpServersSection() {
         ) : (
           <>
             <div className="grid gap-1.5">
-              <Label htmlFor="mcp-url">Server URL</Label>
+              <Label htmlFor="mcp-url">Endpoint URL</Label>
               <Input
                 id="mcp-url"
                 placeholder={
@@ -815,8 +809,8 @@ export function McpServersSection() {
             <div className="grid gap-1.5">
               <Label htmlFor="mcp-headers">
                 {editingServer?.hasHeaders
-                  ? "Replace headers (optional, leave blank to keep encrypted headers)"
-                  : "Headers (optional, one Header: Value per line)"}
+                  ? "Replace headers (optional, leave blank to keep saved headers)"
+                  : "Request headers (optional, one Header: Value per line)"}
               </Label>
               <Textarea
                 id="mcp-headers"
@@ -830,30 +824,34 @@ export function McpServersSection() {
           </>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/20 px-3 py-2 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 bg-muted/20 px-3 py-2.5 text-xs">
           <div className="flex flex-wrap items-center gap-1.5 text-muted-foreground">
             <KeyRound className="size-3.5 shrink-0" strokeWidth={1.5} />
-            <span>Insert secret reference:</span>
+            <span>
+              {transport === "stdio"
+                ? "Bind saved API key as env var"
+                : "Attach saved API key as Bearer auth"}
+            </span>
             {secrets.length > 0 ? (
               secrets.map((secret) => (
                 <button
                   key={secret.id}
                   type="button"
                   onClick={() => insertSecretTemplate(secret.name)}
-                  className="rounded border border-border/70 bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground transition-colors hover:bg-muted"
+                  className="cursor-pointer rounded border border-border/70 bg-background px-2 py-0.5 font-mono text-xs text-foreground transition-colors hover:bg-muted"
                 >
-                  {`{{SECRET:${secret.name}}}`}
+                  + {secret.name}
                 </button>
               ))
             ) : (
-              <span>none stored yet</span>
+              <span className="text-muted-foreground/80">None saved yet</span>
             )}
           </div>
           <Link
             href="/settings/secrets"
-            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            className="inline-flex items-center gap-1 text-xs font-medium text-foreground underline underline-offset-4 hover:opacity-80"
           >
-            Manage secrets vault
+            Add API key
             <ArrowUpRight className="size-3" strokeWidth={1.5} />
           </Link>
         </div>

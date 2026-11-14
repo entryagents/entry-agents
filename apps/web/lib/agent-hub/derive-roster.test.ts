@@ -212,11 +212,13 @@ describe("deriveTeamFeed", () => {
     expect(deriveTeamFeed(null)).toEqual({
       entries: [],
       tasks: [],
+      waves: [],
       fileConflicts: [],
     });
     expect(deriveTeamFeed([])).toEqual({
       entries: [],
       tasks: [],
+      waves: [],
       fileConflicts: [],
     });
   });

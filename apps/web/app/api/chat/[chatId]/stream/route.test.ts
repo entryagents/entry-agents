@@ -300,18 +300,18 @@ describe("GET /api/chat/[chatId]/stream", () => {
     expect(spies.updateChatActiveStreamId).toHaveBeenCalledWith("chat-1", null);
   });
 
-  // RELIABILITY REGRESSION TEST (2026-10-12): a transient probe failure
-  // must NOT clear the activeStreamId (the run may be alive and streaming),
-  // and must not surface the old 503 verify message. It answers 204: the
-  // client's dead-turn recovery regenerates, and that new submit reconciles
-  // the stored id with fresh platform calls.
-  test("returns 204 without clearing when the run probe keeps failing", async () => {
+  // DURABILITY REGRESSION TEST: a transient probe failure
+  // must NOT clear activeStreamId (the run may still be alive and streaming),
+  // and must respond with 503 + Retry-After so the client transport keeps
+  // reconnecting seamlessly instead of closing the turn prematurely.
+  test("returns 503 without clearing when the run probe keeps failing", async () => {
     getRunShouldThrow = true;
     getRunErrorName = "WorkflowWorldError";
     const { GET } = await routeModulePromise;
 
     const response = await GET(createStreamRequest(), routeContext);
-    expect(response.status).toBe(204);
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Retry-After")).toBeTruthy();
     expect(spies.updateChatActiveStreamId).not.toHaveBeenCalled();
   });
 

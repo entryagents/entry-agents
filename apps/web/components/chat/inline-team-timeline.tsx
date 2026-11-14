@@ -11,6 +11,8 @@ import {
   Circle,
   Clock,
   ExternalLink,
+  FileCode2,
+  Layers,
   PanelRight,
   Users,
 } from "lucide-react";
@@ -47,6 +49,8 @@ export interface InlineTeamTimelineProps {
   onDenyTool?: (id: string, reason?: string) => void;
 }
 
+type RosterFilter = "all" | "live" | "done";
+
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(total / 60);
@@ -72,12 +76,20 @@ function formatToolActivity(pending: AgentHubEntry["pending"]): string | null {
   return detail ? `${pending.name} · ${detail}` : pending.name;
 }
 
-function formatLiveExcerpt(rawText: string | null): string | null {
-  if (!rawText) return null;
+function formatLiveExcerpt(
+  rawText: string | null,
+  expanded: boolean,
+): { text: string | null; truncated: boolean } {
+  if (!rawText) return { text: null, truncated: false };
   const normalized = rawText.trim();
-  if (!normalized) return null;
-  if (normalized.length <= 280) return normalized;
-  return `…${normalized.slice(-280).trimStart()}`;
+  if (!normalized) return { text: null, truncated: false };
+  if (expanded || normalized.length <= 280) {
+    return { text: normalized, truncated: normalized.length > 280 };
+  }
+  return {
+    text: `…${normalized.slice(-280).trimStart()}`,
+    truncated: true,
+  };
 }
 
 function TaskStatusGlyph({ status }: { status: TeamFeedTask["status"] }) {
@@ -115,6 +127,10 @@ export function InlineTeamTimeline({
   const anyLive = isStreaming && totals.live > 0;
   const now = useNow(anyLive);
   const [boardExpanded, setBoardExpanded] = useState<boolean | null>(null);
+  const [rosterFilter, setRosterFilter] = useState<RosterFilter>("all");
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>(
+    {},
+  );
 
   const approvalIdByCallId = useMemo(() => {
     const map = new Map<string, string>();
@@ -144,8 +160,21 @@ export function InlineTeamTimeline({
     return map;
   }, [teamFeed.tasks]);
 
+  const visibleRoster = useMemo(() => {
+    if (rosterFilter === "live") {
+      return roster.filter((entry) => isLiveStatus(entry.status));
+    }
+    if (rosterFilter === "done") {
+      return roster.filter((entry) => !isLiveStatus(entry.status));
+    }
+    return roster;
+  }, [roster, rosterFilter]);
+
   const completedTasks = teamFeed.tasks.filter(
     (t) => t.status === "completed",
+  ).length;
+  const contractCount = teamFeed.entries.filter(
+    (e) => e.kind === "contract",
   ).length;
   const hasBoardData = teamFeed.tasks.length > 0 || teamFeed.entries.length > 0;
   const isBoardOpen =
@@ -155,13 +184,13 @@ export function InlineTeamTimeline({
   return (
     <section
       aria-label="Agent team execution"
-      className="my-2 min-w-0 w-full rounded-xl border border-border/80 bg-card text-card-foreground"
+      className="my-2 w-full min-w-0 overflow-hidden rounded-xl border border-border/80 bg-card text-card-foreground"
     >
       {/* Header strip */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-muted/25 px-3 py-2.5 sm:px-4">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-border/70 bg-background text-foreground">
-            <Users className="size-3.5" />
+            <Users className="size-3.5" strokeWidth={1.5} />
           </span>
           <span className="text-xs font-semibold text-foreground sm:text-sm">
             Team execution
@@ -173,9 +202,20 @@ export function InlineTeamTimeline({
                 : `${roster.length} teammate${roster.length === 1 ? "" : "s"}`}
             </span>
           )}
+          {teamFeed.waves.length > 1 && (
+            <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+              · {teamFeed.waves.length} waves
+            </span>
+          )}
           {teamFeed.tasks.length > 0 && (
             <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
               · {completedTasks}/{teamFeed.tasks.length} tasks
+            </span>
+          )}
+          {contractCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+              <FileCode2 className="size-3 shrink-0" strokeWidth={1.5} />
+              {contractCount} contract{contractCount === 1 ? "" : "s"}
             </span>
           )}
           {teamFeed.fileConflicts.length > 0 && (
@@ -187,7 +227,35 @@ export function InlineTeamTimeline({
           )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {roster.length > 2 && (
+            <div className="inline-flex items-center rounded-md border border-border/70 bg-background p-0.5 text-[11px]">
+              {(
+                [
+                  { id: "all", label: "All" },
+                  { id: "live", label: `Live (${totals.live})` },
+                  {
+                    id: "done",
+                    label: `Done (${roster.length - totals.live})`,
+                  },
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setRosterFilter(tab.id)}
+                  className={cn(
+                    "rounded px-2 py-0.5 transition-colors tabular-nums cursor-pointer",
+                    rosterFilter === tab.id
+                      ? "bg-muted font-medium text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          )}
           {totalTokens > 0 && (
             <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
               {formatTokens(totalTokens)} tok
@@ -202,11 +270,46 @@ export function InlineTeamTimeline({
             }}
             className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
           >
-            <PanelRight className="size-3.5" />
+            <PanelRight className="size-3.5" strokeWidth={1.5} />
             <span>Inspect hub</span>
           </Button>
         </div>
       </div>
+
+      {/* Dependency Wave Pipeline bar */}
+      {teamFeed.waves.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-border/60 bg-background/50 px-3 py-2 text-[11px] sm:px-4">
+          <span className="inline-flex items-center gap-1 font-mono text-muted-foreground">
+            <Layers className="size-3 shrink-0" strokeWidth={1.5} />
+            Pipeline:
+          </span>
+          {teamFeed.waves.map((wave, idx) => (
+            <div key={wave.wave} className="inline-flex items-center gap-1.5">
+              {idx > 0 && (
+                <ArrowRight className="size-3 text-muted-foreground/60" />
+              )}
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono tabular-nums",
+                  wave.status === "completed" &&
+                    "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                  wave.status === "active" &&
+                    "border-amber-500/35 bg-amber-500/10 text-foreground",
+                  wave.status === "blocked" &&
+                    "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+                  wave.status === "queued" &&
+                    "border-border/70 bg-muted/30 text-muted-foreground",
+                )}
+              >
+                <span>Wave {wave.wave}</span>
+                <span className="text-[10px] opacity-75">
+                  ({wave.taskIds.length})
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* File overlap warning strip when active teammates claim the same path */}
       {teamFeed.fileConflicts.length > 0 && (
@@ -229,16 +332,20 @@ export function InlineTeamTimeline({
       )}
 
       {/* Live teammate cards directly in main chat */}
-      {roster.length > 0 && (
+      {visibleRoster.length > 0 && (
         <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-2 sm:p-4">
-          {roster.map((entry) => {
+          {visibleRoster.map((entry) => {
             const live = isLiveStatus(entry.status);
             const elapsed =
               live && entry.startedAt !== null
                 ? formatElapsed(now - entry.startedAt)
                 : null;
             const activity = live ? formatToolActivity(entry.pending) : null;
-            const excerpt = formatLiveExcerpt(entry.streamedText);
+            const isCardExpanded = Boolean(expandedCards[entry.id]);
+            const excerpt = formatLiveExcerpt(
+              entry.streamedText,
+              isCardExpanded,
+            );
             const approvalId = approvalIdByCallId.get(entry.id);
             const claimedFiles = filesByRole.get(entry.subagentType) ?? [];
             const entryTokens =
@@ -272,7 +379,7 @@ export function InlineTeamTimeline({
                   </div>
 
                   {/* Assigned task title */}
-                  <div className="flex items-start gap-2 min-w-0">
+                  <div className="flex min-w-0 items-start gap-2">
                     <SubagentIcon
                       type={entry.subagentType}
                       className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
@@ -304,10 +411,31 @@ export function InlineTeamTimeline({
                   )}
 
                   {/* Real-time streamed text / summary excerpt */}
-                  {excerpt && (
-                    <p className="whitespace-pre-wrap break-words rounded-md bg-muted/25 px-2.5 py-2 text-xs leading-relaxed text-muted-foreground line-clamp-3">
-                      {excerpt}
-                    </p>
+                  {excerpt.text && (
+                    <div className="space-y-1 rounded-md bg-muted/25 px-2.5 py-2">
+                      <p
+                        className={cn(
+                          "whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground",
+                          !isCardExpanded && "line-clamp-3",
+                        )}
+                      >
+                        {excerpt.text}
+                      </p>
+                      {excerpt.truncated && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedCards((prev) => ({
+                              ...prev,
+                              [entry.id]: !isCardExpanded,
+                            }))
+                          }
+                          className="text-[11px] font-medium text-foreground/80 hover:text-foreground cursor-pointer"
+                        >
+                          {isCardExpanded ? "Show less" : "Read full output"}
+                        </button>
+                      )}
+                    </div>
                   )}
 
                   {/* Error text if teammate failed */}
@@ -346,7 +474,7 @@ export function InlineTeamTimeline({
                       className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
                     >
                       <span>Open thread</span>
-                      <ExternalLink className="size-3" />
+                      <ExternalLink className="size-3" strokeWidth={1.5} />
                     </button>
                   )}
                 </div>
@@ -356,7 +484,7 @@ export function InlineTeamTimeline({
         </div>
       )}
 
-      {/* Inline shared checklist & handoffs */}
+      {/* Inline shared checklist, contracts & handoffs */}
       {hasBoardData && (
         <div className="border-t border-border/70">
           <button
@@ -404,6 +532,11 @@ export function InlineTeamTimeline({
                             {task.title}
                           </span>
                           <SubagentRoleBadge subagentType={task.assignedRole} />
+                          {task.dependsOn && task.dependsOn.length > 0 && (
+                            <span className="font-mono text-[10px] text-muted-foreground">
+                              after {task.dependsOn.join(", ")}
+                            </span>
+                          )}
                         </div>
                         {task.files && task.files.length > 0 && (
                           <div className="flex flex-wrap gap-1">
@@ -433,13 +566,25 @@ export function InlineTeamTimeline({
 
               {teamFeed.entries.length > 0 && (
                 <div className="space-y-1.5">
-                  {teamFeed.entries.slice(-4).map((entry) => (
+                  {teamFeed.entries.slice(-6).map((entry) => (
                     <div
                       key={entry.id}
-                      className="rounded-lg border border-border/60 bg-background/80 px-2.5 py-2 text-xs"
+                      className={cn(
+                        "rounded-lg border px-2.5 py-2 text-xs",
+                        entry.kind === "contract"
+                          ? "border-amber-500/30 bg-amber-500/5"
+                          : "border-border/60 bg-background/80",
+                      )}
                     >
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded border border-border/70 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium capitalize text-muted-foreground">
+                        <span
+                          className={cn(
+                            "rounded border px-1.5 py-0.5 text-[10px] font-medium capitalize",
+                            entry.kind === "contract"
+                              ? "border-amber-500/40 bg-background text-amber-700 dark:text-amber-300"
+                              : "border-border/70 bg-muted/50 text-muted-foreground",
+                          )}
+                        >
                           {entry.kind}
                         </span>
                         <span className="font-medium text-foreground">
@@ -457,7 +602,7 @@ export function InlineTeamTimeline({
                           · {entry.title}
                         </span>
                       </div>
-                      <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground">
+                      <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground">
                         {entry.content}
                       </p>
                     </div>

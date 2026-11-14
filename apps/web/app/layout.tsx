@@ -88,18 +88,18 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       {
-        url: "/logo-light.png",
+        url: "/logo-light.png?v=2",
         media: "(prefers-color-scheme: light)",
         type: "image/png",
       },
       {
-        url: "/logo-dark.png",
+        url: "/logo-dark.png?v=2",
         media: "(prefers-color-scheme: dark)",
         type: "image/png",
       },
     ],
-    shortcut: "/logo-light.png",
-    apple: "/logo-dark.png",
+    shortcut: "/logo-light.png?v=2",
+    apple: "/logo-dark.png?v=2",
   },
   openGraph: {
     type: "website",
