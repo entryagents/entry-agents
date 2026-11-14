@@ -129,7 +129,10 @@ describe("getComposioMcpServerConfig", () => {
     const config = await getComposioMcpServerConfig("user_1");
     expect(useCalls).toEqual(["session_stale"]);
     expect(createCalls).toEqual(["user_1"]);
-    expect(config?.url).toBe("https://mcp.composio.dev/session_new");
+    expect(config).toMatchObject({
+      transport: "http",
+      url: "https://mcp.composio.dev/session_new",
+    });
     expect(storedSessionIds.get("user_1")).toBe("session_new");
   });
 

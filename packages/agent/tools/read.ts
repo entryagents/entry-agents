@@ -3,6 +3,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { wrapExternalFileContent } from "./content-boundary";
 import { ensureReadFileState, normalizeGatePath } from "./read-state";
+import type { SecretRedactor } from "../lib/secret-redactor";
 import {
   checkUnchangedRead,
   type SelectedLines as SelectedLinesResult,
@@ -325,6 +326,15 @@ EXAMPLES:
           (line, i) => `${selection.startLine + i}: ${line}`,
         );
 
+        const redactor = (
+          experimental_context as
+            | { secretRedactor?: SecretRedactor }
+            | undefined
+        )?.secretRedactor;
+        const safeContent = redactor?.hasSecrets()
+          ? redactor.redact(numberedLines.join("\n"))
+          : numberedLines.join("\n");
+
         const result: Record<string, unknown> = {
           success: true,
           path: displayPath,
@@ -335,10 +345,7 @@ EXAMPLES:
           // Workspace file content is untrusted data (upstream #875):
           // wrap it in a prompt-injection boundary so instructions
           // embedded in a repo can't masquerade as operator commands.
-          content: wrapExternalFileContent(
-            displayPath,
-            numberedLines.join("\n"),
-          ),
+          content: wrapExternalFileContent(displayPath, safeContent),
         };
 
         if (selection.truncated) {
@@ -358,10 +365,18 @@ EXAMPLES:
           unchanged?: boolean;
         };
       } catch (error) {
+        const redactor = (
+          experimental_context as
+            | { secretRedactor?: SecretRedactor }
+            | undefined
+        )?.secretRedactor;
         const message = error instanceof Error ? error.message : String(error);
+        const safeMessage = redactor?.hasSecrets()
+          ? redactor.redact(message)
+          : message;
         return {
           success: false,
-          error: `Failed to read file: ${message}`,
+          error: `Failed to read file: ${safeMessage}`,
         };
       }
     },

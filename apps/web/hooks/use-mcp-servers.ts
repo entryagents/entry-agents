@@ -3,17 +3,40 @@
 import useSWR from "swr";
 import { fetcher } from "@/lib/swr";
 
+export type McpTransportType = "http" | "sse" | "stdio";
+
+export interface McpCachedToolSummary {
+  name: string;
+  description?: string;
+}
+
 export interface McpServerSummary {
   id: string;
   name: string;
-  transport: "http" | "sse";
-  url: string;
+  transport: McpTransportType;
+  url: string | null;
+  command: string | null;
+  args: string[] | null;
   hasHeaders: boolean;
+  hasEnv: boolean;
   enabled: boolean;
+  lastToolCount: number | null;
+  cachedTools: McpCachedToolSummary[] | null;
   lastConnectionError: string | null;
   lastConnectionCheckedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface McpTestResult {
+  ok: boolean;
+  latencyMs: number;
+  tools: Array<{
+    name: string;
+    namespacedName: string;
+    description?: string;
+  }>;
+  error?: string;
 }
 
 interface ListResponse {
@@ -24,18 +47,29 @@ interface SingleResponse {
   server: McpServerSummary;
 }
 
-export interface CreateMcpServerInput {
-  name: string;
-  transport: "http" | "sse";
-  url: string;
-  headers?: Record<string, string>;
-}
+export type CreateMcpServerInput =
+  | {
+      name: string;
+      transport: "http" | "sse";
+      url: string;
+      headers?: Record<string, string>;
+    }
+  | {
+      name: string;
+      transport: "stdio";
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    };
 
 export interface UpdateMcpServerInput {
   name?: string;
-  transport?: "http" | "sse";
+  transport?: McpTransportType;
   url?: string;
   headers?: Record<string, string>;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
   enabled?: boolean;
 }
 
@@ -93,6 +127,18 @@ export function useMcpServers() {
     await mutate();
   };
 
+  const testServer = async (id: string): Promise<McpTestResult> => {
+    const res = await fetch(`/api/settings/mcp-servers/${id}/test`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      await parseErrorOrThrow(res, "Failed to test MCP server");
+    }
+    const result = (await res.json()) as McpTestResult;
+    await mutate();
+    return result;
+  };
+
   return {
     servers: data?.servers ?? [],
     loading: isLoading,
@@ -100,6 +146,7 @@ export function useMcpServers() {
     createServer,
     updateServer,
     deleteServer,
+    testServer,
     refresh: mutate,
   };
 }

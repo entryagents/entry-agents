@@ -190,16 +190,17 @@ export class NovitaSandbox implements Sandbox {
     command: string,
     cwd: string,
     timeoutMs: number,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; env?: Record<string, string> },
   ): Promise<ExecResult> {
     this.assertRunning();
     if (options?.signal?.aborted) throw new Error("Command aborted");
 
+    const baseEnv = this.commandEnv();
     const res = await this.client.exec(this.sandboxId, {
       command,
       cwd,
       timeoutMs,
-      env: this.commandEnv(),
+      env: options?.env ? { ...baseEnv, ...options.env } : baseEnv,
     });
 
     const stdoutRes = truncateOutput(res.stdout);

@@ -1,34 +1,45 @@
-import { createMCPClient } from "@ai-sdk/mcp";
+import {
+  createMCPClient,
+  type MCPClient,
+  type MCPTransport,
+} from "@ai-sdk/mcp";
+import type { Sandbox } from "@entry-agents/sandbox";
 import type { Tool, ToolSet } from "ai";
+import {
+  createSecretRedactor,
+  type SecretRedactor,
+} from "../lib/secret-redactor";
+import { SandboxStdioMcpTransport } from "./mcp-stdio-sandbox";
 
-// Vendor-agnostic plumbing for connecting Entry's agent to external
-// Model Context Protocol servers -- the mechanism behind "give Entry
-// access to thousands of tools". This module deliberately does NOT
-// pick a vendor (Composio, Smithery, a self-serve BYO-MCP-server list,
-// etc.) or resolve per-session/per-user config -- that's a product +
-// security decision still open with the owner. What's here is the
-// generic, reusable connect/merge/close primitive any of those options
-// will plug into once decided.
-//
-// Not wired into the live request path yet (nothing calls this from
-// app/workflows/chat.ts). See open-agent.ts's `extraTools` call option
-// for how a caller merges the result in.
-
-export interface McpServerConfig {
-  /**
-   * Short, stable identifier used in tool names (mcp__<name>__<tool>).
-   * Keep it stable across requests -- changing it changes every tool
-   * name the model has already seen mid-conversation.
-   */
-  name: string;
-  transport: "http" | "sse";
-  url: string;
-  headers?: Record<string, string>;
-}
+export type McpServerConfig =
+  | {
+      /**
+       * Short, stable identifier used in tool names (mcp__<name>__<tool>).
+       * Keep it stable across requests -- changing it changes every tool
+       * name the model has already seen mid-conversation.
+       */
+      name: string;
+      transport: "http" | "sse";
+      url: string;
+      headers?: Record<string, string>;
+    }
+  | {
+      name: string;
+      transport: "stdio";
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+    };
 
 export interface McpConnectionFailure {
   name: string;
   error: string;
+}
+
+export interface McpDiscoveredTool {
+  name: string;
+  namespacedName: string;
+  description?: string;
 }
 
 export interface McpToolSetResult {
@@ -49,12 +60,24 @@ export interface McpToolSetResult {
    * fine. Callers should log/surface these, not throw.
    */
   failures: McpConnectionFailure[];
+  /** Discovered tool catalog per connected server, deterministically sorted. */
+  toolsByServer?: Record<string, McpDiscoveredTool[]>;
+}
+
+export interface CreateMcpToolSetOptions {
+  /** Session sandbox required to run `stdio` MCP servers inside isolation. */
+  sandbox?: Sandbox;
+  /** Redacts any secret values from MCP errors and tool outputs. */
+  secretRedactor?: SecretRedactor;
+  /** Connection + tools/list timeout per server (default 15_000ms). */
+  connectTimeoutMs?: number;
 }
 
 // Most providers cap tool names well under this; MCP tool names are
 // arbitrary strings so a very long "<server>__<tool>" combination
 // gets truncated rather than risking a rejected request.
 const MAX_TOOL_NAME_LENGTH = 64;
+const DEFAULT_CONNECT_TIMEOUT_MS = 15_000;
 
 export function namespacedMcpToolName(
   serverName: string,
@@ -69,16 +92,11 @@ export function namespacedMcpToolName(
 type PermissionMode = "ask" | "autoAccept" | "fullAccess";
 
 /**
- * Every tool pulled in from an MCP server gets wrapped with the same
- * blanket approval gate web_fetch uses: needsApproval => true whenever
- * permissionMode is "ask" (the default). MCP has no standard concept
- * of "this tool is dangerous" -- an agent that already has bash,
- * git push, and deploy access has no safe way to trust a remote
- * server's self-reported tool metadata, so every external tool call
- * is treated as sensitive by default. "autoAccept"/"fullAccess" lift
- * this the same way they lift every other gate.
+ * Wraps every MCP tool with Entry's approval gate (`needsApproval` in "ask" mode)
+ * AND scrubs returned outputs + thrown errors through `secretRedactor`.
  */
-function withApprovalGate<T extends Tool>(mcpTool: T): T {
+function wrapMcpTool<T extends Tool>(mcpTool: T, redactor: SecretRedactor): T {
+  const originalExecute = mcpTool.execute;
   return {
     ...mcpTool,
     needsApproval: async (
@@ -92,7 +110,125 @@ function withApprovalGate<T extends Tool>(mcpTool: T): T {
       )?.permissionMode;
       return (mode ?? "ask") === "ask";
     },
+    ...(originalExecute
+      ? {
+          execute: async (args: unknown, execOptions: unknown) => {
+            try {
+              const out = await originalExecute(
+                args as never,
+                execOptions as never,
+              );
+              return redactor.hasSecrets() ? redactor.redactUnknown(out) : out;
+            } catch (error) {
+              if (error instanceof Error && redactor.hasSecrets()) {
+                throw new Error(redactor.redact(error.message), {
+                  cause: error,
+                });
+              }
+              throw error;
+            }
+          },
+        }
+      : {}),
   } as T;
+}
+
+async function connectSingleMcpServer(
+  server: McpServerConfig,
+  options?: CreateMcpToolSetOptions,
+): Promise<MCPClient> {
+  const redactor = options?.secretRedactor ?? createSecretRedactor([]);
+  const timeoutMs = options?.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
+
+  let transport:
+    | { type: "http" | "sse"; url: string; headers?: Record<string, string> }
+    | MCPTransport;
+
+  if (server.transport === "stdio") {
+    if (!options?.sandbox) {
+      throw new Error(
+        `Stdio MCP server "${server.name}" requires an active sandbox.`,
+      );
+    }
+    transport = new SandboxStdioMcpTransport({
+      name: server.name,
+      command: server.command,
+      args: server.args,
+      env: server.env,
+      sandbox: options.sandbox,
+      secretRedactor: redactor,
+      timeoutMs: Math.max(timeoutMs, 25_000),
+    });
+  } else {
+    transport = {
+      type: server.transport,
+      url: server.url,
+      headers: server.headers,
+    };
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await createMCPClient({
+      transport,
+      initializationOptions: {
+        signal: controller.signal,
+        timeout: timeoutMs,
+      },
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Connects to a single MCP server and discovers its tools (used by Settings "Test" button
+ * as well as internal verification). Always closes the client before returning.
+ */
+export async function discoverMcpServerTools(
+  server: McpServerConfig,
+  options?: CreateMcpToolSetOptions,
+): Promise<{
+  ok: boolean;
+  latencyMs: number;
+  tools: McpDiscoveredTool[];
+  error?: string;
+}> {
+  const redactor = options?.secretRedactor ?? createSecretRedactor([]);
+  const startedAt = Date.now();
+  let client: MCPClient | undefined;
+  try {
+    client = await connectSingleMcpServer(server, options);
+    const serverTools = await client.tools();
+    const tools: McpDiscoveredTool[] = Object.entries(serverTools)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([toolName, def]) => ({
+        name: toolName,
+        namespacedName: namespacedMcpToolName(server.name, toolName),
+        description:
+          typeof (def as { description?: unknown }).description === "string"
+            ? ((def as { description: string }).description ?? undefined)
+            : undefined,
+      }));
+    return {
+      ok: true,
+      latencyMs: Date.now() - startedAt,
+      tools,
+    };
+  } catch (error) {
+    const raw = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      latencyMs: Date.now() - startedAt,
+      tools: [],
+      error: redactor.redact(raw),
+    };
+  } finally {
+    if (client) {
+      await client.close().catch(() => {});
+    }
+  }
 }
 
 /**
@@ -101,57 +237,70 @@ function withApprovalGate<T extends Tool>(mcpTool: T): T {
  * namespaced as mcp__<server>__<tool> to avoid collisions between
  * servers or with Entry's own built-in tools.
  *
- * Deliberately connect-per-call rather than pooled/cached: this is
- * meant to be called from inside a durable "use step" function (see
- * runAgentStep in app/workflows/chat.ts), which may resume on a
- * different worker between steps -- there's no long-lived process to
- * hold a pooled connection across separate step invocations anyway,
- * matching how this codebase already re-resolves DB connections fresh
- * per step rather than caching them.
+ * Tool keys are sorted deterministically before return so network timing
+ * differences across steps never shuffle schema order and bust KV prompt caches.
  */
 export async function createMcpToolSet(
   servers: McpServerConfig[],
+  options?: CreateMcpToolSetOptions,
 ): Promise<McpToolSetResult> {
+  const redactor = options?.secretRedactor ?? createSecretRedactor([]);
   const closers: (() => Promise<void>)[] = [];
   const failures: McpConnectionFailure[] = [];
-  const mergedTools: ToolSet = {};
+  const unsortedTools: ToolSet = {};
+  const toolsByServer: Record<string, McpDiscoveredTool[]> = {};
 
   await Promise.all(
     servers.map(async (server) => {
       try {
-        const client = await createMCPClient({
-          transport: {
-            type: server.transport,
-            url: server.url,
-            headers: server.headers,
-          },
-        });
+        const client = await connectSingleMcpServer(server, options);
         closers.push(() => client.close());
 
         const serverTools = await client.tools();
-        for (const [toolName, mcpTool] of Object.entries(serverTools)) {
+        const discovered: McpDiscoveredTool[] = [];
+        for (const [toolName, mcpTool] of Object.entries(serverTools).sort(
+          ([a], [b]) => a.localeCompare(b),
+        )) {
           const name = namespacedMcpToolName(server.name, toolName);
-          mergedTools[name] = withApprovalGate(mcpTool as Tool);
+          unsortedTools[name] = wrapMcpTool(mcpTool as Tool, redactor);
+          discovered.push({
+            name: toolName,
+            namespacedName: name,
+            description:
+              typeof (mcpTool as { description?: unknown }).description ===
+              "string"
+                ? (mcpTool as { description: string }).description
+                : undefined,
+          });
         }
+        toolsByServer[server.name] = discovered;
       } catch (error) {
+        const raw = error instanceof Error ? error.message : String(error);
         failures.push({
           name: server.name,
-          error: error instanceof Error ? error.message : String(error),
+          error: redactor.redact(raw),
         });
       }
     }),
   );
 
+  const sortedTools: ToolSet = {};
+  for (const key of Object.keys(unsortedTools).sort()) {
+    const toolDef = unsortedTools[key];
+    if (toolDef) {
+      sortedTools[key] = toolDef;
+    }
+  }
+
   return {
-    tools: mergedTools,
+    tools: sortedTools,
     failures,
+    toolsByServer,
     close: async () => {
       await Promise.all(
         closers.map((close) =>
           close().catch(() => {
-            // Best-effort cleanup -- a close() failure shouldn't
-            // surface as a turn error, the connection is being torn
-            // down anyway.
+            // Best-effort cleanup
           }),
         ),
       );

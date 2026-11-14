@@ -821,14 +821,26 @@ export const mcpServers = pgTable(
     // User-facing label AND the tool-namespace segment
     // (mcp__<name>__<tool>) -- kept short and slug-like on write.
     name: text("name").notNull(),
-    transport: text("transport", { enum: ["http", "sse"] }).notNull(),
-    url: text("url").notNull(),
+    transport: text("transport", { enum: ["http", "sse", "stdio"] }).notNull(),
+    // Required for http/sse servers; null for stdio servers running inside the sandbox.
+    url: text("url"),
+    // Command and args for stdio MCP servers executed inside the user's sandbox.
+    command: text("command"),
+    args: jsonb("args").$type<string[]>(),
+    // AES-256-GCM ciphertext of a Record<string, string> of env vars for stdio
+    // servers (supports {{SECRET:NAME}} interpolation), or null if none.
+    encryptedEnv: text("encrypted_env"),
     // AES-256-GCM ciphertext of a Record<string, string> (e.g. an
     // Authorization header carrying that server's API key), or null
     // if the server needs no auth. Never decrypted for display --
     // only decrypted server-side, per-request, right before opening
     // the MCP connection. See lib/mcp/header-encryption.ts.
     encryptedHeaders: text("encrypted_headers"),
+    // Cached discovery metadata from the latest connection/test so Settings UI
+    // shows discovered tool count & names cleanly without exposing credentials.
+    lastToolCount: integer("last_tool_count"),
+    cachedTools:
+      jsonb("cached_tools").$type<{ name: string; description?: string }[]>(),
     // Independent of the underlying MCP server being reachable --
     // lets a user turn a server off without losing/re-entering its
     // config, and is checked before every request re-attempts a
@@ -847,6 +859,42 @@ export const mcpServers = pgTable(
 
 export type McpServerRow = typeof mcpServers.$inferSelect;
 export type NewMcpServerRow = typeof mcpServers.$inferInsert;
+
+// User-managed encrypted secrets vault (API keys, webhooks, tokens) injected
+// safely into sandbox execution and {{SECRET:NAME}} request templates without
+// exposing plaintext secret values to the LLM context, UI GETs, or logs.
+export const userSecrets = pgTable(
+  "user_secrets",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // Env-var identifier (e.g. OPENAI_API_KEY, STRIPE_SECRET_KEY).
+    name: text("name").notNull(),
+    // Short user-authored hint explaining what this key is for (safe to show to the agent).
+    description: text("description"),
+    // AES-256-GCM ciphertext using a dedicated HKDF key (lib/secrets/encryption.ts).
+    encryptedValue: text("encrypted_value").notNull(),
+    // Display-only redacted hint (e.g. "sk-...a1b2" or "••••••••").
+    maskedHint: text("masked_hint").notNull(),
+    // Optional domain allowlist enforced when using {{SECRET:NAME}} in web_fetch / MCP URLs.
+    allowedHosts: jsonb("allowed_hosts").$type<string[]>(),
+    // Whether to expose this secret as an ephemeral env var inside bash commands.
+    injectInSandbox: boolean("inject_in_sandbox").notNull().default(true),
+    usageCount: integer("usage_count").notNull().default(0),
+    lastUsedAt: timestamp("last_used_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("user_secrets_user_id_idx").on(table.userId),
+    uniqueIndex("user_secrets_user_id_name_idx").on(table.userId, table.name),
+  ],
+);
+
+export type UserSecretRow = typeof userSecrets.$inferSelect;
+export type NewUserSecretRow = typeof userSecrets.$inferInsert;
 
 // Persists the Composio session ID we mint for each Entry user so the
 // chat request path resumes the same session across turns instead of

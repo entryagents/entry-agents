@@ -210,6 +210,8 @@ type SessionChatContextValue = {
   attemptReconnection: () => Promise<ReconnectionStatus>;
   /** Clear a transient chat error and attempt to resume an active stream */
   retryChatStream: (opts?: RetryChatStreamOptions) => void;
+  /** Timestamp (ms) of the last SSE chunk received on the active stream */
+  getLastChunkReceivedAt: () => number;
   /** Update session repo info after creating a repo */
   updateSessionRepo: (info: {
     cloneUrl: string;
@@ -254,6 +256,7 @@ type SessionChatRuntimeContextValue = Pick<
   | "workspaceStatus"
   | "clearWorkspaceStatus"
   | "retryChatStream"
+  | "getLastChunkReceivedAt"
   | "hadInitialMessages"
   | "initialMessages"
 >;
@@ -401,6 +404,7 @@ export function SessionChatProvider({
     chat,
     stopChatStream,
     retryChatStream,
+    getLastChunkReceivedAt,
     workspaceStatus,
     clearWorkspaceStatus,
   } = useSessionChatRuntime({
@@ -1128,8 +1132,17 @@ export function SessionChatProvider({
     [sessionRecord],
   );
 
+  const latestChatSettingsVersionRef = useRef(0);
+
   const updateChatModel = useCallback(
     async (modelId: string) => {
+      const version = ++latestChatSettingsVersionRef.current;
+      let previousModelId: string | null = null;
+      setChatInfo((prev) => {
+        previousModelId = prev.modelId;
+        return { ...prev, modelId };
+      });
+
       const res = await fetch(
         `/api/sessions/${sessionRecord.id}/chats/${chatInfo.id}`,
         {
@@ -1141,10 +1154,15 @@ export function SessionChatProvider({
 
       const data = (await res.json()) as { chat?: Chat; error?: string };
       if (!res.ok || !data.chat) {
+        if (latestChatSettingsVersionRef.current === version) {
+          setChatInfo((prev) => ({ ...prev, modelId: previousModelId }));
+        }
         throw new Error(data.error ?? "Failed to update chat model");
       }
 
-      setChatInfo(data.chat);
+      if (latestChatSettingsVersionRef.current === version) {
+        setChatInfo(data.chat);
+      }
     },
     [sessionRecord.id, chatInfo.id],
   );
@@ -1171,6 +1189,13 @@ export function SessionChatProvider({
 
   const updateChatReasoningEffort = useCallback(
     async (reasoningEffort: string | null) => {
+      const version = ++latestChatSettingsVersionRef.current;
+      let previousEffort: string | null = null;
+      setChatInfo((prev) => {
+        previousEffort = prev.reasoningEffort;
+        return { ...prev, reasoningEffort };
+      });
+
       const res = await fetch(
         `/api/sessions/${sessionRecord.id}/chats/${chatInfo.id}`,
         {
@@ -1182,10 +1207,18 @@ export function SessionChatProvider({
 
       const data = (await res.json()) as { chat?: Chat; error?: string };
       if (!res.ok || !data.chat) {
+        if (latestChatSettingsVersionRef.current === version) {
+          setChatInfo((prev) => ({
+            ...prev,
+            reasoningEffort: previousEffort,
+          }));
+        }
         throw new Error(data.error ?? "Failed to update chat reasoning effort");
       }
 
-      setChatInfo(data.chat);
+      if (latestChatSettingsVersionRef.current === version) {
+        setChatInfo(data.chat);
+      }
     },
     [sessionRecord.id, chatInfo.id],
   );
@@ -1196,6 +1229,7 @@ export function SessionChatProvider({
       contextLimit,
       stopChatStream,
       retryChatStream,
+      getLastChunkReceivedAt,
       workspaceStatus,
       clearWorkspaceStatus,
       hadInitialMessages,
@@ -1206,6 +1240,7 @@ export function SessionChatProvider({
       contextLimit,
       stopChatStream,
       retryChatStream,
+      getLastChunkReceivedAt,
       workspaceStatus,
       clearWorkspaceStatus,
       hadInitialMessages,

@@ -11,34 +11,38 @@ export function createCoalescingStreamWriter<
   let draining: Promise<void> | null = null;
   let lastError: unknown = null;
 
-  async function runDrain() {
-    while (pendingDelta !== null || queue.length > 0) {
-      if (pendingDelta !== null) {
-        const chunk = pendingDelta;
-        pendingDelta = null;
-        await writer.write(chunk);
-        continue;
-      }
+  async function runDrain(): Promise<void> {
+    try {
+      while (pendingDelta !== null || queue.length > 0) {
+        if (pendingDelta !== null) {
+          const chunk = pendingDelta;
+          pendingDelta = null;
+          await writer.write(chunk);
+          continue;
+        }
 
-      const next = queue.shift();
-      if (next !== undefined) {
-        await writer.write(next);
+        const next = queue.shift();
+        if (next !== undefined) {
+          await writer.write(next);
+        }
       }
+    } catch (error: unknown) {
+      lastError = error;
+      throw error;
+    } finally {
+      draining = null;
     }
   }
 
   function ensureDraining(): Promise<void> {
     if (!draining) {
-      draining = runDrain()
-        .catch((error: unknown) => {
-          lastError = error;
-          throw error;
-        })
-        .finally(() => {
-          draining = null;
-        });
+      draining = runDrain();
     }
     return draining;
+  }
+
+  function anyPending(): boolean {
+    return pendingDelta !== null || queue.length > 0;
   }
 
   function write(chunk: T): void {
@@ -82,7 +86,7 @@ export function createCoalescingStreamWriter<
     if (lastError !== null) {
       throw lastError;
     }
-    if (pendingDelta !== null || queue.length > 0 || draining !== null) {
+    while (anyPending() || draining !== null) {
       await ensureDraining();
     }
     if (lastError !== null) {

@@ -214,9 +214,7 @@ export function MessageModelPill({
   // Uncached input = full-price input tokens (in minus any cache read/write).
   const effectiveUncachedInputTokens = Math.max(
     0,
-    effectiveInputTokens -
-      effectiveCacheReadTokens -
-      effectiveCacheWriteTokens,
+    effectiveInputTokens - effectiveCacheReadTokens - effectiveCacheWriteTokens,
   );
 
   const hasDirectCost =

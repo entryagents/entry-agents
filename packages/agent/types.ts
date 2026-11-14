@@ -2,6 +2,11 @@ import type { SandboxState } from "@entry-agents/sandbox";
 import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
 import type { LanguageModel, LanguageModelUsage } from "ai";
 import { z } from "zod";
+import type {
+  RuntimeSecret,
+  SecretCatalogEntry,
+  SecretRedactor,
+} from "./lib/secret-redactor";
 import type { AgentSandboxContext } from "./open-agent";
 import type { SkillMetadata } from "./skills/types";
 
@@ -338,6 +343,10 @@ export interface AgentContext {
   sandboxLifecycleHooks?: SandboxLifecycleHooksContext;
   inboxHooks?: InboxToolContext;
   billingGuard?: SubagentBudgetGuard;
+  secretCatalog?: SecretCatalogEntry[];
+  secrets?: RuntimeSecret[];
+  secretRedactor?: SecretRedactor;
+  onSecretUsed?: (names: string[]) => void;
   /** Hierarchical delegation depth (0 = root agent, 1 = subagent). */
   depth?: number;
 }

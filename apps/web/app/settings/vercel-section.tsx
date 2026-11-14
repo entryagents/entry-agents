@@ -2,6 +2,7 @@
 
 import { Loader2, Lock } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import useSWR from "swr";
 import { useSession } from "@/hooks/use-session";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -76,12 +77,22 @@ export function VercelSection() {
   async function connectVercel() {
     setLinking(true);
     try {
-      await authClient.linkSocial({
+      const result = await authClient.linkSocial({
         provider: "vercel",
         callbackURL: "/settings/connections",
         errorCallbackURL: "/settings/connections",
       });
+      if (result?.error) {
+        toast.error(result.error.message || "Failed to connect Vercel account");
+        return;
+      }
       await mutate();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to connect Vercel account",
+      );
     } finally {
       setLinking(false);
     }

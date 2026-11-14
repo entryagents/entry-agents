@@ -9,7 +9,7 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState, type ReactNode } from "react";
+import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   WebAgentCommitDataPart,
   WebAgentPrDataPart,
@@ -23,7 +23,6 @@ import { MessageAttachmentChip } from "@/components/message-attachment-chip";
 import { MessageModelPill } from "@/components/message-model-pill";
 import { SnippetChip } from "@/components/snippet-chip";
 import { StreamingMarkdown } from "@/components/streaming-markdown";
-import { ThinkingBlock } from "@/components/thinking-block";
 import { ToolCall } from "@/components/tool-call/tool-call";
 import {
   hasRenderableAssistantPart,
@@ -136,11 +135,482 @@ export interface ChatMessageFeedProps {
   workspaceStatusMessage?: string;
 }
 
+interface ChatMessageRowProps {
+  message: WebAgentUIMessage;
+  groups: MessageRenderGroup[];
+  isMessageStreaming: boolean;
+  streamdownComponents?: Parameters<typeof StreamingMarkdown>[0]["components"];
+  activeApprovalId: string | null;
+  onApproveTool?: (id: string) => void;
+  onDenyTool?: (id: string, reason?: string) => void;
+  onCopyAssistantMessage?: (messageId: string, text: string) => void;
+  isCopiedAssistant: boolean;
+  onForkAssistantMessage?: (messageId: string) => void;
+  isForkingAssistant: boolean;
+  onCopyUserMessage?: (messageId: string, text: string) => void;
+  isCopiedUser: boolean;
+  onResendUserMessage?: (messageId: string) => void;
+  isResendingUser: boolean;
+  onDeleteMessage?: (messageId: string) => void;
+  isDeletingMessage: boolean;
+  hasMessageActionInFlight: boolean;
+  modelOptions: NonNullable<
+    Parameters<typeof MessageModelPill>[0]["modelOptions"]
+  >;
+  durationMs: number | null;
+  startedAt: string | null;
+  cwd?: string;
+  readOnly: boolean;
+  isActionsActive: boolean;
+  onToggleActions: (messageId: string) => void;
+}
+
+const ChatMessageRow = memo(function ChatMessageRow({
+  message: m,
+  groups,
+  isMessageStreaming,
+  streamdownComponents,
+  activeApprovalId,
+  onApproveTool,
+  onDenyTool,
+  onCopyAssistantMessage,
+  isCopiedAssistant,
+  onForkAssistantMessage,
+  isForkingAssistant,
+  onCopyUserMessage,
+  isCopiedUser,
+  onResendUserMessage,
+  isResendingUser,
+  onDeleteMessage,
+  isDeletingMessage,
+  hasMessageActionInFlight,
+  modelOptions,
+  durationMs,
+  startedAt,
+  cwd,
+  readOnly,
+  isActionsActive,
+  onToggleActions,
+}: ChatMessageRowProps) {
+  const renderGroups = (isToolCallsExpanded: boolean) =>
+    groups.map((group) => {
+      if (group.type === "reasoning-group") {
+        if (!isToolCallsExpanded) return null;
+        const hasRenderableContentAfterGroup = m.parts
+          .slice(group.startIndex + group.parts.length)
+          .some(hasRenderableAssistantPart);
+
+        return (
+          <div
+            key={`${m.id}-${group.renderKey}`}
+            className="min-w-0 w-full overflow-hidden pl-0 sm:pl-[22px]"
+          >
+            <SmoothedThinkingBlock
+              text={getReasoningGroupText(group.parts)}
+              active={
+                isMessageStreaming &&
+                group.parts.some((part) => part.state === "streaming")
+              }
+              streamKey={`${m.id}-${group.renderKey}`}
+              isStreaming={shouldKeepCollapsedReasoningStreaming({
+                isMessageStreaming,
+                hasStreamingReasoningPart: group.parts.some(
+                  (part) => part.state === "streaming",
+                ),
+                hasRenderableContentAfterGroup,
+              })}
+              partCount={group.parts.length}
+            />
+          </div>
+        );
+      }
+
+      const p = group.part;
+
+      if (isReasoningUIPart(p)) {
+        if (!isToolCallsExpanded) return null;
+        const hasRenderableContentAfterGroup = m.parts
+          .slice(group.index + 1)
+          .some(hasRenderableAssistantPart);
+
+        return (
+          <div
+            key={`${m.id}-${group.renderKey}`}
+            className="min-w-0 w-full overflow-hidden pl-0 sm:pl-[22px]"
+          >
+            <SmoothedThinkingBlock
+              text={p.text}
+              active={isMessageStreaming && p.state === "streaming"}
+              streamKey={`${m.id}-${group.renderKey}`}
+              isStreaming={shouldKeepCollapsedReasoningStreaming({
+                isMessageStreaming,
+                hasStreamingReasoningPart: p.state === "streaming",
+                hasRenderableContentAfterGroup,
+              })}
+            />
+          </div>
+        );
+      }
+
+      if (p.type === "text") {
+        if (p.text.length === 0) {
+          return null;
+        }
+
+        const isFinalAssistantTextPart =
+          m.role === "assistant" &&
+          !m.parts
+            .slice(group.index + 1)
+            .some((messagePart) => messagePart.type === "text");
+
+        return (
+          <div
+            key={`${m.id}-${group.renderKey}`}
+            className={cn(
+              "flex min-w-0 py-2",
+              m.role === "user" ? "justify-end" : "justify-start",
+              isFinalAssistantTextPart && group.index > 0 && "mt-3",
+            )}
+          >
+            {m.role === "user" ? (
+              <div className="group flex w-fit min-w-0 max-w-[85%] sm:max-w-[80%] flex-col items-end">
+                <div
+                  className="rounded-2xl bg-secondary px-4 py-2.5 text-left transition-colors hover:bg-secondary/90 shadow-xs"
+                  // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- wraps nested interactive UserMessageFold controls
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (!readOnly) {
+                      onToggleActions(m.id);
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      !readOnly &&
+                      (event.key === "Enter" || event.key === " ")
+                    ) {
+                      event.preventDefault();
+                      onToggleActions(m.id);
+                    }
+                  }}
+                >
+                  <UserMessageFold text={p.text} />
+                </div>
+                {!readOnly && group.index === 0 && (
+                  <div
+                    className={cn(
+                      "mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition group-hover:opacity-100 focus-within:opacity-100",
+                      isActionsActive && "opacity-100",
+                    )}
+                  >
+                    {onCopyUserMessage && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onCopyUserMessage(m.id, p.text);
+                        }}
+                        aria-label="Copy message text"
+                        className="rounded p-1 transition-colors hover:text-foreground"
+                      >
+                        {isCopiedUser ? (
+                          <Check className="h-4 w-4 text-emerald-500" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
+                    {onResendUserMessage && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onResendUserMessage(m.id);
+                        }}
+                        disabled={hasMessageActionInFlight}
+                        aria-label="Resend this message"
+                        className="rounded p-1 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {isResendingUser ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <RotateCcw className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
+                    {onDeleteMessage && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onDeleteMessage(m.id);
+                        }}
+                        disabled={hasMessageActionInFlight}
+                        aria-label="Delete this message and everything after it"
+                        className="rounded p-1 transition-colors hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {isDeletingMessage ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div
+                className="group min-w-0 w-full overflow-hidden"
+                // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- wraps nested interactive buttons
+                role="button"
+                tabIndex={0}
+                onClick={() => {
+                  if (!readOnly) {
+                    onToggleActions(m.id);
+                  }
+                }}
+                onKeyDown={(event) => {
+                  if (
+                    !readOnly &&
+                    (event.key === "Enter" || event.key === " ")
+                  ) {
+                    event.preventDefault();
+                    onToggleActions(m.id);
+                  }
+                }}
+              >
+                {/* Markdown prose text */}
+                <div className="text-[14.5px] leading-[1.65] text-foreground select-text">
+                  <SmoothedAssistantMarkdown
+                    content={p.text}
+                    active={isMessageStreaming && p.state === "streaming"}
+                    streamKey={`${m.id}-${group.renderKey}`}
+                    isStreaming={
+                      isMessageStreaming &&
+                      !m.parts
+                        .slice(group.index + 1)
+                        .some(hasRenderableAssistantPart)
+                    }
+                    components={streamdownComponents}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      if (isToolUIPart(p)) {
+        const toolName = (p as { toolName?: string }).toolName;
+        const isAlwaysVisibleTool =
+          p.type === "tool-task" ||
+          toolName === "task" ||
+          p.type === "tool-visualize" ||
+          toolName === "visualize";
+        if (!isToolCallsExpanded && !isAlwaysVisibleTool) return null;
+        return (
+          <div
+            key={`${m.id}-${group.renderKey}`}
+            className={cn(
+              "min-w-0 w-full overflow-hidden",
+              isAlwaysVisibleTool ? "py-1" : "pl-0 sm:pl-[22px]",
+            )}
+          >
+            <ToolCall
+              part={p as WebAgentUIToolPart}
+              isStreaming={isMessageStreaming}
+              activeApprovalId={activeApprovalId}
+              cwd={cwd}
+              onApprove={onApproveTool}
+              onDeny={onDenyTool}
+            />
+          </div>
+        );
+      }
+
+      if (isGitDataPart(p)) {
+        if (!shouldRenderGitDataPart(p)) {
+          return null;
+        }
+
+        return (
+          <div key={`${m.id}-${group.renderKey}`} className="max-w-full">
+            <GitDataPartCard
+              part={p as WebAgentCommitDataPart | WebAgentPrDataPart}
+            />
+          </div>
+        );
+      }
+
+      // Render file attachments (images, audio/music, documents/code)
+      if (p.type === "file") {
+        if (!isToolCallsExpanded && m.role === "assistant") {
+          return null;
+        }
+
+        const isImage =
+          p.mediaType?.startsWith("image/") ||
+          /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(p.filename ?? "");
+        const isAudio =
+          p.mediaType?.startsWith("audio/") ||
+          /\.(mp3|wav|ogg|m4a|aac|flac|weba)$/i.test(p.filename ?? "");
+
+        return (
+          <div
+            key={`${m.id}-${group.renderKey}`}
+            className={cn(
+              "flex",
+              m.role === "user" ? "justify-end" : "justify-start",
+            )}
+          >
+            <div className="group relative w-fit max-w-[80%]">
+              {isImage ? (
+                <MessageAttachmentChip
+                  url={p.url}
+                  filename={p.filename ?? "image"}
+                />
+              ) : isAudio ? (
+                <div className="rounded-xl border border-border/80 bg-card p-3 shadow-xs">
+                  <p className="mb-2 text-xs font-medium text-foreground truncate max-w-xs">
+                    {p.filename ?? "Audio clip"}
+                  </p>
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <audio
+                    controls
+                    src={p.url}
+                    className="h-8 max-w-[260px] sm:max-w-xs"
+                  />
+                </div>
+              ) : (
+                <MessageAttachmentChip
+                  url={p.url}
+                  filename={p.filename ?? "file"}
+                />
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      // Render text snippet attachments
+      if (p.type === "data-snippet") {
+        const snippet = (p as WebAgentSnippetDataPart).data;
+        if (!snippet) return null;
+        return (
+          <div
+            key={`${m.id}-${group.renderKey}`}
+            className={cn(
+              "flex",
+              m.role === "user" ? "justify-end" : "justify-start",
+            )}
+          >
+            <div className="max-w-[85%] sm:max-w-[80%]">
+              <SnippetChip
+                filename={snippet.filename}
+                content={snippet.content}
+              />
+            </div>
+          </div>
+        );
+      }
+
+      return null;
+    });
+
+  if (m.role === "assistant") {
+    return (
+      <AssistantMessageGroups
+        message={m}
+        isStreaming={isMessageStreaming}
+        durationMs={durationMs}
+        startedAt={startedAt}
+      >
+        {(isExpanded) => {
+          const combinedText = m.parts
+            .filter(
+              (part): part is { type: "text"; text: string } =>
+                part.type === "text" && part.text.trim().length > 0,
+            )
+            .map((part) => part.text)
+            .join("\n\n");
+          const canCopyAssistant =
+            !isMessageStreaming &&
+            combinedText.length > 0 &&
+            Boolean(onCopyAssistantMessage);
+
+          return (
+            <>
+              {renderGroups(isExpanded)}
+              <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
+                {canCopyAssistant ? (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onCopyAssistantMessage?.(m.id, combinedText);
+                      }}
+                      aria-label="Copy assistant response"
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97]"
+                    >
+                      {isCopiedAssistant ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-500" />
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                            Copied
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          <span>Copy</span>
+                        </>
+                      )}
+                    </button>
+                    {!readOnly && onForkAssistantMessage && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onForkAssistantMessage(m.id);
+                        }}
+                        disabled={hasMessageActionInFlight}
+                        aria-label="Fork conversation from this response"
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {isForkingAssistant ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <GitBranch className="h-3.5 w-3.5" />
+                        )}
+                        <span>Fork</span>
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div />
+                )}
+                <MessageModelPill
+                  metadata={m.metadata}
+                  modelOptions={modelOptions}
+                />
+              </div>
+            </>
+          );
+        }}
+      </AssistantMessageGroups>
+    );
+  }
+
+  return <div className="flex flex-col gap-1">{renderGroups(true)}</div>;
+});
+
 /**
  * Shared message feed component for both Main Session Chat and Subagent Chat.
  * Ensures consistent streaming, tool call rendering, typography, pacing, and 2026 UI/UX.
  */
-export function ChatMessageFeed({
+export const ChatMessageFeed = memo(function ChatMessageFeed({
   messages,
   isStreaming = false,
   streamdownComponents,
@@ -174,6 +644,12 @@ export function ChatMessageFeed({
   const [activeMessageActionsId, setActiveMessageActionsId] = useState<
     string | null
   >(null);
+
+  const handleToggleActions = useCallback((messageId: string) => {
+    setActiveMessageActionsId((current) =>
+      current === messageId ? null : messageId,
+    );
+  }, []);
 
   const groupedRenderMessages = useMemo<GroupedRenderMessage[]>(() => {
     return messages.map((message, messageIndex) => {
@@ -245,445 +721,45 @@ export function ChatMessageFeed({
   return (
     <div className="space-y-6">
       {groupedRenderMessages.map(
-        ({ message: m, groups, isStreaming: isMessageStreaming }) => {
-          const renderGroups = (isToolCallsExpanded: boolean) =>
-            groups.map((group) => {
-              if (group.type === "reasoning-group") {
-                if (!isToolCallsExpanded) return null;
-                const hasRenderableContentAfterGroup = m.parts
-                  .slice(group.startIndex + group.parts.length)
-                  .some(hasRenderableAssistantPart);
-
-                return (
-                  <div
-                    key={`${m.id}-${group.renderKey}`}
-                    className="min-w-0 w-full overflow-hidden pl-0 sm:pl-[22px]"
-                  >
-                    <SmoothedThinkingBlock
-                      text={getReasoningGroupText(group.parts)}
-                      active={
-                        isMessageStreaming &&
-                        group.parts.some((part) => part.state === "streaming")
-                      }
-                      streamKey={`${m.id}-${group.renderKey}`}
-                      isStreaming={shouldKeepCollapsedReasoningStreaming({
-                        isMessageStreaming,
-                        hasStreamingReasoningPart: group.parts.some(
-                          (part) => part.state === "streaming",
-                        ),
-                        hasRenderableContentAfterGroup,
-                      })}
-                      partCount={group.parts.length}
-                    />
-                  </div>
-                );
-              }
-
-              const p = group.part;
-
-              if (isReasoningUIPart(p)) {
-                if (!isToolCallsExpanded) return null;
-                const hasRenderableContentAfterGroup = m.parts
-                  .slice(group.index + 1)
-                  .some(hasRenderableAssistantPart);
-
-                return (
-                  <div
-                    key={`${m.id}-${group.renderKey}`}
-                    className="min-w-0 w-full overflow-hidden pl-0 sm:pl-[22px]"
-                  >
-                    <SmoothedThinkingBlock
-                      text={p.text}
-                      active={isMessageStreaming && p.state === "streaming"}
-                      streamKey={`${m.id}-${group.renderKey}`}
-                      isStreaming={shouldKeepCollapsedReasoningStreaming({
-                        isMessageStreaming,
-                        hasStreamingReasoningPart: p.state === "streaming",
-                        hasRenderableContentAfterGroup,
-                      })}
-                    />
-                  </div>
-                );
-              }
-
-              if (p.type === "text") {
-                if (p.text.length === 0) {
-                  return null;
-                }
-
-                const isFinalAssistantTextPart =
-                  m.role === "assistant" &&
-                  !m.parts
-                    .slice(group.index + 1)
-                    .some((messagePart) => messagePart.type === "text");
-
-                return (
-                  <div
-                    key={`${m.id}-${group.renderKey}`}
-                    className={cn(
-                      "flex min-w-0 py-2",
-                      m.role === "user" ? "justify-end" : "justify-start",
-                      isFinalAssistantTextPart && group.index > 0 && "mt-3",
-                    )}
-                  >
-                    {m.role === "user" ? (
-                      <div className="group flex w-fit min-w-0 max-w-[85%] sm:max-w-[80%] flex-col items-end">
-                        <div
-                          className="rounded-2xl bg-secondary px-4 py-2.5 text-left transition-colors hover:bg-secondary/90 shadow-xs"
-                          // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- wraps nested interactive UserMessageFold controls
-                          role="button"
-                          tabIndex={0}
-                          onClick={() => {
-                            if (!readOnly) {
-                              setActiveMessageActionsId((current) =>
-                                current === m.id ? null : m.id,
-                              );
-                            }
-                          }}
-                          onKeyDown={(event) => {
-                            if (
-                              !readOnly &&
-                              (event.key === "Enter" || event.key === " ")
-                            ) {
-                              event.preventDefault();
-                              setActiveMessageActionsId((current) =>
-                                current === m.id ? null : m.id,
-                              );
-                            }
-                          }}
-                        >
-                          <UserMessageFold text={p.text} />
-                        </div>
-                        {!readOnly && group.index === 0 && (
-                          <div
-                            className={cn(
-                              "mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition group-hover:opacity-100 focus-within:opacity-100",
-                              activeMessageActionsId === m.id && "opacity-100",
-                            )}
-                          >
-                            {onCopyUserMessage && (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onCopyUserMessage(m.id, p.text);
-                                }}
-                                aria-label="Copy message text"
-                                className="rounded p-1 transition-colors hover:text-foreground"
-                              >
-                                {copiedUserMessageId === m.id ? (
-                                  <Check className="h-4 w-4 text-emerald-500" />
-                                ) : (
-                                  <Copy className="h-4 w-4" />
-                                )}
-                              </button>
-                            )}
-                            {onResendUserMessage && (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onResendUserMessage(m.id);
-                                }}
-                                disabled={hasMessageActionInFlight}
-                                aria-label="Resend this message"
-                                className="rounded p-1 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                              >
-                                {resendingMessageId === m.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <RotateCcw className="h-4 w-4" />
-                                )}
-                              </button>
-                            )}
-                            {onDeleteMessage && (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onDeleteMessage(m.id);
-                                }}
-                                disabled={hasMessageActionInFlight}
-                                aria-label="Delete this message and everything after it"
-                                className="rounded p-1 transition-colors hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
-                              >
-                                {deletingMessageId === m.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4" />
-                                )}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div
-                        className="group min-w-0 w-full overflow-hidden"
-                        // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- wraps nested interactive buttons
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => {
-                          if (!readOnly) {
-                            setActiveMessageActionsId((current) =>
-                              current === m.id ? null : m.id,
-                            );
-                          }
-                        }}
-                        onKeyDown={(event) => {
-                          if (
-                            !readOnly &&
-                            (event.key === "Enter" || event.key === " ")
-                          ) {
-                            event.preventDefault();
-                            setActiveMessageActionsId((current) =>
-                              current === m.id ? null : m.id,
-                            );
-                          }
-                        }}
-                      >
-                        {/* Markdown prose text */}
-                        <div className="text-[14.5px] leading-[1.65] text-foreground select-text">
-                          <SmoothedAssistantMarkdown
-                            content={p.text}
-                            active={
-                              isMessageStreaming && p.state === "streaming"
-                            }
-                            streamKey={`${m.id}-${group.renderKey}`}
-                            isStreaming={
-                              isMessageStreaming &&
-                              !m.parts
-                                .slice(group.index + 1)
-                                .some(hasRenderableAssistantPart)
-                            }
-                            components={streamdownComponents}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              if (isToolUIPart(p)) {
-                const toolName = (p as { toolName?: string }).toolName;
-                const isAlwaysVisibleTool =
-                  p.type === "tool-task" ||
-                  toolName === "task" ||
-                  p.type === "tool-visualize" ||
-                  toolName === "visualize";
-                if (!isToolCallsExpanded && !isAlwaysVisibleTool) return null;
-                return (
-                  <div
-                    key={`${m.id}-${group.renderKey}`}
-                    className={cn(
-                      "min-w-0 w-full overflow-hidden",
-                      isAlwaysVisibleTool ? "py-1" : "pl-0 sm:pl-[22px]",
-                    )}
-                  >
-                    <ToolCall
-                      part={p as WebAgentUIToolPart}
-                      isStreaming={isMessageStreaming}
-                      activeApprovalId={activeApprovalId}
-                      cwd={cwd}
-                      onApprove={onApproveTool}
-                      onDeny={onDenyTool}
-                    />
-                  </div>
-                );
-              }
-
-              if (isGitDataPart(p)) {
-                if (!shouldRenderGitDataPart(p)) {
-                  return null;
-                }
-
-                return (
-                  <div
-                    key={`${m.id}-${group.renderKey}`}
-                    className="max-w-full"
-                  >
-                    <GitDataPartCard
-                      part={p as WebAgentCommitDataPart | WebAgentPrDataPart}
-                    />
-                  </div>
-                );
-              }
-
-              // Render file attachments (images, audio/music, documents/code)
-              if (p.type === "file") {
-                if (!isToolCallsExpanded && m.role === "assistant") {
-                  return null;
-                }
-
-                const isImage =
-                  p.mediaType?.startsWith("image/") ||
-                  /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(p.filename ?? "");
-                const isAudio =
-                  p.mediaType?.startsWith("audio/") ||
-                  /\.(mp3|wav|ogg|m4a|aac|flac|weba)$/i.test(p.filename ?? "");
-
-                return (
-                  <div
-                    key={`${m.id}-${group.renderKey}`}
-                    className={cn(
-                      "flex",
-                      m.role === "user" ? "justify-end" : "justify-start",
-                    )}
-                  >
-                    <div className="group relative w-fit max-w-[80%]">
-                      {isImage ? (
-                        <MessageAttachmentChip
-                          url={p.url}
-                          filename={p.filename ?? "image"}
-                        />
-                      ) : isAudio ? (
-                        <div className="rounded-xl border border-border/80 bg-card p-3 shadow-xs">
-                          <p className="mb-2 text-xs font-medium text-foreground truncate max-w-xs">
-                            {p.filename ?? "Audio clip"}
-                          </p>
-                          {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                          <audio
-                            controls
-                            src={p.url}
-                            className="h-8 max-w-[260px] sm:max-w-xs"
-                          />
-                        </div>
-                      ) : (
-                        <MessageAttachmentChip
-                          url={p.url}
-                          filename={p.filename ?? "file"}
-                        />
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-
-              // Render text snippet attachments
-              if (p.type === "data-snippet") {
-                const snippet = (p as WebAgentSnippetDataPart).data;
-                if (!snippet) return null;
-                return (
-                  <div
-                    key={`${m.id}-${group.renderKey}`}
-                    className={cn(
-                      "flex",
-                      m.role === "user" ? "justify-end" : "justify-start",
-                    )}
-                  >
-                    <div className="max-w-[85%] sm:max-w-[80%]">
-                      <SnippetChip
-                        filename={snippet.filename}
-                        content={snippet.content}
-                      />
-                    </div>
-                  </div>
-                );
-              }
-
-              return null;
-            });
-
-          if (m.role === "assistant") {
-            return (
-              <AssistantMessageGroups
-                key={m.id}
-                message={m}
-                isStreaming={isMessageStreaming}
-                durationMs={messageDurationMap[m.id] ?? null}
-                startedAt={
-                  messageStartedAtMap[m.id] ??
-                  (isMessageStreaming
-                    ? lastSendTimestamp
-                      ? new Date(lastSendTimestamp).toISOString()
-                      : lastUserMessageSentAt
-                    : null)
-                }
-              >
-                {(isExpanded) => {
-                  const combinedText = m.parts
-                    .filter(
-                      (part): part is { type: "text"; text: string } =>
-                        part.type === "text" && part.text.trim().length > 0,
-                    )
-                    .map((part) => part.text)
-                    .join("\n\n");
-                  const canCopyAssistant =
-                    !isMessageStreaming &&
-                    combinedText.length > 0 &&
-                    Boolean(onCopyAssistantMessage);
-
-                  return (
-                    <>
-                      {renderGroups(isExpanded)}
-                      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
-                        {canCopyAssistant ? (
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                onCopyAssistantMessage?.(m.id, combinedText);
-                              }}
-                              aria-label="Copy assistant response"
-                              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97]"
-                            >
-                              {copiedAssistantMessageId === m.id ? (
-                                <>
-                                  <Check className="h-3.5 w-3.5 text-emerald-500" />
-                                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                                    Copied
-                                  </span>
-                                </>
-                              ) : (
-                                <>
-                                  <Copy className="h-3.5 w-3.5" />
-                                  <span>Copy</span>
-                                </>
-                              )}
-                            </button>
-                            {!readOnly && onForkAssistantMessage && (
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  onForkAssistantMessage(m.id);
-                                }}
-                                disabled={forkingAssistantMessageId !== null}
-                                aria-label="Fork conversation from this response"
-                                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
-                              >
-                                {forkingAssistantMessageId === m.id ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <GitBranch className="h-3.5 w-3.5" />
-                                )}
-                                <span>Fork</span>
-                              </button>
-                            )}
-                          </div>
-                        ) : (
-                          <div />
-                        )}
-                        <MessageModelPill
-                          metadata={m.metadata}
-                          modelOptions={modelOptions}
-                        />
-                      </div>
-                    </>
-                  );
-                }}
-              </AssistantMessageGroups>
-            );
-          }
-
-          return (
-            <div key={m.id} className="flex flex-col gap-1">
-              {renderGroups(true)}
-            </div>
-          );
-        },
+        ({ message: m, groups, isStreaming: isMessageStreaming }) => (
+          <ChatMessageRow
+            key={m.id}
+            message={m}
+            groups={groups}
+            isMessageStreaming={isMessageStreaming}
+            streamdownComponents={streamdownComponents}
+            activeApprovalId={activeApprovalId}
+            onApproveTool={onApproveTool}
+            onDenyTool={onDenyTool}
+            onCopyAssistantMessage={onCopyAssistantMessage}
+            isCopiedAssistant={copiedAssistantMessageId === m.id}
+            onForkAssistantMessage={onForkAssistantMessage}
+            isForkingAssistant={forkingAssistantMessageId === m.id}
+            onCopyUserMessage={onCopyUserMessage}
+            isCopiedUser={copiedUserMessageId === m.id}
+            onResendUserMessage={onResendUserMessage}
+            isResendingUser={resendingMessageId === m.id}
+            onDeleteMessage={onDeleteMessage}
+            isDeletingMessage={deletingMessageId === m.id}
+            hasMessageActionInFlight={
+              hasMessageActionInFlight || forkingAssistantMessageId !== null
+            }
+            modelOptions={modelOptions}
+            durationMs={messageDurationMap[m.id] ?? null}
+            startedAt={
+              messageStartedAtMap[m.id] ??
+              (isMessageStreaming
+                ? lastSendTimestamp
+                  ? new Date(lastSendTimestamp).toISOString()
+                  : lastUserMessageSentAt
+                : null)
+            }
+            cwd={cwd}
+            readOnly={readOnly}
+            isActionsActive={activeMessageActionsId === m.id}
+            onToggleActions={handleToggleActions}
+          />
+        ),
       )}
 
       {showThinkingIndicator && (
@@ -700,4 +776,4 @@ export function ChatMessageFeed({
       )}
     </div>
   );
-}
+});

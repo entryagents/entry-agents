@@ -174,7 +174,11 @@ export async function revokeAllGitHubTokens(): Promise<{
 
     // 1. Get all GitHub account rows to find unique user IDs
     const githubAccounts = await db
-      .select({ id: accounts.id, accountId: accounts.accountId, userId: accounts.userId })
+      .select({
+        id: accounts.id,
+        accountId: accounts.accountId,
+        userId: accounts.userId,
+      })
       .from(accounts)
       .where(eq(accounts.providerId, "github"));
 
@@ -184,7 +188,7 @@ export async function revokeAllGitHubTokens(): Promise<{
       githubAccounts.map(async (acct) => {
         try {
           const result = await auth.api.getAccessToken({
-            body: { accountId: acct.accountId, userId: acct.userId },
+            body: { accountId: acct.id, userId: acct.userId },
           });
           if (result?.accessToken) {
             const ok = await revokeGitHubToken(result.accessToken);
@@ -248,7 +252,11 @@ export async function revokeAllVercelTokens(): Promise<{
 
     // 1. Get all Vercel account rows to find unique user IDs
     const vercelAccounts = await db
-      .select({ id: accounts.id, accountId: accounts.accountId, userId: accounts.userId })
+      .select({
+        id: accounts.id,
+        accountId: accounts.accountId,
+        userId: accounts.userId,
+      })
       .from(accounts)
       .where(eq(accounts.providerId, "vercel"));
 
@@ -257,7 +265,7 @@ export async function revokeAllVercelTokens(): Promise<{
     const revokeResults = await Promise.allSettled(
       vercelAccounts.map(async (acct) => {
         const result = await auth.api.getAccessToken({
-          body: { accountId: acct.accountId, userId: acct.userId },
+          body: { accountId: acct.id, userId: acct.userId },
         });
         if (result?.accessToken) {
           const ok = await revokeVercelToken(result.accessToken);

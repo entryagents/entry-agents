@@ -137,11 +137,42 @@ function createSyntheticFinishSseResponse(): Response {
 export class AbortableChatTransport<
   UI_MESSAGE extends UIMessage = UIMessage,
 > extends WorkflowChatTransport<UI_MESSAGE> {
-  private _state: { controller: AbortController };
+  private _state: {
+    controller: AbortController;
+    lastChunkAt: number;
+  };
 
   constructor(options: AbortableWorkflowChatTransportOptions<UI_MESSAGE>) {
-    const state = { controller: new AbortController() };
+    const state = {
+      controller: new AbortController(),
+      lastChunkAt: 0,
+    };
     const outerFetch: FetchFunction = options?.fetch ?? globalThis.fetch;
+
+    const tapSseResponse = (response: Response): Response => {
+      const contentType = response.headers.get("Content-Type") ?? "";
+      if (
+        !response.body ||
+        !contentType.includes("text/event-stream") ||
+        typeof TransformStream === "undefined"
+      ) {
+        return response;
+      }
+      state.lastChunkAt = Date.now();
+      const tappedBody = response.body.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, controller) {
+            state.lastChunkAt = Date.now();
+            controller.enqueue(chunk);
+          },
+        }),
+      );
+      return new Response(tappedBody, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    };
 
     const fetchWithAbort: FetchFunction = Object.assign(
       async (
@@ -157,10 +188,11 @@ export class AbortableChatTransport<
         const startIndex = isStream ? getStartIndexParam(url) : 0;
 
         if (!isStream) {
-          return outerFetch(input, {
+          const response = await outerFetch(input, {
             ...init,
             signal: combinedSignal,
           });
+          return tapSseResponse(response);
         }
 
         const deadline = Date.now() + STREAM_RECONNECT_MAX_DURATION_MS;
@@ -173,16 +205,11 @@ export class AbortableChatTransport<
               signal: combinedSignal,
             });
 
-            // When reconnecting mid-stream (startIndex > 0) after a network
-            // drop or function timeout, a 204 means the workflow run
-            // completed cleanly on the server while we were disconnected.
-            // Synthesize a terminal `finish` SSE event so WorkflowChatTransport
-            // exits its reconnect loop cleanly instead of throwing `204`.
             if (response.status === 204 && startIndex > 0) {
+              state.lastChunkAt = Date.now();
               return createSyntheticFinishSseResponse();
             }
 
-            // Retry transient server/gateway errors during the 6-minute window
             if (
               (response.status === 502 ||
                 response.status === 503 ||
@@ -198,7 +225,7 @@ export class AbortableChatTransport<
               continue;
             }
 
-            return response;
+            return tapSseResponse(response);
           } catch (error) {
             if (combinedSignal.aborted || Date.now() >= deadline) {
               throw error;
@@ -238,6 +265,10 @@ export class AbortableChatTransport<
     this._state = state;
   }
 
+  getLastChunkReceivedAt(): number {
+    return this._state.lastChunkAt;
+  }
+
   override async reconnectToStream(
     options: Parameters<
       WorkflowChatTransport<UI_MESSAGE>["reconnectToStream"]
@@ -249,9 +280,6 @@ export class AbortableChatTransport<
         return null;
       }
 
-      // Peek the first chunk so an initial `204 No Content` response (when no
-      // stream is active) is caught right here and returns `null` instead of
-      // rejecting asynchronously inside `consumeStream`.
       const reader = stream.getReader();
       let first: Awaited<ReturnType<typeof reader.read>>;
       try {
@@ -259,7 +287,9 @@ export class AbortableChatTransport<
       } catch (readError) {
         try {
           reader.releaseLock();
-        } catch {}
+        } catch {
+          // Lock already released
+        }
         if (
           readError instanceof Error &&
           readError.message.startsWith("Failed to fetch chat: 204")
@@ -272,9 +302,14 @@ export class AbortableChatTransport<
       if (first.done) {
         try {
           reader.releaseLock();
-        } catch {}
+        } catch {
+          // Lock already released
+        }
         return null;
       }
+
+      const state = this._state;
+      state.lastChunkAt = Date.now();
 
       return new ReadableStream({
         start(controller) {
@@ -285,6 +320,7 @@ export class AbortableChatTransport<
           if (next.done) {
             controller.close();
           } else {
+            state.lastChunkAt = Date.now();
             controller.enqueue(next.value);
           }
         },

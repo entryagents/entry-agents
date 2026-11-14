@@ -242,7 +242,7 @@ class LocalSandboxImpl implements Sandbox {
     command: string,
     cwd: string,
     timeoutMs: number,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; env?: Record<string, string> },
   ): Promise<ExecResult> {
     // The cwd goes through the same containment check as file paths: a
     // sandbox whose `exec` accepts an out-of-root cwd is not a boundary.
@@ -255,6 +255,7 @@ class LocalSandboxImpl implements Sandbox {
         env: {
           ...process.env,
           ...this.env,
+          ...options?.env,
           ...(this.githubToken ? { GITHUB_TOKEN: this.githubToken } : {}),
           ...(this.vercelToken ? { VERCEL_TOKEN: this.vercelToken } : {}),
         },

@@ -120,4 +120,19 @@ describe("GET /api/github/app/callback", () => {
     expect(redirectUrl.searchParams.get("github")).toBe("app_installed");
     expect(redirectUrl.searchParams.get("missing_installation_id")).toBeNull();
   });
+
+  test("returns invalid_state when install state cookie mismatches query state", async () => {
+    cookieValues.github_app_install_state = "expected-state";
+    const { GET } = await routeModulePromise;
+
+    const response = await GET(
+      new Request(
+        "http://localhost/api/github/app/callback?installation_id=123&state=wrong-state",
+      ),
+    );
+
+    expect(response.status).toBe(307);
+    const redirectUrl = getRedirectUrl(response);
+    expect(redirectUrl.searchParams.get("github")).toBe("invalid_state");
+  });
 });

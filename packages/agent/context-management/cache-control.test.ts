@@ -41,7 +41,7 @@ describe("addCacheControl", () => {
     expect(result).toBe(instructions);
   });
 
-  test("marks only the last tool with cacheControl for Anthropic", () => {
+  test("sorts tools deterministically and marks only the last tool with cacheControl for Anthropic", () => {
     const tools = {
       read: { description: "read file", execute: async () => "" },
       write: { description: "write file", execute: async () => "" },
@@ -57,9 +57,10 @@ describe("addCacheControl", () => {
       string,
       { providerOptions?: { anthropic?: { cacheControl?: unknown } } }
     >;
+    expect(Object.keys(record)).toEqual(["bash", "read", "write"]);
+    expect(record.bash?.providerOptions).toBeUndefined();
     expect(record.read?.providerOptions).toBeUndefined();
-    expect(record.write?.providerOptions).toBeUndefined();
-    expect(record.bash?.providerOptions?.anthropic?.cacheControl).toEqual({
+    expect(record.write?.providerOptions?.anthropic?.cacheControl).toEqual({
       type: "ephemeral",
     });
   });

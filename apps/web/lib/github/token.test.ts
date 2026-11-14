@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import * as realAuthConfig from "@/lib/auth/config";
-import * as realDbClient from "@/lib/db/client";
-import * as realDbSchema from "@/lib/db/schema";
 
+let providerAccountId: string | null = "ba-row-1";
 let getAccessTokenResult: { accessToken?: string | null } | null;
 let getAccessTokenError: Error | null;
 
 const getAccessTokenSpy = mock(
-  async (_input: { body: { providerId: string; userId: string } }) => {
+  async (_input: { body: { accountId: string; userId: string } }) => {
     if (getAccessTokenError) {
       throw getAccessTokenError;
     }
@@ -24,6 +23,10 @@ mock.module("next/headers", () => ({
   },
 }));
 
+mock.module("@/lib/auth/account-token", () => ({
+  getProviderAccountId: async () => providerAccountId,
+}));
+
 mock.module("@/lib/auth/config", () => ({
   ...realAuthConfig,
   auth: {
@@ -33,26 +36,17 @@ mock.module("@/lib/auth/config", () => ({
   },
 }));
 
-mock.module("@/lib/db/client", () => ({
-  ...realDbClient,
-  db: {},
-}));
-
-mock.module("@/lib/db/schema", () => ({
-  ...realDbSchema,
-  accounts: {},
-}));
-
 const tokenModulePromise = import("./token");
 
 describe("getUserGitHubToken", () => {
   beforeEach(() => {
     getAccessTokenSpy.mockClear();
+    providerAccountId = "ba-row-1";
     getAccessTokenResult = { accessToken: "ghu_test" };
     getAccessTokenError = null;
   });
 
-  test("looks up access tokens by user id without request headers", async () => {
+  test("looks up access tokens by Better Auth account row id without request headers", async () => {
     const { getUserGitHubToken } = await tokenModulePromise;
 
     const token = await getUserGitHubToken("user-1");
@@ -60,8 +54,18 @@ describe("getUserGitHubToken", () => {
     expect(token).toBe("ghu_test");
     expect(getAccessTokenSpy).toHaveBeenCalledTimes(1);
     expect(getAccessTokenSpy.mock.calls[0]?.[0]).toEqual({
-      body: { providerId: "github", userId: "user-1" },
+      body: { accountId: "ba-row-1", userId: "user-1" },
     });
+  });
+
+  test("returns null without calling getAccessToken when no GitHub account row exists", async () => {
+    const { getUserGitHubToken } = await tokenModulePromise;
+    providerAccountId = null;
+
+    const token = await getUserGitHubToken("user-1");
+
+    expect(token).toBeNull();
+    expect(getAccessTokenSpy).not.toHaveBeenCalled();
   });
 
   test("returns null when better-auth token lookup fails", async () => {
@@ -77,6 +81,7 @@ describe("getUserGitHubToken", () => {
 describe("getGitHubAppUserToken", () => {
   beforeEach(() => {
     getAccessTokenSpy.mockClear();
+    providerAccountId = "ba-row-1";
     getAccessTokenResult = { accessToken: "ghu_test" };
     getAccessTokenError = null;
   });

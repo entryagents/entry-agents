@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   useEffect,
   useMemo,
   useRef,
@@ -195,7 +196,7 @@ type StreamingMarkdownProps = {
  * fast token-level blurIn animation, and inline block caret without external
  * pacing wrappers that reset on step transitions.
  */
-export function StreamingMarkdown({
+export const StreamingMarkdown = memo(function StreamingMarkdown({
   content,
   isStreaming = false,
   components,
@@ -219,7 +220,7 @@ export function StreamingMarkdown({
       <Streamdown
         mode={isStreaming ? "streaming" : "static"}
         isAnimating={isStreaming}
-        animated={{ animation: "blurIn", duration: 60 }}
+        animated={false}
         caret={isStreaming ? "block" : undefined}
         plugins={streamdownPlugins}
         rehypePlugins={chatRehypePlugins}
@@ -230,4 +231,4 @@ export function StreamingMarkdown({
       </Streamdown>
     </div>
   );
-}
+});

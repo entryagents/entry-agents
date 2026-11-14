@@ -44,8 +44,21 @@ export {
 export type { SkillToolInput } from "./tools/skill";
 export { isAllowedWebUrl, isPrivateHost } from "./tools/fetch";
 export {
+  createSecretRedactor,
+  isHostAllowedForSecret,
+  resolveSecretRecordTemplates,
+  resolveSecretTemplates,
+  SecretTemplateError,
+  type RuntimeSecret,
+  type SecretCatalogEntry,
+  type SecretRedactor,
+} from "./lib/secret-redactor";
+export {
   createMcpToolSet,
+  discoverMcpServerTools,
   namespacedMcpToolName,
+  type CreateMcpToolSetOptions,
+  type McpDiscoveredTool,
   type McpServerConfig,
   type McpToolSetResult,
   type McpConnectionFailure,

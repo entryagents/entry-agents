@@ -26,6 +26,10 @@ const realDbSessions = await import("@/lib/db/sessions");
 const realDbUserPreferences = await import("@/lib/db/user-preferences");
 const realDbUsers = await import("@/lib/db/users");
 const realChatSandboxRuntime = await import("./chat-sandbox-runtime");
+const realDbMcpServers = await import("@/lib/db/mcp-servers");
+const realDbSecrets = await import("@/lib/db/secrets");
+const realResolveMcpServerConfig =
+  await import("@/lib/mcp/resolve-server-config");
 
 // ── Spy state ──────────────────────────────────────────────────────
 
@@ -146,9 +150,13 @@ const spies = {
   countRecentFailuresWithCategory: mock(() => Promise.resolve(0)),
   dequeueNextQueuedUserMessageStep: mock(
     (): Promise<{
-      id: string;
-      role: "user";
-      parts: Array<{ type: "text"; text: string }>;
+      message: {
+        id: string;
+        role: "user";
+        parts: Array<{ type: "text"; text: string }>;
+      };
+      modelId?: string | null;
+      reasoningEffort?: string | null;
     } | null> => Promise.resolve(null),
   ),
 };
@@ -491,7 +499,24 @@ mock.module("@/lib/model-availability", () => ({
 }));
 
 mock.module("@/lib/db/mcp-servers", () => ({
+  ...realDbMcpServers,
   getEnabledMcpServersForRequest: mock(() => Promise.resolve([])),
+  recordMcpServerConnectionResult: mock(() => Promise.resolve()),
+}));
+
+mock.module("@/lib/db/secrets", () => ({
+  ...realDbSecrets,
+  getDecryptedUserSecretsForExecution: mock(() =>
+    Promise.resolve({ secretCatalog: [], secrets: [] }),
+  ),
+  recordUserSecretsUsed: mock(() => Promise.resolve()),
+}));
+
+mock.module("@/lib/mcp/resolve-server-config", () => ({
+  ...realResolveMcpServerConfig,
+  prepareMcpServersForExecution: mock((servers: unknown[]) =>
+    Promise.resolve({ resolvedServers: servers, failures: [] }),
+  ),
 }));
 
 mock.module("./chat-sandbox-runtime", () => ({
@@ -1744,9 +1769,13 @@ describe("runAgentWorkflow", () => {
     spies.dequeueNextQueuedUserMessageStep
       .mockImplementationOnce(() =>
         Promise.resolve({
-          id: "queued-user-2",
-          role: "user" as const,
-          parts: [{ type: "text" as const, text: "Run the tests next" }],
+          message: {
+            id: "queued-user-2",
+            role: "user" as const,
+            parts: [{ type: "text" as const, text: "Run the tests next" }],
+          },
+          modelId: null,
+          reasoningEffort: null,
         } as unknown as never),
       )
       .mockImplementationOnce(() => Promise.resolve(null));

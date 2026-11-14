@@ -6,7 +6,7 @@ import { formatDistanceToNow } from "date-fns";
 import {
   Inbox,
   Bug,
-  Sparkles,
+  MailOpen,
   MessageSquare,
   CheckCircle2,
   Archive,
@@ -114,12 +114,11 @@ export default function AdminFeedbackPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            User Feedback Inbox
+          <h1 className="text-2xl font-semibold tracking-tight">
+            User feedback inbox
           </h1>
           <p className="text-sm text-muted-foreground">
-            Direct suggestions, bug reports, and sentiment submitted by platform
-            users.
+            Direct suggestions, bug reports, and sentiment submitted by users.
           </p>
         </div>
         <Button
@@ -129,7 +128,8 @@ export default function AdminFeedbackPage() {
           disabled={isLoading}
         >
           <RefreshCw
-            className={`mr-1.5 h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
+            className={`mr-1.5 size-3.5 ${isLoading ? "animate-spin" : ""}`}
+            strokeWidth={1.5}
           />
           Refresh
         </Button>
@@ -138,67 +138,76 @@ export default function AdminFeedbackPage() {
       {/* Metrics Row */}
       <div className="grid gap-4 sm:grid-cols-4">
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-primary/10 p-2 text-primary">
-              <Inbox className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Total Messages</p>
-              <p className="text-xl font-bold">{stats.total}</p>
-            </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">
+              Total messages
+            </span>
+            <Inbox className="size-4 text-muted-foreground" strokeWidth={1.5} />
           </div>
+          <p className="mt-2 font-mono text-2xl font-medium tabular-nums">
+            {stats.total}
+          </p>
         </Card>
 
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-amber-500/10 p-2 text-amber-500">
-              <Sparkles className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Unread / New</p>
-              <p className="text-xl font-bold">{stats.new}</p>
-            </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">
+              Unread / new
+            </span>
+            <MailOpen
+              className="size-4 text-muted-foreground"
+              strokeWidth={1.5}
+            />
           </div>
+          <p className="mt-2 font-mono text-2xl font-medium tabular-nums">
+            {stats.new}
+          </p>
         </Card>
 
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-red-500/10 p-2 text-red-500">
-              <Bug className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Bug Reports</p>
-              <p className="text-xl font-bold">{stats.bugs}</p>
-            </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">
+              Bug reports
+            </span>
+            <Bug className="size-4 text-muted-foreground" strokeWidth={1.5} />
           </div>
+          <p className="mt-2 font-mono text-2xl font-medium tabular-nums">
+            {stats.bugs}
+          </p>
         </Card>
 
         <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-blue-500/10 p-2 text-blue-500">
-              <MessageSquare className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Feature Requests</p>
-              <p className="text-xl font-bold">{stats.features}</p>
-            </div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">
+              Feature requests
+            </span>
+            <MessageSquare
+              className="size-4 text-muted-foreground"
+              strokeWidth={1.5}
+            />
           </div>
+          <p className="mt-2 font-mono text-2xl font-medium tabular-nums">
+            {stats.features}
+          </p>
         </Card>
       </div>
 
       {/* Filter Tabs & Search */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-border pb-3">
         <div className="flex gap-1.5 overflow-x-auto">
-          {[
-            { id: "all", label: "All Items" },
-            { id: "new", label: `New (${stats.new})` },
-            { id: "bug", label: `Bugs (${stats.bugs})` },
-            { id: "feature", label: `Features (${stats.features})` },
-            { id: "resolved", label: "Resolved" },
-          ].map((tab) => (
+          {(
+            [
+              { id: "all", label: "All items" },
+              { id: "new", label: `New (${stats.new})` },
+              { id: "bug", label: `Bugs (${stats.bugs})` },
+              { id: "feature", label: `Features (${stats.features})` },
+              { id: "resolved", label: "Resolved" },
+            ] as const
+          ).map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
               className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer ${
                 activeTab === tab.id
                   ? "bg-foreground text-background font-semibold"

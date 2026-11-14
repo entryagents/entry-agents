@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Github, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/hooks/use-session";
@@ -368,11 +369,26 @@ function GitHubConnectStep({
         disabled={isLinking}
         onClick={async () => {
           setIsLinking(true);
-          await authClient.linkSocial({
-            provider: "github",
-            callbackURL: githubPostLinkCallback,
-            errorCallbackURL: githubPostLinkCallback,
-          });
+          try {
+            const result = await authClient.linkSocial({
+              provider: "github",
+              callbackURL: githubPostLinkCallback,
+              errorCallbackURL: githubPostLinkCallback,
+            });
+            if (result?.error) {
+              toast.error(
+                result.error.message || "Failed to connect GitHub account",
+              );
+              setIsLinking(false);
+            }
+          } catch (error) {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : "Failed to connect GitHub account",
+            );
+            setIsLinking(false);
+          }
         }}
         className="gap-2 border-zinc-700 bg-transparent text-zinc-300 hover:bg-white/5 hover:text-white"
       >

@@ -2,6 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import * as path from "path";
 import { getSandbox, shellEscape, toDisplayPath } from "./utils";
+import type { SecretRedactor } from "../lib/secret-redactor";
 
 interface GrepMatch {
   file: string;
@@ -120,9 +121,19 @@ EXAMPLES:
           { signal: abortSignal },
         );
 
+        const redactor = (
+          experimental_context as
+            | { secretRedactor?: SecretRedactor }
+            | undefined
+        )?.secretRedactor;
+        const redact = (text: string) =>
+          redactor?.hasSecrets() ? redactor.redact(text) : text;
+
         // grep exits with 1 when no matches found - that's not an error
         if (!result.success && result.exitCode !== 1) {
-          const errorOutput = (result.stderr || result.stdout).slice(0, 500);
+          const errorOutput = redact(
+            (result.stderr || result.stdout).slice(0, 500),
+          );
           return {
             success: false,
             error: `Grep failed (exit ${result.exitCode}): ${errorOutput}`,
@@ -173,7 +184,7 @@ EXAMPLES:
           matches.push({
             file: displayFile,
             line: lineNum,
-            content: content.slice(0, 200),
+            content: redact(content.slice(0, 200)),
           });
         }
 
@@ -190,16 +201,21 @@ EXAMPLES:
           response._debug = {
             command,
             exitCode: result.exitCode,
-            stdoutPreview: result.stdout.slice(0, 500),
+            stdoutPreview: redact(result.stdout.slice(0, 500)),
           };
         }
 
         return response;
       } catch (error) {
+        const redactor = (
+          experimental_context as
+            | { secretRedactor?: SecretRedactor }
+            | undefined
+        )?.secretRedactor;
         const message = error instanceof Error ? error.message : String(error);
         return {
           success: false,
-          error: `Grep failed: ${message}`,
+          error: `Grep failed: ${redactor?.hasSecrets() ? redactor.redact(message) : message}`,
         };
       }
     },

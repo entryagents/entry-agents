@@ -469,7 +469,7 @@ export class ModalCloudSandbox implements Sandbox {
     command: string,
     cwd: string,
     timeoutMs: number,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; env?: Record<string, string> },
   ): Promise<ExecResult> {
     if (this.stopped) {
       return {
@@ -501,7 +501,12 @@ export class ModalCloudSandbox implements Sandbox {
           `cd ${shellEscape(cwd)} && echo "${PID_MARKER}$$" && ` +
             `exec bash -c ${shellEscape(command)}`,
         ],
-        { workdir: this.workingDirectory, env: this.getCommandEnv() },
+        {
+          workdir: this.workingDirectory,
+          env: options?.env
+            ? { ...this.getCommandEnv(), ...options.env }
+            : this.getCommandEnv(),
+        },
       );
       cmdId = (await readPid(proc.stdout)) ?? "";
     } catch (error) {

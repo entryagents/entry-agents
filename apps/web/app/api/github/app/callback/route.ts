@@ -49,6 +49,13 @@ export async function GET(req: Request): Promise<Response> {
   const redirectUrl = new URL(redirectTo, req.url);
 
   const requestUrl = new URL(req.url);
+  const expectedState = cookieStore.get("github_app_install_state")?.value;
+  const stateParam = requestUrl.searchParams.get("state");
+  if (expectedState && stateParam !== expectedState) {
+    redirectUrl.searchParams.set("github", "invalid_state");
+    return redirectAndClearCookies(redirectUrl);
+  }
+
   const installationId = parseInstallationId(
     requestUrl.searchParams.get("installation_id"),
   );

@@ -3,8 +3,58 @@ import { getToolTimeoutMs } from "./tool-timeouts";
 import { z } from "zod";
 import { getSandboxForCommand, reconnectSandboxAfterMigration } from "./utils";
 import { resolveBashWorkingDirectory } from "./cwd-security";
+import {
+  createSecretRedactor,
+  type RuntimeSecret,
+  type SecretRedactor,
+} from "../lib/secret-redactor";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
+
+interface BashSecretContext {
+  secrets?: RuntimeSecret[];
+  secretRedactor?: SecretRedactor;
+  onSecretUsed?: (names: string[]) => void;
+}
+
+function getSecretContext(experimental_context: unknown): BashSecretContext {
+  if (!experimental_context || typeof experimental_context !== "object") {
+    return {};
+  }
+  return experimental_context as BashSecretContext;
+}
+
+function buildSandboxSecretEnv(
+  secrets: readonly RuntimeSecret[] | undefined,
+): Record<string, string> | undefined {
+  if (!secrets || secrets.length === 0) return undefined;
+  const env: Record<string, string> = {};
+  let hasAny = false;
+  for (const secret of secrets) {
+    if (secret.injectInSandbox !== false && secret.value) {
+      env[secret.name] = secret.value;
+      hasAny = true;
+    }
+  }
+  return hasAny ? env : undefined;
+}
+
+function detectReferencedSecretNames(
+  command: string,
+  secrets: readonly RuntimeSecret[] | undefined,
+): string[] {
+  if (!secrets || secrets.length === 0 || !command) return [];
+  const used: string[] = [];
+  for (const secret of secrets) {
+    if (secret.injectInSandbox === false) continue;
+    const escaped = secret.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(?:\\$\\{?${escaped}\\}?\\b)`);
+    if (regex.test(command)) {
+      used.push(secret.name);
+    }
+  }
+  return used;
+}
 
 const bashInputSchema = z.object({
   command: z.string().describe("The bash command to execute"),
@@ -171,6 +221,13 @@ EXAMPLES:
     inputSchema: bashInputSchema,
     execute: async (input, { experimental_context, abortSignal }) => {
       const { command, cwd, detached } = input;
+      const secretCtx = getSecretContext(experimental_context);
+      const redactor =
+        secretCtx.secretRedactor ?? createSecretRedactor(secretCtx.secrets);
+      const redact = (value: string) =>
+        redactor.hasSecrets() ? redactor.redact(value) : value;
+      const execEnv = buildSandboxSecretEnv(secretCtx.secrets);
+
       let sandboxResult;
       try {
         sandboxResult = await getSandboxForCommand(experimental_context);
@@ -179,7 +236,9 @@ EXAMPLES:
           success: false,
           exitCode: 1,
           stdout: "",
-          stderr: `Sandbox is unavailable (${error instanceof Error ? error.message : String(error)}). Cannot execute bash command.`,
+          stderr: redact(
+            `Sandbox is unavailable (${error instanceof Error ? error.message : String(error)}). Cannot execute bash command.`,
+          ),
         };
       }
       const { sandbox, commandGate } = sandboxResult;
@@ -202,6 +261,18 @@ EXAMPLES:
           stderr:
             "Invalid cwd: the bash working directory must be a workspace-relative path inside the sandbox workspace.",
         };
+      }
+
+      const referencedSecrets = detectReferencedSecretNames(
+        command,
+        secretCtx.secrets,
+      );
+      if (referencedSecrets.length > 0 && secretCtx.onSecretUsed) {
+        try {
+          secretCtx.onSecretUsed(referencedSecrets);
+        } catch {
+          // Non-fatal telemetry callback
+        }
       }
 
       // Detached mode: start the command in the background and return immediately
@@ -230,7 +301,9 @@ EXAMPLES:
             success: false,
             exitCode: null,
             stdout: "",
-            stderr: error instanceof Error ? error.message : String(error),
+            stderr: redact(
+              error instanceof Error ? error.message : String(error),
+            ),
             ...(migrationNotice ? { migration: migrationNotice } : {}),
           };
         }
@@ -255,6 +328,7 @@ EXAMPLES:
         timeoutMs,
         {
           signal: abortSignal,
+          ...(execEnv ? { env: execEnv } : {}),
         },
       );
 
@@ -274,13 +348,16 @@ EXAMPLES:
             command,
             workingDir,
             timeoutMs,
-            { signal: abortSignal },
+            {
+              signal: abortSignal,
+              ...(execEnv ? { env: execEnv } : {}),
+            },
           );
           return {
             success: retryResult.success,
             exitCode: retryResult.exitCode,
-            stdout: sanitizeCommandOutput(retryResult.stdout),
-            stderr: sanitizeCommandOutput(retryResult.stderr),
+            stdout: redact(sanitizeCommandOutput(retryResult.stdout)),
+            stderr: redact(sanitizeCommandOutput(retryResult.stderr)),
             ...(retryResult.truncated && { truncated: true }),
             migration: {
               sandboxMigrated: true,
@@ -294,8 +371,8 @@ EXAMPLES:
       return {
         success: result.success,
         exitCode: result.exitCode,
-        stdout: sanitizeCommandOutput(result.stdout),
-        stderr: sanitizeCommandOutput(result.stderr),
+        stdout: redact(sanitizeCommandOutput(result.stdout)),
+        stderr: redact(sanitizeCommandOutput(result.stderr)),
         ...(result.truncated && { truncated: true }),
         ...(migrationNotice ? { migration: migrationNotice } : {}),
       };

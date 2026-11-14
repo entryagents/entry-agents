@@ -1,4 +1,5 @@
-import { and, eq } from "drizzle-orm";
+import type { McpServerConfig } from "@entry-agents/agent";
+import { and, asc, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   decryptMcpHeaders,
@@ -6,15 +7,28 @@ import {
 } from "@/lib/mcp/header-encryption";
 import { resolveAndAssertPublic } from "@/lib/mcp/url-safety";
 import { db } from "./client";
+import { InvalidMcpServerConfigError } from "./mcp-server-errors";
 import { mcpServers, type McpServerRow } from "./schema";
+
+export type McpTransportType = "http" | "sse" | "stdio";
+
+export interface McpCachedToolSummary {
+  name: string;
+  description?: string;
+}
 
 export interface McpServerSummary {
   id: string;
   name: string;
-  transport: "http" | "sse";
-  url: string;
+  transport: McpTransportType;
+  url: string | null;
+  command: string | null;
+  args: string[] | null;
   hasHeaders: boolean;
+  hasEnv: boolean;
   enabled: boolean;
+  lastToolCount: number | null;
+  cachedTools: McpCachedToolSummary[] | null;
   lastConnectionError: string | null;
   lastConnectionCheckedAt: Date | null;
   createdAt: Date;
@@ -36,6 +50,8 @@ export class InvalidMcpServerNameError extends Error {
   }
 }
 
+export { InvalidMcpServerConfigError };
+
 function assertValidName(name: string): void {
   if (!NAME_PATTERN.test(name)) {
     throw new InvalidMcpServerNameError(
@@ -49,14 +65,38 @@ function assertValidName(name: string): void {
   }
 }
 
+function assertValidStdioCommand(command: string | undefined): string {
+  const trimmed = command?.trim() ?? "";
+  if (!trimmed) {
+    throw new InvalidMcpServerConfigError(
+      "command is required for stdio MCP servers",
+    );
+  }
+  if (trimmed.length > 512) {
+    throw new InvalidMcpServerConfigError("command is too long");
+  }
+  return trimmed;
+}
+
+function normalizeArgs(args: string[] | undefined): string[] | null {
+  if (!args || args.length === 0) return null;
+  const cleaned = args.map((item) => item.trim()).filter(Boolean);
+  return cleaned.length > 0 ? cleaned : null;
+}
+
 function toSummary(row: McpServerRow): McpServerSummary {
   return {
     id: row.id,
     name: row.name,
     transport: row.transport,
-    url: row.url,
+    url: row.url ?? null,
+    command: row.command ?? null,
+    args: Array.isArray(row.args) ? row.args : null,
     hasHeaders: Boolean(row.encryptedHeaders),
+    hasEnv: Boolean(row.encryptedEnv),
     enabled: row.enabled,
+    lastToolCount: row.lastToolCount ?? null,
+    cachedTools: Array.isArray(row.cachedTools) ? row.cachedTools : null,
     lastConnectionError: row.lastConnectionError,
     lastConnectionCheckedAt: row.lastConnectionCheckedAt,
     createdAt: row.createdAt,
@@ -64,53 +104,115 @@ function toSummary(row: McpServerRow): McpServerSummary {
   };
 }
 
-/** Never returns decrypted headers -- for display/listing only. */
+function rowToMcpConfig(row: McpServerRow): McpServerConfig {
+  if (row.transport === "stdio") {
+    return {
+      name: row.name,
+      transport: "stdio",
+      command: row.command ?? "",
+      args: Array.isArray(row.args) ? row.args : undefined,
+      env: decryptMcpHeaders(row.encryptedEnv),
+    };
+  }
+  return {
+    name: row.name,
+    transport: row.transport,
+    url: row.url ?? "",
+    headers: decryptMcpHeaders(row.encryptedHeaders),
+  };
+}
+
+/** Never returns decrypted headers/env -- for display/listing only. */
 export async function listMcpServers(
   userId: string,
 ): Promise<McpServerSummary[]> {
   const rows = await db
     .select()
     .from(mcpServers)
-    .where(eq(mcpServers.userId, userId));
+    .where(eq(mcpServers.userId, userId))
+    .orderBy(asc(mcpServers.name));
 
   return rows.map(toSummary);
 }
 
 /**
  * For internal use only (the chat request path) -- resolves a user's
- * enabled servers with their headers decrypted, ready to hand to
+ * enabled servers with their headers/env decrypted, ready to hand to
  * createMcpToolSet(). Never expose this return value to a client.
  */
-export async function getEnabledMcpServersForRequest(userId: string): Promise<
-  {
-    name: string;
-    transport: "http" | "sse";
-    url: string;
-    headers?: Record<string, string>;
-  }[]
-> {
+export async function getEnabledMcpServersForRequest(
+  userId: string,
+): Promise<(McpServerConfig & { id: string })[]> {
   const rows = await db
     .select()
     .from(mcpServers)
-    .where(and(eq(mcpServers.userId, userId), eq(mcpServers.enabled, true)));
+    .where(and(eq(mcpServers.userId, userId), eq(mcpServers.enabled, true)))
+    .orderBy(asc(mcpServers.name));
 
   return rows.map((row) => ({
-    name: row.name,
-    transport: row.transport,
-    url: row.url,
-    headers: decryptMcpHeaders(row.encryptedHeaders),
+    id: row.id,
+    ...rowToMcpConfig(row),
   }));
+}
+
+/** Internal execution helper for single-server test endpoint. */
+export async function getMcpServerByIdForExecution(
+  userId: string,
+  id: string,
+): Promise<(McpServerConfig & { id: string }) | null> {
+  const [row] = await db
+    .select()
+    .from(mcpServers)
+    .where(and(eq(mcpServers.userId, userId), eq(mcpServers.id, id)));
+
+  if (!row) return null;
+  return {
+    id: row.id,
+    ...rowToMcpConfig(row),
+  };
 }
 
 export async function createMcpServer(params: {
   userId: string;
   name: string;
-  transport: "http" | "sse";
-  url: string;
+  transport: McpTransportType;
+  url?: string;
   headers?: Record<string, string>;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
 }): Promise<McpServerSummary> {
   assertValidName(params.name);
-  await resolveAndAssertPublic(params.url);
+
+  if (params.transport === "stdio") {
+    const command = assertValidStdioCommand(params.command);
+    const args = normalizeArgs(params.args);
+    const [created] = await db
+      .insert(mcpServers)
+      .values({
+        id: nanoid(),
+        userId: params.userId,
+        name: params.name,
+        transport: "stdio",
+        url: null,
+        command,
+        args,
+        encryptedEnv: encryptMcpHeaders(params.env),
+        encryptedHeaders: null,
+        enabled: true,
+      })
+      .returning();
+
+    return toSummary(created);
+  }
+
+  const trimmedUrl = params.url?.trim() ?? "";
+  if (!trimmedUrl) {
+    throw new InvalidMcpServerConfigError(
+      "url is required for http/sse MCP servers",
+    );
+  }
+  await resolveAndAssertPublic(trimmedUrl);
 
   const [created] = await db
     .insert(mcpServers)
@@ -119,7 +221,10 @@ export async function createMcpServer(params: {
       userId: params.userId,
       name: params.name,
       transport: params.transport,
-      url: params.url,
+      url: trimmedUrl,
+      command: null,
+      args: null,
+      encryptedEnv: null,
       encryptedHeaders: encryptMcpHeaders(params.headers),
       enabled: true,
     })
@@ -132,18 +237,23 @@ export async function updateMcpServer(params: {
   userId: string;
   id: string;
   name?: string;
-  transport?: "http" | "sse";
+  transport?: McpTransportType;
   url?: string;
-  /** Pass to replace headers. Omit to leave existing headers untouched
-   * (the client never sees them back, so it can't round-trip them). */
+  /** Pass to replace headers. Omit to leave existing headers untouched. */
   headers?: Record<string, string>;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
   enabled?: boolean;
 }): Promise<McpServerSummary | null> {
   if (params.name !== undefined) {
     assertValidName(params.name);
   }
-  if (params.url !== undefined) {
+  if (params.url !== undefined && params.transport !== "stdio") {
     await resolveAndAssertPublic(params.url);
+  }
+  if (params.transport === "stdio" && params.command !== undefined) {
+    assertValidStdioCommand(params.command);
   }
 
   const [updated] = await db
@@ -153,9 +263,18 @@ export async function updateMcpServer(params: {
       ...(params.transport !== undefined
         ? { transport: params.transport }
         : {}),
-      ...(params.url !== undefined ? { url: params.url } : {}),
+      ...(params.url !== undefined ? { url: params.url || null } : {}),
       ...(params.headers !== undefined
         ? { encryptedHeaders: encryptMcpHeaders(params.headers) }
+        : {}),
+      ...(params.command !== undefined
+        ? { command: params.command.trim() || null }
+        : {}),
+      ...(params.args !== undefined
+        ? { args: normalizeArgs(params.args) }
+        : {}),
+      ...(params.env !== undefined
+        ? { encryptedEnv: encryptMcpHeaders(params.env) }
         : {}),
       ...(params.enabled !== undefined ? { enabled: params.enabled } : {}),
       updatedAt: new Date(),
@@ -183,12 +302,26 @@ export async function deleteMcpServer(
 export async function recordMcpServerConnectionResult(
   id: string,
   error: string | null,
+  tools?: McpCachedToolSummary[],
 ): Promise<void> {
+  const sanitizedTools = tools
+    ? tools.slice(0, 100).map((t) => ({
+        name: t.name,
+        ...(t.description ? { description: t.description.slice(0, 180) } : {}),
+      }))
+    : undefined;
+
   await db
     .update(mcpServers)
     .set({
       lastConnectionError: error,
       lastConnectionCheckedAt: new Date(),
+      ...(sanitizedTools !== undefined
+        ? {
+            lastToolCount: tools?.length ?? 0,
+            cachedTools: sanitizedTools,
+          }
+        : {}),
     })
     .where(eq(mcpServers.id, id));
 }

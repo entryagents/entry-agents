@@ -1,4 +1,5 @@
 import { buildSubagentSummaryLines } from "./subagents/registry";
+import type { SecretCatalogEntry } from "./lib/secret-redactor";
 import type { SkillMetadata } from "./skills/types";
 
 // ---------------------------------------------------------------------------
@@ -379,12 +380,20 @@ Once the user is happy with the result, ask if they want this workflow saved as 
 // Public API
 // ---------------------------------------------------------------------------
 
+export interface McpPromptSummary {
+  bridged: boolean;
+  servers: Array<{ name: string; toolCount: number }>;
+  directToolNames: string[];
+}
+
 export interface BuildSystemPromptOptions {
   cwd?: string;
   currentBranch?: string;
   customInstructions?: string;
   environmentDetails?: string;
   skills?: SkillMetadata[];
+  secretCatalog?: SecretCatalogEntry[];
+  mcpSummary?: McpPromptSummary;
   modelId?: string;
   /** See "Guided frontend workflow" section above for what this injects. */
   guidedFrontendWorkflow?: boolean;
@@ -399,9 +408,10 @@ function buildSkillsPrompt(skills: SkillMetadata[]): string {
 
   // Filter to skills the model can actually invoke:
   // - Must NOT have model invocation disabled
-  const invocableSkills = skills.filter(
-    (s) => !s.options.disableModelInvocation,
-  );
+  // Sort deterministically by name to keep the KV prompt prefix cache-friendly.
+  const invocableSkills = skills
+    .filter((s) => !s.options.disableModelInvocation)
+    .toSorted((a, b) => a.name.localeCompare(b.name));
 
   if (invocableSkills.length === 0) return "";
 
@@ -439,6 +449,77 @@ npx skills --help                      # all options
 \`\`\``;
 }
 
+function buildSecretsPrompt(secretCatalog: SecretCatalogEntry[]): string {
+  if (secretCatalog.length === 0) return "";
+
+  const sortedSecrets = [...secretCatalog].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+
+  const lines = sortedSecrets.map((entry) => {
+    const details: string[] = [];
+    if (entry.description) {
+      details.push(entry.description);
+    }
+    if (entry.allowedHosts && entry.allowedHosts.length > 0) {
+      details.push(`allowed hosts: ${entry.allowedHosts.join(", ")}`);
+    }
+    return details.length > 0
+      ? `- \`${entry.name}\` (${details.join("; ")})`
+      : `- \`${entry.name}\``;
+  });
+
+  return `
+## Available User Secrets & API Keys
+The user has configured encrypted secrets for this account. You CANNOT read or inspect their raw values; they are injected transiently server-side only when referenced safely:
+${lines.join("\n")}
+
+Rules for using secrets:
+- In \`bash\`: reference as environment variable \`"$SECRET_NAME"\` (injected ephemerally for commands that use it). NEVER print, echo, \`env\`, \`printenv\`, base64-encode, or write secret values to disk.
+- In \`web_fetch\`: reference inside headers or URLs using \`{{SECRET:SECRET_NAME}}\` (resolved server-side only; domain allowlists are strictly enforced).
+- Outputs, tool responses, and errors automatically redact any secret values.`;
+}
+
+function buildMcpPrompt(summary: McpPromptSummary): string {
+  if (summary.servers.length === 0 && summary.directToolNames.length === 0) {
+    return "";
+  }
+
+  const serverLines = [...summary.servers]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(
+      (server) =>
+        `- \`${server.name}\` (${server.toolCount} tool${server.toolCount === 1 ? "" : "s"})`,
+    );
+
+  if (summary.bridged) {
+    return `
+## Connected MCP Servers (On-Demand Tool Bridge)
+These external MCP servers are connected for this session:
+${serverLines.join("\n")}
+
+To keep context fast, their schemas are indexed on-demand behind three bridge tools:
+1. Call \`tool_search({ query })\` with keywords or a server name (e.g., \`"${summary.servers[0]?.name ?? "github"}"\`) to find matching tool names.
+2. Call \`tool_describe({ tools })\` to load the exact parameter schema for the selected tool(s).
+3. Call \`tool_call({ tool, arguments })\` to run the tool.
+Use these MCP tools whenever the user's request involves an external service listed above.`;
+  }
+
+  const sortedDirect = [...summary.directToolNames].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  const directPreview =
+    sortedDirect.length <= 24
+      ? `\nDirect tools available: ${sortedDirect.map((t) => `\`${t}\``).join(", ")}`
+      : "";
+
+  return `
+## Connected MCP Servers
+These external MCP servers are connected and ready to call directly:
+${serverLines.join("\n")}${directPreview}
+Call the \`mcp__<server>__<tool>\` tools directly whenever the user's request matches an external service listed above.`;
+}
+
 /**
  * Build the complete system prompt, with model-family-specific behavioral tuning.
  *
@@ -449,7 +530,8 @@ npx skills --help                      # all options
  * 4. Cloud sandbox instructions
  * 5. Custom instructions (AGENTS.md, user config)
  * 6. Skills section (if skills registered)
- * 7. Guided frontend workflow section (if enabled)
+ * 7. User secrets catalog (names + descriptions only, never values)
+ * 8. Guided frontend workflow section (if enabled)
  */
 export interface SystemPromptParts {
   staticCore: string;
@@ -503,6 +585,20 @@ export function buildSystemPromptParts(
     const skillsPrompt = buildSkillsPrompt(options.skills);
     if (skillsPrompt) {
       dynamicParts.push(skillsPrompt);
+    }
+  }
+
+  if (options.secretCatalog && options.secretCatalog.length > 0) {
+    const secretsPrompt = buildSecretsPrompt(options.secretCatalog);
+    if (secretsPrompt) {
+      dynamicParts.push(secretsPrompt);
+    }
+  }
+
+  if (options.mcpSummary) {
+    const mcpPrompt = buildMcpPrompt(options.mcpSummary);
+    if (mcpPrompt) {
+      dynamicParts.push(mcpPrompt);
     }
   }
 

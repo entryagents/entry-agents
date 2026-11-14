@@ -1290,7 +1290,6 @@ export function InboxSidebar({
                   </div>
 
                   <div className="border-t border-border py-1">
-
                     {billingData?.expiresAt ? (
                       <div className="flex w-full items-center justify-between px-3.5 py-1.5 text-[12px] text-muted-foreground">
                         <span>Expires</span>
@@ -1314,7 +1313,6 @@ export function InboxSidebar({
                         {creditDisplay}
                       </span>
                     </button>
-
 
                     <button
                       type="button"

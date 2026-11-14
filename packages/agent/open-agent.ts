@@ -16,6 +16,11 @@ import {
 } from "./models";
 import { defaultModelLabel } from "./default-model";
 import { applyToolDisclosure } from "./tools/tool-bridge";
+import {
+  createSecretRedactor,
+  type RuntimeSecret,
+  type SecretCatalogEntry,
+} from "./lib/secret-redactor";
 
 import type { SkillMetadata } from "./skills/types";
 import type {
@@ -158,6 +163,9 @@ const callOptionsSchema = z.object({
   // budget. Undefined = no cap (ordinary turns).
   maxOutputTokens: z.number().int().positive().optional(),
   inboxHooks: z.custom<InboxToolContext>().optional(),
+  secretCatalog: z.custom<SecretCatalogEntry[]>().optional(),
+  secrets: z.custom<RuntimeSecret[]>().optional(),
+  onSecretUsed: z.custom<(names: string[]) => void>().optional(),
 });
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -319,6 +327,52 @@ export const openAgent = new ToolLoopAgent({
     const customInstructions = options.customInstructions;
     const sandbox = options.sandbox;
     const skills = options.skills ?? [];
+    const secrets = options.secrets;
+    const secretCatalog =
+      options.secretCatalog ??
+      secrets?.map((entry) => ({
+        name: entry.name,
+        description: entry.description,
+        allowedHosts: entry.allowedHosts,
+      }));
+    const secretRedactor = createSecretRedactor(secrets);
+
+    const disclosedExtraTools = options.extraTools
+      ? applyToolDisclosure(options.extraTools)
+      : undefined;
+
+    let mcpSummary:
+      | {
+          bridged: boolean;
+          servers: Array<{ name: string; toolCount: number }>;
+          directToolNames: string[];
+        }
+      | undefined;
+
+    if (options.extraTools && disclosedExtraTools) {
+      const countsByServer = new Map<string, number>();
+      const extraKeys = Object.keys(options.extraTools).sort();
+      for (const toolKey of extraKeys) {
+        if (toolKey.startsWith("mcp__")) {
+          const rest = toolKey.slice("mcp__".length);
+          const sepIndex = rest.indexOf("__");
+          const serverName = sepIndex > 0 ? rest.slice(0, sepIndex) : rest;
+          countsByServer.set(
+            serverName,
+            (countsByServer.get(serverName) ?? 0) + 1,
+          );
+        }
+      }
+      if (extraKeys.length > 0) {
+        mcpSummary = {
+          bridged: disclosedExtraTools.bridged,
+          servers: [...countsByServer.entries()]
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([name, toolCount]) => ({ name, toolCount })),
+          directToolNames: disclosedExtraTools.bridged ? [] : extraKeys,
+        };
+      }
+    }
 
     const promptParts = buildSystemPromptParts({
       cwd: sandbox?.workingDirectory,
@@ -326,6 +380,8 @@ export const openAgent = new ToolLoopAgent({
       customInstructions,
       environmentDetails: sandbox?.environmentDetails,
       skills,
+      secretCatalog,
+      mcpSummary,
       modelId: mainSelection.id,
       guidedFrontendWorkflow: options.guidedFrontendWorkflow,
     });
@@ -340,10 +396,10 @@ export const openAgent = new ToolLoopAgent({
           // Large MCP/connector sets are hidden behind tool_search/
           // tool_describe/tool_call only when that is estimated to
           // save tokens (see tools/tool-bridge.ts).
-          const merged = options.extraTools
+          const merged = disclosedExtraTools
             ? {
                 ...(settings.tools ?? tools),
-                ...applyToolDisclosure(options.extraTools).tools,
+                ...disclosedExtraTools.tools,
               }
             : (settings.tools ?? tools);
           if (!options.toolset) return merged;
@@ -378,6 +434,10 @@ export const openAgent = new ToolLoopAgent({
         sandboxControl: options.sandboxControl,
         inboxHooks: options.inboxHooks,
         billingGuard: options.billingGuard,
+        secretCatalog,
+        secrets,
+        secretRedactor,
+        onSecretUsed: options.onSecretUsed,
       },
     };
   },

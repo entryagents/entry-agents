@@ -109,9 +109,7 @@ function getGlobalSkillRefError(params: {
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
-    <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-      {children}
-    </h3>
+    <h3 className="text-xs font-medium text-muted-foreground">{children}</h3>
   );
 }
 
