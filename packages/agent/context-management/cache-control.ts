@@ -84,6 +84,13 @@ const DEFAULT_CACHE_CONTROL_OPTIONS: Record<
  * needed, and SystemModelMessage's providerOptions would just be inert
  * extra metadata for them, so there's no reason to wrap for those).
  */
+function sortToolsDeterministically<T extends ToolSet>(tools: T): T {
+  const entries = Object.entries(tools);
+  if (entries.length <= 1) return tools;
+  entries.sort(([a], [b]) => a.localeCompare(b));
+  return Object.fromEntries(entries) as T;
+}
+
 export function addCacheControl(options: {
   instructions: string | string[];
   model: LanguageModel;
@@ -133,10 +140,13 @@ export function addCacheControl<T extends ToolSet>({
   providerOptions?: ProviderOptions;
 }): T | ModelMessage[] | string | SystemModelMessage | SystemModelMessage[] {
   if (!isAnthropicModel(model)) {
+    if (tools !== undefined) {
+      return sortToolsDeterministically(tools);
+    }
     if (Array.isArray(instructions)) {
       return instructions.filter(Boolean).join("\n");
     }
-    return (tools ?? messages ?? instructions)!;
+    return (messages ?? instructions)!;
   }
 
   if (instructions !== undefined) {
@@ -165,7 +175,7 @@ export function addCacheControl<T extends ToolSet>({
   }
 
   if (tools !== undefined) {
-    const entries = Object.entries(tools);
+    const entries = Object.entries(sortToolsDeterministically(tools));
     if (entries.length === 0) return tools;
 
     // Anthropic supports max 4 cache breakpoints - only mark the last tool

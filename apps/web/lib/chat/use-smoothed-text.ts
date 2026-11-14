@@ -56,7 +56,12 @@ function getPrefersReducedMotion(): boolean {
 function useStreamSmootherInstance(): StreamSmoother {
   const smootherRef = useRef<StreamSmoother | null>(null);
   if (!smootherRef.current) {
-    smootherRef.current = createStreamSmoother();
+    smootherRef.current = createStreamSmoother({
+      baseCharsPerSec: 4500,
+      catchUpHorizonSec: 0.18,
+      maxBufferAgeMs: 350,
+      maxFrameStepMs: 250,
+    });
   }
   const smoother = smootherRef.current;
 

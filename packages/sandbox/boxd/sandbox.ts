@@ -173,7 +173,7 @@ export class BoxdSandbox implements Sandbox {
     command: string,
     cwd: string,
     timeoutMs: number,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; env?: Record<string, string> },
   ): Promise<ExecResult> {
     this.assertRunning();
     if (options?.signal?.aborted) {
@@ -199,11 +199,14 @@ export class BoxdSandbox implements Sandbox {
       }
     }
 
+    const baseEnv = this.commandEnv();
+    const mergedEnv = options?.env ? { ...baseEnv, ...options.env } : baseEnv;
+
     const execPromise = this.client.machines.exec(this.machineId, {
       command: ["bash", "-c", wrappedCommand],
       cwd,
       timeout: timeoutMs,
-      env: this.commandEnv(),
+      env: mergedEnv,
     });
 
     let abortListener: (() => void) | undefined;

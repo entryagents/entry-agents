@@ -115,32 +115,30 @@ export default function SettingsUsagePage() {
       {/* Primary Account Balances Grid */}
       <div className="grid gap-5 md:grid-cols-2">
         {/* Subscription Balance Card */}
-        <div className="flex flex-col justify-between rounded-2xl border border-border bg-card p-5 shadow-xs">
+        <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-5">
           <div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Plan Allowance
+              <span className="text-xs font-medium text-muted-foreground">
+                Plan allowance
               </span>
               <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium uppercase tracking-wide ${planStyle.badge}`}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${planStyle.badge}`}
               >
-                {billing.planName} Tier
+                {billing.planName}
               </span>
             </div>
 
             <div className="mt-3">
-              <p className="text-xs text-muted-foreground">
-                Total Spendable Balance
-              </p>
-              <p className="mt-0.5 font-mono text-3xl font-bold tracking-tight text-foreground">
+              <p className="text-xs text-muted-foreground">Spendable balance</p>
+              <p className="mt-0.5 font-mono text-3xl font-medium tracking-tight tabular-nums text-foreground">
                 {formatUsdCents(billing.creditBalanceCents)}
               </p>
             </div>
 
             <div className="mt-4 space-y-1.5 border-t border-border/60 pt-3 text-xs text-muted-foreground">
               <div className="flex justify-between">
-                <span>Monthly Grant</span>
-                <span className="font-mono font-medium text-foreground">
+                <span>Monthly grant</span>
+                <span className="font-mono font-medium tabular-nums text-foreground">
                   {billing.creditGrantCents
                     ? formatUsdCents(billing.creditGrantCents)
                     : "$0"}
@@ -148,8 +146,8 @@ export default function SettingsUsagePage() {
               </div>
               {billing.expiresAt ? (
                 <div className="flex justify-between">
-                  <span>Cycle Renewal</span>
-                  <span className="font-mono font-medium text-foreground">
+                  <span>Cycle renewal</span>
+                  <span className="font-mono font-medium tabular-nums text-foreground">
                     {formatExpirationDate(billing.expiresAt)}
                   </span>
                 </div>
@@ -157,7 +155,7 @@ export default function SettingsUsagePage() {
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-border/60">
+          <div className="mt-4 border-t border-border/60 pt-3">
             <Button
               asChild
               size="sm"
@@ -165,50 +163,50 @@ export default function SettingsUsagePage() {
               className="w-full rounded-xl"
             >
               <Link href="/pricing">
-                Manage Subscription
-                <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
+                Manage subscription
+                <ArrowUpRight className="ml-1 size-3.5" strokeWidth={1.5} />
               </Link>
             </Button>
           </div>
         </div>
 
         {/* Top-up Balance & Quick Top-Up Card */}
-        <div className="flex flex-col justify-between rounded-2xl border border-border bg-card p-5 shadow-xs">
+        <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-5">
           <div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Top-Up Credit (3-Month Validity)
+              <span className="text-xs font-medium text-muted-foreground">
+                Top-up credit
               </span>
               <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
-                <Calendar className="h-3.5 w-3.5" />
+                <Calendar className="size-3.5" strokeWidth={1.5} />
                 {billing.topUpExpiresAt
                   ? `Valid until ${formatExpirationDate(billing.topUpExpiresAt)}`
-                  : "3-Month Expiry"}
+                  : "90-day expiry"}
               </span>
             </div>
 
             <div className="mt-3">
               <p className="text-xs text-muted-foreground">
-                Active Top-Up Balance
+                Active top-up balance
               </p>
-              <p className="mt-0.5 font-mono text-3xl font-bold tracking-tight text-foreground">
+              <p className="mt-0.5 font-mono text-3xl font-medium tracking-tight tabular-nums text-foreground">
                 {formatUsdCents(topUpBalance)}
               </p>
             </div>
 
-            <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-              Top-up credits never expire mid-cycle and stay valid for 90 days
-              from purchase. Use them whenever you need extra compute.
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              Top-up credits stay valid for 90 days from purchase and carry
+              across billing cycles.
             </p>
           </div>
 
           {/* Quick Top-Up Package Buttons */}
-          <div className="mt-4 pt-3 border-t border-border/60">
-            <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+          <div className="mt-4 border-t border-border/60 pt-3">
+            <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
               <span className="font-medium text-foreground">
-                Quick Add Credit
+                Quick add credit
               </span>
-              <span>1 USD = $1 compute</span>
+              <span className="tabular-nums">1 USD = $1 compute</span>
             </div>
             <div className="grid grid-cols-4 gap-1.5">
               {[
@@ -223,7 +221,7 @@ export default function SettingsUsagePage() {
                   variant="outline"
                   onClick={() => handleTopup(cents)}
                   disabled={isCheckingOut !== null}
-                  className="rounded-lg text-xs font-mono"
+                  className="rounded-lg font-mono text-xs tabular-nums"
                 >
                   {isCheckingOut === cents ? "..." : label}
                 </Button>
@@ -235,21 +233,19 @@ export default function SettingsUsagePage() {
 
       {/* Windows Telemetry Card (For Entry / GOAT tier) */}
       {windows && (
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
+        <div className="rounded-xl border border-border bg-card p-6">
           <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-4">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Usage Windows Telemetry
+              <h2 className="text-sm font-medium text-foreground">
+                Usage windows
               </h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Pacing limits ensure continuous, predictable compute throughput.
+                Pacing limits for predictable compute throughput.
               </p>
             </div>
-            <span className="inline-flex items-center gap-1.5 font-mono text-xs rounded-full border border-border/60 px-2.5 py-1 text-muted-foreground">
-              <Clock className="h-3.5 w-3.5" />
-              {isFixed
-                ? "Fixed Refill Cycles (Locked for Cycle)"
-                : "Rolling Sliding Windows (Locked for Cycle)"}
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2.5 py-1 font-mono text-xs text-muted-foreground">
+              <Clock className="size-3.5" strokeWidth={1.5} />
+              {isFixed ? "Fixed refill cycles" : "Rolling sliding windows"}
             </span>
           </div>
 
@@ -291,7 +287,7 @@ export default function SettingsUsagePage() {
                 <div key={label} className="space-y-1.5">
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-foreground">
+                      <span className="font-medium text-foreground">
                         {label}
                       </span>
                       <span className="text-[11px] text-muted-foreground">
@@ -301,7 +297,7 @@ export default function SettingsUsagePage() {
                     <span
                       className={`font-mono tabular-nums ${
                         isFull
-                          ? "font-semibold text-red-500"
+                          ? "font-medium text-red-500"
                           : isWarn
                             ? "text-amber-500"
                             : "text-muted-foreground"
@@ -313,7 +309,7 @@ export default function SettingsUsagePage() {
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                     <div
-                      className={`h-full rounded-full transition-all duration-300 ${
+                      className={`h-full rounded-full transition-[width] duration-300 ${
                         isFull
                           ? "bg-red-500"
                           : isWarn
@@ -328,10 +324,13 @@ export default function SettingsUsagePage() {
             })}
           </div>
 
-          <div className="mt-5 pt-3 border-t border-border/60 flex items-center justify-between text-xs text-muted-foreground">
+          <div className="mt-5 flex items-center justify-between border-t border-border/60 pt-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-              Real-time ledger synchronization active
+              <CheckCircle2
+                className="size-3.5 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+              Real-time ledger sync active
             </span>
             <span className="font-mono text-[11px]">Next sync in ~2s</span>
           </div>

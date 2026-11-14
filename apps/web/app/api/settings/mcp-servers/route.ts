@@ -1,17 +1,30 @@
+import { z } from "zod";
 import {
   createMcpServer,
+  InvalidMcpServerConfigError,
   InvalidMcpServerNameError,
   listMcpServers,
 } from "@/lib/db/mcp-servers";
 import { UnsafeMcpServerUrlError } from "@/lib/mcp/url-safety";
 import { getServerSession } from "@/lib/session/get-server-session";
 
-interface CreateMcpServerRequest {
-  name?: string;
-  transport?: "http" | "sse";
-  url?: string;
-  headers?: Record<string, string>;
-}
+const stringRecordSchema = z.record(z.string(), z.string());
+
+const createMcpServerSchema = z.discriminatedUnion("transport", [
+  z.object({
+    name: z.string().trim().min(1, "name is required"),
+    transport: z.enum(["http", "sse"]),
+    url: z.string().trim().min(1, "url is required"),
+    headers: stringRecordSchema.optional(),
+  }),
+  z.object({
+    name: z.string().trim().min(1, "name is required"),
+    transport: z.literal("stdio"),
+    command: z.string().trim().min(1, "command is required"),
+    args: z.array(z.string()).optional(),
+    env: stringRecordSchema.optional(),
+  }),
+]);
 
 export async function GET() {
   const session = await getServerSession();
@@ -29,52 +42,44 @@ export async function POST(req: Request) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
-  let body: CreateMcpServerRequest;
+  let rawBody: unknown;
   try {
-    body = (await req.json()) as CreateMcpServerRequest;
+    rawBody = await req.json();
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  if (typeof body.name !== "string" || body.name.trim().length === 0) {
-    return Response.json({ error: "name is required" }, { status: 400 });
-  }
-
-  if (body.transport !== "http" && body.transport !== "sse") {
+  const parsed = createMcpServerSchema.safeParse(rawBody);
+  if (!parsed.success) {
     return Response.json(
-      { error: 'transport must be "http" or "sse"' },
-      { status: 400 },
-    );
-  }
-
-  if (typeof body.url !== "string" || body.url.trim().length === 0) {
-    return Response.json({ error: "url is required" }, { status: 400 });
-  }
-
-  if (
-    body.headers !== undefined &&
-    (typeof body.headers !== "object" ||
-      body.headers === null ||
-      Object.values(body.headers).some((v) => typeof v !== "string"))
-  ) {
-    return Response.json(
-      { error: "headers must be a string-to-string map" },
+      { error: parsed.error.issues[0]?.message ?? "Invalid MCP server config" },
       { status: 400 },
     );
   }
 
   try {
-    const created = await createMcpServer({
-      userId: session.user.id,
-      name: body.name.trim(),
-      transport: body.transport,
-      url: body.url.trim(),
-      headers: body.headers,
-    });
+    const created =
+      parsed.data.transport === "stdio"
+        ? await createMcpServer({
+            userId: session.user.id,
+            name: parsed.data.name,
+            transport: "stdio",
+            command: parsed.data.command,
+            args: parsed.data.args,
+            env: parsed.data.env,
+          })
+        : await createMcpServer({
+            userId: session.user.id,
+            name: parsed.data.name,
+            transport: parsed.data.transport,
+            url: parsed.data.url,
+            headers: parsed.data.headers,
+          });
     return Response.json({ server: created }, { status: 201 });
   } catch (error) {
     if (
       error instanceof InvalidMcpServerNameError ||
+      error instanceof InvalidMcpServerConfigError ||
       error instanceof UnsafeMcpServerUrlError
     ) {
       return Response.json({ error: error.message }, { status: 400 });

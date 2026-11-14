@@ -44,4 +44,38 @@ describe("createCoalescingStreamWriter", () => {
       { type: "finish-step" },
     ]);
   });
+
+  test("drains consecutive non-delta chunks produced across async generator microtasks before flush resolves", async () => {
+    const written: Array<{ type: string; value?: number }> = [];
+    const writer = createCoalescingStreamWriter<{
+      type: string;
+      value?: number;
+    }>({
+      write: async (chunk) => {
+        // Resolve immediately so loop iterations complete between generator yields
+        written.push(chunk);
+        await Promise.resolve();
+      },
+    });
+
+    async function* produceChunks() {
+      yield { type: "finish-step", value: 1 };
+      yield { type: "message-metadata", value: 2 };
+      await Promise.resolve();
+      yield { type: "finish-step", value: 3 };
+      yield { type: "message-metadata", value: 4 };
+    }
+
+    for await (const chunk of produceChunks()) {
+      writer.write(chunk);
+    }
+    await writer.flush();
+
+    expect(written).toEqual([
+      { type: "finish-step", value: 1 },
+      { type: "message-metadata", value: 2 },
+      { type: "finish-step", value: 3 },
+      { type: "message-metadata", value: 4 },
+    ]);
+  });
 });

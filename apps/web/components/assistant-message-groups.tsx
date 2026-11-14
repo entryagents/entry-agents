@@ -109,9 +109,7 @@ export function AssistantMessageGroups({
           ? "This task reached the maximum turn duration"
           : null;
 
-  const stopNoticeTitle = stopNotice
-    ? stopNotice.split(". ")[0] + "."
-    : null;
+  const stopNoticeTitle = stopNotice ? stopNotice.split(". ")[0] + "." : null;
   const stopNoticeBody = stopNotice
     ? stopNotice.slice(stopNotice.indexOf(". ") + 2)
     : null;
@@ -119,14 +117,14 @@ export function AssistantMessageGroups({
   const stopNoticeCard = stopNotice ? (
     <div
       role="status"
-      className="flex w-fit max-w-full items-start gap-2.5 rounded-2xl border border-amber-500/30 bg-gradient-to-b from-amber-500/10 to-amber-500/[0.04] px-4 py-3 text-sm text-amber-800 shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:border-amber-400/25 dark:from-amber-400/10 dark:to-amber-400/[0.03] dark:text-amber-300"
+      className="flex w-fit max-w-full items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/[0.05] dark:text-amber-300"
     >
       <svg
-        className="mt-0.5 h-4 w-4 shrink-0"
+        className="mt-0.5 size-4 shrink-0"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
         aria-hidden

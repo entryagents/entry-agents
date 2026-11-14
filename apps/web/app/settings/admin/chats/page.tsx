@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Trash2,
   CheckCircle2,
-  AlertCircle,
   ExternalLink,
   Search,
   Box,
@@ -140,14 +139,17 @@ export default function AdminChatsPage() {
     <div className="space-y-6">
       {/* Top Action & Stat Cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Card className="p-4 bg-card/60">
+        <Card className="bg-card/60 p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">
-              Total Chats
+            <span className="text-xs font-medium text-muted-foreground">
+              Total chats
             </span>
-            <MessageSquare className="h-4 w-4 text-primary" />
+            <MessageSquare
+              className="size-4 text-muted-foreground"
+              strokeWidth={1.5}
+            />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono">
+          <div className="mt-2 font-mono text-2xl font-medium tabular-nums">
             {data?.metrics.totalChats.toLocaleString() ?? "—"}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -155,44 +157,47 @@ export default function AdminChatsPage() {
           </p>
         </Card>
 
-        <Card className="p-4 bg-card/60">
+        <Card className="bg-card/60 p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">
-              Active Turns
+            <span className="text-xs font-medium text-muted-foreground">
+              Active turns
             </span>
-            <Activity className="h-4 w-4 text-emerald-500 animate-pulse" />
+            <Activity
+              className="size-4 text-muted-foreground"
+              strokeWidth={1.5}
+            />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono text-emerald-500">
+          <div className="mt-2 font-mono text-2xl font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
             {data?.metrics.activeChats ?? 0}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            In-flight streaming &amp; queued runs
+            In-flight streaming and queued runs
           </p>
         </Card>
 
-        <Card className="p-4 bg-card/60">
+        <Card className="bg-card/60 p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">
-              Messages Persisted
+            <span className="text-xs font-medium text-muted-foreground">
+              Messages persisted
             </span>
-            <Bot className="h-4 w-4 text-blue-500" />
+            <Bot className="size-4 text-muted-foreground" strokeWidth={1.5} />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono">
+          <div className="mt-2 font-mono text-2xl font-medium tabular-nums">
             {data?.metrics.totalMessages.toLocaleString() ?? "—"}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Sanitized user &amp; assistant turns
+            Sanitized user and assistant turns
           </p>
         </Card>
 
-        <Card className="p-4 bg-card/60">
+        <Card className="bg-card/60 p-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-muted-foreground">
-              Boxd Sandboxes
+            <span className="text-xs font-medium text-muted-foreground">
+              Boxd sandboxes
             </span>
-            <Box className="h-4 w-4 text-amber-500" />
+            <Box className="size-4 text-muted-foreground" strokeWidth={1.5} />
           </div>
-          <div className="mt-2 text-2xl font-bold font-mono">
+          <div className="mt-2 font-mono text-2xl font-medium tabular-nums">
             {sandboxes ? `${sandboxes.count} / ${sandboxes.limit}` : "—"}
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -204,8 +209,8 @@ export default function AdminChatsPage() {
       {/* Control Actions Card */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center justify-between">
-            <span>Agent Operations &amp; Capacity Recovery</span>
+          <CardTitle className="flex items-center justify-between text-base">
+            <span>Agent operations and capacity recovery</span>
             <Button
               size="sm"
               variant="outline"
@@ -213,14 +218,14 @@ export default function AdminChatsPage() {
               disabled={isLoading}
             >
               <RefreshCw
-                className={`h-3.5 w-3.5 mr-1.5 ${isLoading ? "animate-spin" : ""}`}
+                className={`mr-1.5 size-3.5 ${isLoading ? "animate-spin" : ""}`}
+                strokeWidth={1.5}
               />
               Refresh
             </Button>
           </CardTitle>
           <CardDescription>
-            Quick maintenance actions to purge sandboxes and reconcile any hung
-            runs across the platform.
+            Purge sandboxes and reconcile hung runs across the platform.
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-0">
@@ -232,10 +237,10 @@ export default function AdminChatsPage() {
               disabled={isPurgingSandboxes}
               className="cursor-pointer"
             >
-              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              <Trash2 className="mr-1.5 size-3.5" strokeWidth={1.5} />
               {isPurgingSandboxes
-                ? "Purging Sandboxes..."
-                : "Purge All Boxd Sandboxes (Reset Capacity to 0/50)"}
+                ? "Purging sandboxes..."
+                : "Purge all Boxd sandboxes (reset to 0/50)"}
             </Button>
 
             <Button
@@ -245,10 +250,10 @@ export default function AdminChatsPage() {
               disabled={isReconciling}
               className="cursor-pointer"
             >
-              <CheckCircle2 className="h-3.5 w-3.5 mr-1.5 text-emerald-500" />
+              <CheckCircle2 className="mr-1.5 size-3.5" strokeWidth={1.5} />
               {isReconciling
-                ? "Reconciling Runs..."
-                : "Reconcile Stale Runs to Idle"}
+                ? "Reconciling runs..."
+                : "Reconcile stale runs to idle"}
             </Button>
           </div>
         </CardContent>
@@ -257,23 +262,22 @@ export default function AdminChatsPage() {
       {/* Recent Chats Table */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <CardTitle className="text-base">
-                Recent Chats &amp; Assistant Runs
+                Recent chats &amp; assistant runs
               </CardTitle>
               <CardDescription>
-                Real-time log of the latest 50 conversations and their run
-                states.
+                Latest 50 conversations and their run states.
               </CardDescription>
             </div>
             <div className="relative w-full sm:w-64">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
               <Input
                 placeholder="Search user, title, model..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-8 text-xs h-8"
+                className="h-8 pl-8 text-xs"
               />
             </div>
           </div>
@@ -281,9 +285,9 @@ export default function AdminChatsPage() {
         <CardContent className="p-0">
           <div className="overflow-x-auto border-t border-border/60">
             <table className="w-full text-left text-xs">
-              <thead className="bg-muted/40 text-muted-foreground font-semibold">
+              <thead className="bg-muted/40 font-medium text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-2.5">Title &amp; Chat ID</th>
+                  <th className="px-4 py-2.5">Title &amp; chat ID</th>
                   <th className="px-4 py-2.5">User</th>
                   <th className="px-4 py-2.5">Model</th>
                   <th className="px-4 py-2.5">Status</th>
@@ -301,21 +305,21 @@ export default function AdminChatsPage() {
                   return (
                     <tr
                       key={c.id}
-                      className="hover:bg-muted/20 transition-colors"
+                      className="transition-colors hover:bg-muted/20"
                     >
-                      <td className="px-4 py-3 max-w-[280px]">
-                        <p className="font-medium text-foreground truncate">
+                      <td className="max-w-[280px] px-4 py-3">
+                        <p className="truncate font-medium text-foreground">
                           {c.title || "Untitled"}
                         </p>
-                        <p className="font-mono text-[10px] text-muted-foreground truncate">
+                        <p className="truncate font-mono text-[10px] text-muted-foreground">
                           {c.id}
                         </p>
                       </td>
-                      <td className="px-4 py-3 max-w-[180px]">
-                        <p className="font-medium truncate text-foreground">
+                      <td className="max-w-[180px] px-4 py-3">
+                        <p className="truncate font-medium text-foreground">
                           {c.userName || "—"}
                         </p>
-                        <p className="text-[11px] text-muted-foreground truncate">
+                        <p className="truncate text-[11px] text-muted-foreground">
                           {c.userEmail || "—"}
                         </p>
                       </td>
@@ -324,16 +328,16 @@ export default function AdminChatsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium uppercase tracking-wide border ${
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
                             isRunActive
-                              ? "bg-amber-500/10 text-amber-400 border-amber-500/30 animate-pulse"
+                              ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
                               : c.status === "failed"
-                                ? "bg-red-500/10 text-red-400 border-red-500/30"
-                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                ? "border-red-500/30 bg-red-500/10 text-red-600 dark:text-red-400"
+                                : "border-border/70 bg-muted/40 text-muted-foreground"
                           }`}
                         >
                           {isRunActive ? (
-                            <Activity className="h-2.5 w-2.5" />
+                            <span className="size-1.5 rounded-full bg-amber-500" />
                           ) : null}
                           {c.status}
                         </span>

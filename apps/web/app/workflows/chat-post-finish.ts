@@ -781,9 +781,15 @@ export async function runAutoCreatePrStep(params: {
   }
 }
 
+export interface DequeuedUserPrompt {
+  message: WebAgentUIMessage;
+  modelId?: string | null;
+  reasoningEffort?: string | null;
+}
+
 export async function dequeueNextQueuedUserMessageStep(
   chatId: string,
-): Promise<WebAgentUIMessage | null> {
+): Promise<DequeuedUserPrompt | null> {
   "use step";
 
   try {
@@ -811,6 +817,8 @@ export async function dequeueNextQueuedUserMessageStep(
         id?: unknown;
         text?: unknown;
         payload?: unknown;
+        modelId?: unknown;
+        reasoningEffort?: unknown;
       }>;
 
       if (
@@ -870,14 +878,29 @@ export async function dequeueNextQueuedUserMessageStep(
         parts,
       };
 
-      return userMessage;
+      const queuedModelId =
+        typeof first.modelId === "string" && first.modelId
+          ? first.modelId
+          : null;
+      const queuedReasoningEffort =
+        typeof first.reasoningEffort === "string" && first.reasoningEffort
+          ? first.reasoningEffort
+          : null;
+
+      return {
+        message: userMessage,
+        ...(queuedModelId ? { modelId: queuedModelId } : {}),
+        ...(queuedReasoningEffort
+          ? { reasoningEffort: queuedReasoningEffort }
+          : {}),
+      };
     });
 
     if (!popped) {
       return null;
     }
 
-    await persistUserMessage(chatId, popped);
+    await persistUserMessage(chatId, popped.message);
     return popped;
   } catch (error) {
     console.error("[workflow] Failed to dequeue next queued prompt:", error);

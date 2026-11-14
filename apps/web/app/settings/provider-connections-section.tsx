@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
@@ -45,13 +46,26 @@ export function ProviderConnectionsSection() {
 
   async function connectGoogle() {
     setLinking(true);
-    await authClient.linkSocial({
-      provider: "google",
-      callbackURL: "/settings/connections",
-      errorCallbackURL: "/settings/connections",
-    });
-    await mutate();
-    setLinking(false);
+    try {
+      const result = await authClient.linkSocial({
+        provider: "google",
+        callbackURL: "/settings/connections",
+        errorCallbackURL: "/settings/connections",
+      });
+      if (result?.error) {
+        toast.error(result.error.message || "Failed to connect Google account");
+        return;
+      }
+      await mutate();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Failed to connect Google account",
+      );
+    } finally {
+      setLinking(false);
+    }
   }
 
   return (

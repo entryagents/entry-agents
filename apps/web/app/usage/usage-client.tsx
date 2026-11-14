@@ -10,7 +10,7 @@ import { LandingNav } from "@/components/landing/nav";
 import { LandingFooter } from "@/components/landing/footer";
 import { UsageSection } from "@/app/settings/usage-section";
 import { Button } from "@/components/ui/button";
-import { ArrowUpRight, CheckCircle2, Clock, Sparkles } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Clock } from "lucide-react";
 import Link from "next/link";
 
 export function UsageClient() {
@@ -49,7 +49,7 @@ export function UsageClient() {
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 border-b border-(--l-border) pb-8">
             <div>
               <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
-                Usage &amp; Balance
+                Usage &amp; balance
               </h1>
               <p className="mt-3 text-base text-(--l-fg-2) sm:text-lg">
                 Monitor your live balance, rolling usage limits, and agent
@@ -63,8 +63,8 @@ export function UsageClient() {
                 className="rounded-full border-(--l-border)"
               >
                 <Link href="/pricing">
-                  Pricing Plans
-                  <ArrowUpRight className="ml-1.5 h-4 w-4" />
+                  Pricing plans
+                  <ArrowUpRight className="ml-1.5 size-4" strokeWidth={1.5} />
                 </Link>
               </Button>
             </div>
@@ -73,27 +73,26 @@ export function UsageClient() {
           {/* Account & Telemetry Cards */}
           <div className="mt-8 grid gap-6 md:grid-cols-2">
             {/* Balance & Subscription Card */}
-            <div className="flex flex-col justify-between rounded-3xl border border-(--l-border) bg-(--l-fg)/[0.02] p-6 sm:p-8">
+            <div className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-fg)/[0.02] p-6 sm:p-8">
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-(--l-fg-3)">
-                    Subscription State
+                  <span className="text-xs font-medium text-(--l-fg-3)">
+                    Subscription state
                   </span>
                   {billing ? (
                     <span
-                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium uppercase tracking-wide ${planStyle.badge}`}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${planStyle.badge}`}
                     >
-                      <Sparkles className="h-3 w-3" />
-                      {billing.planName} Plan
+                      {billing.planName}
                     </span>
                   ) : null}
                 </div>
 
                 <div className="mt-4">
                   <p className="text-xs text-(--l-fg-3)">
-                    Available Credit Balance
+                    Available credit balance
                   </p>
-                  <p className="mt-1 font-mono text-4xl font-semibold tracking-tight text-(--l-fg) sm:text-5xl">
+                  <p className="mt-1 font-mono text-4xl font-medium tracking-tight tabular-nums text-(--l-fg) sm:text-5xl">
                     {isLoading
                       ? "..."
                       : formatUsdCents(billing?.creditBalanceCents ?? 0)}
@@ -102,8 +101,8 @@ export function UsageClient() {
 
                 <div className="mt-6 space-y-2 border-t border-(--l-border) pt-4 text-xs text-(--l-fg-2)">
                   <div className="flex justify-between">
-                    <span>Monthly Credit Grant</span>
-                    <span className="font-mono font-medium text-(--l-fg)">
+                    <span>Monthly credit grant</span>
+                    <span className="font-mono font-medium tabular-nums text-(--l-fg)">
                       {billing?.creditGrantCents
                         ? formatUsdCents(billing.creditGrantCents)
                         : "$0"}
@@ -111,8 +110,8 @@ export function UsageClient() {
                   </div>
                   {billing?.expiresAt ? (
                     <div className="flex justify-between">
-                      <span>Subscription Expiry</span>
-                      <span className="font-mono font-medium text-(--l-fg)">
+                      <span>Subscription expiry</span>
+                      <span className="font-mono font-medium tabular-nums text-(--l-fg)">
                         {formatExpirationDate(billing.expiresAt)}
                       </span>
                     </div>
@@ -120,25 +119,25 @@ export function UsageClient() {
                 </div>
               </div>
 
-              <div className="mt-6 pt-4 border-t border-(--l-border)">
+              <div className="mt-6 border-t border-(--l-border) pt-4">
                 <Button asChild className="w-full rounded-xl">
-                  <Link href="/pricing">Change Plan or Add Credit</Link>
+                  <Link href="/pricing">Change plan or add credit</Link>
                 </Button>
               </div>
             </div>
 
             {/* Windows Telemetry Card */}
-            <div className="flex flex-col justify-between rounded-3xl border border-(--l-border) bg-(--l-fg)/[0.02] p-6 sm:p-8">
+            <div className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-fg)/[0.02] p-6 sm:p-8">
               <div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-(--l-fg-3)">
-                    Usage Windows
+                  <span className="text-xs font-medium text-(--l-fg-3)">
+                    Usage windows
                   </span>
                   <span className="inline-flex items-center gap-1 text-xs text-(--l-fg-3)">
-                    <Clock className="h-3.5 w-3.5" />
+                    <Clock className="size-3.5" strokeWidth={1.5} />
                     {isFixed
-                      ? "Fixed Refill Cycle"
-                      : "Continuous Sliding Windows"}
+                      ? "Fixed refill cycle"
+                      : "Continuous sliding windows"}
                   </span>
                 </div>
 
@@ -176,7 +175,7 @@ export function UsageClient() {
                               {row.label}
                             </span>
                             <span
-                              className={`font-mono tabular-nums ${full ? "font-semibold text-red-500" : "text-(--l-fg-2)"}`}
+                              className={`font-mono tabular-nums ${full ? "font-medium text-red-500" : "text-(--l-fg-2)"}`}
                             >
                               {formatUsdCents(row.usedCents)} /{" "}
                               {formatUsdCents(row.limitCents)}
@@ -184,7 +183,7 @@ export function UsageClient() {
                           </div>
                           <div className="h-2 w-full overflow-hidden rounded-full bg-(--l-border)">
                             <div
-                              className={`h-full rounded-full transition-all duration-300 ${
+                              className={`h-full rounded-full transition-[width] duration-300 ${
                                 full ? "bg-red-500" : "bg-emerald-500"
                               }`}
                               style={{ width: `${pct}%` }}

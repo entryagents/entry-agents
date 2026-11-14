@@ -6,7 +6,13 @@ export const STREAM_RECOVERY_STALL_MS = 4_000;
 export const STREAM_RECOVERY_MIN_INTERVAL_MS = 8_000;
 
 export type ChatStreamingProbeResponse = {
-  chats: { id: string; isStreaming: boolean }[];
+  chats: {
+    id: string;
+    isStreaming: boolean;
+    status?: string;
+    updatedAt?: string;
+    lastAssistantMessageAt?: string | null;
+  }[];
 };
 
 export type StreamRecoveryDecision = "none" | "retry-error" | "probe";

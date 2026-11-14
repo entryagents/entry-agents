@@ -138,18 +138,28 @@ export async function POST(req: Request) {
   ]);
 
   // Start the durable workflow
-  const run = await start(runAgentWorkflow, [
+  const run = await start(
+    runAgentWorkflow,
+    [
+      {
+        messages,
+        chatId,
+        sessionId,
+        userId,
+        requestUrl: req.url,
+        authSession: session ?? null,
+        assistantId: generateId(),
+        maxSteps: isHobbyResourceProfile() ? 50 : 500,
+      },
+    ],
     {
-      messages,
-      chatId,
-      sessionId,
-      userId,
-      requestUrl: req.url,
-      authSession: session ?? null,
-      assistantId: generateId(),
-      maxSteps: isHobbyResourceProfile() ? 50 : 500,
+      attributes: {
+        chatId,
+        sessionId,
+        userId,
+      },
     },
-  ]);
+  );
 
   // Idempotently claim the activeStreamId slot for the workflow we just
   // started. This succeeds both when the slot is still null and when the

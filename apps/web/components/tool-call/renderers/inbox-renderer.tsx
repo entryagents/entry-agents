@@ -10,7 +10,7 @@ interface InboxRendererProps {
   state: ToolRenderState;
 }
 
-export function InboxRenderer({ part, state }: InboxRendererProps) {
+export function InboxRenderer({ part, state: _state }: InboxRendererProps) {
   const [expanded, setExpanded] = useState(false);
   const input = (part.input ?? {}) as { action?: "check" | "list" };
   const output = (part.output ?? {}) as {
@@ -32,7 +32,8 @@ export function InboxRenderer({ part, state }: InboxRendererProps) {
   const unread = output.unreadCount ?? messages.filter((m) => m.isNew).length;
   const newlyRead = output.newlyReadCount ?? 0;
   const action = input.action ?? "check";
-  const isRunning = part.state === "input-available" || part.state === "input-streaming";
+  const isRunning =
+    part.state === "input-available" || part.state === "input-streaming";
 
   const parts = [
     action === "list" ? "Listed" : "Read",
@@ -47,11 +48,16 @@ export function InboxRenderer({ part, state }: InboxRendererProps) {
       className="flex w-full items-center gap-2 px-1 py-0.5 text-left text-xs text-muted-foreground/70 transition-colors hover:text-muted-foreground"
       onClick={() => messages.length > 0 && setExpanded(!expanded)}
     >
-      <Inbox className={`h-3.5 w-3.5 shrink-0 ${isRunning ? "animate-pulse text-blue-400/70" : "opacity-50"}`} />
+      <Inbox
+        className={`h-3.5 w-3.5 shrink-0 ${isRunning ? "animate-pulse text-blue-400/70" : "opacity-50"}`}
+      />
       <span>{isRunning ? "Checking inbox…" : parts.join(" · ")}</span>
-      {messages.length > 0 && (
-        expanded ? <ChevronUp className="h-3 w-3 shrink-0 opacity-40" /> : <ChevronDown className="h-3 w-3 shrink-0 opacity-40" />
-      )}
+      {messages.length > 0 &&
+        (expanded ? (
+          <ChevronUp className="h-3 w-3 shrink-0 opacity-40" />
+        ) : (
+          <ChevronDown className="h-3 w-3 shrink-0 opacity-40" />
+        ))}
     </button>
   );
 }

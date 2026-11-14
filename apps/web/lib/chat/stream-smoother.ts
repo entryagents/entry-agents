@@ -162,10 +162,7 @@ export function createStreamSmoother(
     return `${messageId}:${partId}`;
   }
 
-  function ensureState(part: {
-    messageId: string;
-    partId: string;
-  }): KeyState {
+  function ensureState(part: { messageId: string; partId: string }): KeyState {
     const key = keyOf(part.messageId, part.partId);
     let state = states.get(key);
     if (!state) {
@@ -215,7 +212,7 @@ export function createStreamSmoother(
   }
 
   function notify(): void {
-    for (const listener of [...listeners]) {
+    for (const listener of Array.from(listeners)) {
       listener();
     }
   }

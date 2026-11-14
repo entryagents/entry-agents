@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Cable,
   CreditCard,
+  KeyRound,
   LogOut,
   Menu,
   Plug,
@@ -30,6 +31,7 @@ import { cn } from "@/lib/utils";
 import { AccountsSectionSkeleton } from "./accounts-section";
 import { McpServersSectionSkeleton } from "./mcp-servers-section";
 import { PreferencesSectionSkeleton } from "./preferences-section";
+import { SecretsSectionSkeleton } from "./secrets/secrets-section";
 
 /** Skeleton shown while auth is loading for the combined profile page */
 function ProfilePageSkeleton() {
@@ -97,6 +99,12 @@ const baseSidebarItems = [
     icon: Cable,
   },
   {
+    id: "secrets",
+    label: "API Keys & Secrets",
+    href: "/settings/secrets",
+    icon: KeyRound,
+  },
+  {
     id: "models",
     label: "Models",
     href: "/settings/models",
@@ -148,7 +156,7 @@ function SettingsLayout({
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
             >
-              <item.icon className="h-4 w-4" />
+              <item.icon className="size-4 shrink-0" strokeWidth={1.5} />
               {item.label}
             </Link>
           </li>
@@ -166,12 +174,12 @@ function SettingsLayout({
               href="/sessions"
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="size-4 shrink-0" strokeWidth={1.5} />
               Back
             </Link>
           </div>
           <nav className="flex-1 px-2 py-2">
-            <div className="mb-2 px-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="mb-2 px-4 text-xs font-medium text-muted-foreground">
               Settings
             </div>
             {navItems}
@@ -182,7 +190,7 @@ function SettingsLayout({
               onClick={signOut}
               className="flex w-full items-center gap-3 rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="size-4 shrink-0" strokeWidth={1.5} />
               Sign out
             </button>
           </div>
@@ -200,12 +208,12 @@ function SettingsLayout({
               onClick={() => setMobileSidebarOpen(false)}
               className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft className="size-4 shrink-0" strokeWidth={1.5} />
               Back
             </Link>
           </div>
           <nav className="flex-1 px-2 py-2">
-            <div className="mb-2 px-4 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="mb-2 px-4 text-xs font-medium text-muted-foreground">
               Settings
             </div>
             {navItems}
@@ -216,7 +224,7 @@ function SettingsLayout({
               onClick={signOut}
               className="flex w-full items-center gap-3 rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="size-4 shrink-0" strokeWidth={1.5} />
               Sign out
             </button>
           </div>
@@ -258,6 +266,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <PreferencesSectionSkeleton />
     ) : activeItem?.id === "mcp-servers" ? (
       <McpServersSectionSkeleton />
+    ) : activeItem?.id === "secrets" ? (
+      <SecretsSectionSkeleton />
     ) : (
       <ProfilePageSkeleton />
     );

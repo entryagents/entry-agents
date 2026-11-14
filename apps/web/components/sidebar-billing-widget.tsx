@@ -96,24 +96,26 @@ export const PLAN_STYLES: Record<
     segmentActive: "bg-muted-foreground/60",
   },
   plus: {
-    badge: "bg-blue-500/15 text-blue-400 border-blue-500/30",
-    card: "border-blue-500/20 bg-gradient-to-b from-blue-500/[0.05] to-transparent",
+    badge: "bg-blue-500/12 text-blue-600 dark:text-blue-400 border-blue-500/25",
+    card: "border-border/70 bg-muted/20",
     segmentActive: "bg-blue-400",
   },
   goat: {
-    badge: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-    card: "border-emerald-500/20 bg-gradient-to-b from-emerald-500/[0.06] via-background/60 to-background/30",
+    badge:
+      "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 border-emerald-500/25",
+    card: "border-border/70 bg-muted/20",
     segmentActive: "bg-emerald-400",
   },
   pro: {
-    badge: "bg-violet-500/15 text-violet-400 border-violet-500/30",
-    card: "border-violet-500/20 bg-gradient-to-b from-violet-500/[0.05] to-transparent",
+    badge:
+      "bg-violet-500/12 text-violet-600 dark:text-violet-400 border-violet-500/25",
+    card: "border-border/70 bg-muted/20",
     segmentActive: "bg-violet-400",
   },
   max: {
     badge:
-      "bg-gradient-to-r from-amber-400/20 via-orange-400/20 to-pink-500/20 text-amber-400 border-amber-400/30",
-    card: "border-amber-400/20 bg-gradient-to-b from-amber-400/[0.06] to-transparent",
+      "bg-amber-500/12 text-amber-600 dark:text-amber-400 border-amber-500/25",
+    card: "border-border/70 bg-muted/20",
     segmentActive: "bg-amber-400",
   },
 };

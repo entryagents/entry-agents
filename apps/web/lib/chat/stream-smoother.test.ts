@@ -163,9 +163,9 @@ describe("createStreamSmoother", () => {
     h.advanceMs(100);
     // 6 chars at 400 chars/s drain fully; "thinking" (8 chars) also drains.
     expect(h.smoother.getDisplayed("m1", "text:0")).toBe("answer");
-    expect(
-      h.smoother.getDisplayed("m1", "reasoning-group:reasoning:0"),
-    ).toBe("thinking");
+    expect(h.smoother.getDisplayed("m1", "reasoning-group:reasoning:0")).toBe(
+      "thinking",
+    );
   });
 
   test("no text is ever lost across many bursts (final equals full arrival)", () => {

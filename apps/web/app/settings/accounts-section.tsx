@@ -113,11 +113,22 @@ async function startGitHubReconnect(reason: GitHubConnectionReason | null) {
     return;
   }
 
-  await authClient.linkSocial({
-    provider: "github",
-    callbackURL: GITHUB_OAUTH_CALLBACK,
-    errorCallbackURL: GITHUB_OAUTH_CALLBACK,
-  });
+  try {
+    const result = await authClient.linkSocial({
+      provider: "github",
+      callbackURL: GITHUB_OAUTH_CALLBACK,
+      errorCallbackURL: GITHUB_OAUTH_CALLBACK,
+    });
+    if (result?.error) {
+      toast.error(result.error.message || "Failed to reconnect GitHub account");
+    }
+  } catch (error) {
+    toast.error(
+      error instanceof Error
+        ? error.message
+        : "Failed to reconnect GitHub account",
+    );
+  }
 }
 
 function useGitHubReturnToast() {
@@ -495,6 +506,13 @@ export function AccountsSection() {
       <div className="space-y-4 p-4">
         {!hasGitHub ? (
           <NotConnectedState connectionDisabled={false} />
+        ) : !hasGitHubAccount ? (
+          <DisconnectedState
+            reconnectReason={reason ?? "token_unavailable"}
+            onDisconnect={() => setDisconnectOpen(true)}
+            unlinking={unlinking}
+            connectionDisabled={false}
+          />
         ) : (connectionLoading || connectionStatusLoading || !connectionData) &&
           !connectionError ? (
           <ConnectionLoadingSkeleton />
@@ -574,11 +592,26 @@ function NotConnectedState({
           if (connectionDisabled) return;
 
           setIsLinking(true);
-          await authClient.linkSocial({
-            provider: "github",
-            callbackURL: GITHUB_OAUTH_CALLBACK,
-            errorCallbackURL: GITHUB_OAUTH_CALLBACK,
-          });
+          try {
+            const result = await authClient.linkSocial({
+              provider: "github",
+              callbackURL: GITHUB_OAUTH_CALLBACK,
+              errorCallbackURL: GITHUB_OAUTH_CALLBACK,
+            });
+            if (result?.error) {
+              toast.error(
+                result.error.message || "Failed to connect GitHub account",
+              );
+              setIsLinking(false);
+            }
+          } catch (error) {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : "Failed to connect GitHub account",
+            );
+            setIsLinking(false);
+          }
         }}
       >
         Connect

@@ -6,6 +6,13 @@ import {
   buildWebFetchBodyFileName,
 } from "./web-fetch-body";
 import { getToolTimeoutMs } from "./tool-timeouts";
+import {
+  createSecretRedactor,
+  resolveSecretRecordTemplates,
+  resolveSecretTemplates,
+  type RuntimeSecret,
+  type SecretRedactor,
+} from "../lib/secret-redactor";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 export const MAX_BODY_LENGTH = 10_000;
@@ -337,10 +344,63 @@ EXAMPLES:
     { url, method = "GET", headers, body },
     { experimental_context, abortSignal },
   ) => {
+    const secretCtx = (
+      experimental_context && typeof experimental_context === "object"
+        ? experimental_context
+        : {}
+    ) as {
+      secrets?: RuntimeSecret[];
+      secretRedactor?: SecretRedactor;
+      onSecretUsed?: (names: string[]) => void;
+    };
+    const redactor =
+      secretCtx.secretRedactor ?? createSecretRedactor(secretCtx.secrets);
+    const redact = (value: string) =>
+      redactor.hasSecrets() ? redactor.redact(value) : value;
+
     const sandbox = await getSandbox(experimental_context, "web_fetch");
     const workingDirectory = sandbox.workingDirectory;
 
-    const parsedUrl = new URL(url);
+    const initialParsedUrl = new URL(url);
+    let resolvedUrl = url;
+    let resolvedHeaders = headers;
+    let resolvedBody = body;
+
+    try {
+      resolvedUrl = resolveSecretTemplates(url, secretCtx.secrets, {
+        targetHost: initialParsedUrl.hostname,
+        onSecretUsed: secretCtx.onSecretUsed,
+      });
+      const resolvedHost = new URL(resolvedUrl).hostname;
+      resolvedHeaders = resolveSecretRecordTemplates(
+        headers,
+        secretCtx.secrets,
+        {
+          targetHost: resolvedHost,
+          onSecretUsed: secretCtx.onSecretUsed,
+        },
+      );
+      if (body !== undefined) {
+        resolvedBody = resolveSecretTemplates(body, secretCtx.secrets, {
+          targetHost: resolvedHost,
+          onSecretUsed: secretCtx.onSecretUsed,
+        });
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: redact(error instanceof Error ? error.message : String(error)),
+      };
+    }
+
+    if (!isAllowedWebUrl(resolvedUrl)) {
+      return {
+        success: false,
+        error: "Fetch failed: URL must use http(s) and a public host",
+      };
+    }
+
+    const parsedUrl = new URL(resolvedUrl);
     const { isSafe, resolvedIps } = await resolveAndValidateHostAddresses({
       hostname: parsedUrl.hostname,
       sandbox,
@@ -419,17 +479,17 @@ EXAMPLES:
       shellEscape("%{http_code}"),
     );
 
-    if (headers) {
-      for (const [key, value] of Object.entries(headers)) {
+    if (resolvedHeaders) {
+      for (const [key, value] of Object.entries(resolvedHeaders)) {
         args.push("-H", shellEscape(`${key}: ${value}`));
       }
     }
 
-    if (method !== "GET" && method !== "HEAD" && body) {
-      args.push("-d", shellEscape(body));
+    if (method !== "GET" && method !== "HEAD" && resolvedBody) {
+      args.push("-d", shellEscape(resolvedBody));
     }
 
-    args.push(shellEscape(url));
+    args.push(shellEscape(resolvedUrl));
 
     const command = [
       ensureCurl,
@@ -456,7 +516,9 @@ EXAMPLES:
       if (result.exitCode !== 0 && result.exitCode !== 23) {
         return {
           success: false,
-          error: `Fetch failed: ${result.stderr || result.stdout || "Unknown error"}`,
+          error: redact(
+            `Fetch failed: ${result.stderr || result.stdout || "Unknown error"}`,
+          ),
         };
       }
 
@@ -478,15 +540,15 @@ EXAMPLES:
       return {
         success: true,
         status,
-        body: responseBody,
+        body: redact(responseBody),
         truncated,
-        ...(truncated ? { savedTo: bodyFilePath } : {}),
+        ...(truncated ? { savedTo: redact(bodyFilePath) } : {}),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return {
         success: false,
-        error: `Fetch failed: ${message}`,
+        error: redact(`Fetch failed: ${message}`),
       };
     }
   },

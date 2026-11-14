@@ -16,10 +16,11 @@ import {
  * anything. Only controls polling -- never whether we reconnect.
  */
 const RECOVERY_POLL_INTERVAL_MS = 2_500;
+const HUNG_STREAM_THRESHOLD_MS = 45_000;
 
 type RetryChatStream = (opts?: {
   auto?: boolean;
-  strategy?: "hard" | "soft";
+  strategy?: "hard" | "soft" | "reconnect";
 }) => void;
 
 type UseStreamRecoveryParams = {
@@ -28,7 +29,10 @@ type UseStreamRecoveryParams = {
   status: ChatUiStatus;
   isChatInFlight: boolean;
   hasAssistantRenderableContent: boolean;
+  hasPendingTurn?: boolean;
   retryChatStream: RetryChatStream;
+  getLastChunkReceivedAt?: () => number;
+  onReconcileSnapshot?: () => Promise<void> | void;
 };
 
 export function useStreamRecovery({
@@ -37,11 +41,19 @@ export function useStreamRecovery({
   status,
   isChatInFlight,
   hasAssistantRenderableContent,
+  hasPendingTurn = false,
   retryChatStream,
+  getLastChunkReceivedAt,
+  onReconcileSnapshot,
 }: UseStreamRecoveryParams): void {
   const inFlightStartedAtRef = useRef<number | null>(null);
   const lastStreamRecoveryAtRef = useRef(0);
   const streamRecoveryProbeInFlightRef = useRef(false);
+  const lastServerStampRef = useRef<{
+    chatId: string;
+    stamp: string;
+    isStreaming: boolean;
+  } | null>(null);
 
   // Keep the recovery logic in a ref so event-listener effects never
   // churn during streaming. The ref is updated on every render (cheap) while
@@ -92,19 +104,49 @@ export function useStreamRecovery({
         }
 
         const serverChat = payload.chats.find((chat) => chat.id === chatId);
+        const serverStamp = serverChat
+          ? `${serverChat.isStreaming}:${serverChat.status ?? ""}:${serverChat.updatedAt ?? ""}:${serverChat.lastAssistantMessageAt ?? ""}`
+          : "missing";
+        const previous =
+          lastServerStampRef.current?.chatId === chatId
+            ? lastServerStampRef.current
+            : null;
+        lastServerStampRef.current = {
+          chatId,
+          stamp: serverStamp,
+          isStreaming: Boolean(serverChat?.isStreaming),
+        };
+
         if (!serverChat?.isStreaming) {
-          // If the client thinks the chat is in flight, but server says it is not streaming
-          // (finished while phone was off / tab backgrounded), trigger soft retry to hydrate
+          // If the client thinks the chat is in flight, or the server completed/updated
+          // a turn while this tab was backgrounded/offline/idle (including before mount),
+          // reconcile immediately so the user never has to reload the page to see latest results.
           if (isChatInFlight) {
             retryChatStream({ auto: true, strategy: "soft" });
+          } else if (
+            (previous !== null && previous.stamp !== serverStamp) ||
+            (previous === null && hasPendingTurn)
+          ) {
+            await onReconcileSnapshot?.();
           }
           return;
         }
 
-        // Only attach when this device is not already actively streaming,
-        // or when local status is error.
+        // Attach when this device is not yet streaming or errored out.
         if (!isChatInFlight || status === "error") {
           retryChatStream({ auto: true, strategy: "soft" });
+          return;
+        }
+
+        // Watchdog: if the server reports an active stream and this client believes
+        // it is in flight, but the open SSE socket has delivered zero bytes for
+        // >45s (half-open mobile/proxy socket), tear down the hung fetch & reconnect.
+        const lastChunkAt = getLastChunkReceivedAt?.() ?? 0;
+        if (
+          lastChunkAt > 0 &&
+          Date.now() - lastChunkAt > HUNG_STREAM_THRESHOLD_MS
+        ) {
+          retryChatStream({ auto: true, strategy: "reconnect" });
         }
       } catch {
         // Ignore transient probe failures and try again on next interval.
@@ -137,7 +179,7 @@ export function useStreamRecovery({
 
   // Recover from transient connection drops when the tab regains visibility
   // or the network comes back. Visibility/focus events pass
-  // isVisibilityRecovery so the policy also probes when the chat looks idle
+  // isVisibilityRecovery so the policy also probes when the chat appears idle
   // (the browser may have silently killed the connection while backgrounded).
   useEffect(() => {
     const onVisible = () => {
@@ -151,7 +193,11 @@ export function useStreamRecovery({
     };
 
     const onOnline = () => {
-      retryChatStream({ auto: true, strategy: "soft" });
+      retryChatStream({
+        auto: true,
+        strategy: isChatInFlight ? "reconnect" : "soft",
+      });
+      maybeRecoverStreamOnVisibility();
     };
 
     document.addEventListener("visibilitychange", onVisible);
@@ -177,7 +223,12 @@ export function useStreamRecovery({
       window.removeEventListener("online", onOnline);
       window.clearInterval(recoveryPoll);
     };
-  }, [maybeRecoverStream, maybeRecoverStreamOnVisibility, isChatInFlight]);
+  }, [
+    maybeRecoverStream,
+    maybeRecoverStreamOnVisibility,
+    isChatInFlight,
+    retryChatStream,
+  ]);
 
   useEffect(() => {
     const isDocumentVisible =

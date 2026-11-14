@@ -6,23 +6,17 @@ import { isToolUIPart, type FileUIPart, type LanguageModelUsage } from "ai";
 import {
   Archive,
   ArrowDown,
-  ArrowUp,
   Lock,
   Check,
   Copy,
-  Inbox,
   Link2,
   Loader2,
-  Mic,
-  Paperclip,
   RefreshCw,
   Share2,
-  Square,
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import {
   useCallback,
   useEffect,
@@ -49,19 +43,6 @@ import {
   AssistantFileLink,
   type AssistantFileLinkProps,
 } from "@/components/assistant-file-link";
-import { FileSuggestionsDropdown } from "@/components/file-suggestions-dropdown";
-import { ImageAttachmentsPreview } from "@/components/image-attachments-preview";
-import { TextAttachmentsPreview } from "@/components/text-attachments-preview";
-import { ModelSelectorCompact } from "@/components/model-selector-compact";
-import { ReasoningEffortSelector } from "@/components/reasoning-effort-selector";
-import { PermissionModeSelector } from "@/components/permission-mode-selector";
-import {
-  getReasoningEffortLevels,
-  isReasoningCapableModel,
-  sanitizeReasoningEffort,
-} from "@/lib/model-reasoning";
-import { useInlineQuestion } from "@/components/inline-question-input";
-import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
 import { SubagentChatView } from "@/components/subagent-chat/subagent-chat-view";
@@ -94,14 +75,9 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useAudioRecording } from "@/hooks/use-audio-recording";
-import { useFileSuggestions } from "@/hooks/use-file-suggestions";
-import { useImageAttachments } from "@/hooks/use-image-attachments";
-import { useTextAttachments } from "@/hooks/use-text-attachments";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
 import { useChatInbox } from "@/hooks/use-chat-inbox";
 import { useSessionChats } from "@/hooks/use-session-chats";
-import { useSlashCommands } from "@/hooks/use-slash-commands";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import {
   getGitFinalizationState,
@@ -110,9 +86,13 @@ import {
   shouldShowThinkingIndicator,
   shouldUseChatListStreamingState,
 } from "@/lib/chat-streaming-state";
-import { ACCEPT_IMAGE_TYPES, isValidImageType } from "@/lib/image-utils";
-import { isLargeText } from "@/lib/text-attachment-utils";
 import { toFriendlyChatErrorText } from "@/lib/chat/friendly-error";
+import {
+  ChatComposer,
+  type BuiltComposerMessage,
+  type ChatComposerHandle,
+  type ComposerMessagePayload,
+} from "./components/chat-composer";
 import {
   type AvailableModelCost,
   DEFAULT_CONTEXT_LIMIT,
@@ -870,7 +850,6 @@ export function SessionChatContent({
   codeEditorDisabledReason: string | null;
 }) {
   const router = useRouter();
-  const [input, setInput] = useState("");
   const [isCreatingSandbox, setIsCreatingSandbox] = useState(false);
   const [isRestoringSnapshot, setIsRestoringSnapshot] = useState(false);
   const [_isUnarchiving, _setIsUnarchiving] = useState(false);
@@ -883,8 +862,6 @@ export function SessionChatContent({
   >(null);
   const [mobileArchiveDialogOpen, setMobileArchiveDialogOpen] = useState(false);
   const [mobileShareOpen, setMobileShareOpen] = useState(false);
-  const [cursorPosition, setCursorPosition] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
   const [copiedAssistantMessageId, setCopiedAssistantMessageId] = useState<
     string | null
   >(null);
@@ -926,17 +903,7 @@ export function SessionChatContent({
     }
   }, [changeRepoRequested, setChangeRepoRequested]);
   const { preferences } = useUserPreferences();
-  const isIosDevice = useMemo(() => {
-    if (typeof navigator === "undefined") {
-      return false;
-    }
-
-    return (
-      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-    );
-  }, []);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const composerRef = useRef<ChatComposerHandle>(null);
   const isMountedRef = useRef(true);
   const copyResetTimeoutRef = useRef<number | null>(null);
 
@@ -949,23 +916,6 @@ export function SessionChatContent({
       }
     };
   }, []);
-  const {
-    state: recordingState,
-    error: recordingError,
-    clearError: clearRecordingError,
-    toggleRecording,
-  } = useAudioRecording();
-
-  const handleMicClick = async () => {
-    clearRecordingError();
-    const transcribedText = await toggleRecording();
-    if (transcribedText) {
-      setInput((prev) =>
-        prev ? `${prev} ${transcribedText}` : transcribedText,
-      );
-      inputRef.current?.focus();
-    }
-  };
 
   const handleCopyAssistantMessage = useCallback(
     async (messageId: string, text: string) => {
@@ -1027,52 +977,6 @@ export function SessionChatContent({
     [],
   );
 
-  // Auto-resize textarea up to 3 lines
-  useEffect(() => {
-    const textarea = inputRef.current;
-    if (!textarea) return;
-
-    const computedStyle = getComputedStyle(textarea);
-    const lineHeight = parseFloat(computedStyle.lineHeight) || 24;
-    const maxLines = 3;
-    const maxHeight = lineHeight * maxLines;
-
-    // Store current height to avoid flicker
-    const currentHeight = textarea.offsetHeight;
-
-    // Temporarily set height to 0 to measure scrollHeight accurately
-    textarea.style.height = "0";
-    const scrollHeight = textarea.scrollHeight;
-
-    // Set new height, capped at max
-    const newHeight = Math.min(scrollHeight, maxHeight);
-
-    // Only update if height actually changed to minimize reflows
-    if (Math.abs(newHeight - currentHeight) > 1) {
-      textarea.style.height = `${newHeight}px`;
-    } else {
-      textarea.style.height = `${currentHeight}px`;
-    }
-  }, [input]);
-
-  const {
-    images,
-    addImage,
-    addImages,
-    removeImage,
-    clearImages,
-    getFileParts,
-    fileInputRef,
-    openFilePicker,
-  } = useImageAttachments();
-  const {
-    textAttachments,
-    addTextAttachment,
-    removeTextAttachment,
-    clearTextAttachments,
-  } = useTextAttachments();
-  const { containerRef, isAtBottom, scrollToBottom, scrollIfAtBottom } =
-    useScrollToBottom<HTMLDivElement>();
   const {
     session,
     chatInfo,
@@ -1106,6 +1010,8 @@ export function SessionChatContent({
     freePlanModelId,
     freeTierAllowedModelIds,
   } = useSessionChatMetadataContext();
+  const { containerRef, isAtBottom, scrollToBottom, scrollIfAtBottom } =
+    useScrollToBottom<HTMLDivElement>({ chatId: chatInfo.id });
   // Two independent block reasons can both apply: freeTierGate is the
   // admin-controlled capacity kill-switch (all non-admin users, plan
   // irrelevant); creditGate is this specific user's own balance hitting
@@ -1141,6 +1047,7 @@ export function SessionChatContent({
     contextLimit,
     stopChatStream,
     retryChatStream,
+    getLastChunkReceivedAt,
     workspaceStatus,
     hadInitialMessages,
     initialMessages,
@@ -1160,11 +1067,6 @@ export function SessionChatContent({
     skillsLoading,
     refreshSkills,
   } = useSessionChatWorkspaceContext();
-
-  // Passive textarea focus deliberately does NOT postpone the 20-minute
-  // inactivity timeout; only actual user prompts or running agents keep the
-  // workspace active.
-  const handleTextareaFocus = useCallback(() => {}, []);
 
   const autoCommitEnabled = Boolean(
     session.cloneUrl &&
@@ -1352,15 +1254,6 @@ export function SessionChatContent({
     isSending: isSendingInbox,
     sendInboxMessage,
   } = useChatInbox(chatInfo.id, isChatInFlight);
-  // Whether the composer currently has something to send/queue. Shared by
-  // the submit button's disabled state and by the decision of whether the
-  // composer button shows "stop" or "send" while a turn is in flight (see
-  // the button ternary further down) -- tapping the arrow used to always
-  // stop the running turn while a message was in flight, silently eating
-  // whatever the user had just typed instead of queuing it, since queuing
-  // only ever ran through the Enter-key path (form.requestSubmit()).
-  const hasComposerContent =
-    input.trim().length > 0 || images.length > 0 || textAttachments.length > 0;
   const lastMessage = useMemo(
     () => renderMessages[renderMessages.length - 1],
     [renderMessages],
@@ -1491,7 +1384,9 @@ export function SessionChatContent({
     }),
     [openFileTab],
   );
-  const [isUpdatingModel, setIsUpdatingModel] = useState(false);
+  const pendingChatSettingsPromiseRef = useRef<Promise<void>>(
+    Promise.resolve(),
+  );
   const lastStatusSyncAtRef = useRef(0);
   const statusSyncInFlightRef = useRef(false);
   const pendingOptimisticTitleChatIdRef = useRef<string | null>(null);
@@ -1593,6 +1488,11 @@ export function SessionChatContent({
     }
 
     const data = (await response.json()) as ChatRefreshResponse;
+    if (Array.isArray(data.messages)) {
+      setMessages((current) =>
+        mergePreservingLocalWork(data.messages, current),
+      );
+    }
     if (data.isStreaming) {
       return;
     }
@@ -1605,7 +1505,6 @@ export function SessionChatContent({
     setHasPendingResponse(false);
 
     clearError();
-    setMessages((current) => mergePreservingLocalWork(data.messages, current));
   }, [chatInfo.id, clearError, session.id, setMessages]);
 
   const refreshAfterTabResume = useCallback(async (): Promise<void> => {
@@ -1717,26 +1616,32 @@ export function SessionChatContent({
     };
   }, [refreshAfterTabResume, requestMarkChatRead]);
 
+  const lastChatMessage = messages[messages.length - 1];
+  const hasPendingTurn =
+    lastChatMessage?.role === "user" ||
+    (lastChatMessage?.role === "assistant" && !hasAssistantRenderableContent);
+
   useStreamRecovery({
     sessionId: session.id,
     chatId: chatInfo.id,
     status,
     isChatInFlight,
     hasAssistantRenderableContent,
+    hasPendingTurn,
     retryChatStream,
+    getLastChunkReceivedAt,
+    onReconcileSnapshot: refreshCurrentChatSnapshot,
   });
 
   const handleModelChange = useCallback(
     async (modelId: string) => {
       if (!modelId || modelId === chatInfo.modelId) return;
-      try {
-        setIsUpdatingModel(true);
-        await updateChatModel(modelId);
-      } catch (err) {
+      const task = updateChatModel(modelId).catch((err) => {
         console.error("Failed to update chat model:", err);
-      } finally {
-        setIsUpdatingModel(false);
-      }
+      });
+      pendingChatSettingsPromiseRef.current =
+        pendingChatSettingsPromiseRef.current.then(() => task);
+      await task;
     },
     [chatInfo.modelId, updateChatModel],
   );
@@ -1744,14 +1649,12 @@ export function SessionChatContent({
   const handleReasoningEffortChange = useCallback(
     async (reasoningEffort: string | null) => {
       if (reasoningEffort === chatInfo.reasoningEffort) return;
-      try {
-        setIsUpdatingModel(true);
-        await updateChatReasoningEffort(reasoningEffort);
-      } catch (err) {
+      const task = updateChatReasoningEffort(reasoningEffort).catch((err) => {
         console.error("Failed to update chat reasoning effort:", err);
-      } finally {
-        setIsUpdatingModel(false);
-      }
+      });
+      pendingChatSettingsPromiseRef.current =
+        pendingChatSettingsPromiseRef.current.then(() => task);
+      await task;
     },
     [chatInfo.reasoningEffort, updateChatReasoningEffort],
   );
@@ -1760,73 +1663,6 @@ export function SessionChatContent({
     () => modelOptions.find((option) => option.id === chatInfo.modelId),
     [modelOptions, chatInfo.modelId],
   );
-
-  const handleFileSelect = (
-    value: string,
-    mentionStart: number,
-    cursorPos: number,
-  ) => {
-    const before = input.slice(0, mentionStart);
-    const after = input.slice(cursorPos);
-    const newInput = `${before}@${value} ${after}`;
-    setInput(newInput);
-    // Move cursor to after the inserted value + space
-    const newCursorPos = mentionStart + value.length + 2; // @ + value + space
-    setCursorPosition(newCursorPos);
-    // Focus input and set cursor position after React renders
-    setTimeout(() => {
-      // Only set cursor if input hasn't changed (user didn't type in between)
-      if (inputRef.current && inputRef.current.value === newInput) {
-        inputRef.current.focus();
-        inputRef.current.setSelectionRange(newCursorPos, newCursorPos);
-      }
-    }, 0);
-  };
-
-  const {
-    showSuggestions,
-    suggestions,
-    selectedIndex,
-    handleKeyDown: handleSuggestionsKeyDown,
-    mentionInfo,
-  } = useFileSuggestions({
-    inputValue: input,
-    cursorPosition,
-    files,
-    onSelect: handleFileSelect,
-  });
-
-  const handleSlashCommandSelect = (
-    skillName: string,
-    slashStart: number,
-    cursorPos: number,
-  ) => {
-    const before = input.slice(0, slashStart);
-    const after = input.slice(cursorPos);
-    const newInput = `${before}/${skillName} ${after}`;
-    setInput(newInput);
-    const newCursorPos = slashStart + skillName.length + 2; // / + name + space
-    setCursorPosition(newCursorPos);
-    setTimeout(() => {
-      if (inputRef.current && inputRef.current.value === newInput) {
-        inputRef.current.focus();
-        inputRef.current.setSelectionRange(newCursorPos, newCursorPos);
-      }
-    }, 0);
-  };
-
-  const {
-    showSlashCommands,
-    slashSuggestions,
-    selectedSlashIndex,
-    handleSlashKeyDown,
-    slashInfo,
-  } = useSlashCommands({
-    inputValue: input,
-    cursorPosition,
-    skills,
-    onSelect: handleSlashCommandSelect,
-  });
 
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [sandboxCreateError, setSandboxCreateError] =
@@ -1901,13 +1737,12 @@ export function SessionChatContent({
   // is built eagerly (payload + a display copy) so the composer can be
   // cleared immediately, and drains one-at-a-time once the current turn
   // settles back to "ready" (see the dequeue effect below).
-  type ComposerMessagePayload = Parameters<
-    typeof sendMessageWithPendingState
-  >[0];
   interface QueuedComposerMessage {
     id: string;
     displayText: string;
     payload: ComposerMessagePayload;
+    modelId?: string | null;
+    reasoningEffort?: string | null;
   }
   const [queuedMessages, setQueuedMessages] = useState<QueuedComposerMessage[]>(
     [],
@@ -1931,6 +1766,8 @@ export function SessionChatContent({
               id: string;
               text: string;
               payload: ComposerMessagePayload;
+              modelId?: string | null;
+              reasoningEffort?: string | null;
             }>;
           } | null,
         ) => {
@@ -1940,6 +1777,8 @@ export function SessionChatContent({
               id: item.id,
               displayText: item.text,
               payload: item.payload,
+              modelId: item.modelId,
+              reasoningEffort: item.reasoningEffort,
             })),
           );
         },
@@ -1953,53 +1792,9 @@ export function SessionChatContent({
     };
   }, [chatInfo.id]);
 
-  function buildComposerMessagePayload(): {
-    payload: ComposerMessagePayload;
-    displayText: string;
-  } | null {
-    const hasContent =
-      input.trim() || images.length > 0 || textAttachments.length > 0;
-    if (!hasContent) {
-      return null;
-    }
-
-    const messageText = input;
-    const files = getFileParts();
-    const hasSnippets = textAttachments.length > 0;
-    let payload: ComposerMessagePayload;
-
-    if (hasSnippets) {
-      const parts: WebAgentUIMessage["parts"] = [];
-      if (messageText.trim()) {
-        parts.push({ type: "text" as const, text: messageText });
-      }
-      if (files) {
-        for (const f of files) {
-          parts.push(f);
-        }
-      }
-      for (const attachment of textAttachments) {
-        parts.push({
-          type: "data-snippet" as const,
-          id: attachment.id,
-          data: {
-            content: attachment.content,
-            filename: attachment.filename,
-          },
-        });
-      }
-      payload = { parts };
-    } else {
-      payload = { text: messageText, files };
-    }
-
-    return { payload, displayText: messageText };
-  }
-
-  async function submitBuiltMessage(built: {
-    payload: ComposerMessagePayload;
-    displayText: string;
-  }): Promise<boolean> {
+  async function submitBuiltMessage(
+    built: BuiltComposerMessage,
+  ): Promise<boolean> {
     const { payload: messagePayload, displayText: messageText } = built;
 
     const isFirstChatInSession = initialIsOnlyChatInSession;
@@ -2060,6 +1855,9 @@ export function SessionChatContent({
     }
 
     try {
+      // Flush any in-flight optimistic model/reasoning PATCH before POST /api/chat
+      // reads chat.modelId / chat.reasoningEffort from the DB.
+      await pendingChatSettingsPromiseRef.current;
       await sendMessageWithPendingState(messagePayload);
       return true;
     } catch (err) {
@@ -2072,12 +1870,14 @@ export function SessionChatContent({
     }
   }
 
-  function enqueueComposerMessage(built: {
-    payload: ComposerMessagePayload;
-    displayText: string;
-  }) {
+  function enqueueComposerMessage(built: BuiltComposerMessage) {
     const id = crypto.randomUUID();
-    setQueuedMessages((prev) => [...prev, { id, ...built }]);
+    const modelId = chatInfo.modelId ?? undefined;
+    const reasoningEffort = chatInfo.reasoningEffort ?? null;
+    setQueuedMessages((prev) => [
+      ...prev,
+      { id, ...built, modelId, reasoningEffort },
+    ]);
     // Mirror to the server so the prompt survives a reload, a chat switch,
     // or a different device. Local state updates first so the queue panel
     // never waits on the network; a failed POST leaves it local-only,
@@ -2089,6 +1889,8 @@ export function SessionChatContent({
         id,
         text: built.displayText,
         payload: built.payload,
+        modelId,
+        reasoningEffort,
       }),
     }).catch(() => {});
   }
@@ -2118,6 +1920,8 @@ export function SessionChatContent({
           id: item.id,
           text: item.displayText,
           payload: item.payload,
+          modelId: item.modelId ?? null,
+          reasoningEffort: item.reasoningEffort ?? null,
         })),
       }),
     }).catch(() => {});
@@ -2608,7 +2412,7 @@ export function SessionChatContent({
 
   useEffect(() => {
     if (!isChatInFlight) {
-      inputRef.current?.focus();
+      composerRef.current?.focus();
     }
   }, [isChatInFlight]);
 
@@ -2911,19 +2715,43 @@ export function SessionChatContent({
     [],
   );
 
-  const inlineQuestion = useInlineQuestion({
-    questions:
+  const pendingQuestions = useMemo(
+    () =>
       hasPendingQuestion && pendingQuestionPart
         ? pendingQuestionPart.input.questions
         : emptyQuestions,
-    onSubmit: handleQuestionSubmit,
-    onCancel: handleQuestionCancel,
-    textareaValue: input,
-    onTextareaChange: setInput,
-  });
+    [emptyQuestions, hasPendingQuestion, pendingQuestionPart],
+  );
 
-  // Inline question UI is integrated into the prompt box on all viewports
-  const showInlineQuestion = inlineQuestion.isActive;
+  const handleOpenFileTab = useCallback(
+    (fp: string) => {
+      openFileTab(fp);
+    },
+    [openFileTab],
+  );
+
+  const handleApproveTool = useCallback(
+    (id: string) => addToolApprovalResponse({ id, approved: true }),
+    [addToolApprovalResponse],
+  );
+
+  const handleDenyTool = useCallback(
+    (id: string, reason?: string) =>
+      addToolApprovalResponse({ id, approved: false, reason }),
+    [addToolApprovalResponse],
+  );
+
+  const handleUpgradeRequired = useCallback(
+    () => router.push("/pricing"),
+    [router],
+  );
+
+  const handleStopStream = useCallback(() => {
+    stopChatStream();
+    setHasPendingResponse(false);
+    setUserStopped(true);
+    void setChatStreaming(chatInfo.id, false);
+  }, [chatInfo.id, setChatStreaming, stopChatStream]);
 
   const isReconnectingSandbox =
     reconnectionStatus === "checking" &&
@@ -3444,22 +3272,14 @@ export function SessionChatContent({
               <div className="relative flex-1 overflow-hidden">
                 <div ref={containerRef} className="h-full overflow-y-auto">
                   <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
-                    <OpenFileProvider onOpenFile={(fp) => openFileTab(fp)}>
+                    <OpenFileProvider onOpenFile={handleOpenFileTab}>
                       <div className="space-y-6">
                         <ChatMessageFeed
                           messages={renderMessages}
                           isStreaming={isChatInFlight}
                           streamdownComponents={streamdownComponents}
-                          onApproveTool={(id) =>
-                            addToolApprovalResponse({ id, approved: true })
-                          }
-                          onDenyTool={(id, reason) =>
-                            addToolApprovalResponse({
-                              id,
-                              approved: false,
-                              reason,
-                            })
-                          }
+                          onApproveTool={handleApproveTool}
+                          onDenyTool={handleDenyTool}
                           onCopyAssistantMessage={handleCopyAssistantMessage}
                           copiedAssistantMessageId={copiedAssistantMessageId}
                           onForkAssistantMessage={handleForkAssistantMessage}
@@ -3557,608 +3377,75 @@ export function SessionChatContent({
                       </button>
                     </div>
                   )}
-                  {/* Hidden file input */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept={ACCEPT_IMAGE_TYPES}
-                    multiple
-                    onChange={(e) => {
-                      const files = e.target.files;
-                      if (files && files.length > 0) {
-                        const totalCurrent =
-                          images.length + textAttachments.length;
-                        if (totalCurrent >= 5) {
-                          toast.error(
-                            "Maximum 5 attachments allowed per message",
-                          );
-                        } else {
-                          const remaining = 5 - totalCurrent;
-                          const filesToAdd = Array.from(files).slice(
-                            0,
-                            remaining,
-                          );
-                          if (files.length > remaining) {
-                            toast.error(
-                              "Maximum 5 attachments allowed per message",
-                            );
-                          }
-                          addImages(filesToAdd);
-                        }
-                      }
-                      e.target.value = "";
-                    }}
-                    className="hidden"
-                  />
-                  <div className="relative">
-                    {showSuggestions && (
-                      <FileSuggestionsDropdown
-                        suggestions={suggestions}
-                        selectedIndex={selectedIndex}
-                        onSelect={(suggestion) => {
-                          if (mentionInfo) {
-                            handleFileSelect(
-                              suggestion.value,
-                              mentionInfo.mentionStart,
-                              cursorPosition,
-                            );
-                          }
-                        }}
-                        isLoading={filesLoading}
+                  <ChatComposer
+                    ref={composerRef}
+                    isArchived={isArchived}
+                    isChatInFlight={isChatInFlight}
+                    hasPendingResponse={hasPendingResponse}
+                    composerGate={composerGate}
+                    modelId={chatInfo.modelId}
+                    reasoningEffort={chatInfo.reasoningEffort}
+                    modelOptions={modelOptions}
+                    modelOptionsLoading={modelOptionsLoading}
+                    isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
+                    freePlanModelId={freePlanModelId}
+                    freeTierAllowedModelIds={freeTierAllowedModelIds}
+                    onModelChange={handleModelChange}
+                    onReasoningEffortChange={handleReasoningEffortChange}
+                    onUpgradeRequired={handleUpgradeRequired}
+                    permissionMode={permissionMode}
+                    isTogglingPermissionMode={isTogglingPermissionMode}
+                    onPermissionModeChange={handlePermissionModeChange}
+                    files={files}
+                    filesLoading={filesLoading}
+                    skills={skills}
+                    skillsLoading={skillsLoading}
+                    pendingQuestions={pendingQuestions}
+                    hasPendingQuestion={hasPendingQuestion}
+                    onSubmitQuestionAnswers={handleQuestionSubmit}
+                    onCancelQuestion={handleQuestionCancel}
+                    queuedCount={queuedMessages.length}
+                    inboxUnreadCount={inboxUnreadCount}
+                    isSendingInbox={isSendingInbox}
+                    onSubmitMessage={submitBuiltMessage}
+                    onEnqueueMessage={enqueueComposerMessage}
+                    onSendInboxMessage={sendInboxMessage}
+                    onStopStream={handleStopStream}
+                    overlaySlot={
+                      <SandboxInputOverlay
+                        isArchived={isArchived}
+                        snapshotPending={isArchiveSnapshotPending}
+                        router={router}
+                        freeTierBlocked={Boolean(composerGate)}
+                        freeTierBlockedReason={composerGate?.reason ?? null}
                       />
-                    )}
-                    {showSlashCommands && !showSuggestions && (
-                      <SlashCommandDropdown
-                        suggestions={slashSuggestions}
-                        selectedIndex={selectedSlashIndex}
-                        onSelect={(suggestion) => {
-                          if (slashInfo) {
-                            handleSlashCommandSelect(
-                              suggestion.name,
-                              slashInfo.slashStart,
-                              cursorPosition,
-                            );
-                          }
-                        }}
-                        isLoading={skillsLoading}
-                      />
-                    )}
-                    {/* Pinned Todo Panel — sits above the input box */}
-                    <QueuedPromptsPanel
-                      prompts={queuedMessages}
-                      onRemove={removeQueuedMessage}
-                      onEdit={updateQueuedMessageText}
-                      onReorder={reorderQueuedMessages}
-                    />
-                    <PinnedTodoPanel todos={latestTodos} />
-                    {/* Input form */}
-                    <div
-                      className={`relative overflow-hidden rounded-2xl bg-muted transition-colors ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
-                    >
-                      <form
-                        onSubmit={async (e) => {
-                          e.preventDefault();
-                          // When inline question is active, don't send a chat message
-                          if (showInlineQuestion) return;
-                          if (isArchived) return;
-                          if (composerGate) return;
-                          // Hard block while a model switch is in flight -- without
-                          // this, Enter/Send during the tiny window between picking
-                          // a new model and the PATCH actually committing would
-                          // submit against the OLD model still persisted in the DB
-                          // (runAgentWorkflow reads chat.modelId fresh server-side,
-                          // there's no modelId in the request body at all -- see
-                          // ChatRequestBody). The model selector itself already
-                          // greys out during this window; block the composer too
-                          // so there's no way to send a turn the UI doesn't yet
-                          // reflect. Owner-reported bug (2026-08-18): a turn showed
-                          // gpt-5.6-luna's quota-exhausted error immediately after
-                          // switching to claude-opus-5 in the picker.
-                          if (isUpdatingModel) return;
-
-                          const built = buildComposerMessagePayload();
-                          if (!built) return;
-
-                          setInput("");
-                          clearImages();
-                          clearTextAttachments();
-
-                          // While a turn is already running, queue the prompt
-                          // instead of dropping it -- it's sent automatically
-                          // once the current turn settles (see the drain
-                          // effect near sendMessageWithPendingState above).
-                          if (isChatInFlight || hasPendingResponse) {
-                            const rawText = input.trim();
-                            if (/^\/inbox\s+/i.test(rawText)) {
-                              const inboxText = rawText
-                                .replace(/^\/inbox\s+/i, "")
-                                .trim();
-                              if (inboxText) {
-                                void sendInboxMessage(inboxText);
-                                return;
-                              }
-                            }
-                            enqueueComposerMessage(built);
-                            return;
-                          }
-
-                          await submitBuiltMessage(built);
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          setIsDragging(true);
-                        }}
-                        onDragLeave={(e) => {
-                          e.preventDefault();
-                          // Only set isDragging to false if we're leaving the form entirely
-                          // (not just moving to a child element)
-                          if (
-                            !e.currentTarget.contains(e.relatedTarget as Node)
-                          ) {
-                            setIsDragging(false);
-                          }
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          setIsDragging(false);
-                          const files = e.dataTransfer.files;
-                          if (files.length > 0) {
-                            const totalCurrent =
-                              images.length + textAttachments.length;
-                            if (totalCurrent >= 5) {
-                              toast.error(
-                                "Maximum 5 attachments allowed per message",
-                              );
-                              return;
-                            }
-                            const remaining = 5 - totalCurrent;
-                            const filesToAdd = Array.from(files).slice(
-                              0,
-                              remaining,
-                            );
-                            if (files.length > remaining) {
-                              toast.error(
-                                "Maximum 5 attachments allowed per message",
-                              );
-                            }
-                            addImages(filesToAdd);
-                          }
-                        }}
-                      >
-                        {/* Sandbox overlay when inactive */}
-                        <SandboxInputOverlay
-                          isArchived={isArchived}
-                          snapshotPending={isArchiveSnapshotPending}
-                          router={router}
-                          freeTierBlocked={Boolean(composerGate)}
-                          freeTierBlockedReason={composerGate?.reason ?? null}
+                    }
+                    topPanelsSlot={
+                      <>
+                        <QueuedPromptsPanel
+                          prompts={queuedMessages}
+                          onRemove={removeQueuedMessage}
+                          onEdit={updateQueuedMessageText}
+                          onReorder={reorderQueuedMessages}
                         />
-
-                        {/* Attachments preview */}
-                        {(images.length > 0 || textAttachments.length > 0) && (
-                          <div className="flex min-w-0 max-h-32 overflow-y-auto flex-wrap items-start gap-2 px-2 pb-1 pt-2">
-                            {images.length > 0 && (
-                              <ImageAttachmentsPreview
-                                images={images}
-                                onRemove={removeImage}
-                                className="p-0"
-                              />
-                            )}
-                            {textAttachments.length > 0 && (
-                              <TextAttachmentsPreview
-                                attachments={textAttachments}
-                                onRemove={removeTextAttachment}
-                                className="p-0"
-                              />
-                            )}
-                          </div>
-                        )}
-
-                        {/* Inline question UI for mobile — rendered inside prompt box */}
-                        {showInlineQuestion && inlineQuestion.questionHeaderUI}
-
-                        {/* Textarea area */}
-                        <div className="px-4 pb-2 pt-3">
-                          <textarea
-                            ref={inputRef}
-                            value={input}
-                            placeholder={
-                              composerGate
-                                ? composerGate.reason ||
-                                  "Free tier ended — upgrade your account to use Entry"
-                                : showInlineQuestion
-                                  ? inlineQuestion.placeholder
-                                  : "Request changes or ask a question..."
-                            }
-                            rows={1}
-                            onFocus={handleTextareaFocus}
-                            onChange={(e) => {
-                              setInput(e.currentTarget.value);
-                              setCursorPosition(
-                                e.currentTarget.selectionStart ?? 0,
-                              );
-                            }}
-                            onKeyDown={(e) => {
-                              // When inline question is active, Enter advances the question
-                              if (
-                                showInlineQuestion &&
-                                e.key === "Enter" &&
-                                !e.shiftKey
-                              ) {
-                                e.preventDefault();
-                                inlineQuestion.handleNext();
-                                return;
-                              }
-                              // Let suggestions handle keyboard events first
-                              if (handleSuggestionsKeyDown(e)) {
-                                return;
-                              }
-                              if (handleSlashKeyDown(e)) {
-                                return;
-                              }
-                              // On iOS, Return should insert a newline (send via submit button).
-                              // Note: no longer gated on isChatInFlight/hasPendingResponse --
-                              // the form's onSubmit handler queues the message instead of
-                              // dropping it when a turn is already running, so Enter should
-                              // always try to submit/queue.
-                              if (
-                                e.key === "Enter" &&
-                                !e.shiftKey &&
-                                !isIosDevice
-                              ) {
-                                e.preventDefault();
-                                if (!isArchived) {
-                                  e.currentTarget.form?.requestSubmit();
-                                }
-                              }
-                            }}
-                            onKeyUp={(e) => {
-                              setCursorPosition(
-                                e.currentTarget.selectionStart ?? 0,
-                              );
-                            }}
-                            onClick={(e) => {
-                              setCursorPosition(
-                                e.currentTarget.selectionStart ?? 0,
-                              );
-                            }}
-                            onPaste={(e) => {
-                              const items = e.clipboardData?.items;
-                              if (items) {
-                                for (const item of items) {
-                                  if (isValidImageType(item.type)) {
-                                    const file = item.getAsFile();
-                                    if (file) {
-                                      e.preventDefault();
-                                      if (
-                                        images.length +
-                                          textAttachments.length >=
-                                        5
-                                      ) {
-                                        toast.error(
-                                          "Maximum 5 attachments allowed per message",
-                                        );
-                                        return;
-                                      }
-                                      addImage(file).catch(() => {
-                                        // Silently ignore paste errors - rare edge case
-                                      });
-                                      return;
-                                    }
-                                  }
-                                }
-                              }
-
-                              // Handle large text pastes – convert to file attachment
-                              const pastedText =
-                                e.clipboardData?.getData("text/plain");
-                              if (pastedText && isLargeText(pastedText)) {
-                                e.preventDefault();
-                                if (
-                                  images.length + textAttachments.length >=
-                                  5
-                                ) {
-                                  toast.error(
-                                    "Maximum 5 attachments allowed per message",
-                                  );
-                                  return;
-                                }
-                                addTextAttachment(pastedText);
-                              }
-                            }}
-                            disabled={isArchived || Boolean(composerGate)}
-                            className={`w-full resize-none overflow-y-auto bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none ${composerGate ? "pointer-events-none select-none blur-[2px]" : ""}`}
-                            style={{ minHeight: "24px" }}
-                          />
-                        </div>
-
-                        {/* Bottom toolbar */}
-                        <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={openFilePicker}
-                              disabled={isArchived}
-                              className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
-                            >
-                              <Paperclip className="h-4 w-4" />
-                            </Button>
-                            {chatInfo.modelId && (
-                              <div
-                                className={
-                                  isChatInFlight ||
-                                  isUpdatingModel ||
-                                  modelOptionsLoading
-                                    ? "pointer-events-none opacity-60"
-                                    : undefined
-                                }
-                              >
-                                <ModelSelectorCompact
-                                  value={chatInfo.modelId}
-                                  modelOptions={modelOptions}
-                                  disabled={
-                                    isChatInFlight ||
-                                    isUpdatingModel ||
-                                    modelOptionsLoading
-                                  }
-                                  onCloseAutoFocus={() => {
-                                    window.requestAnimationFrame(() => {
-                                      const textarea = inputRef.current;
-                                      if (!textarea) {
-                                        return;
-                                      }
-
-                                      textarea.focus();
-                                      const nextCursorPosition = Math.min(
-                                        cursorPosition,
-                                        textarea.value.length,
-                                      );
-                                      textarea.setSelectionRange(
-                                        nextCursorPosition,
-                                        nextCursorPosition,
-                                      );
-                                    });
-                                  }}
-                                  onChange={(modelId) => {
-                                    void handleModelChange(modelId);
-                                  }}
-                                  isFreeTierLocked={
-                                    userPlan?.modelAccess === "luna-only"
-                                  }
-                                  freePlanModelId={freePlanModelId}
-                                  freeTierUnlockedModelIds={
-                                    freeTierAllowedModelIds
-                                  }
-                                  onUpgradeRequired={() =>
-                                    router.push("/pricing")
-                                  }
-                                />
-                              </div>
-                            )}
-                            {chatInfo.modelId &&
-                              isReasoningCapableModel(
-                                chatInfo.modelId,
-                                modelOptions,
-                              ) && (
-                                <ReasoningEffortSelector
-                                  value={sanitizeReasoningEffort(
-                                    chatInfo.modelId,
-                                    chatInfo.reasoningEffort,
-                                    modelOptions,
-                                  )}
-                                  defaultEffort={
-                                    modelOptions.find(
-                                      (m) => m.id === chatInfo.modelId,
-                                    )?.defaultReasoningEffort
-                                  }
-                                  levels={getReasoningEffortLevels(
-                                    chatInfo.modelId,
-                                    modelOptions,
-                                  )}
-                                  disabled={
-                                    isChatInFlight ||
-                                    isUpdatingModel ||
-                                    modelOptionsLoading
-                                  }
-                                  onChange={(effort) => {
-                                    void handleReasoningEffortChange(effort);
-                                  }}
-                                />
-                              )}
-                            <PermissionModeSelector
-                              value={permissionMode}
-                              onChange={handlePermissionModeChange}
-                              disabled={isArchived || isTogglingPermissionMode}
-                            />
-                            <ContextUsageIndicator
-                              inputTokens={tokenUsage.inputTokens}
-                              conversationInputTokens={
-                                conversationUsage.inputTokens
-                              }
-                              conversationCachedInputTokens={
-                                conversationUsage.cachedInputTokens
-                              }
-                              conversationOutputTokens={
-                                conversationUsage.outputTokens
-                              }
-                              conversationCost={conversationCost}
-                              contextLimit={
-                                contextLimit ?? DEFAULT_CONTEXT_LIMIT
-                              }
-                            />
-                          </div>
-
-                          <div className="flex shrink-0 items-center gap-1">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={handleMicClick}
-                              disabled={
-                                isArchived || recordingState === "processing"
-                              }
-                              className={`relative h-8 w-8 rounded-full ${
-                                recordingState === "recording"
-                                  ? "text-red-500"
-                                  : "text-muted-foreground hover:text-foreground"
-                              }`}
-                            >
-                              {recordingState === "recording" && (
-                                <span className="absolute inset-0 animate-pulse rounded-full bg-red-500/30" />
-                              )}
-                              {recordingState === "processing" ? (
-                                <Loader2 className="h-5 w-5 animate-spin" />
-                              ) : (
-                                <Mic className="h-5 w-5" />
-                              )}
-                            </Button>
-
-                            {showInlineQuestion ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  inlineQuestion.handleNext();
-                                }}
-                                disabled={!inlineQuestion.hasCurrentAnswer}
-                                className="h-8 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
-                              >
-                                <Check className="h-3 w-3" />
-                                <span className="sm:hidden">
-                                  {inlineQuestion.compactButtonLabel}
-                                </span>
-                                <span className="hidden sm:inline">
-                                  {inlineQuestion.buttonLabel}
-                                </span>
-                              </Button>
-                            ) : (isChatInFlight || hasPendingResponse) &&
-                              !hasComposerContent ? (
-                              <Button
-                                type="button"
-                                size="icon"
-                                onClick={() => {
-                                  stopChatStream();
-                                  setHasPendingResponse(false);
-                                  setUserStopped(true);
-                                  void setChatStreaming(chatInfo.id, false);
-                                }}
-                                className="h-8 w-8 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                style={{ touchAction: "manipulation" }}
-                              >
-                                <Square className="h-3 w-3 fill-current" />
-                              </Button>
-                            ) : (
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <span className="relative inline-flex">
-                                    <Button
-                                      type="submit"
-                                      size="icon"
-                                      onTouchEnd={() => {
-                                        // On iOS, tapping submit while the textarea is focused
-                                        // causes the keyboard to briefly flash open then closed.
-                                        // Blur the textarea immediately to prevent this.
-                                        inputRef.current?.blur();
-                                      }}
-                                      disabled={
-                                        isArchived ||
-                                        Boolean(composerGate) ||
-                                        isUpdatingModel ||
-                                        // While a turn is in flight this
-                                        // branch only renders when there's
-                                        // composer content to queue (see
-                                        // the ternary above) -- once idle,
-                                        // fall back to the normal
-                                        // "nothing to send" gate.
-                                        (!isChatInFlight &&
-                                          !hasPendingResponse &&
-                                          !hasComposerContent)
-                                      }
-                                      className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
-                                    >
-                                      <ArrowUp className="h-4 w-4" />
-                                    </Button>
-                                    {/* Visible queue badge: a hover-only tooltip is easy to
-                                        miss (and useless on touch devices), so when this tap
-                                        will queue the message instead of sending it
-                                        immediately, show a small always-visible counter badge
-                                        with the position it'll land in the queue -- mirrors
-                                        the "Queue message" tooltip copy below but doesn't
-                                        require a hover/long-press to discover. */}
-                                    {(isChatInFlight || hasPendingResponse) && (
-                                      <span
-                                        className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-background"
-                                        aria-hidden="true"
-                                      >
-                                        {queuedMessages.length + 1}
-                                      </span>
-                                    )}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="top">
-                                  {isChatInFlight || hasPendingResponse
-                                    ? `Queue message (position ${queuedMessages.length + 1})`
-                                    : "Send message"}
-                                </TooltipContent>
-                              </Tooltip>
-                            )}
-                            {(isChatInFlight || hasPendingResponse) &&
-                              input.trim().length > 0 && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="relative inline-flex">
-                                      <Button
-                                        type="button"
-                                        size="icon"
-                                        variant="secondary"
-                                        disabled={
-                                          isArchived ||
-                                          Boolean(composerGate) ||
-                                          isSendingInbox
-                                        }
-                                        onClick={async () => {
-                                          const text = input.trim();
-                                          if (!text) return;
-                                          setInput("");
-                                          await sendInboxMessage(text);
-                                          inputRef.current?.blur();
-                                        }}
-                                        className="h-8 w-8 rounded-full border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
-                                        aria-label="Send to agent inbox"
-                                      >
-                                        <Inbox className="h-4 w-4" />
-                                      </Button>
-                                      {inboxUnreadCount > 0 && (
-                                        <span
-                                          className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground ring-2 ring-background"
-                                          aria-hidden="true"
-                                        >
-                                          {inboxUnreadCount}
-                                        </span>
-                                      )}
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top">
-                                    Send to agent inbox (agent reads on next
-                                    step)
-                                  </TooltipContent>
-                                </Tooltip>
-                              )}
-                          </div>
-                        </div>
-                      </form>
-                    </div>
-
-                    {/* Recording error message */}
-                    {recordingError && (
-                      <p className="mt-2 text-sm text-destructive">
-                        {recordingError}
-                      </p>
-                    )}
-                  </div>
+                        <PinnedTodoPanel todos={latestTodos} />
+                      </>
+                    }
+                    contextUsageSlot={
+                      <ContextUsageIndicator
+                        inputTokens={tokenUsage.inputTokens}
+                        conversationInputTokens={conversationUsage.inputTokens}
+                        conversationCachedInputTokens={
+                          conversationUsage.cachedInputTokens
+                        }
+                        conversationOutputTokens={
+                          conversationUsage.outputTokens
+                        }
+                        conversationCost={conversationCost}
+                        contextLimit={contextLimit ?? DEFAULT_CONTEXT_LIMIT}
+                      />
+                    }
+                  />
                 </div>
               </div>
             </>
@@ -4245,10 +3532,13 @@ export function SessionChatContent({
             parts.push("", `> ${comment}`);
           }
           const basename = filePath.split("/").pop() ?? filePath;
-          addTextAttachment(parts.join("\n"), `comment-on-${basename}`);
+          composerRef.current?.addTextAttachment(
+            parts.join("\n"),
+            `comment-on-${basename}`,
+          );
           // Focus the input after a brief delay (keep file viewer open)
           setTimeout(() => {
-            inputRef.current?.focus();
+            composerRef.current?.focus();
           }, 100);
         }}
       />

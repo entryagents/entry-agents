@@ -178,7 +178,7 @@ export interface Sandbox {
     command: string,
     cwd: string,
     timeoutMs: number,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; env?: Record<string, string> },
   ): Promise<ExecResult>;
 
   /**

@@ -38,7 +38,7 @@ const CHAT_UI_UPDATE_THROTTLE_MS = 16;
 
 export type RetryChatStreamOptions = {
   auto?: boolean;
-  strategy?: "hard" | "soft";
+  strategy?: "hard" | "soft" | "reconnect";
 };
 
 type UseSessionChatRuntimeParams = {
@@ -53,6 +53,7 @@ type UseSessionChatRuntimeReturn = {
   chat: UseChatHelpers<WebAgentUIMessage>;
   stopChatStream: () => void;
   retryChatStream: (opts?: RetryChatStreamOptions) => void;
+  getLastChunkReceivedAt: () => number;
   workspaceStatus: WebAgentWorkspaceStatusData | null;
   clearWorkspaceStatus: () => void;
 };
@@ -251,17 +252,19 @@ export function useSessionChatRuntime({
 
       void (async () => {
         try {
-          if (strategy === "hard") {
-            // Tear down any stale local fetch before reconnecting.
+          if (strategy === "hard" || strategy === "reconnect") {
+            // Tear down any stale/hung local fetch before reconnecting.
             try {
               await chatInstance.stop();
             } catch {
               // Ignore stale local stop failures and still attempt reconnect.
             }
             abortChatInstanceTransport(chatId);
-            // Manual retry: clear the error IMMEDIATELY for snappy
-            // feedback while the resume round-trip is in flight.
-            chat.clearError();
+            if (strategy === "hard") {
+              // Manual retry: clear the error IMMEDIATELY for snappy
+              // feedback while the resume round-trip is in flight.
+              chat.clearError();
+            }
           }
           // Auto ("soft") recovery deliberately does NOT clear the error
           // up front. The SDK clears it by itself the moment a stream
@@ -392,7 +395,7 @@ export function useSessionChatRuntime({
             //   user asking)
             const retryAction = getDeadTurnRetryAction(
               messagesBeforeResume,
-              strategy,
+              strategy === "hard" ? "hard" : "soft",
             );
             if (retryAction === "continue") {
               await chat.sendMessage({
@@ -549,10 +552,16 @@ export function useSessionChatRuntime({
     };
   }, [chatId]);
 
+  const getLastChunkReceivedAt = useCallback(
+    () => transport.getLastChunkReceivedAt(),
+    [transport],
+  );
+
   return {
     chat,
     stopChatStream,
     retryChatStream,
+    getLastChunkReceivedAt,
     workspaceStatus,
     clearWorkspaceStatus,
   };

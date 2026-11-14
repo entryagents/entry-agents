@@ -19,7 +19,9 @@ import {
   createMcpToolSet,
   type GithubApiResult,
   type GithubRawCliResult,
+  type McpDiscoveredTool,
   type OpenAgentCallOptions,
+  type SecretRedactor,
   type VercelApiResult,
   type VercelCliToolResult,
 } from "@entry-agents/agent";
@@ -28,6 +30,7 @@ import { FatalError, getWorkflowMetadata, getWritable } from "workflow";
 import { getRun } from "workflow/api";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
 import { addLanguageModelUsage } from "./usage-utils";
+import { enrichUsageWithProviderCache } from "@/lib/chat/usage-extract";
 import { estimateStepCost } from "./gateway-metadata";
 import {
   applySpendToBudgets,
@@ -554,6 +557,8 @@ async function resolveChatModelRuntime(params: {
   requestUrl: string;
   authSession: AuthSessionContext;
   workflowRunId: string;
+  overrideModelId?: string | null;
+  overrideReasoningEffort?: string | null;
 }): Promise<ChatModelRuntime | UsageBlocked> {
   "use step";
 
@@ -610,13 +615,18 @@ async function resolveChatModelRuntime(params: {
         params.requestUrl,
       )
     : null;
+  const requestedModelId = params.overrideModelId ?? chat.modelId;
+  const requestedReasoningEffort =
+    params.overrideReasoningEffort !== undefined
+      ? params.overrideReasoningEffort
+      : chat.reasoningEffort;
   let selectedModelId =
     sanitizeSelectedModelIdForSession(
-      chat.modelId,
+      requestedModelId,
       params.authSession,
       params.requestUrl,
     ) ??
-    chat.modelId ??
+    requestedModelId ??
     null;
 
   // Per-user plan gating (billing): Free plan is hard-restricted to
@@ -816,7 +826,7 @@ async function resolveChatModelRuntime(params: {
   const [mainModelSelection, subagentModelSelection] = await Promise.all([
     resolveChatModelSelection({
       selectedModelId,
-      reasoningEffort: chat.reasoningEffort,
+      reasoningEffort: requestedReasoningEffort,
       missingModelLabel: "Selected model",
     }),
     preferences?.defaultSubagentModelId
@@ -834,7 +844,11 @@ async function resolveChatModelRuntime(params: {
   // Auto-heal: if the model resolved to a different active gateway model
   // (e.g. chat was previously pinned to an unavailable free model),
   // persist the healed model to the chat row so it never fails again.
-  if (chat && mainModelSelection.id !== chat.modelId) {
+  if (
+    !params.overrideModelId &&
+    chat &&
+    mainModelSelection.id !== chat.modelId
+  ) {
     const { updateChat } = await import("@/lib/db/sessions");
     await updateChat(chat.id, { modelId: mainModelSelection.id }).catch(
       () => {},
@@ -2466,7 +2480,7 @@ export async function runAgentWorkflow(options: Options) {
   let originalMessagesForStep: WebAgentUIMessage[] = [latestMessage];
 
   const runStartedAt = new Date();
-  const previousResponseMessage =
+  let previousResponseMessage =
     latestMessage.role === "assistant" ? latestMessage : undefined;
   const stepTimings: WorkflowRunStepTiming[] = [];
   let wasAborted = false;
@@ -2514,7 +2528,11 @@ export async function runAgentWorkflow(options: Options) {
         parts: [{ type: "text", text: notice }],
       };
       await sendTextMessage(writable, "setup-error", notice);
-      await persistAssistantMessage(options.chatId, pendingAssistantResponse);
+      await persistFinalAssistantMessage(
+        options.chatId,
+        pendingAssistantResponse,
+        workflowRunId,
+      );
       await reconcileSessionStatusStep(options.sessionId, "completed");
       return;
     }
@@ -2839,10 +2857,11 @@ export async function runAgentWorkflow(options: Options) {
           (options.maxSteps === undefined || step + 1 < options.maxSteps);
 
         if (canDrainServerQueue) {
-          const nextQueuedUserMsg = await dequeueNextQueuedUserMessageStep(
+          const dequeuedPrompt = await dequeueNextQueuedUserMessageStep(
             options.chatId,
           );
-          if (nextQueuedUserMsg) {
+          if (dequeuedPrompt) {
+            const nextQueuedUserMsg = dequeuedPrompt.message;
             if (totalUsage) {
               pendingAssistantResponse = {
                 ...pendingAssistantResponse,
@@ -2856,6 +2875,73 @@ export async function runAgentWorkflow(options: Options) {
               options.chatId,
               pendingAssistantResponse,
             );
+
+            if (totalUsage) {
+              await recordWorkflowUsage(
+                options.userId,
+                modelId,
+                totalUsage,
+                pendingAssistantResponse,
+                previousResponseMessage,
+              );
+            }
+            totalUsage = undefined;
+            previousResponseMessage = undefined;
+
+            if (
+              dequeuedPrompt.modelId !== undefined ||
+              dequeuedPrompt.reasoningEffort !== undefined
+            ) {
+              const nextModelRuntime = await resolveChatModelRuntime({
+                userId: options.userId,
+                sessionId: options.sessionId,
+                chatId: options.chatId,
+                requestUrl: options.requestUrl,
+                authSession: options.authSession,
+                workflowRunId,
+                ...(dequeuedPrompt.modelId !== undefined
+                  ? { overrideModelId: dequeuedPrompt.modelId }
+                  : {}),
+                ...(dequeuedPrompt.reasoningEffort !== undefined
+                  ? { overrideReasoningEffort: dequeuedPrompt.reasoningEffort }
+                  : {}),
+              });
+
+              if ("blockedNotice" in nextModelRuntime) {
+                const blockedId = generateIdAi();
+                const notice = nextModelRuntime.blockedNotice;
+                await sendStart(writable, blockedId);
+                await sendTextMessage(writable, "setup-error", notice);
+                pendingAssistantResponse = {
+                  role: "assistant",
+                  id: blockedId,
+                  parts: [{ type: "text", text: notice }],
+                  metadata: withModelMetadata(
+                    undefined,
+                    selectedModelId,
+                    modelId,
+                  ),
+                };
+                break;
+              }
+
+              selectedModelId = nextModelRuntime.selectedModelId;
+              modelId = nextModelRuntime.modelId;
+              remainingBalanceCents = nextModelRuntime.startingBalanceCents;
+              remainingWindowBudgetCents = nextModelRuntime.windowBudgetCents;
+              agentOptions.model = attachLiveModelContextWindow(
+                nextModelRuntime.agentOptions.model,
+                modelCostCatalog,
+              );
+              if (nextModelRuntime.agentOptions.subagentModel !== undefined) {
+                agentOptions.subagentModel = attachLiveModelContextWindow(
+                  nextModelRuntime.agentOptions.subagentModel,
+                  modelCostCatalog,
+                );
+              } else {
+                delete agentOptions.subagentModel;
+              }
+            }
 
             const nextUserModelMessages = await convertMessages([
               nextQueuedUserMsg,
@@ -3452,6 +3538,15 @@ const runAgentStep = async (
   let mcpToolSet: Awaited<ReturnType<typeof createMcpToolSet>> | undefined;
   let streamWriter: WritableStreamDefaultWriter<UIMessageChunk> | undefined;
   let streamWriteFailed = false;
+  let stepSecretRedactor: SecretRedactor | undefined;
+  const usedSecretNames = new Set<string>();
+  const trackSecretUsed = (names: string[]) => {
+    for (const name of names) {
+      if (name) {
+        usedSecretNames.add(name);
+      }
+    }
+  };
 
   try {
     let responseMessage: WebAgentUIMessage | undefined;
@@ -3880,6 +3975,42 @@ const runAgentStep = async (
       },
     };
 
+    let runtimeSecrets: {
+      secretCatalog: NonNullable<OpenAgentCallOptions["secretCatalog"]>;
+      secrets: NonNullable<OpenAgentCallOptions["secrets"]>;
+    } = {
+      secretCatalog: [],
+      secrets: [],
+    };
+    try {
+      const [agentPkg, secretsDb] = await Promise.all([
+        import("@entry-agents/agent"),
+        import("@/lib/db/secrets"),
+      ]);
+      runtimeSecrets =
+        await secretsDb.getDecryptedUserSecretsForExecution(userId);
+      if (typeof agentPkg.createSecretRedactor === "function") {
+        stepSecretRedactor = agentPkg.createSecretRedactor(
+          runtimeSecrets.secrets,
+        );
+      }
+      if (runtimeSecrets.secretCatalog.length > 0) {
+        fullAgentOptions.secretCatalog = runtimeSecrets.secretCatalog;
+      }
+      if (runtimeSecrets.secrets.length > 0) {
+        fullAgentOptions.secrets = runtimeSecrets.secrets;
+        fullAgentOptions.onSecretUsed = trackSecretUsed;
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (!msg.includes("POSTGRES_URL environment variable is required")) {
+        console.warn(
+          `[workflow] Failed to load user secrets for user ${userId}, continuing without them:`,
+          error,
+        );
+      }
+    }
+
     // Self-serve MCP servers this user has configured (see
     // lib/db/mcp-servers.ts + packages/agent/tools/mcp.ts). Resolved
     // fresh every step -- there's no long-lived process to pool the
@@ -3889,39 +4020,39 @@ const runAgentStep = async (
     // Deliberately never blocks/fails the turn: a broken server is
     // logged and skipped, not surfaced as a step error.
     try {
-      const { getEnabledMcpServersForRequest } =
-        await import("@/lib/db/mcp-servers");
-      const { getComposioMcpServerConfig } = await import("@/lib/mcp/composio");
+      const [
+        { getEnabledMcpServersForRequest, recordMcpServerConnectionResult },
+        { getComposioMcpServerConfig },
+        { prepareMcpServersForExecution },
+      ] = await Promise.all([
+        import("@/lib/db/mcp-servers"),
+        import("@/lib/mcp/composio"),
+        import("@/lib/mcp/resolve-server-config"),
+      ]);
       const rawEnabledServers = await getEnabledMcpServersForRequest(userId);
-      // SECURITY FIX (2026-08-27, pentest finding): resolveAndAssertPublic
-      // used to run only at MCP-server save-time (lib/db/mcp-servers.ts),
-      // never again before the real connection here -- a classic
-      // DNS-rebinding SSRF gap (attacker's domain resolves public at
-      // save-time, then to a private/internal address by the time a chat
-      // turn actually connects). Re-check every self-serve server's URL
-      // fresh, right before connecting, and silently drop any that now
-      // resolve privately -- same "log and skip, don't fail the turn"
-      // philosophy as a server that's simply unreachable.
-      const { resolveAndAssertPublic } = await import("@/lib/mcp/url-safety");
-      const enabledServers = (
+      const { resolvedServers: enabledServers, failures: prepFailures } =
+        await prepareMcpServersForExecution(
+          rawEnabledServers,
+          runtimeSecrets.secrets,
+          trackSecretUsed,
+        );
+
+      if (prepFailures.length > 0) {
+        console.warn(
+          `[workflow] Dropping ${prepFailures.length} MCP server(s) for user ${userId} during pre-connect template/SSRF validation.`,
+        );
         await Promise.all(
-          rawEnabledServers.map(async (server) => {
-            try {
-              await resolveAndAssertPublic(server.url);
-              return server;
-            } catch (error) {
-              console.warn(
-                `[workflow] Dropping MCP server "${server.name}" for user ${userId}: URL failed pre-connect SSRF re-check:`,
-                error,
-              );
-              return null;
-            }
-          }),
-        )
-      ).filter(
-        (server): server is (typeof rawEnabledServers)[number] =>
-          server !== null,
-      );
+          prepFailures
+            .filter((failure) => Boolean(failure.id))
+            .map((failure) =>
+              recordMcpServerConnectionResult(
+                failure.id as string,
+                failure.error,
+              ).catch(() => {}),
+            ),
+        );
+      }
+
       // Composio (see lib/mcp/composio.ts) is a built-in MCP server,
       // resolved the same way as a self-serve one and merged into the
       // same combined server list -- createMcpToolSet() doesn't care
@@ -3932,23 +4063,91 @@ const runAgentStep = async (
         ? [...enabledServers, composioServer]
         : enabledServers;
       if (combinedServers.length > 0) {
-        mcpToolSet = await createMcpToolSet(combinedServers);
-        if (mcpToolSet.failures.length > 0) {
+        let stepMcpSandbox:
+          | Awaited<
+              ReturnType<typeof import("@entry-agents/sandbox").connectSandbox>
+            >
+          | undefined;
+        if (combinedServers.some((server) => server.transport === "stdio")) {
+          try {
+            const [{ getSessionById }, { connectSandbox }] = await Promise.all([
+              import("@/lib/db/sessions"),
+              import("@entry-agents/sandbox"),
+            ]);
+            const currentSession = await getSessionById(sessionId);
+            const targetState =
+              currentSession?.sandboxState ?? agentOptions.sandbox?.state;
+            if (targetState) {
+              stepMcpSandbox = await connectSandbox(targetState);
+            }
+          } catch (sandboxErr) {
+            console.warn(
+              `[workflow] Failed to connect sandbox for stdio MCP servers in session ${sessionId}:`,
+              sandboxErr,
+            );
+          }
+        }
+
+        const connectServers = stepMcpSandbox
+          ? combinedServers
+          : combinedServers.filter((server) => server.transport !== "stdio");
+
+        if (connectServers.length < combinedServers.length) {
+          console.info(
+            `[workflow] Deferring stdio MCP server connection until sandbox is active in session ${sessionId}.`,
+          );
+        }
+
+        mcpToolSet =
+          connectServers.length > 0
+            ? await createMcpToolSet(connectServers, {
+                ...(stepMcpSandbox ? { sandbox: stepMcpSandbox } : {}),
+                ...(stepSecretRedactor
+                  ? { secretRedactor: stepSecretRedactor }
+                  : {}),
+              })
+            : undefined;
+        if (mcpToolSet && mcpToolSet.failures.length > 0) {
           console.warn(
             `[workflow] ${mcpToolSet.failures.length} MCP server(s) failed to connect for user ${userId}:`,
             mcpToolSet.failures,
           );
-          const { recordMcpServerConnectionResult } =
-            await import("@/lib/db/mcp-servers");
-          const { listMcpServers } = await import("@/lib/db/mcp-servers");
-          const servers = await listMcpServers(userId);
           await Promise.all(
             mcpToolSet.failures.map(async (failure) => {
-              const server = servers.find((s) => s.name === failure.name);
+              const server = rawEnabledServers.find(
+                (s) => s.name === failure.name,
+              );
               if (server) {
-                await recordMcpServerConnectionResult(server.id, failure.error);
+                await recordMcpServerConnectionResult(
+                  server.id,
+                  failure.error,
+                ).catch(() => {});
               }
             }),
+          );
+        }
+        if (stepNumber === 1 && mcpToolSet?.toolsByServer) {
+          await Promise.all(
+            Object.entries(mcpToolSet.toolsByServer).map(
+              async ([serverName, discovered]: [
+                string,
+                McpDiscoveredTool[],
+              ]) => {
+                const match = rawEnabledServers.find(
+                  (s) => s.name === serverName,
+                );
+                if (match) {
+                  await recordMcpServerConnectionResult(
+                    match.id,
+                    null,
+                    discovered.map((t) => ({
+                      name: t.name,
+                      ...(t.description ? { description: t.description } : {}),
+                    })),
+                  ).catch(() => {});
+                }
+              },
+            ),
           );
         }
       }
@@ -4162,7 +4361,12 @@ const runAgentStep = async (
           // model APIs, etc.) reach the client as an in-stream "error" chunk --
           // route it through the same sanitizer used for setup/transport
           // failures below.
-          onError: toFriendlyChatErrorText,
+          onError: (err) => {
+            const friendly = toFriendlyChatErrorText(err);
+            return stepSecretRedactor?.hasSecrets()
+              ? stepSecretRedactor.redact(friendly)
+              : friendly;
+          },
           messageMetadata: ({ part: streamPart }) => {
             if (
               streamPart.type === "text-delta" ||
@@ -4244,8 +4448,9 @@ const runAgentStep = async (
                 // blow far past the cap if the check waits for finish-step.
                 const wouldCapTurn =
                   !turnSpendCapped &&
-                  Math.round(((totalMessageCost ?? 0) + liveStepCostUsd) * 100) >=
-                    MAX_TURN_SPEND_CENTS;
+                  Math.round(
+                    ((totalMessageCost ?? 0) + liveStepCostUsd) * 100,
+                  ) >= MAX_TURN_SPEND_CENTS;
 
                 if (wouldExhaustWindow || wouldExhaustCredit || wouldCapTurn) {
                   midStreamDebited = true;
@@ -4319,14 +4524,18 @@ const runAgentStep = async (
               stepFirstTokenMs = null;
               stepLastTokenMs = null;
 
-              lastStepUsage = streamPart.usage;
-              if (streamPart.usage) {
+              const enrichedStepUsage = enrichUsageWithProviderCache(
+                streamPart.usage,
+                streamPart.providerMetadata,
+              );
+              lastStepUsage = enrichedStepUsage;
+              if (enrichedStepUsage) {
                 totalMessageUsage = totalMessageUsage
-                  ? addLanguageModelUsage(totalMessageUsage, streamPart.usage)
-                  : streamPart.usage;
+                  ? addLanguageModelUsage(totalMessageUsage, enrichedStepUsage)
+                  : enrichedStepUsage;
               }
               const stepOutputTokens =
-                streamPart.usage?.outputTokens ??
+                enrichedStepUsage?.outputTokens ??
                 Math.ceil(liveStreamedChars / 3.8);
               liveStreamedChars = 0;
 
@@ -4351,7 +4560,7 @@ const runAgentStep = async (
               const stepCost = estimateStepCost(
                 streamPart.providerMetadata,
                 modelId,
-                streamPart.usage,
+                enrichedStepUsage,
                 modelCostCatalog,
               );
               if (stepCost !== undefined) {
@@ -4417,7 +4626,7 @@ const runAgentStep = async (
                   modelId,
                   finishReason: streamPart.finishReason,
                   rawFinishReason: streamPart.rawFinishReason,
-                  usage: streamPart.usage,
+                  usage: enrichedStepUsage,
                   cost: stepCost,
                   toolCallNames:
                     liveStepToolCalls.length > 0
@@ -4508,7 +4717,7 @@ const runAgentStep = async (
       ),
     };
 
-    const [stepUsage, finishReason, rawFinishReason, response, steps] =
+    const [rawStepUsage, finishReason, rawFinishReason, response, rawSteps] =
       await Promise.all([
         result.totalUsage,
         result.finishReason,
@@ -4516,6 +4725,58 @@ const runAgentStep = async (
         result.response,
         result.steps,
       ]);
+
+    const steps = rawSteps.map((step) => ({
+      ...step,
+      usage:
+        enrichUsageWithProviderCache(step.usage, step.providerMetadata) ??
+        step.usage,
+    }));
+
+    let stepUsage = enrichUsageWithProviderCache(
+      rawStepUsage,
+      steps.at(-1)?.providerMetadata,
+    );
+    if (stepUsage) {
+      const aggregatedCacheRead = steps.reduce(
+        (sum, s) =>
+          sum +
+          (s.usage?.inputTokenDetails?.cacheReadTokens ??
+            s.usage?.cachedInputTokens ??
+            0),
+        0,
+      );
+      const aggregatedCacheWrite = steps.reduce(
+        (sum, s) => sum + (s.usage?.inputTokenDetails?.cacheWriteTokens ?? 0),
+        0,
+      );
+      const existingCacheRead =
+        stepUsage.inputTokenDetails?.cacheReadTokens ??
+        stepUsage.cachedInputTokens ??
+        0;
+      const existingCacheWrite =
+        stepUsage.inputTokenDetails?.cacheWriteTokens ?? 0;
+      if (
+        aggregatedCacheRead > existingCacheRead ||
+        aggregatedCacheWrite > existingCacheWrite
+      ) {
+        stepUsage = {
+          ...stepUsage,
+          cachedInputTokens: Math.max(
+            stepUsage.cachedInputTokens ?? 0,
+            aggregatedCacheRead,
+          ),
+          inputTokenDetails: {
+            ...stepUsage.inputTokenDetails,
+            cacheReadTokens: Math.max(existingCacheRead, aggregatedCacheRead),
+            cacheWriteTokens: Math.max(
+              existingCacheWrite,
+              aggregatedCacheWrite,
+            ),
+          },
+        };
+      }
+    }
 
     if (stepUsage) {
       responseMessage = {
@@ -4593,6 +4854,10 @@ const runAgentStep = async (
       };
     }
 
+    if (stepSecretRedactor?.hasSecrets()) {
+      responseMessage = stepSecretRedactor.redactUnknown(responseMessage);
+    }
+
     if (finishReason === "other") {
       const stepDiagnostics = steps.map((step) => ({
         stepNumber: step.stepNumber,
@@ -4632,7 +4897,7 @@ const runAgentStep = async (
         providerMetadata: step.providerMetadata,
       }));
 
-      const debugPayload = stringifyDebugPayload({
+      const rawDebugPayload = stringifyDebugPayload({
         workflowRunId,
         chatId,
         sessionId,
@@ -4646,6 +4911,9 @@ const runAgentStep = async (
         responseMessage,
         stepDiagnostics,
       });
+      const debugPayload = stepSecretRedactor?.hasSecrets()
+        ? stepSecretRedactor.redact(rawDebugPayload)
+        : rawDebugPayload;
 
       console.warn(
         `[workflow] Agent step finished with reason 'other':\n${debugPayload}`,
@@ -4661,6 +4929,9 @@ const runAgentStep = async (
     }
 
     const stepFinishedAt = new Date();
+    const safeResponseMessages = stepSecretRedactor?.hasSecrets()
+      ? stepSecretRedactor.redactUnknown(response.messages)
+      : response.messages;
 
     // Every field below is optional in the shared result type, so an
     // unset one arrives as an explicit `undefined` -- which the Workflow
@@ -4668,7 +4939,7 @@ const runAgentStep = async (
     // non-retryable SerializationError). Strip them before returning.
     return withoutUndefined({
       responseMessage,
-      responseMessages: response.messages,
+      responseMessages: safeResponseMessages,
       finishReason,
       rawFinishReason,
       stepUsage,
@@ -4719,6 +4990,11 @@ const runAgentStep = async (
 
     const errorWithStepTiming =
       error instanceof Error ? error : new Error(String(error));
+    if (stepSecretRedactor?.hasSecrets() && errorWithStepTiming.message) {
+      errorWithStepTiming.message = stepSecretRedactor.redact(
+        errorWithStepTiming.message,
+      );
+    }
     Object.assign(errorWithStepTiming, {
       stepTiming: buildStepTiming(
         stepNumber,
@@ -4774,6 +5050,11 @@ const runAgentStep = async (
       await mcpToolSet?.close();
       stopMonitor.stop();
       await stopMonitor.done;
+      if (usedSecretNames.size > 0) {
+        await import("@/lib/db/secrets")
+          .then((m) => m.recordUserSecretsUsed(userId, [...usedSecretNames]))
+          .catch(() => {});
+      }
     }
   }
 };

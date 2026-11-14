@@ -2,6 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import { useState, type ComponentProps } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
 
@@ -90,7 +91,7 @@ export function SignInButton({
 }: SignInButtonProps) {
   const [isLoading, setIsLoading] = useState(false);
 
-  function handleSignIn() {
+  async function handleSignIn() {
     if (disabled || isLoading) {
       return;
     }
@@ -99,10 +100,25 @@ export function SignInButton({
     const redirectPath = resolveRedirectPath(callbackUrl ?? fallback);
 
     setIsLoading(true);
-    authClient.signIn.social({
-      provider,
-      callbackURL: redirectPath,
-    });
+    try {
+      const result = await authClient.signIn.social({
+        provider,
+        callbackURL: redirectPath,
+      });
+      if (result?.error) {
+        toast.error(
+          result.error.message || `Failed to sign in with ${provider}`,
+        );
+        setIsLoading(false);
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : `Failed to sign in with ${provider}`,
+      );
+      setIsLoading(false);
+    }
   }
 
   const label =

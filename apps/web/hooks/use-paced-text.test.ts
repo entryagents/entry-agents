@@ -7,7 +7,7 @@ import {
 
 describe("use-paced-text", () => {
   test("constants are configured for 2026 UI/UX smooth pacing", () => {
-    expect(TEXT_RENDER_PACE_MS).toBe(20);
+    expect(TEXT_RENDER_PACE_MS).toBe(16);
     expect(TEXT_RENDER_SNAP.test(" ")).toBe(true);
     expect(TEXT_RENDER_SNAP.test(".")).toBe(true);
     expect(TEXT_RENDER_SNAP.test("\n")).toBe(true);

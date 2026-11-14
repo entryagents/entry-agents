@@ -32,8 +32,15 @@ const spies = {
     return Promise.resolve();
   }),
   compareAndSetChatActiveStreamId: mock(() => Promise.resolve(true)),
-  createChatMessageIfNotExists: mock(
-    () => Promise.resolve({ id: "msg-1" }) as Promise<unknown>,
+  upsertChatMessageScoped: mock(
+    () =>
+      Promise.resolve({
+        status: "inserted",
+        message: { id: "msg-1" },
+      }) as Promise<{
+        status: string;
+        message?: unknown;
+      }>,
   ),
   updateChatAssistantActivity: mock(() => Promise.resolve()),
   setChatRunStatus: mock(() => Promise.resolve()),
@@ -69,7 +76,7 @@ mock.module("@/lib/db/sessions", () => ({
   getChatById: async () => chatRecord,
   getSessionById: async () => sessionRecord,
   compareAndSetChatActiveStreamId: spies.compareAndSetChatActiveStreamId,
-  createChatMessageIfNotExists: spies.createChatMessageIfNotExists,
+  upsertChatMessageScoped: spies.upsertChatMessageScoped,
   updateChatAssistantActivity: spies.updateChatAssistantActivity,
   setChatRunStatus: spies.setChatRunStatus,
 }));
@@ -215,8 +222,8 @@ describe("POST /api/chat/[chatId]/stop", () => {
 
     await POST(createStopRequest(body), routeContext);
 
-    expect(spies.createChatMessageIfNotExists).toHaveBeenCalledTimes(1);
-    expect(spies.createChatMessageIfNotExists).toHaveBeenCalledWith({
+    expect(spies.upsertChatMessageScoped).toHaveBeenCalledTimes(1);
+    expect(spies.upsertChatMessageScoped).toHaveBeenCalledWith({
       id: "assistant-1",
       chatId: "chat-1",
       role: "assistant",
@@ -233,7 +240,7 @@ describe("POST /api/chat/[chatId]/stop", () => {
 
     await POST(createStopRequest({}), routeContext);
 
-    expect(spies.createChatMessageIfNotExists).not.toHaveBeenCalled();
+    expect(spies.upsertChatMessageScoped).not.toHaveBeenCalled();
   });
 
   test("skips snapshot when body has invalid assistant message", async () => {
@@ -245,7 +252,7 @@ describe("POST /api/chat/[chatId]/stop", () => {
 
     await POST(createStopRequest(body), routeContext);
 
-    expect(spies.createChatMessageIfNotExists).not.toHaveBeenCalled();
+    expect(spies.upsertChatMessageScoped).not.toHaveBeenCalled();
   });
 
   test("updates assistant activity when snapshot is created", async () => {
@@ -264,9 +271,9 @@ describe("POST /api/chat/[chatId]/stop", () => {
     expect(spies.updateChatAssistantActivity).toHaveBeenCalledTimes(1);
   });
 
-  test("skips activity update when snapshot already exists", async () => {
-    spies.createChatMessageIfNotExists.mockImplementationOnce(() =>
-      Promise.resolve(undefined),
+  test("skips activity update when snapshot hits scope conflict", async () => {
+    spies.upsertChatMessageScoped.mockImplementationOnce(() =>
+      Promise.resolve({ status: "conflict" }),
     );
 
     const { POST } = await routeModulePromise;
@@ -285,7 +292,7 @@ describe("POST /api/chat/[chatId]/stop", () => {
   });
 
   test("proceeds with cancel even if snapshot persistence fails", async () => {
-    spies.createChatMessageIfNotExists.mockImplementationOnce(() =>
+    spies.upsertChatMessageScoped.mockImplementationOnce(() =>
       Promise.reject(new Error("DB down")),
     );
 

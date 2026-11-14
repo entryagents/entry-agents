@@ -9,15 +9,9 @@ import {
 /**
  * Server-backed composer queue.
  *
- * This used to be `useState` in session-chat-content.tsx, reset by an
- * effect keyed on chatInfo.id -- so switching chats or reloading threw
- * away anything the user typed during a long turn, and no second device
- * could ever see it. A viewer should not own that state.
- *
- * The queue is stored on the chat row, drained by the viewer when the
- * chat goes idle (see the drain effect in session-chat-content.tsx).
- * Draining is still client-initiated: sending a message must start a run,
- * and only /api/chat does that.
+ * The queue is stored on the chat row, drained server-side at the end of a
+ * workflow turn (or by the client when idle), so switching chats, reloading,
+ * or closing the tab preserves queued prompts cleanly.
  */
 
 const MAX_QUEUED_PROMPTS = 20;
@@ -40,6 +34,7 @@ type QueuedPrompt = {
    */
   payload: unknown;
   modelId?: string | null;
+  reasoningEffort?: string | null;
   createdAt: string;
 };
 
@@ -76,17 +71,6 @@ async function readQueue(chatId: string): Promise<QueuedPrompt[]> {
   return normalize(rows[0]?.queuedPrompts);
 }
 
-/**
- * Runs `mutate` against the chat's queued_prompts under a row lock.
- *
- * The queue is a jsonb column, so every mutation is a read-modify-write
- * of the whole list. Without a lock, two concurrent POSTs (or a POST
- * racing the workflow's dequeue step) read the same snapshot and the
- * last write wins -- losing messages or double-executing a drained
- * prompt. SELECT ... FOR UPDATE plus the write in the SAME transaction
- * serializes against the dequeue step's own FOR UPDATE read (see
- * dequeueNextQueuedUserMessageStep in chat-post-finish.ts).
- */
 async function withQueuedPrompts<T>(
   chatId: string,
   mutate: (queue: QueuedPrompt[]) => { next: QueuedPrompt[]; result: T },
@@ -145,6 +129,7 @@ export async function POST(req: Request, context: RouteContext) {
     text?: unknown;
     payload?: unknown;
     modelId?: unknown;
+    reasoningEffort?: unknown;
     id?: unknown;
   };
 
@@ -189,8 +174,6 @@ export async function POST(req: Request, context: RouteContext) {
     auth.chatId,
     (queued): { next: QueuedPrompt[]; result: QueuePostOutcome } => {
       if (queued.length >= MAX_QUEUED_PROMPTS) {
-        // Writing the unchanged list back is a no-op on the row; the full
-        // check must happen under the lock or concurrent POSTs overflow it.
         return { next: queued, result: { full: true, queued } };
       }
 
@@ -202,11 +185,13 @@ export async function POST(req: Request, context: RouteContext) {
         text,
         payload: body.payload,
         modelId: typeof body.modelId === "string" ? body.modelId : null,
+        reasoningEffort:
+          typeof body.reasoningEffort === "string" && body.reasoningEffort
+            ? body.reasoningEffort
+            : null,
         createdAt: new Date().toISOString(),
       };
 
-      // Idempotent on id: the composer may retry after a flaky connection,
-      // and a duplicate would send the message twice later.
       const next = queued.some((item) => item.id === prompt.id)
         ? queued
         : [...queued, prompt];
@@ -238,8 +223,6 @@ export async function PUT(req: Request, context: RouteContext) {
     );
   }
 
-  // Full-list writes make edits and drag reordering durable across reloads
-  // and devices instead of leaving the server row with stale ordering.
   const queuedAfterWrite = await withQueuedPrompts(auth.chatId, () => ({
     next: queued,
     result: queued,

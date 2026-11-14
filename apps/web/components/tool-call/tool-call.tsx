@@ -26,6 +26,7 @@ import { SkillRenderer } from "./renderers/skill-renderer";
 import { BrandToolRenderer } from "./renderers/brand-tool-renderer";
 import { ProcessRenderer } from "./renderers/process-renderer";
 import { InboxRenderer } from "./renderers/inbox-renderer";
+import { isMcpOrBridgeTool, McpRenderer } from "./renderers/mcp-renderer";
 import { VisualizeToolRenderer } from "./renderers/visualize-tool-renderer";
 
 export type ToolCallProps = {
@@ -101,15 +102,27 @@ export function ToolCall({
       return (
         <VisualizeToolRenderer part={part} state={state} {...approvalProps} />
       );
-    default:
+    default: {
+      const toolName = getToolName(part);
+      if (isMcpOrBridgeTool(toolName)) {
+        return (
+          <McpRenderer
+            part={part}
+            state={state}
+            toolName={toolName}
+            {...approvalProps}
+          />
+        );
+      }
       return (
         <DefaultRenderer
           part={part}
           state={state}
-          toolName={getToolName(part)}
+          toolName={toolName}
           {...approvalProps}
         />
       );
+    }
   }
 }
 
