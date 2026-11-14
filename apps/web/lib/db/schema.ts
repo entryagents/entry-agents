@@ -366,6 +366,10 @@ export const chatMessages = pgTable("chat_messages", {
   }).notNull(),
   // Store the full message parts as JSON for flexibility
   parts: jsonb("parts").notNull(),
+  // Message metadata: totalMessageUsage, totalMessageCost, stepBreakdown,
+  // turnSpendCapped, windowExhausted, creditExhausted, turnTimedOut, etc.
+  // Persisted so a page reload shows the same cost/tokens as before reload.
+  metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
