@@ -100,3 +100,57 @@ export {
   PROTECTED_RECENT_MESSAGES,
   maybeCompactMessages,
 } from "./context-management/auto-compact";
+// Plugins exports
+export {
+  BUILTIN_PLUGIN_CATALOG,
+  PLUGIN_HOOK_EVENTS,
+  PLUGIN_SLUG_PATTERN,
+  applyPluginHooksToTools,
+  createPluginRunner,
+  getBuiltinPluginBySlug,
+  pluginCategorySchema,
+  pluginConfigFieldSchema,
+  pluginHookEventSchema,
+  pluginManifestSchema,
+  pluginRuleSetSchema,
+  pluginSlashCommandSchema,
+  type EntryPluginRuntimeHooks,
+  type PluginAfterToolInput,
+  type PluginBeforeToolInput,
+  type PluginBeforeToolResult,
+  type PluginCategory,
+  type PluginConfigField,
+  type PluginContextHookInput,
+  type PluginContextHookResult,
+  type PluginHookEvent,
+  type PluginManifest,
+  type PluginPermissionInput,
+  type PluginPermissionResult,
+  type PluginRuleSet,
+  type PluginRunner,
+  type PluginSlashCommand,
+  type ResolvedEntryPlugin,
+} from "./plugins";
+// Multi-agent team exports
+export {
+  TeamBoard,
+  clearTeamBoard,
+  formatTeamContextSummary,
+  getOrCreateTeamBoard,
+  rebuildTeamBoardFromMessages,
+  type TeamBoardEntry,
+  type TeamBoardEntryKind,
+  type TeamBoardSnapshot,
+  type TeamTaskStatus,
+  type TeamWorkItem,
+} from "./team";
+export type {
+  TeamBoardToolInput,
+  TeamBoardToolOutput,
+  TeamBoardToolUIPart,
+} from "./tools/team";
+export {
+  SUBAGENT_REGISTRY,
+  SUBAGENT_TYPES,
+  type SubagentType,
+} from "./subagents/registry";

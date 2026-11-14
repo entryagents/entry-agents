@@ -1145,7 +1145,21 @@ export function InboxSidebar({
             >
               <X className="h-3 w-3" />
             </button>
-          ) : null}
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent("entry:open-command-palette"),
+                );
+              }}
+              className="ml-1 shrink-0 rounded border border-border/60 bg-background/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-border hover:text-foreground cursor-pointer"
+              title="Open command palette (⌘K)"
+              aria-label="Open command palette"
+            >
+              ⌘K
+            </button>
+          )}
         </div>
 
         {/* Unified Smooth Repository & Session Branch Tree */}

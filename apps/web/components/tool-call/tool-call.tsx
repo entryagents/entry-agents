@@ -28,6 +28,7 @@ import { ProcessRenderer } from "./renderers/process-renderer";
 import { InboxRenderer } from "./renderers/inbox-renderer";
 import { isMcpOrBridgeTool, McpRenderer } from "./renderers/mcp-renderer";
 import { VisualizeToolRenderer } from "./renderers/visualize-tool-renderer";
+import { TeamBoardRenderer } from "./renderers/team-board-renderer";
 
 export type ToolCallProps = {
   part: WebAgentUIToolPart;
@@ -102,6 +103,8 @@ export function ToolCall({
       return (
         <VisualizeToolRenderer part={part} state={state} {...approvalProps} />
       );
+    case "tool-team_board":
+      return <TeamBoardRenderer part={part} state={state} {...approvalProps} />;
     default: {
       const toolName = getToolName(part);
       if (isMcpOrBridgeTool(toolName)) {

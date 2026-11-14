@@ -17,6 +17,8 @@ import {
 export type SkillSuggestion = {
   name: string;
   description: string;
+  source?: "skill" | "plugin";
+  pluginName?: string;
 };
 
 export type SkillsResponse = {

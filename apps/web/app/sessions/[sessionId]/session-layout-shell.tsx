@@ -34,6 +34,39 @@ type SessionLayoutShellProps = {
 };
 
 /**
+ * Suppresses width/slide transitions across 2 animation frames whenever switching chats
+ * so route transitions feel instant and never replay panel resize animations.
+ */
+function usePanelNavigationSuppression(key: string): boolean {
+  const prevKeyRef = useRef(key);
+  const [suppressed, setSuppressed] = useState(false);
+
+  useEffect(() => {
+    if (prevKeyRef.current === key) {
+      return;
+    }
+    prevKeyRef.current = key;
+    setSuppressed(true);
+
+    let raf2 = 0;
+    const raf1 = window.requestAnimationFrame(() => {
+      raf2 = window.requestAnimationFrame(() => {
+        setSuppressed(false);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(raf1);
+      if (raf2) {
+        window.cancelAnimationFrame(raf2);
+      }
+    };
+  }, [key]);
+
+  return suppressed;
+}
+
+/**
  * Inner component that reads panelContent from context and renders
  * the horizontal split: left column (header + tabs + page) | draggable splitter | third column workspace.
  */
@@ -46,6 +79,7 @@ function SessionLayoutInner({
 }) {
   const { panelPortalRef, gitPanelOpen, setGitPanelOpen, isWorkspaceExpanded } =
     useGitPanel();
+  const suppressPanelTransition = usePanelNavigationSuppression(activeChatId);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [chatWidthPercent, setChatWidthPercent] = useState<number>(50);
@@ -114,7 +148,10 @@ function SessionLayoutInner({
       {/* Left column: header + tabs + chat content */}
       <div
         className={cn(
-          "flex min-w-0 flex-col overflow-hidden transition-[width] duration-75",
+          "flex min-w-0 flex-col overflow-hidden",
+          !suppressPanelTransition &&
+            !isDragging &&
+            "transition-[width] duration-75",
           gitPanelOpen && isWorkspaceExpanded
             ? "hidden"
             : gitPanelOpen
@@ -161,7 +198,7 @@ function SessionLayoutInner({
         >
           <div
             className={cn(
-              "w-[1px] h-full bg-border transition-all group-hover:bg-primary group-hover:w-[2px]",
+              "w-[1px] h-full bg-border transition-[background-color,width] group-hover:bg-primary group-hover:w-[2px]",
               isDragging && "bg-primary w-[2px]",
             )}
           />
@@ -182,7 +219,10 @@ function SessionLayoutInner({
       <div
         ref={panelPortalRef}
         className={cn(
-          "absolute right-0 top-0 z-30 flex h-full min-w-0 flex-col overflow-hidden border-l border-border bg-background shadow-xl transition-all duration-75 lg:relative lg:right-auto lg:top-auto lg:z-0 lg:shadow-none",
+          "absolute right-0 top-0 z-30 flex h-full min-w-0 flex-col overflow-hidden border-l border-border bg-background shadow-xl lg:relative lg:right-auto lg:top-auto lg:z-0 lg:shadow-none",
+          !suppressPanelTransition &&
+            !isDragging &&
+            "transition-[transform,width] duration-75",
           gitPanelOpen
             ? isWorkspaceExpanded
               ? "w-full translate-x-0"

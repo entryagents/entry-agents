@@ -12,9 +12,11 @@ import {
   FolderSearch,
   Globe,
   Hammer,
+  Layers,
   Paintbrush,
   Pencil,
   Search,
+  Share2,
   Telescope,
   Terminal,
   Zap,
@@ -39,6 +41,7 @@ import { TodoRenderer } from "./todo-renderer";
 import { AskUserQuestionRenderer } from "./ask-user-question-renderer";
 import { FetchRenderer } from "./fetch-renderer";
 import { SkillRenderer } from "./skill-renderer";
+import { TeamBoardRenderer } from "./team-board-renderer";
 
 // ---------------------------------------------------------------------------
 // Tool name → icon / display name mapping (for pending tool call only)
@@ -89,6 +92,11 @@ function getToolMeta(toolName: string): ToolMeta {
       return {
         displayName: "Skill",
         icon: <Zap className={TOOL_ICON_CLASS} />,
+      };
+    case "team_board":
+      return {
+        displayName: "Team Board",
+        icon: <Share2 className={TOOL_ICON_CLASS} />,
       };
     case "task":
       return {
@@ -231,6 +239,8 @@ function getSubagentIcon(
   className: string,
 ): ReactNode {
   switch (subagentType) {
+    case "architect":
+      return <Layers className={className} />;
     case "executor":
       return <Hammer className={className} />;
     case "design":
@@ -246,6 +256,8 @@ function getSubagentIcon(
 
 function getSubagentLabel(subagentType: string | undefined): string {
   switch (subagentType) {
+    case "architect":
+      return "Architect Subagent";
     case "executor":
       return "Executor Subagent";
     case "design":
@@ -302,6 +314,8 @@ function SubagentToolCall({ part }: { part: WebAgentUIToolPart }) {
       return <FetchRenderer part={part} state={state} />;
     case "tool-skill":
       return <SkillRenderer part={part} state={state} />;
+    case "tool-team_board":
+      return <TeamBoardRenderer part={part} state={state} />;
     default: {
       const toolName = getToolName(part);
       const name = toolName.charAt(0).toUpperCase() + toolName.slice(1);

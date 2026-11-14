@@ -13,6 +13,7 @@ import {
 } from "react";
 import { Toaster } from "sonner";
 import { SWRConfig } from "swr";
+import { CommandPalette } from "@/components/command-palette";
 import { GitHubReconnectGate } from "@/components/github-reconnect-gate";
 import { authClient } from "@/lib/auth/client";
 import { FetchError } from "@/lib/swr";
@@ -133,6 +134,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <ThemeContext.Provider value={themeContextValue}>
       <SWRConfig value={{ onError: handleError }}>
         {children}
+        <CommandPalette theme={theme} setTheme={setTheme} />
         <Suspense fallback={null}>
           <GitHubReconnectGate />
         </Suspense>

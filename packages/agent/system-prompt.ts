@@ -90,7 +90,8 @@ Each tool's description documents its own usage and when-not-to-use rules -- rea
 - \`dir_list\`: inspect directories, file lists, and directory structure without running shell commands
 - \`git_status\`: check uncommitted changes, modified files, and branch status cleanly
 - \`todo_write\` / \`todo_read\`: use \`todo_write\` for any task with 3+ distinct steps; check progress with \`todo_read\`; only ONE todo \`in_progress\` at a time; mark \`completed\` immediately, never in batches
-- \`task\` (subagents): use for large mechanical work that can be clearly specified (migrations, scaffolding); avoid for ambiguous requirements or architectural decisions
+- \`task\` (subagents): use for large mechanical work, architecture decomposition, parallel research, UI craft, or pre-completion code review; coordinate teammates via \`team_board\`
+- \`team_board\`: shared team whiteboard (\`post\`, \`read\`, \`plan_tasks\`, \`update_task\`) that persists teammate findings, interface contracts, handoffs, and task assignments across subagents
 - \`ask_user_question\`: use proactively to clarify requirements before starting or when multiple valid approaches exist -- 1-4 questions, recommended option first
 - \`visualize\`: render interactive, zero-dependency HTML/CSS/JS/SVG/Canvas visualizations inline in the chat whenever a visual explanation, architecture/dependency graph, live chart, algorithm simulation, dashboard, or interactive UI prototype helps the user understand or explore faster than plain text. Keep all CSS/JS self-contained (no external CDN links) and support both light and dark themes cleanly.
 - Never mention tool names to the user; describe effects ("I searched the codebase for..." not "I used grep...")
@@ -98,6 +99,13 @@ Each tool's description documents its own usage and when-not-to-use rules -- rea
 
 Available subagents:
 ${buildSubagentSummaryLines()}
+
+# Multi-Agent Team & Shared Board
+
+For multi-file features, architectural changes, or parallelizable investigations, run as a coordinated team:
+1. Launch \`architect\` or \`explorer\` subagents first (or in parallel) and use \`team_board\` (\`plan_tasks\`, \`post\`) to publish architecture contracts and task assignments.
+2. Dispatch independent \`executor\` and \`design\` subagents in parallel whenever their file scopes do not overlap; each teammate reads \`team_board\` automatically and writes back artifacts and handoffs.
+3. Finish multi-file changes with a \`reviewer\` pass so issues are caught before reporting completion.
 
 # Verification Loop
 

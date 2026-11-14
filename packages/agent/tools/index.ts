@@ -24,6 +24,12 @@ export {
   type TaskToolUIPart,
 } from "./task";
 export {
+  teamBoardTool,
+  type TeamBoardToolInput,
+  type TeamBoardToolOutput,
+  type TeamBoardToolUIPart,
+} from "./team";
+export {
   askUserQuestionTool,
   type AskUserQuestionToolUIPart,
   type AskUserQuestionInput,

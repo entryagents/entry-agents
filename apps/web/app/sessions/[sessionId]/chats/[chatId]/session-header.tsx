@@ -10,6 +10,7 @@ import {
   Link2,
   PanelLeft,
   PanelRight,
+  Search,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,7 @@ export function SessionHeader() {
     openDiffToFile,
     setShareRequested,
     setChangeRepoRequested,
+    headerActionsRef,
   } = useGitPanel();
   const { session } = useSessionLayout();
 
@@ -230,7 +232,7 @@ export function SessionHeader() {
           </div>
         </div>
 
-        {/* Right side: changes counter + workspace panel toggle */}
+        {/* Right side: changes counter + portaled actions (Agent Hub) + ⌘K + workspace toggle */}
         <div className="flex items-center gap-1.5 shrink-0">
           {changesCount > 0 && (
             <Tooltip>
@@ -250,6 +252,31 @@ export function SessionHeader() {
               </TooltipContent>
             </Tooltip>
           )}
+
+          <div ref={headerActionsRef} className="flex items-center gap-1.5" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("entry:open-command-palette"),
+                  );
+                }}
+                className="hidden h-7 items-center gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2 text-xs text-muted-foreground hover:text-foreground sm:inline-flex cursor-pointer"
+                aria-label="Open command palette"
+              >
+                <Search className="h-3 w-3" />
+                <kbd className="font-mono text-[10px] tracking-tight">⌘K</kbd>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              Command palette · ⌘K / Ctrl+K
+            </TooltipContent>
+          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>

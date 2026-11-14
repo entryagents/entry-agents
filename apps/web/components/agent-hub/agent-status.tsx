@@ -6,6 +6,7 @@ import {
   Compass,
   Cpu,
   Hammer,
+  Layers,
   Paintbrush,
   ShieldCheck,
   Sparkles,
@@ -26,6 +27,15 @@ export const SUBAGENT_TYPE_META: Record<
     borderClass: string;
   }
 > = {
+  architect: {
+    label: "Architect",
+    description: "System design, dependency mapping & team planning",
+    icon: Layers,
+    colorClass: "text-indigo-600 dark:text-indigo-400",
+    badgeClass:
+      "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/25",
+    borderClass: "border-indigo-500/30",
+  },
   executor: {
     label: "Executor",
     description: "Code implementation & build execution",
@@ -211,18 +221,11 @@ export function StatusBadge({
         )}
       >
         <span className="relative flex h-1.5 w-1.5 shrink-0">
-          {style.pulse && (
-            <span
-              className={cn(
-                "absolute inline-flex h-full w-full rounded-full opacity-75 motion-safe:animate-ping",
-                style.dot,
-              )}
-            />
-          )}
           <span
             className={cn(
               "relative inline-flex h-1.5 w-1.5 rounded-full",
               style.dot,
+              style.pulse && "ring-2 ring-emerald-500/25",
             )}
           />
         </span>
@@ -242,16 +245,12 @@ export function StatusBadge({
       )}
     >
       <span className="relative flex h-2 w-2 shrink-0">
-        {style.pulse && (
-          <span
-            className={cn(
-              "absolute inline-flex h-full w-full rounded-full opacity-75 motion-safe:animate-ping",
-              style.dot,
-            )}
-          />
-        )}
         <span
-          className={cn("relative inline-flex h-2 w-2 rounded-full", style.dot)}
+          className={cn(
+            "relative inline-flex h-2 w-2 rounded-full",
+            style.dot,
+            style.pulse && "ring-2 ring-emerald-500/25",
+          )}
         />
       </span>
       <span>{style.label}</span>

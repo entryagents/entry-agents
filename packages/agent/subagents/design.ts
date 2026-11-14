@@ -13,6 +13,7 @@ import {
   type ReadFileState,
 } from "../tools/read-state";
 import { editFileTool, writeFileTool } from "../tools/write";
+import { teamBoardTool } from "../tools/team";
 import type { SandboxExecutionContext } from "../types";
 import {
   SUBAGENT_BASH_RULES,
@@ -80,7 +81,7 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 Remember: You are capable of extraordinary creative work. Don't hold back — show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
 
 ## TOOLS
-You have full access to file operations (read, write, edit, grep, glob) and bash commands. Use them to complete your task.
+You have full access to file operations (read, write, edit, grep, glob), bash commands, and \`team_board\` (use it to coordinate UI component boundaries and handoffs with \`executor\` and \`reviewer\`). Use them to complete your task.
 
 ${SUBAGENT_BASH_RULES}`;
 
@@ -91,6 +92,8 @@ const callOptionsSchema = z.object({
     .custom<SandboxExecutionContext["sandbox"]>()
     .describe("Sandbox for file system and shell operations"),
   model: z.custom<LanguageModel>().describe("Language model for this subagent"),
+  teamId: z.string().optional(),
+  teamContext: z.string().optional(),
   // Per-step output clamp threaded from the host's billing guard
   // (packages/agent SubagentBudgetGuard, 2026-09-15): ToolLoopAgent
   // applies call settings to every internal step, so one value caps
@@ -114,6 +117,7 @@ export const designSubagent = new ToolLoopAgent({
     grep: grepTool(),
     glob: globTool(),
     bash: bashTool(),
+    team_board: teamBoardTool,
   },
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
@@ -155,6 +159,7 @@ export const designSubagent = new ToolLoopAgent({
 
     const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider("grok-4.5");
+    const teamBlock = options.teamContext ? `\n\n${options.teamContext}` : "";
     return {
       ...settings,
       model,
@@ -172,7 +177,7 @@ export const designSubagent = new ToolLoopAgent({
       instructions: addCacheControl({
         instructions: `${DESIGN_SYSTEM_PROMPT}
 
-${SUBAGENT_WORKING_DIR}
+${SUBAGENT_WORKING_DIR}${teamBlock}
 
 ## Your Task
 ${options.task}
@@ -186,6 +191,8 @@ ${SUBAGENT_REMINDER}`,
       experimental_context: {
         sandbox,
         model,
+        teamId: options.teamId ?? "default-team",
+        agentRole: "design",
         // Read-before-edit gate state (tools/read-state.ts): a fresh
         // store per subagent run — the subagent must read a file
         // before editing it, same rule as the main agent. Parent

@@ -4161,6 +4161,61 @@ const runAgentStep = async (
       fullAgentOptions.extraTools = mcpToolSet.tools;
     }
 
+    // Enabled Entry plugins (built-in toggles + custom JSON manifest plugins).
+    // Loaded inside runAgentStep ("use step") via dynamic import so database/crypto
+    // modules never enter the Workflow SDK's restricted "use workflow" bundle.
+    try {
+      const { getEnabledPluginsForExecution } =
+        await import("@/lib/db/plugins");
+      const enabledPlugins = await getEnabledPluginsForExecution(userId);
+      if (enabledPlugins.length > 0) {
+        fullAgentOptions.plugins = enabledPlugins;
+
+        const latestUserMsg = [...originalMessages]
+          .toReversed()
+          .find((m) => m.role === "user");
+        const latestUserText = latestUserMsg
+          ? extractPlainText(latestUserMsg.parts).trim()
+          : "";
+        const slashMatch = latestUserText.match(
+          /^\/([a-z0-9][a-z0-9_-]*)(?:\s+([\s\S]*))?$/i,
+        );
+        if (slashMatch?.[1]) {
+          const cmdName = slashMatch[1].toLowerCase();
+          const cmdArgs = slashMatch[2]?.trim();
+          for (const plugin of enabledPlugins) {
+            const matchedCmd = plugin.manifest.slashCommands.find(
+              (c) => c.name.toLowerCase() === cmdName,
+            );
+            if (matchedCmd) {
+              const targetNote = matchedCmd.targetAgent
+                ? `\nPreferred subagent role: \`${matchedCmd.targetAgent}\`.`
+                : "";
+              const commandInstruction = [
+                `## Active Plugin Command (/${matchedCmd.name} — ${plugin.name})`,
+                matchedCmd.promptTemplate + targetNote,
+                cmdArgs ? `User arguments:\n${cmdArgs}` : undefined,
+              ]
+                .filter(Boolean)
+                .join("\n\n");
+              fullAgentOptions.customInstructions = [
+                fullAgentOptions.customInstructions,
+                commandInstruction,
+              ]
+                .filter(Boolean)
+                .join("\n\n");
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn(
+        `[workflow] Failed to resolve Entry plugins for user ${userId}, continuing without them:`,
+        error,
+      );
+    }
+
     // COMPACT TELEMETRY SCOPE (moved inside this "use step" function
     // 2026-09-17): every auto-compaction firing inside this step (main
     // model or a subagent it launches) reports through this sink into

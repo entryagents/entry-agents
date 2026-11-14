@@ -46,6 +46,7 @@ import {
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
 import { SubagentChatView } from "@/components/subagent-chat/subagent-chat-view";
+import { AgentHubButton } from "@/components/agent-hub/agent-hub-button";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
 import {
   PinnedTodoPanel,
@@ -888,10 +889,22 @@ export function SessionChatContent({
     setChangesCount,
     setHasCommittedChanges,
     panelPortalRef,
+    headerActionsRef,
     isWorkspaceExpanded,
     setIsWorkspaceExpanded,
     focusedFilePath,
   } = useGitPanel();
+  const [headerActionsNode, setHeaderActionsNode] =
+    useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (
+      headerActionsRef.current &&
+      headerActionsRef.current !== headerActionsNode
+    ) {
+      setHeaderActionsNode(headerActionsRef.current);
+    }
+  }, [headerActionsRef, headerActionsNode]);
 
   // Header's "change repo" chevron sets changeRepoRequested; open the same
   // connect-repo dialog here (it auto-detects "already connected" via
@@ -3192,6 +3205,13 @@ export function SessionChatContent({
 
   return (
     <>
+      {/* Agent Team Hub portaled into SessionHeader actions slot */}
+      {headerActionsNode &&
+        createPortal(
+          <AgentHubButton messages={messages} onStopRun={handleStopStream} />,
+          headerActionsNode,
+        )}
+
       {/* Third-column workspace portaled to layout-level for full page height */}
       {gitPanelOpen &&
         panelPortalRef.current &&

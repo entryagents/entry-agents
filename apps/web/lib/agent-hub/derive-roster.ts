@@ -198,3 +198,151 @@ export function summarizeAgentHub(entries: AgentHubEntry[]): AgentHubTotals {
     { total: 0, live: 0, inputTokens: 0, outputTokens: 0 },
   );
 }
+
+export interface TeamFeedEntry {
+  id: string;
+  kind:
+    | "finding"
+    | "decision"
+    | "artifact"
+    | "handoff"
+    | "blocker"
+    | "question";
+  authorRole: string;
+  targetRole?: string;
+  title: string;
+  content: string;
+  files?: string[];
+  createdAt: number;
+}
+
+export interface TeamFeedTask {
+  id: string;
+  title: string;
+  assignedRole: string;
+  status: "open" | "in_progress" | "completed" | "blocked";
+  dependsOn?: string[];
+  notes?: string;
+  updatedBy: string;
+  updatedAt: number;
+}
+
+export interface TeamFeedState {
+  entries: TeamFeedEntry[];
+  tasks: TeamFeedTask[];
+}
+
+function isTeamBoardPart(part: unknown): part is RawToolPart {
+  if (typeof part !== "object" || part === null) return false;
+  const p = part as {
+    type?: unknown;
+    toolName?: unknown;
+    name?: unknown;
+  };
+  return (
+    p.type === "tool-team_board" ||
+    ((p.type === "dynamic-tool" || p.type === "tool-call") &&
+      (p.toolName === "team_board" || p.name === "team_board"))
+  );
+}
+
+export function deriveTeamFeed(messages: unknown): TeamFeedState {
+  if (!Array.isArray(messages)) {
+    return { entries: [], tasks: [] };
+  }
+
+  const entryMap = new Map<string, TeamFeedEntry>();
+  const taskMap = new Map<string, TeamFeedTask>();
+
+  const absorbSnapshot = (snap: Record<string, unknown> | null) => {
+    if (!snap) return;
+    if (Array.isArray(snap.entries)) {
+      for (const rawEntry of snap.entries) {
+        const e = asRecord(rawEntry);
+        if (!e || typeof e.id !== "string" || typeof e.title !== "string") {
+          continue;
+        }
+        const kindRaw = typeof e.kind === "string" ? e.kind : "finding";
+        const kind = (
+          [
+            "finding",
+            "decision",
+            "artifact",
+            "handoff",
+            "blocker",
+            "question",
+          ].includes(kindRaw)
+            ? kindRaw
+            : "finding"
+        ) as TeamFeedEntry["kind"];
+        entryMap.set(e.id, {
+          id: e.id,
+          kind,
+          authorRole: typeof e.authorRole === "string" ? e.authorRole : "agent",
+          ...(typeof e.targetRole === "string"
+            ? { targetRole: e.targetRole }
+            : {}),
+          title: e.title,
+          content: typeof e.content === "string" ? e.content : "",
+          ...(Array.isArray(e.files)
+            ? {
+                files: e.files.filter(
+                  (f): f is string => typeof f === "string",
+                ),
+              }
+            : {}),
+          createdAt: numberOrNull(e.createdAt) ?? 0,
+        });
+      }
+    }
+
+    if (Array.isArray(snap.tasks)) {
+      for (const rawTask of snap.tasks) {
+        const t = asRecord(rawTask);
+        if (!t || typeof t.id !== "string" || typeof t.title !== "string") {
+          continue;
+        }
+        const statusRaw = typeof t.status === "string" ? t.status : "open";
+        const status = (
+          ["open", "in_progress", "completed", "blocked"].includes(statusRaw)
+            ? statusRaw
+            : "open"
+        ) as TeamFeedTask["status"];
+        taskMap.set(t.id, {
+          id: t.id,
+          title: t.title,
+          assignedRole:
+            typeof t.assignedRole === "string" ? t.assignedRole : "executor",
+          status,
+          ...(Array.isArray(t.dependsOn)
+            ? {
+                dependsOn: t.dependsOn.filter(
+                  (d): d is string => typeof d === "string",
+                ),
+              }
+            : {}),
+          ...(typeof t.notes === "string" ? { notes: t.notes } : {}),
+          updatedBy: typeof t.updatedBy === "string" ? t.updatedBy : "main",
+          updatedAt: numberOrNull(t.updatedAt) ?? 0,
+        });
+      }
+    }
+  };
+
+  for (const raw of messages as RawMessage[]) {
+    if (!raw || raw.role !== "assistant" || !Array.isArray(raw.parts)) continue;
+    for (const part of raw.parts) {
+      if (!isTeamBoardPart(part) && !isTaskPart(part)) continue;
+      const rawPart = part as RawToolPart;
+      const output = asRecord(rawPart.output);
+      if (!output) continue;
+      const snap = asRecord(output.teamSnapshot ?? output);
+      absorbSnapshot(snap);
+    }
+  }
+
+  return {
+    entries: [...entryMap.values()].sort((a, b) => a.createdAt - b.createdAt),
+    tasks: [...taskMap.values()],
+  };
+}

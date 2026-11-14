@@ -1,44 +1,41 @@
+"use client";
+
+import { AnimatePresence, motion } from "motion/react";
+import { useState } from "react";
 import { SITE_URL } from "@/lib/site";
 
-/**
- * Answer-engine block: real, visible question/answer content that
- * matches the FAQPage JSON-LD below, so AI answer engines (ChatGPT,
- * Perplexity, AI Overviews) can quote both from the rendered page and
- * the structured data without any mismatch.
- *
- * Questions are written the way people actually ask ("What is...",
- * "Do I need..."), not as marketing fragments.
- */
+const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
+
 const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "What is Entry Agents?",
     answer:
-      "Entry Agents is a cloud platform for autonomous AI agents that can build software, investigate problems, create files, run commands, research the web, and work with or without a connected GitHub repository. Every session runs in a private Workspace with filesystem, outbound network and runtime access.",
+      "Entry Agents is a cloud platform for autonomous AI software engineering. A main agent coordinates specialized Architect, Explorer, Executor, Reviewer, and Design subagents inside a private cloud Workspace with filesystem, terminal, MCP, and git integration.",
   },
   {
-    question: "How does an Entry Agents session work?",
+    question: "How does the multi-agent team work together?",
     answer:
-      "Each session provisions a private Workspace. Start from a blank workspace, attach a GitHub repository, or ask the agent to create something from scratch. The agent can explore files, run commands, build software, test it, and optionally commit or push the result through Git.",
+      "Subagents coordinate through a persistent shared Team Board where architectural plans, file discoveries, task checklists, and verification status are posted cleanly. You can inspect every subagent's reasoning, tool calls, and token usage live inside the Agent Team Hub.",
   },
   {
-    question: "Which AI models does Entry Agents support?",
+    question: "Can I extend Entry with plugins and custom /commands?",
     answer:
-      "Entry Agents routes through Entry Gateway, supporting multiple AI models with per-token usage pricing. You can pick a default model and switch it per session.",
+      "Yes. Built-in and custom plugins hook into context assembly, tool execution boundaries (with secret/PII redaction), permission rules, and custom composer slash commands — configurable securely per user in Settings → Plugins.",
   },
   {
-    question: "Do I need to install anything to use Entry Agents?",
+    question: "How does Entry handle disconnects and long-running tasks?",
     answer:
-      "No. Entry Agents runs entirely in the cloud. Sign in with Vercel, Google or GitHub and start from a blank Workspace, a connected repository, an uploaded file, or a plain-language idea.",
+      "Every turn runs on durable Workflow SDK checkpoints backed by Redis streams and Postgres. You can close your laptop or switch devices mid-run and reconnect straight back into the live execution stream with zero lost output.",
   },
   {
-    question: "How does Entry Agents keep my code safe?",
+    question: "How does Entry Agents keep my code and API keys safe?",
     answer:
-      "Every session runs in a private Workspace that no other session can reach. Accounts connect through standard OAuth with encryption. If you connect a repository, the agent only receives the repository and access you authorize; blank Workspace work remains separate.",
+      "Each session runs inside its own isolated Workspace boundary. OAuth tokens and personal API secrets are encrypted with AES-256-GCM at rest, injected only at tool execution time, and automatically scrubbed from tool output logs.",
   },
   {
-    question: "What does Entry Agents cost?",
+    question: "Which AI models and MCP servers does Entry Agents support?",
     answer:
-      "Usage is credit-based for model usage. Entry Agents does not charge a separate sandbox or Workspace fee. Subscriptions include bonus credits, and your balance is used for the model tokens consumed by your agent.",
+      "Entry supports Claude, GPT, Gemini, DeepSeek, and gateway models with mid-session switching, alongside user-configured stdio and HTTP MCP servers available to your agent inside the sandbox.",
   },
 ];
 
@@ -56,6 +53,8 @@ const faqStructuredData = {
 };
 
 export function LandingFaq() {
+  const [openIndex, setOpenIndex] = useState<number | null>(0);
+
   return (
     <section aria-label="Frequently asked questions">
       <script
@@ -74,8 +73,8 @@ export function LandingFaq() {
               answered.
             </h2>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">
-              What Entry Agents is, how sessions run, and what it costs. More on
-              the{" "}
+              What Entry Agents is, how the agent team works, and how plugins
+              and sandboxes stay secure. More on the{" "}
               <a
                 href={`${SITE_URL}/pricing`}
                 className="underline underline-offset-4 hover:text-(--l-fg)"
@@ -94,25 +93,49 @@ export function LandingFaq() {
           </div>
 
           <div className="border-t border-(--l-border-subtle)">
-            {faqs.map((f) => (
-              <details
-                key={f.question}
-                className="group border-b border-(--l-border-subtle)"
-              >
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 text-sm font-medium text-(--l-fg) marker:hidden [&::-webkit-details-marker]:hidden">
-                  {f.question}
-                  <span
-                    aria-hidden="true"
-                    className="text-(--l-fg-3) transition-transform group-open:rotate-45"
+            {faqs.map((f, index) => {
+              const isOpen = openIndex === index;
+              return (
+                <div
+                  key={f.question}
+                  className="border-b border-(--l-border-subtle)"
+                >
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    onClick={() => setOpenIndex(isOpen ? null : index)}
+                    className="flex w-full cursor-pointer items-center justify-between gap-4 py-5 text-left text-sm font-medium text-(--l-fg) transition-colors hover:text-(--l-fg-2)"
                   >
-                    +
-                  </span>
-                </summary>
-                <p className="pb-5 pr-8 text-sm leading-relaxed text-(--l-fg-2)">
-                  {f.answer}
-                </p>
-              </details>
-            ))}
+                    <span>{f.question}</span>
+                    <motion.span
+                      aria-hidden="true"
+                      animate={{ rotate: isOpen ? 45 : 0 }}
+                      transition={{ duration: 0.18, ease: EASE_OUT_QUINT }}
+                      className="shrink-0 font-mono text-base text-(--l-fg-3)"
+                    >
+                      +
+                    </motion.span>
+                  </button>
+
+                  <AnimatePresence initial={false}>
+                    {isOpen && (
+                      <motion.div
+                        key="content"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.22, ease: EASE_OUT_QUINT }}
+                        className="overflow-hidden"
+                      >
+                        <p className="pb-5 pr-8 text-sm leading-relaxed text-(--l-fg-2)">
+                          {f.answer}
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>

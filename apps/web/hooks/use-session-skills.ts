@@ -1,8 +1,13 @@
 "use client";
 
+import { useMemo } from "react";
 import useSWR from "swr";
+import type {
+  SkillSuggestion,
+  SkillsResponse,
+} from "@/app/api/sessions/[sessionId]/skills/route";
+import type { PluginSlashCommandEntry } from "@/lib/db/plugins";
 import { fetcher } from "@/lib/swr";
-import type { SkillsResponse } from "@/app/api/sessions/[sessionId]/skills/route";
 
 export interface UseSessionSkillsReturn {
   skills: SkillsResponse["skills"] | null;
@@ -26,8 +31,49 @@ export function useSessionSkills(
     },
   );
 
+  const { data: pluginCmdData } = useSWR<{
+    commands: PluginSlashCommandEntry[];
+  }>("/api/plugins/commands", fetcher, {
+    revalidateOnFocus: false,
+  });
+
+  const mergedSkills = useMemo<SkillSuggestion[] | null>(() => {
+    const skillList = data?.skills ?? [];
+    const pluginCmds = pluginCmdData?.commands ?? [];
+    if (skillList.length === 0 && pluginCmds.length === 0) {
+      return data ? [] : null;
+    }
+
+    const seen = new Set<string>();
+    const combined: SkillSuggestion[] = [];
+
+    for (const cmd of pluginCmds) {
+      const key = cmd.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push({
+        name: cmd.name,
+        description: cmd.description,
+        source: "plugin",
+        pluginName: cmd.pluginName,
+      });
+    }
+
+    for (const skill of skillList) {
+      const key = skill.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push({
+        ...skill,
+        source: "skill",
+      });
+    }
+
+    return combined;
+  }, [data, pluginCmdData]);
+
   return {
-    skills: data?.skills ?? null,
+    skills: mergedSkills,
     isLoading,
     error: error?.message ?? null,
     refresh: async () => {

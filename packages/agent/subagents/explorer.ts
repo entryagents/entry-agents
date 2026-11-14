@@ -9,6 +9,7 @@ import { dirListTool } from "../tools/dir-list";
 import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
+import { teamBoardTool } from "../tools/team";
 import type { SandboxExecutionContext } from "../types";
 import {
   SUBAGENT_NO_QUESTIONS_RULES,
@@ -20,6 +21,7 @@ import {
 const EXPLORER_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
 - This is READ-ONLY - do NOT create, modify, or delete any files
+- If working alongside teammates, post key discoveries to \`team_board\` (\`kind: "finding"\`) so sibling agents avoid duplicate searches
 - Your final message MUST be a comprehensive text response including both **Summary** of what you explored AND the **Answer** to the task with findings and exact file:line references
 - CRITICAL: Never terminate your execution on a tool call without a text message. Always synthesize and emit your final exploration findings in text before finishing or exhausting your step budget.`;
 
@@ -49,12 +51,13 @@ Example final response:
 
 ## TOOLS & GUIDELINES
 
-You have access to: read, grep, glob, bash (read-only commands only)
+You have access to: read, grep, glob, bash (read-only commands only), team_board
 
 **Strengths:**
 - Rapidly finding files using glob patterns
 - Searching code and text with powerful regex patterns
 - Reading and analyzing file contents
+- Sharing discovered symbols and call sites with teammates via \`team_board\`
 
 **Guidelines:**
 - Use glob for broad file pattern matching
@@ -74,6 +77,8 @@ const callOptionsSchema = z.object({
     .custom<SandboxExecutionContext["sandbox"]>()
     .describe("Sandbox for file system and shell operations"),
   model: z.custom<LanguageModel>().describe("Language model for this subagent"),
+  teamId: z.string().optional(),
+  teamContext: z.string().optional(),
   // Per-step output clamp threaded from the host's billing guard
   // (packages/agent SubagentBudgetGuard, 2026-09-15): ToolLoopAgent
   // applies call settings to every internal step, so one value caps
@@ -96,6 +101,7 @@ export const explorerSubagent = new ToolLoopAgent({
     grep: grepTool(),
     glob: globTool(),
     bash: bashTool(),
+    team_board: teamBoardTool,
   },
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
@@ -127,6 +133,7 @@ export const explorerSubagent = new ToolLoopAgent({
 
     const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider(defaultModelLabel);
+    const teamBlock = options.teamContext ? `\n\n${options.teamContext}` : "";
     return {
       ...settings,
       model,
@@ -144,7 +151,7 @@ export const explorerSubagent = new ToolLoopAgent({
       instructions: addCacheControl({
         instructions: `${EXPLORER_SYSTEM_PROMPT}
 
-${SUBAGENT_WORKING_DIR}
+${SUBAGENT_WORKING_DIR}${teamBlock}
 
 ## Your Task
 ${options.task}
@@ -158,6 +165,8 @@ ${EXPLORER_REMINDER}`,
       experimental_context: {
         sandbox,
         model,
+        teamId: options.teamId ?? "default-team",
+        agentRole: "explorer",
       },
     };
   },

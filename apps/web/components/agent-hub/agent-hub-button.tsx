@@ -1,7 +1,7 @@
 "use client";
 
 import { formatTokens } from "@entry-agents/shared";
-import { Network } from "lucide-react";
+import { Network, Share2, Users } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,19 +15,24 @@ import {
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   deriveAgentHubRoster,
+  deriveTeamFeed,
   summarizeAgentHub,
 } from "@/lib/agent-hub/derive-roster";
+import { cn } from "@/lib/utils";
 import { AgentInspector } from "./agent-inspector";
+import { AgentRoster } from "./agent-roster";
+import { TeamBoardView } from "./team-board-view";
+
+type HubTab = "inspector" | "board";
 
 /**
- * Agent Hub: live roster + inspector for the subagents of this chat.
+ * Agent Team Hub: live roster + inspector + shared Team Board for this chat.
  *
- * Read-only view over persisted messages, so it is correct after a page
- * refresh or reconnect -- the durable workflow owns execution, this only
- * renders it. Desktop: right-hand sheet with roster | inspector split.
- * Mobile: full-height bottom sheet with pull handle; tapping a row opens the
- * inspector with a Back button.
- * Keyboard shortcut: Alt+A or Ctrl+Shift+A opens/toggles the hub.
+ * Read-only view over persisted messages so it reconstructs cleanly after refresh
+ * or reconnect. Desktop renders a roster | inspector/board split; mobile uses a
+ * bottom sheet with Back navigation.
+ * Shortcut: Alt+A or Ctrl+Shift+A toggles the hub; custom event
+ * `entry:toggle-agent-hub` opens it from the Command Palette.
  */
 export function AgentHubButton({
   messages,
@@ -39,29 +44,46 @@ export function AgentHubButton({
   const isMobile = useIsMobile();
   const roster = useMemo(() => deriveAgentHubRoster(messages), [messages]);
   const totals = useMemo(() => summarizeAgentHub(roster), [roster]);
+  const teamFeed = useMemo(() => deriveTeamFeed(messages), [messages]);
+
+  const hasContent =
+    roster.length > 0 ||
+    teamFeed.entries.length > 0 ||
+    teamFeed.tasks.length > 0;
+
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<HubTab>("inspector");
+  const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
-  // Keyboard shortcut listener (Alt+A or Option+A or Ctrl+Shift+A)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         (e.altKey && e.code === "KeyA") ||
         (e.ctrlKey && e.shiftKey && e.code === "KeyA")
       ) {
-        // Only trigger if subagents exist
-        if (roster.length > 0) {
+        if (hasContent) {
           e.preventDefault();
           setOpen((prev) => !prev);
         }
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [roster.length]);
+    const handleCustomOpen = () => {
+      if (hasContent) {
+        setOpen((prev) => !prev);
+      }
+    };
 
-  if (roster.length === 0) return null;
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("entry:toggle-agent-hub", handleCustomOpen);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("entry:toggle-agent-hub", handleCustomOpen);
+    };
+  }, [hasContent]);
+
+  if (!hasContent) return null;
 
   const selected =
     roster.find((entry) => entry.id === selectedId) ??
@@ -75,8 +97,18 @@ export function AgentHubButton({
     ? roster.filter((entry) => entry.parentId === selected.id)
     : [];
 
+  const effectiveTab: HubTab =
+    roster.length === 0 &&
+    (teamFeed.entries.length > 0 || teamFeed.tasks.length > 0)
+      ? "board"
+      : activeTab;
+
   const select = (id: string) => {
     setSelectedId(id);
+    setActiveTab("inspector");
+    if (isMobile) {
+      setMobileShowDetail(true);
+    }
   };
 
   return (
@@ -85,19 +117,20 @@ export function AgentHubButton({
         <Button
           variant="outline"
           size="sm"
-          className="h-9 gap-2 active:scale-[0.97] transition-transform"
-          aria-label={`Agent hub, ${totals.live} running of ${totals.total} subagents`}
+          className="h-7 gap-1.5 rounded-md border-border/70 px-2 text-xs active:scale-[0.97] transition-transform"
+          aria-label={`Team hub, ${totals.live} running of ${totals.total} subagents`}
         >
-          <Network className="h-4 w-4" />
-          <span className="hidden sm:inline font-medium">Agents</span>
-          <span className="font-mono text-xs tabular-nums">
-            {totals.live > 0 ? `${totals.live}/${totals.total}` : totals.total}
+          <Network className="h-3.5 w-3.5 text-muted-foreground" />
+          <span className="hidden sm:inline font-medium">Team</span>
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            {totals.live > 0
+              ? `${totals.live}/${totals.total}`
+              : totals.total > 0
+                ? totals.total
+                : teamFeed.entries.length}
           </span>
           {totals.live > 0 && (
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/25" />
           )}
         </Button>
       </SheetTrigger>
@@ -105,32 +138,67 @@ export function AgentHubButton({
         side={isMobile ? "bottom" : "right"}
         className={
           isMobile
-            ? "h-[88dvh] gap-0 rounded-t-2xl p-0 flex flex-col"
-            : "w-full gap-0 p-0 sm:max-w-3xl flex flex-col"
+            ? "flex h-[88dvh] flex-col gap-0 rounded-t-2xl p-0"
+            : "flex w-full flex-col gap-0 p-0 sm:max-w-4xl"
         }
       >
-        {/* Mobile pull handle */}
         {isMobile && (
-          <div className="pt-2 pb-1 shrink-0 flex justify-center">
-            <div className="w-10 h-1 bg-muted-foreground/30 rounded-full" />
+          <div className="flex shrink-0 justify-center pt-2 pb-1">
+            <div className="h-1 w-10 rounded-full bg-muted-foreground/30" />
           </div>
         )}
 
-        <SheetHeader className="border-b border-border/80 p-4 pr-12 shrink-0 bg-muted/10">
-          <div className="flex items-center justify-between">
+        <SheetHeader className="shrink-0 border-b border-border/80 bg-muted/10 p-4 pr-12">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <SheetTitle className="flex items-center gap-2 text-base font-semibold">
               <Network className="h-4 w-4 text-primary" />
-              <span>Agent Hub</span>
-              <kbd className="hidden sm:inline-block rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              <span>Agent Team Hub</span>
+              <kbd className="hidden rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-block">
                 Alt+A
               </kbd>
             </SheetTitle>
+
+            <div className="inline-flex rounded-md border border-border/70 bg-muted/40 p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setActiveTab("inspector")}
+                disabled={roster.length === 0}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded px-2.5 py-1 font-medium transition-colors disabled:opacity-40",
+                  effectiveTab === "inspector"
+                    ? "bg-background text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Users className="size-3.5" />
+                <span>Agents ({totals.total})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("board");
+                  if (isMobile) setMobileShowDetail(true);
+                }}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded px-2.5 py-1 font-medium transition-colors",
+                  effectiveTab === "board"
+                    ? "bg-background text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Share2 className="size-3.5" />
+                <span>
+                  Team Board ({teamFeed.entries.length + teamFeed.tasks.length})
+                </span>
+              </button>
+            </div>
           </div>
-          <SheetDescription className="font-mono text-xs text-muted-foreground mt-1">
-            <span className="text-foreground font-medium">
+          <SheetDescription className="mt-1 font-mono text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">
               {totals.live} active
             </span>{" "}
-            · <span>{totals.total} total</span> ·{" "}
+            · <span>{totals.total} subagents</span> ·{" "}
+            <span>{teamFeed.tasks.length} team tasks</span> ·{" "}
             <span className="tabular-nums">
               {formatTokens(totals.inputTokens)} in
             </span>{" "}
@@ -140,17 +208,56 @@ export function AgentHubButton({
             </span>
           </SheetDescription>
         </SheetHeader>
+
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {selected && (
+          {effectiveTab === "board" ? (
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-              <AgentInspector
-                entry={selected}
-                parent={parent}
-                childEntries={kids}
-                onSelect={select}
-                onStopRun={onStopRun}
-              />
+              <TeamBoardView feed={teamFeed} />
             </div>
+          ) : isMobile ? (
+            mobileShowDetail && selected ? (
+              <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                <AgentInspector
+                  entry={selected}
+                  parent={parent}
+                  childEntries={kids}
+                  onBack={() => setMobileShowDetail(false)}
+                  onSelect={select}
+                  onStopRun={onStopRun}
+                />
+              </div>
+            ) : (
+              <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                <AgentRoster
+                  entries={roster}
+                  selectedId={selected?.id ?? null}
+                  onSelect={select}
+                />
+              </div>
+            )
+          ) : (
+            <>
+              <div className="h-full w-[280px] shrink-0 overflow-hidden border-r border-border/70">
+                <AgentRoster
+                  entries={roster}
+                  selectedId={selected?.id ?? null}
+                  onSelect={select}
+                />
+              </div>
+              <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                {selected ? (
+                  <AgentInspector
+                    entry={selected}
+                    parent={parent}
+                    childEntries={kids}
+                    onSelect={select}
+                    onStopRun={onStopRun}
+                  />
+                ) : (
+                  <TeamBoardView feed={teamFeed} />
+                )}
+              </div>
+            </>
           )}
         </div>
       </SheetContent>

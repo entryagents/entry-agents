@@ -1,9 +1,15 @@
+import { architectSubagent } from "./architect";
 import { designSubagent } from "./design";
 import { executorSubagent } from "./executor";
 import { explorerSubagent } from "./explorer";
 import { reviewerSubagent } from "./reviewer";
 
 export const SUBAGENT_REGISTRY = {
+  architect: {
+    shortDescription:
+      "Use for read-only architecture planning, dependency mapping, interface contracts, and breaking large tasks into coordinated team_board tasks",
+    agent: architectSubagent,
+  },
   explorer: {
     shortDescription:
       "Use for read-only codebase exploration, tracing behavior, and answering questions without changing files",

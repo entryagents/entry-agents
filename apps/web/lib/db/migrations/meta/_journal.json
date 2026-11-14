@@ -519,6 +519,13 @@
       "when": 1794656466508,
       "tag": "0073_jittery_beyonder",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1794664696621,
+      "tag": "0074_regular_scourge",
+      "breakpoints": true
     }
   ]
 }

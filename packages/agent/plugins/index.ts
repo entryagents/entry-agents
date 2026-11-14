@@ -1,0 +1,31 @@
+export { BUILTIN_PLUGIN_CATALOG, getBuiltinPluginBySlug } from "./builtins";
+export {
+  applyPluginHooksToTools,
+  createPluginRunner,
+  type PluginRunner,
+} from "./engine";
+export {
+  PLUGIN_HOOK_EVENTS,
+  PLUGIN_SLUG_PATTERN,
+  pluginCategorySchema,
+  pluginConfigFieldSchema,
+  pluginHookEventSchema,
+  pluginManifestSchema,
+  pluginRuleSetSchema,
+  pluginSlashCommandSchema,
+  type EntryPluginRuntimeHooks,
+  type PluginAfterToolInput,
+  type PluginBeforeToolInput,
+  type PluginBeforeToolResult,
+  type PluginCategory,
+  type PluginConfigField,
+  type PluginContextHookInput,
+  type PluginContextHookResult,
+  type PluginHookEvent,
+  type PluginManifest,
+  type PluginPermissionInput,
+  type PluginPermissionResult,
+  type PluginRuleSet,
+  type PluginSlashCommand,
+  type ResolvedEntryPlugin,
+} from "./types";

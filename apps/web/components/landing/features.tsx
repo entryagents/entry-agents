@@ -1,5 +1,6 @@
 "use client";
 
+import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { FeatureAgent } from "./feature-agent";
@@ -8,7 +9,10 @@ import { FeatureWorkflow } from "./feature-workflow";
 import { Stage, type StageTone } from "./stage";
 import { Window } from "./window";
 
+const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
+
 function Spotlight({
+  indexTag,
   tone,
   title,
   description,
@@ -16,6 +20,7 @@ function Spotlight({
   flip,
   window: windowContent,
 }: {
+  readonly indexTag: string;
   readonly tone: StageTone;
   readonly title: string;
   readonly description: string;
@@ -25,40 +30,51 @@ function Spotlight({
 }) {
   return (
     <div className="grid items-center md:grid-cols-2">
-      <div
+      <motion.div
+        initial={{ opacity: 0, transform: "translateY(12px)" }}
+        whileInView={{ opacity: 1, transform: "translateY(0px)" }}
+        viewport={{ once: true, amount: 0.25 }}
+        transition={{ duration: 0.4, ease: EASE_OUT_QUINT }}
         className={cn(
           "px-6 py-16 sm:px-10 md:py-20 lg:py-24",
           flip ? "order-1 md:order-2" : "order-1 md:order-1",
         )}
       >
+        <div className="mb-3 font-mono text-[11px] uppercase tracking-widest text-(--l-fg-4)">
+          {indexTag}
+        </div>
         <h2 className="text-balance text-2xl font-semibold tracking-tighter sm:text-3xl md:text-4xl">
           {title}
         </h2>
         <p className="mt-4 text-balance text-base leading-relaxed text-(--l-fg-2) sm:mt-5 sm:text-lg">
           {description}
         </p>
-        <ul className="mt-4 space-y-3 sm:mt-5">
+        <ul className="mt-5 space-y-3 sm:mt-6">
           {bullets.map((b) => (
             <li
               key={b}
-              className="flex items-center gap-3 text-(--l-fg-2) sm:text-lg"
+              className="flex items-center gap-3 text-(--l-fg-2) sm:text-base"
             >
-              <span className="h-1.5 w-1.5 bg-(--l-fg-2)" />
+              <span className="h-1.5 w-1.5 shrink-0 bg-(--l-accent)" />
               {b}
             </li>
           ))}
         </ul>
-      </div>
+      </motion.div>
 
-      <div
-        className={flip ? "order-2 md:order-1 -mr-px" : "order-2 md:order-2"}
+      <motion.div
+        initial={{ opacity: 0, transform: "translateY(14px)" }}
+        whileInView={{ opacity: 1, transform: "translateY(0px)" }}
+        viewport={{ once: true, amount: 0.2 }}
+        transition={{ duration: 0.45, delay: 0.06, ease: EASE_OUT_QUINT }}
+        className={flip ? "order-2 -mr-px md:order-1" : "order-2 md:order-2"}
       >
         <Stage tone={tone}>
           <div className="mx-auto w-full max-w-[1160px]">
             <Window>{windowContent}</Window>
           </div>
         </Stage>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -73,38 +89,41 @@ export function LandingFeatures() {
         />
         <div>
           <Spotlight
+            indexTag="01 // Multi-Agent Team"
             tone="slate"
-            title="Agents that ship real code."
-            description="Each agent gets a full sandbox environment with filesystem, network, and runtime access. Describe what to build and let the agent work autonomously until it's done."
+            title="Specialists that coordinate cleanly."
+            description="Delegate architecture, codebase discovery, implementation, and security review to focused subagents that share a structured Team Board and clean handoff notes."
             bullets={[
-              "File ops, search, shell, and task delegation built in",
-              "Explorer and executor subagents for parallel work",
-              "Multi-model support",
+              "Architect, Explorer, Executor, Reviewer, and Design roles",
+              "Shared Team Board for task checklists & cross-agent decisions",
+              "Inspect any subagent trace live from the Agent Team Hub",
             ]}
             window={<FeatureAgent />}
           />
 
           <Spotlight
+            indexTag="02 // Cloud Sandboxes"
             tone="ash"
             title="Cloud sandboxes, not local machines."
-            description="Every session runs in its own isolated Workspace with a repository branch, filesystem, network and runtime access. Work is committed and pushed through Git, so your code stays safe even when a machine hibernates."
+            description="Every session provisions an isolated Workspace with repository checkout, terminal, live dev preview, and encrypted runtime secrets — hibernating automatically when idle."
             bullets={[
-              "Ephemeral environments with full git integration",
-              "Auto-hibernate on inactivity, instant restore",
-              "Snapshot and restore filesystem state",
+              "Instant branch isolation with interactive diff & file review",
+              "Auto-hibernate on inactivity with deterministic restore",
+              "Scoped GitHub & API secret injection without token leakage",
             ]}
             flip
             window={<FeatureSandbox />}
           />
 
           <Spotlight
+            indexTag="03 // Durable Runtime & Plugins"
             tone="iron"
             title="Durable workflows that survive anything."
-            description="Agent loops run as durable workflows that survive restarts, retry on failure, and coordinate multi-step operations over time. No work is ever lost mid-run."
+            description="Agent turns execute as checkpointed workflows with custom lifecycle plugins and /commands. Close your browser mid-run and reconnect straight back into the live stream."
             bullets={[
-              "Resumable agent loops with automatic checkpointing",
-              "Post-finish: usage tracking, diff caching, auto-commit",
-              "Reconnect to running workflows from any client",
+              "Resumable step checkpoints with zero lost token output",
+              "Plugin hooks for pre/post tool redaction and quality gates",
+              "Post-turn metering, diff caching, and optional auto-PR sync",
             ]}
             window={<FeatureWorkflow />}
           />

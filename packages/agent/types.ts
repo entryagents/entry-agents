@@ -8,6 +8,7 @@ import type {
   SecretRedactor,
 } from "./lib/secret-redactor";
 import type { AgentSandboxContext } from "./open-agent";
+import type { ResolvedEntryPlugin } from "./plugins";
 import type { SkillMetadata } from "./skills/types";
 
 export const todoStatusSchema = z.enum(["pending", "in_progress", "completed"]);
@@ -349,6 +350,12 @@ export interface AgentContext {
   onSecretUsed?: (names: string[]) => void;
   /** Hierarchical delegation depth (0 = root agent, 1 = subagent). */
   depth?: number;
+  /** Shared team identifier (usually sessionId) for team_board coordination. */
+  teamId?: string;
+  /** Calling agent role ("main", "architect", "explorer", "executor", "design", "reviewer"). */
+  agentRole?: string;
+  /** Enabled plugins resolved for the current turn. */
+  plugins?: ResolvedEntryPlugin[];
 }
 
 export interface SandboxExecutionContext {

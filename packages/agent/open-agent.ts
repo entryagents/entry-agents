@@ -23,6 +23,13 @@ import {
 } from "./lib/secret-redactor";
 
 import type { SkillMetadata } from "./skills/types";
+import {
+  applyPluginHooksToTools,
+  createPluginRunner,
+  type PluginRunner,
+  type ResolvedEntryPlugin,
+} from "./plugins";
+import { rebuildTeamBoardFromMessages } from "./team";
 import type {
   SubagentBudgetGuard,
   GithubToolContext,
@@ -49,6 +56,7 @@ import {
   sandboxControlTool,
   skillTool,
   taskTool,
+  teamBoardTool,
   todoReadTool,
   todoWriteTool,
   vercelApiTool,
@@ -166,6 +174,8 @@ const callOptionsSchema = z.object({
   secretCatalog: z.custom<SecretCatalogEntry[]>().optional(),
   secrets: z.custom<RuntimeSecret[]>().optional(),
   onSecretUsed: z.custom<(names: string[]) => void>().optional(),
+  teamId: z.string().optional(),
+  plugins: z.custom<ResolvedEntryPlugin[]>().optional(),
 });
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -231,6 +241,7 @@ const tools = {
   glob: globTool(),
   bash: bashTool(),
   task: taskTool,
+  team_board: teamBoardTool,
   ask_user_question: askUserQuestionTool,
   skill: skillTool,
   web_fetch: webFetchTool,
@@ -268,6 +279,9 @@ export const openAgent = new ToolLoopAgent({
       readFileState?: unknown;
       contextWindow?: number;
       compactionThreshold?: number;
+      teamId?: string;
+      pluginRunner?: PluginRunner;
+      pluginCompactionHints?: string[];
     };
     let readFileState: ReadFileState | undefined =
       context.readFileState instanceof Map ? context.readFileState : undefined;
@@ -275,6 +289,7 @@ export const openAgent = new ToolLoopAgent({
       readFileState = createReadFileState();
     }
     rebuildReadFileState(messages, readFileState);
+    rebuildTeamBoardFromMessages(messages, context.teamId ?? "default-team");
     const currentTodos = extractLatestTodos(messages);
 
     return {
@@ -324,7 +339,6 @@ export const openAgent = new ToolLoopAgent({
             : {}),
         })
       : undefined;
-    const customInstructions = options.customInstructions;
     const sandbox = options.sandbox;
     const skills = options.skills ?? [];
     const secrets = options.secrets;
@@ -374,10 +388,39 @@ export const openAgent = new ToolLoopAgent({
       }
     }
 
+    const teamId = options.teamId ?? "default-team";
+    const pluginRunner = createPluginRunner(options.plugins ?? []);
+
+    const baseMergedTools = disclosedExtraTools
+      ? {
+          ...(settings.tools ?? tools),
+          ...disclosedExtraTools.tools,
+        }
+      : (settings.tools ?? tools);
+
+    const contextHooks = pluginRunner.runContextHooks({
+      modelId: mainSelection.id,
+      agentId: "main",
+      sessionId: teamId,
+      toolNames: Object.keys(baseMergedTools),
+    });
+
+    const pluginCustomInstructions = [
+      options.customInstructions,
+      contextHooks.systemAdditions.length > 0
+        ? `## Active Entry Plugins\n\n${contextHooks.systemAdditions.join("\n\n")}`
+        : undefined,
+      contextHooks.compactionHints.length > 0
+        ? `## Context Compaction Hints\n${contextHooks.compactionHints.map((h) => `- ${h}`).join("\n")}`
+        : undefined,
+    ]
+      .filter((part): part is string => Boolean(part && part.trim()))
+      .join("\n\n");
+
     const promptParts = buildSystemPromptParts({
       cwd: sandbox?.workingDirectory,
       currentBranch: sandbox?.currentBranch,
-      customInstructions,
+      customInstructions: pluginCustomInstructions || undefined,
       environmentDetails: sandbox?.environmentDetails,
       skills,
       secretCatalog,
@@ -386,30 +429,47 @@ export const openAgent = new ToolLoopAgent({
       guidedFrontendWorkflow: options.guidedFrontendWorkflow,
     });
 
+    const resolvedTools = (() => {
+      let current: Record<string, unknown> = { ...baseMergedTools };
+      if (options.toolset) {
+        const picked: Record<string, unknown> = {};
+        for (const name of options.toolset) {
+          if (name in current) {
+            picked[name] = current[name];
+          }
+        }
+        current = picked;
+      }
+      if (contextHooks.allowedToolNames) {
+        const allowedPicked: Record<string, unknown> = {};
+        for (const [name, def] of Object.entries(current)) {
+          if (contextHooks.allowedToolNames.has(name)) {
+            allowedPicked[name] = def;
+          }
+        }
+        current = allowedPicked;
+      }
+      if (contextHooks.blockedToolReasons.size > 0) {
+        for (const blockedName of contextHooks.blockedToolReasons.keys()) {
+          delete current[blockedName];
+        }
+      }
+      return applyPluginHooksToTools(
+        current as typeof baseMergedTools,
+        pluginRunner,
+        {
+          agentId: "main",
+          sessionId: teamId,
+        },
+      );
+    })();
+
     return {
       ...settings,
       model: callModel,
       maxOutputTokens: options.maxOutputTokens ?? mainSelection.maxOutputTokens,
       tools: addCacheControl({
-        // toolset allowlist filter (desktop harness)
-        tools: (() => {
-          // Large MCP/connector sets are hidden behind tool_search/
-          // tool_describe/tool_call only when that is estimated to
-          // save tokens (see tools/tool-bridge.ts).
-          const merged = disclosedExtraTools
-            ? {
-                ...(settings.tools ?? tools),
-                ...disclosedExtraTools.tools,
-              }
-            : (settings.tools ?? tools);
-          if (!options.toolset) return merged;
-          const picked: Record<string, unknown> = {};
-          for (const name of options.toolset) {
-            if (name in merged)
-              picked[name] = merged[name as keyof typeof merged];
-          }
-          return picked as typeof merged;
-        })(),
+        tools: resolvedTools,
         model: callModel,
       }),
       instructions: addCacheControl({
@@ -438,6 +498,11 @@ export const openAgent = new ToolLoopAgent({
         secrets,
         secretRedactor,
         onSecretUsed: options.onSecretUsed,
+        teamId,
+        agentRole: "main",
+        plugins: options.plugins,
+        pluginRunner,
+        pluginCompactionHints: contextHooks.compactionHints,
       },
     };
   },

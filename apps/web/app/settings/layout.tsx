@@ -3,6 +3,7 @@
 import {
   Activity,
   ArrowLeft,
+  Blocks,
   Cable,
   CreditCard,
   KeyRound,
@@ -30,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { AccountsSectionSkeleton } from "./accounts-section";
 import { McpServersSectionSkeleton } from "./mcp-servers-section";
+import { PluginsSectionSkeleton } from "./plugins/plugins-section";
 import { PreferencesSectionSkeleton } from "./preferences-section";
 import { SecretsSectionSkeleton } from "./secrets/secrets-section";
 
@@ -115,6 +117,12 @@ const baseSidebarItems = [
     label: "MCP Servers",
     href: "/settings/mcp-servers",
     icon: Plug,
+  },
+  {
+    id: "plugins",
+    label: "Plugins",
+    href: "/settings/plugins",
+    icon: Blocks,
   },
 ];
 
@@ -266,6 +274,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <PreferencesSectionSkeleton />
     ) : activeItem?.id === "mcp-servers" ? (
       <McpServersSectionSkeleton />
+    ) : activeItem?.id === "plugins" ? (
+      <PluginsSectionSkeleton />
     ) : activeItem?.id === "secrets" ? (
       <SecretsSectionSkeleton />
     ) : (

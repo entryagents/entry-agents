@@ -1,89 +1,166 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useState } from "react";
 
-const tools = [
-  { name: "grep", detail: "auth patterns in src/" },
-  { name: "read", detail: "lib/session.ts" },
-  { name: "write", detail: "app/api/auth/route.ts" },
-  { name: "write", detail: "app/api/auth/callback/route.ts" },
-  { name: "edit", detail: "middleware.ts" },
-  { name: "bash", detail: "pnpm typecheck" },
-] as const;
+const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
+
+type RoleKey = "architect" | "explorer" | "executor" | "reviewer";
+
+const ROLES: readonly {
+  readonly id: RoleKey;
+  readonly label: string;
+  readonly scope: string;
+  readonly steps: readonly { readonly tool: string; readonly arg: string }[];
+  readonly note: string;
+}[] = [
+  {
+    id: "architect",
+    label: "Architect",
+    scope: "read-only · planner",
+    steps: [
+      { tool: "dir_list", arg: "packages/agent apps/web" },
+      { tool: "read", arg: "packages/agent/plugins/types.ts" },
+      { tool: "team_board", arg: "plan_tasks (3 assigned)" },
+    ],
+    note: "Posted module boundaries & acceptance checklist to Team Board.",
+  },
+  {
+    id: "explorer",
+    label: "Explorer",
+    scope: "read-only · discovery",
+    steps: [
+      { tool: "glob", arg: "app/api/**/route.ts" },
+      { tool: "grep", arg: "sessionLayoutShell | headerActionsRef" },
+      { tool: "team_board", arg: "post 'Header portal mount contract'" },
+    ],
+    note: "Mapped 4 integration files and handed off line ranges cleanly.",
+  },
+  {
+    id: "executor",
+    label: "Executor",
+    scope: "workspace write · verify",
+    steps: [
+      { tool: "write", arg: "components/command-palette.tsx" },
+      { tool: "edit", arg: "session-chat-content.tsx" },
+      { tool: "bash", arg: "pnpm typecheck && bun test" },
+    ],
+    note: "Implemented changes; verification-gate confirmed 0 type errors.",
+  },
+  {
+    id: "reviewer",
+    label: "Reviewer",
+    scope: "read-only · audit",
+    steps: [
+      { tool: "bash", arg: "git diff --stat" },
+      { tool: "read", arg: "lib/plugins/encryption.ts" },
+      { tool: "team_board", arg: "update_task T-03 -> completed" },
+    ],
+    note: "Approved: AES-256-GCM key isolation & regression tests verified.",
+  },
+];
 
 export function FeatureAgent() {
-  const [count, setCount] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pendingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const clear = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    if (pendingRef.current) {
-      clearTimeout(pendingRef.current);
-      pendingRef.current = null;
-    }
-  }, []);
-
-  const run = useCallback(() => {
-    clear();
-    setCount(0);
-    pendingRef.current = setTimeout(() => {
-      let i = 0;
-      timerRef.current = setInterval(() => {
-        i += 1;
-        setCount(i);
-        if (i >= tools.length) {
-          if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
-          }
-          pendingRef.current = setTimeout(() => run(), 2000);
-        }
-      }, 550);
-    }, 400);
-  }, [clear]);
+  const [roleIdx, setRoleIdx] = useState(0);
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
-    run();
-    return clear;
-  }, [run, clear]);
+    if (paused) return;
+    const id = setInterval(() => {
+      setRoleIdx((prev) => (prev + 1) % ROLES.length);
+    }, 3600);
+    return () => clearInterval(id);
+  }, [paused]);
+
+  const role = ROLES[roleIdx] ?? ROLES[0];
 
   return (
-    <div className="flex h-[280px] flex-col bg-(--l-code-bg)">
-      <div className="flex-1 px-5 py-4">
-        <div className="space-y-[3px]">
-          {tools.map((tool, i) => (
-            <div
-              key={tool.detail}
-              className="flex items-center gap-2.5 font-mono text-[12px] leading-[1.7] transition-opacity duration-300"
-              style={{ opacity: i < count ? 0.65 : 0.18 }}
-            >
-              <span
-                className="inline-flex size-1 shrink-0 rounded-full transition-colors duration-300"
-                style={{
-                  backgroundColor:
-                    i === count - 1 && count <= tools.length
-                      ? "var(--l-panel-fg)"
-                      : i < count
-                        ? "var(--l-panel-fg-3)"
-                        : "var(--l-panel-fg-5)",
-                }}
-              />
-              <span className="text-(--l-panel-fg-2)">{tool.name}</span>
-              <span className="text-(--l-panel-fg-3)">{tool.detail}</span>
-            </div>
-          ))}
+    <div className="flex h-[300px] flex-col justify-between bg-(--l-code-bg) px-5 py-4">
+      <div>
+        {/* Interactive Role Switcher */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) pb-3">
+          <div className="flex items-center gap-1">
+            {ROLES.map((item, i) => {
+              const active = i === roleIdx;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setPaused(true);
+                    setRoleIdx(i);
+                  }}
+                  className="relative rounded px-2 py-1 font-mono text-[11px] transition-colors cursor-pointer"
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="feature-agent-role"
+                      transition={{
+                        type: "spring",
+                        duration: 0.35,
+                        bounce: 0.15,
+                      }}
+                      className="absolute inset-0 rounded bg-(--l-panel-active) ring-1 ring-inset ring-(--l-panel-border)"
+                    />
+                  )}
+                  <span
+                    className={`relative ${
+                      active ? "text-(--l-panel-fg)" : "text-(--l-panel-fg-3)"
+                    }`}
+                  >
+                    {item.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <span className="font-mono text-[10px] text-(--l-panel-fg-4)">
+            {role.scope}
+          </span>
         </div>
 
-        <div
-          className="mt-5 text-[12px] leading-relaxed text-(--l-panel-fg-2) transition-opacity duration-500"
-          style={{ opacity: count >= tools.length ? 1 : 0 }}
-        >
-          auth flow complete. 2 routes, middleware, callback. typecheck passes.
-        </div>
+        {/* Active Role Tool Stream */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={role.id}
+            initial={{ opacity: 0, transform: "translateY(5px)" }}
+            animate={{ opacity: 1, transform: "translateY(0px)" }}
+            exit={{ opacity: 0, transform: "translateY(-4px)" }}
+            transition={{ duration: 0.18, ease: EASE_OUT_QUINT }}
+            className="mt-4 space-y-2"
+          >
+            {role.steps.map((step, i) => (
+              <motion.div
+                key={`${role.id}-${step.tool}-${i}`}
+                initial={{ opacity: 0, transform: "translateX(-4px)" }}
+                animate={{ opacity: 1, transform: "translateX(0px)" }}
+                transition={{
+                  duration: 0.2,
+                  delay: i * 0.05,
+                  ease: EASE_OUT_QUINT,
+                }}
+                className="flex items-center gap-2.5 rounded border border-(--l-panel-border) bg-(--l-panel) px-2.5 py-1.5 font-mono text-[11px]"
+              >
+                <span className="size-1.5 shrink-0 rounded-full bg-(--l-accent)" />
+                <span className="w-20 shrink-0 text-(--l-panel-fg)">
+                  {step.tool}
+                </span>
+                <span className="truncate text-(--l-panel-fg-3)">
+                  {step.arg}
+                </span>
+              </motion.div>
+            ))}
+
+            <div className="pt-2 text-[12px] leading-relaxed text-(--l-panel-fg-2)">
+              {role.note}
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+
+      <div className="flex items-center justify-between border-t border-(--l-panel-border) pt-2 font-mono text-[10px] text-(--l-panel-fg-4)">
+        <span>click a role to inspect</span>
+        <span>{paused ? "manual" : "auto-cycling"}</span>
       </div>
     </div>
   );

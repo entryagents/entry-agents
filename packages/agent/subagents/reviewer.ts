@@ -9,6 +9,7 @@ import { dirListTool } from "../tools/dir-list";
 import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
+import { teamBoardTool } from "../tools/team";
 import type { SandboxExecutionContext } from "../types";
 import {
   SUBAGENT_NO_QUESTIONS_RULES,
@@ -20,6 +21,7 @@ import {
 const REVIEWER_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
 - This is READ-ONLY review - do NOT create, modify, or delete any files
+- Read \`team_board\` to see teammate artifacts and handoffs; post critical findings back to \`team_board\` (\`kind: "finding"\` or \`kind: "handoff"\`, \`targetRole: "executor"\`)
 - Your final message MUST be a comprehensive text response including both **Summary** of what you reviewed AND the **Answer** with all findings ranked by severity
 - CRITICAL: Never terminate your execution on a tool call without a text message. Always synthesize and emit your review findings in text before finishing or exhausting your step budget.`;
 
@@ -50,7 +52,7 @@ Example final response:
 
 ## REVIEW METHODOLOGY
 
-1. **Establish scope first**: if the task names a diff/branch/PR, read it (\`git diff\`, \`git log\`, \`git show\`); if it names files, read them directly.
+1. **Establish scope first**: inspect \`team_board\` for recent teammate artifacts/decisions, and if the task names a diff/branch/PR, read it (\`git diff\`, \`git log\`, \`git show\`); if it names files, read them directly.
 2. **Read the code AROUND the change**, not just the change - call sites, type contracts, and callers are where bugs actually live.
 3. **Check in this order** (highest value first):
    - Correctness: does the logic actually do what the task says it should? Edge cases? Off-by-ones? Race conditions? Silent failures?
@@ -62,7 +64,7 @@ Example final response:
 
 ## TOOLS & GUIDELINES
 
-You have access to: read, grep, glob, bash (read-only commands only)
+You have access to: read, grep, glob, bash (read-only commands only), team_board
 
 - Use \`git diff\` / \`git show\` to see exactly what changed
 - Use grep to find every call site of anything the change touches
@@ -86,6 +88,8 @@ const callOptionsSchema = z.object({
     .custom<SandboxExecutionContext["sandbox"]>()
     .describe("Sandbox for file system and shell operations"),
   model: z.custom<LanguageModel>().describe("Language model for this subagent"),
+  teamId: z.string().optional(),
+  teamContext: z.string().optional(),
   // Per-step output clamp threaded from the host's billing guard
   // (packages/agent SubagentBudgetGuard, 2026-09-15): ToolLoopAgent
   // applies call settings to every internal step, so one value caps
@@ -108,6 +112,7 @@ export const reviewerSubagent = new ToolLoopAgent({
     grep: grepTool(),
     glob: globTool(),
     bash: bashTool(),
+    team_board: teamBoardTool,
   },
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
@@ -139,6 +144,7 @@ export const reviewerSubagent = new ToolLoopAgent({
 
     const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider(defaultModelLabel);
+    const teamBlock = options.teamContext ? `\n\n${options.teamContext}` : "";
     return {
       ...settings,
       model,
@@ -151,7 +157,7 @@ export const reviewerSubagent = new ToolLoopAgent({
       instructions: addCacheControl({
         instructions: `${REVIEWER_SYSTEM_PROMPT}
 
-${SUBAGENT_WORKING_DIR}
+${SUBAGENT_WORKING_DIR}${teamBlock}
 
 ## Your Task
 ${options.task}
@@ -165,6 +171,8 @@ ${REVIEWER_REMINDER}`,
       experimental_context: {
         sandbox,
         model,
+        teamId: options.teamId ?? "default-team",
+        agentRole: "reviewer",
       },
     };
   },

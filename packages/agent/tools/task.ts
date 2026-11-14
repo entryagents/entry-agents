@@ -16,6 +16,11 @@ import {
   SUBAGENT_STEP_LIMIT,
 } from "../subagents/constants";
 import { subagentSessionStore } from "../subagents/session-store";
+import {
+  formatTeamContextSummary,
+  getOrCreateTeamBoard,
+  type TeamBoardSnapshot,
+} from "../team";
 import { sumLanguageModelUsage } from "../usage";
 import { getSandboxContext, getSubagentModel } from "./utils";
 import type { AgentContext, SubagentBudgetGuard } from "../types";
@@ -71,6 +76,7 @@ export const taskOutputSchema = z.object({
   final: z.custom<ModelMessage[]>().optional(),
   streamedText: z.string().optional(),
   executedTools: z.array(taskExecutedToolSchema).optional(),
+  teamSnapshot: z.custom<TeamBoardSnapshot>().optional(),
   status: z
     .enum(["starting", "running", "completed", "failed", "denied"])
     .optional(),
@@ -217,6 +223,11 @@ IMPORTANT:
       ? `Follow-up Task: ${task}\n\nInstructions:\n${instructions}\n\nPlease proceed with this follow-up using your previous findings and context. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`
       : `Task: ${task}\n\nInstructions:\n${instructions}\n\nPlease complete this task thoroughly. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`;
 
+    const parentContext = experimental_context as AgentContext | undefined;
+    const teamId = parentContext?.teamId ?? "default-team";
+    const teamBoard = getOrCreateTeamBoard(teamId);
+    const teamContext = formatTeamContextSummary(teamBoard);
+
     let streamError: string | undefined;
     let result: Awaited<ReturnType<typeof subagent.stream>> | undefined;
 
@@ -233,6 +244,8 @@ IMPORTANT:
                 instructions,
                 sandbox: sandboxContext.sandbox,
                 model,
+                teamId,
+                ...(teamContext ? { teamContext } : {}),
                 ...(billingGuard
                   ? (() => {
                       const plan = billingGuard.planSubagent(subagentModelId);
@@ -251,6 +264,8 @@ IMPORTANT:
                 instructions,
                 sandbox: sandboxContext.sandbox,
                 model,
+                teamId,
+                ...(teamContext ? { teamContext } : {}),
                 ...(billingGuard
                   ? (() => {
                       const plan = billingGuard.planSubagent(subagentModelId);
@@ -554,6 +569,7 @@ IMPORTANT:
         final: messagesWithError,
         streamedText: streamedTextChunks.join(""),
         executedTools: [...executedTools],
+        teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
         status: "failed",
         toolCallCount,
         usage: finalUsage,
@@ -583,6 +599,7 @@ IMPORTANT:
         final: truncated,
         streamedText: streamedTextChunks.join(""),
         executedTools: [...executedTools],
+        teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
         status: "denied",
         toolCallCount,
         usage: finalUsage,
@@ -598,6 +615,7 @@ IMPORTANT:
       final: baseMessages,
       streamedText: streamedTextChunks.join(""),
       executedTools: [...executedTools],
+      teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
       status: "completed",
       toolCallCount,
       usage: finalUsage,

@@ -1,4 +1,4 @@
-CREATE TABLE "user_secrets" (
+CREATE TABLE IF NOT EXISTS "user_secrets" (
 	"id" text PRIMARY KEY NOT NULL,
 	"user_id" text NOT NULL,
 	"name" text NOT NULL,
@@ -14,12 +14,17 @@ CREATE TABLE "user_secrets" (
 );
 --> statement-breakpoint
 ALTER TABLE "mcp_servers" ALTER COLUMN "url" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "chat_messages" ADD COLUMN "metadata" jsonb;--> statement-breakpoint
-ALTER TABLE "mcp_servers" ADD COLUMN "command" text;--> statement-breakpoint
-ALTER TABLE "mcp_servers" ADD COLUMN "args" jsonb;--> statement-breakpoint
-ALTER TABLE "mcp_servers" ADD COLUMN "encrypted_env" text;--> statement-breakpoint
-ALTER TABLE "mcp_servers" ADD COLUMN "last_tool_count" integer;--> statement-breakpoint
-ALTER TABLE "mcp_servers" ADD COLUMN "cached_tools" jsonb;--> statement-breakpoint
-ALTER TABLE "user_secrets" ADD CONSTRAINT "user_secrets_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-CREATE INDEX "user_secrets_user_id_idx" ON "user_secrets" USING btree ("user_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "user_secrets_user_id_name_idx" ON "user_secrets" USING btree ("user_id","name");
+ALTER TABLE "chat_messages" ADD COLUMN IF NOT EXISTS "metadata" jsonb;--> statement-breakpoint
+ALTER TABLE "mcp_servers" ADD COLUMN IF NOT EXISTS "command" text;--> statement-breakpoint
+ALTER TABLE "mcp_servers" ADD COLUMN IF NOT EXISTS "args" jsonb;--> statement-breakpoint
+ALTER TABLE "mcp_servers" ADD COLUMN IF NOT EXISTS "encrypted_env" text;--> statement-breakpoint
+ALTER TABLE "mcp_servers" ADD COLUMN IF NOT EXISTS "last_tool_count" integer;--> statement-breakpoint
+ALTER TABLE "mcp_servers" ADD COLUMN IF NOT EXISTS "cached_tools" jsonb;--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "user_secrets" ADD CONSTRAINT "user_secrets_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+	WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "user_secrets_user_id_idx" ON "user_secrets" USING btree ("user_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "user_secrets_user_id_name_idx" ON "user_secrets" USING btree ("user_id","name");

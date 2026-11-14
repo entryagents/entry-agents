@@ -1,3 +1,4 @@
+import type { PluginManifest } from "@entry-agents/agent";
 import type { SandboxState } from "@entry-agents/sandbox";
 import type { GlobalSkillRef } from "@/lib/skills/global-skill-refs";
 import {
@@ -988,3 +989,38 @@ export const chatSteeringInbox = pgTable(
 
 export type ChatSteeringInboxRow = typeof chatSteeringInbox.$inferSelect;
 export type NewChatSteeringInboxRow = typeof chatSteeringInbox.$inferInsert;
+
+// Extensible Entry plugins (per-user built-in overrides + custom JSON manifest
+// plugins). Config values are AES-256-GCM encrypted server-side via
+// lib/plugins/encryption.ts so secrets in plugin config never leave the server.
+export const userPlugins = pgTable(
+  "user_plugins",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    slug: text("slug").notNull(),
+    name: text("name").notNull(),
+    description: text("description").notNull(),
+    category: text("category").notNull().default("custom"),
+    source: text("source", { enum: ["builtin", "custom"] })
+      .notNull()
+      .default("custom"),
+    enabled: boolean("enabled").notNull().default(true),
+    manifest: jsonb("manifest").$type<PluginManifest>().notNull(),
+    encryptedConfig: text("encrypted_config"),
+    configKeys: jsonb("config_keys").$type<string[]>().notNull().default([]),
+    triggerCount: integer("trigger_count").notNull().default(0),
+    lastTriggeredAt: timestamp("last_triggered_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("user_plugins_user_id_idx").on(table.userId),
+    uniqueIndex("user_plugins_user_id_slug_idx").on(table.userId, table.slug),
+  ],
+);
+
+export type UserPluginRow = typeof userPlugins.$inferSelect;
+export type NewUserPluginRow = typeof userPlugins.$inferInsert;
