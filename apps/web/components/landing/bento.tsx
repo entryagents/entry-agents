@@ -8,14 +8,15 @@ export function LandingBento() {
           <div className="grid gap-6 lg:grid-cols-12 lg:items-end">
             <div className="lg:col-span-7">
               <h2 className="text-balance text-3xl font-semibold leading-[1.08] tracking-tight sm:text-4xl md:text-5xl">
-                Infrastructure built for real engineering teams
+                Built for how engineers actually ship
               </h2>
             </div>
             <div className="lg:col-span-5">
               <p className="max-w-[54ch] text-pretty text-base leading-relaxed text-(--l-fg-2)">
-                Built on four composable primitives: multi-agent team
-                orchestration, typed lifecycle plugins, zero-knowledge secret
-                injection, and prefix-cached durable workflows.
+                Direct single-agent speed when you want a quick fix, invocable{" "}
+                <code className="font-mono text-xs">/skills</code> and
+                specialist subagents when you need depth, and native workspace
+                integrations across your stack.
               </p>
             </div>
           </div>
@@ -27,29 +28,29 @@ export function LandingBento() {
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
                   <span className="font-medium text-(--l-fg-2)">
-                    Multi-agent orchestration
+                    Adaptive execution
                   </span>
                   <span className="font-mono text-[11px] tabular-nums">
-                    team_board · spawn_agent
+                    /architect · /explorer · /executor · /reviewer · /design
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                  Specialist roles sharing a structured Team Board
+                  Single-agent speed by default, specialist team on demand
                 </h3>
                 <p className="mt-2.5 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
-                  Instead of one overloaded context window, Entry delegates
-                  planning, codebase discovery, implementation, and security
-                  review to dedicated subagents that post decisions and
-                  checklists to a shared board.
+                  Routine prompts run straight through without spawning
+                  unnecessary subagents. When you invoke a specialist or launch
+                  a multi-file feature, subagents coordinate through a shared
+                  Team Board with live token and step visibility.
                 </p>
               </div>
 
               <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {[
-                  { role: "Architect", mode: "Plan & boundaries" },
-                  { role: "Explorer", mode: "Fast AST & grep" },
-                  { role: "Executor", mode: "Edit & test" },
-                  { role: "Reviewer", mode: "Diff & security audit" },
+                  { role: "/architect", mode: "System boundaries" },
+                  { role: "/explorer", mode: "Fast codebase map" },
+                  { role: "/executor", mode: "Scoped edits & tests" },
+                  { role: "/reviewer", mode: "Pre-PR verification" },
                 ].map((item) => (
                   <div
                     key={item.role}
@@ -66,69 +67,71 @@ export function LandingBento() {
               </div>
             </article>
 
-            {/* Supporting Card 1 (5 cols) */}
+            {/* Supporting Card 1 (5 cols): Invocable Skills */}
             <article className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5">
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
                   <span className="font-medium text-(--l-fg-2)">
-                    Plugin SDK &amp; Vault
+                    Invocable Skills Catalog
                   </span>
-                  <span className="font-mono text-[11px]">AES-256-GCM</span>
+                  <span className="font-mono text-[11px]">
+                    17 built-in + GitHub packs
+                  </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                  Lifecycle hooks and zero-knowledge secrets
+                  Type <code>/unslop</code> or install any GitHub skill pack
                 </h3>
                 <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
-                  Configure built-in or custom plugins that hook into{" "}
-                  <code>context.system</code>, <code>tool.execute.before</code>,
-                  and <code>tool.execute.after</code> while scrubbing API keys
-                  from transcripts.
+                  Invoke domain skills directly from the composer (
+                  <code>/unslop</code>, <code>/frontend-design</code>,{" "}
+                  <code>/code-review</code>, <code>/plan-mode</code>) or add
+                  community skill repositories in one click.
                 </p>
               </div>
 
               <div className="mt-6 rounded-xl border border-(--l-border) bg-(--l-code-bg) p-3.5 font-mono text-[11px] leading-relaxed text-(--l-panel-fg-2)">
                 <div className="text-(--l-panel-fg-3)">
-                  # Runtime secret injection &amp; redaction
+                  # Composer invocation
                 </div>
                 <div className="mt-1 text-emerald-500">
-                  ✓ STRIPE_SECRET_KEY injected into sandbox env
+                  ✓ /unslop loaded SKILL.md + references/tokens.md
                 </div>
                 <div className="text-(--l-panel-fg)">
-                  ✓ tool.execute.after scrubbed 2 token matches
+                  ✓ /frontend-design audited mobile &amp; desktop layout
                 </div>
               </div>
             </article>
 
-            {/* Supporting Card 2 (5 cols) */}
+            {/* Supporting Card 2 (5 cols): Workspace Integrations */}
             <article className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5">
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
                   <span className="font-medium text-(--l-fg-2)">
-                    Cloud Workspaces &amp; MCP
+                    Workspace Integrations
                   </span>
                   <span className="font-mono text-[11px]">
-                    http · sse · stdio
+                    GitHub · Vercel · Composio
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                  Full Linux sandboxes with universal MCP
+                  Connected to Gmail, Slack, Linear, Notion &amp; GitHub
                 </h3>
                 <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
-                  Connect remote HTTP/SSE MCP servers or spawn `npx`, `uvx`, and
-                  binary stdio MCP servers directly inside the session container
-                  with automatic tool discovery.
+                  Authorize your workspace apps once in Settings and let Entry
+                  triage Linear tickets, read Slack threads, draft Gmail
+                  updates, and open verified GitHub pull requests.
                 </p>
               </div>
 
               <div className="mt-6 flex flex-wrap gap-2 font-mono text-[11px]">
                 <span className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 text-(--l-fg-2)">
-                  Copy-on-write hibernate
+                  Gmail &amp; Calendar
                 </span>
                 <span className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 text-(--l-fg-2)">
-                  Live port preview
+                  Slack &amp; Linear
                 </span>
                 <span className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 text-(--l-fg-2)">
-                  Scoped GitHub App tokens
+                  Notion &amp; Figma
                 </span>
               </div>
             </article>
@@ -138,35 +141,35 @@ export function LandingBento() {
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
                   <span className="font-medium text-(--l-fg-2)">
-                    Workflow SDK &amp; Prompt Caching
+                    Multi-Provider Prompt Caching &amp; Durable Streams
                   </span>
                   <span className="font-mono text-[11px] tabular-nums">
-                    stablePrefix + dynamicTail
+                    Claude · GPT · Gemini · DeepSeek
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                  Prefix-cached turns and instant stream reconnection
+                  Prefix-cached across every frontier model and offline-proof
                 </h3>
                 <p className="mt-2.5 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
-                  Static instructions and deterministically sorted tools stay
-                  byte-identical across turns so DeepSeek V3.2, Claude 4.6, and
-                  GPT-5 hit the provider KV cache — while mid-turn tool
-                  checkpoints let any browser tab resume live.
+                  Static instructions stay byte-identical across turns so
+                  Anthropic, OpenAI, Gemini, and DeepSeek hit provider KV caches
+                  automatically — while server-checkpointed streams survive
+                  network drops without losing a single token.
                 </p>
               </div>
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-(--l-border) pt-4">
                 <div className="flex flex-wrap gap-6 font-mono text-xs tabular-nums">
                   <div>
-                    <span className="text-(--l-fg-3)">KV prefix</span>{" "}
+                    <span className="text-(--l-fg-3)">Prompt cache</span>{" "}
                     <span className="font-medium text-(--l-fg)">
-                      deterministic
+                      All frontier providers
                     </span>
                   </div>
                   <div>
-                    <span className="text-(--l-fg-3)">Compaction</span>{" "}
+                    <span className="text-(--l-fg-3)">Stream recovery</span>{" "}
                     <span className="font-medium text-(--l-fg)">
-                      observation pruning
+                      Automatic on reconnect
                     </span>
                   </div>
                 </div>

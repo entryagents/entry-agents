@@ -19,7 +19,9 @@ import {
   Loader2,
   Mic,
   Paperclip,
+  Sparkles,
   Square,
+  WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
@@ -160,7 +162,22 @@ export const ChatComposer = memo(
     const [input, setInput] = useState("");
     const [cursorPosition, setCursorPosition] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
+    const [isOnline, setIsOnline] = useState(() =>
+      typeof navigator === "undefined" ? true : navigator.onLine !== false,
+    );
     const inputRef = useRef<HTMLTextAreaElement>(null);
+
+    useEffect(() => {
+      if (typeof window === "undefined") return;
+      const handleOnline = () => setIsOnline(true);
+      const handleOffline = () => setIsOnline(false);
+      window.addEventListener("online", handleOnline);
+      window.addEventListener("offline", handleOffline);
+      return () => {
+        window.removeEventListener("online", handleOnline);
+        window.removeEventListener("offline", handleOffline);
+      };
+    }, []);
 
     const isIosDevice = useMemo(() => {
       if (typeof navigator === "undefined") {
@@ -480,6 +497,24 @@ export const ChatComposer = memo(
               isLoading={skillsLoading}
             />
           )}
+          {!isOnline && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300"
+            >
+              <div className="flex items-center gap-2">
+                <WifiOff className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Offline — active turns keep running on the server and will
+                  sync automatically when your connection returns.
+                </span>
+              </div>
+              <span className="hidden shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[10px] sm:inline">
+                Durable stream
+              </span>
+            </div>
+          )}
           {topPanelsSlot}
           <div
             className={`relative overflow-hidden rounded-2xl bg-muted transition-colors ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
@@ -579,7 +614,7 @@ export const ChatComposer = memo(
                         "Free tier ended — upgrade your account to use Entry"
                       : showInlineQuestion
                         ? inlineQuestion.placeholder
-                        : "Request changes or ask a question..."
+                        : "Request changes, type / to invoke a skill or subagent, or @ to reference files..."
                   }
                   rows={1}
                   onFocus={handleTextareaFocus}
@@ -656,17 +691,53 @@ export const ChatComposer = memo(
               </div>
 
               <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                <div className="flex min-w-0 items-center gap-1.5 sm:gap-2 overflow-hidden">
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     onClick={openFilePicker}
                     disabled={isArchived}
-                    className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                    className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
                   >
                     <Paperclip className="h-4 w-4" />
                   </Button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={isArchived || Boolean(composerGate)}
+                        onClick={() => {
+                          const nextVal = input.startsWith("/")
+                            ? input
+                            : input.trim().length > 0
+                              ? `/${input}`
+                              : "/";
+                          setInput(nextVal);
+                          setCursorPosition(1);
+                          setTimeout(() => {
+                            if (inputRef.current) {
+                              inputRef.current.focus();
+                              inputRef.current.setSelectionRange(1, 1);
+                            }
+                          }, 0);
+                        }}
+                        className="h-7 shrink-0 gap-1 rounded-full border border-border/70 bg-background/60 px-2 text-xs font-medium text-muted-foreground hover:bg-background hover:text-foreground"
+                      >
+                        <Sparkles className="h-3 w-3 text-emerald-500" />
+                        <span className="font-mono text-[11px]">/</span>
+                        <span className="hidden md:inline text-[11px]">
+                          Invoke
+                        </span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      Invoke a skill (/unslop, /frontend-design) or specialist
+                      subagent (/architect, /reviewer)
+                    </TooltipContent>
+                  </Tooltip>
                   {modelId && (
                     <ModelSelectorCompact
                       value={modelId}

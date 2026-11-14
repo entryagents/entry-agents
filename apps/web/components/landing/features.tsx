@@ -57,35 +57,35 @@ export function LandingFeatures() {
     <section>
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-10">
         <Spotlight
-          title="Specialists that coordinate cleanly"
-          description="Delegate architecture, codebase discovery, implementation, and review to focused subagents that share a structured Team Board and clean handoff notes."
+          title="Fast by default. Specialist team when you invoke it."
+          description="Everyday edits and bug fixes run directly in a tight single-agent loop with zero orchestration overhead. When you tackle a cross-cutting feature or UI overhaul, invoke /skills or dispatch focused subagents on demand."
           bullets={[
-            "Architect, Explorer, Executor, Reviewer, and Design roles",
-            "Shared Team Board for task checklists & cross-agent decisions",
-            "Inspect any subagent trace live from the session header",
+            "Direct single-agent execution for fast everyday coding",
+            "Invoke /unslop, /frontend-design, /code-review, or /plan-mode in one keystroke",
+            "Dispatch /architect, /explorer, /executor, /reviewer, or /design when needed",
           ]}
           window={<FeatureAgent />}
         />
 
         <Spotlight
-          title="Cloud sandboxes, not local machines"
-          description="Every session provisions an isolated Workspace with repository checkout, terminal, live dev preview, and encrypted runtime secrets — hibernating automatically when idle."
+          title="Cloud sandboxes with your entire stack connected"
+          description="Every session provisions an isolated Linux workspace with repository checkout, terminal, live dev preview, and 1-click integrations with GitHub, Vercel, Gmail, Slack, Linear, and Notion."
           bullets={[
             "Instant branch isolation with interactive diff & file review",
-            "Auto-hibernate on inactivity with deterministic restore",
-            "Scoped GitHub & API secret injection without token leakage",
+            "Auto-hibernate on inactivity with instant workspace restore",
+            "Connect Gmail, Slack, Notion, Linear, and Calendar from Settings",
           ]}
           flip
           window={<FeatureSandbox />}
         />
 
         <Spotlight
-          title="Durable workflows that survive anything"
-          description="Agent turns execute as checkpointed workflows with lifecycle plugins and /commands. Close your browser mid-run and reconnect straight back into the live stream."
+          title="Durable workflows that never drop a turn"
+          description="Agent turns execute on checkpointed server workflows. Toggle off cellular data, lose Wi-Fi, or switch from laptop to phone mid-turn — Entry keeps working and syncs your chat automatically."
           bullets={[
-            "Resumable step checkpoints with zero lost token output",
-            "Plugin hooks for pre/post tool redaction and quality gates",
-            "Post-turn metering, diff caching, and optional auto-PR sync",
+            "Zero lost output across network drops or page reloads",
+            "Switch models or reasoning effort mid-run for your next prompt",
+            "Automatic diff snapshots and optional PR creation when done",
           ]}
           window={<FeatureWorkflow />}
         />

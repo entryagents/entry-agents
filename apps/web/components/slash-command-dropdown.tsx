@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { Blocks, Terminal } from "lucide-react";
+import { Blocks, Bot, Settings2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SkillSuggestion } from "@/app/api/sessions/[sessionId]/skills/route";
 
@@ -12,7 +13,7 @@ interface SlashCommandDropdownProps {
   isLoading?: boolean;
 }
 
-const MAX_VISIBLE_ITEMS = 10;
+const MAX_VISIBLE_ITEMS = 9;
 
 export function SlashCommandDropdown({
   suggestions,
@@ -41,8 +42,8 @@ export function SlashCommandDropdown({
 
   if (isLoading) {
     return (
-      <div className="absolute bottom-full left-0 right-0 mb-2 rounded-md border bg-popover p-2 text-sm text-muted-foreground shadow-md">
-        Loading commands...
+      <div className="absolute bottom-full left-0 right-0 z-30 mb-2 rounded-xl border border-border bg-popover p-3 text-xs text-muted-foreground shadow-lg">
+        Loading skills & subagents...
       </div>
     );
   }
@@ -52,50 +53,92 @@ export function SlashCommandDropdown({
   }
 
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-md border bg-popover shadow-md">
+    <div className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+      <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[11px] text-muted-foreground">
+        <span className="font-medium text-foreground/80">
+          Invoke Skill or Specialist Subagent
+        </span>
+        <Link
+          href="/settings/skills"
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Settings2 className="h-3 w-3" />
+          Manage skills
+        </Link>
+      </div>
       <div
         ref={listRef}
-        className="max-h-[280px] overflow-y-auto py-1"
-        style={{ maxHeight: `${MAX_VISIBLE_ITEMS * 36}px` }}
+        className="max-h-[300px] overflow-y-auto py-1"
+        style={{ maxHeight: `${MAX_VISIBLE_ITEMS * 40}px` }}
       >
-        {suggestions.map((suggestion, index) => (
-          <button
-            key={suggestion.name}
-            ref={index === selectedIndex ? selectedRef : null}
-            type="button"
-            onClick={() => onSelect(suggestion)}
-            className={cn(
-              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm",
-              index === selectedIndex
-                ? "bg-accent text-accent-foreground"
-                : "hover:bg-muted",
-            )}
-          >
-            {suggestion.source === "plugin" ? (
-              <Blocks className="h-4 w-4 shrink-0 text-primary/80" />
-            ) : (
-              <Terminal className="h-4 w-4 shrink-0 text-muted-foreground" />
-            )}
-            <div className="flex min-w-0 flex-1 flex-col">
-              <div className="flex items-center gap-2">
-                <span className="truncate font-medium">/{suggestion.name}</span>
-                {suggestion.source === "plugin" && (
-                  <span className="shrink-0 rounded border border-border/70 bg-muted/60 px-1.5 py-0 font-mono text-[10px] text-muted-foreground">
-                    {suggestion.pluginName ?? "plugin"}
+        {suggestions.map((suggestion, index) => {
+          const isTeam = suggestion.source === "team";
+          const isPlugin = suggestion.source === "plugin";
+          return (
+            <button
+              key={suggestion.name}
+              ref={index === selectedIndex ? selectedRef : null}
+              type="button"
+              onClick={() => onSelect(suggestion)}
+              className={cn(
+                "flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors",
+                index === selectedIndex
+                  ? "bg-accent text-accent-foreground"
+                  : "hover:bg-muted/70",
+              )}
+            >
+              {isPlugin ? (
+                <Blocks className="h-4 w-4 shrink-0 text-primary/80" />
+              ) : isTeam ? (
+                <Bot className="h-4 w-4 shrink-0 text-amber-500" />
+              ) : (
+                <Sparkles className="h-4 w-4 shrink-0 text-emerald-500" />
+              )}
+              <div className="flex min-w-0 flex-1 flex-col">
+                <div className="flex items-center gap-2">
+                  <span className="truncate font-mono text-xs font-semibold">
+                    /{suggestion.name}
                   </span>
-                )}
+                  {isPlugin ? (
+                    <span className="shrink-0 rounded border border-border/70 bg-muted/60 px-1.5 py-0 font-mono text-[10px] text-muted-foreground">
+                      {suggestion.pluginName ?? "Plugin"}
+                    </span>
+                  ) : isTeam ? (
+                    <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0 font-mono text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                      On-Demand Subagent
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 font-mono text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                      Skill
+                    </span>
+                  )}
+                </div>
+                <span className="truncate text-xs text-muted-foreground">
+                  {suggestion.description}
+                </span>
               </div>
-              <span className="truncate text-xs text-muted-foreground">
-                {suggestion.description}
-              </span>
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
-      <div className="border-t bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground">
-        <kbd className="rounded bg-muted px-1">Tab</kbd> or{" "}
-        <kbd className="rounded bg-muted px-1">Enter</kbd> to select,{" "}
-        <kbd className="rounded bg-muted px-1">Esc</kbd> to dismiss
+      <div className="flex items-center justify-between border-t border-border/60 bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+        <div>
+          <kbd className="rounded border border-border/70 bg-background px-1 py-0.5 font-mono text-[10px]">
+            Tab
+          </kbd>{" "}
+          or{" "}
+          <kbd className="rounded border border-border/70 bg-background px-1 py-0.5 font-mono text-[10px]">
+            Enter
+          </kbd>{" "}
+          to invoke,{" "}
+          <kbd className="rounded border border-border/70 bg-background px-1 py-0.5 font-mono text-[10px]">
+            Esc
+          </kbd>{" "}
+          to dismiss
+        </div>
+        <span className="hidden sm:inline font-mono text-[10px]">
+          {suggestions.length} available
+        </span>
       </div>
     </div>
   );

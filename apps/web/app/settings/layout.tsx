@@ -13,6 +13,7 @@ import {
   Settings as SettingsIcon,
   ShieldAlert,
   SlidersHorizontal,
+  Sparkles,
   User,
 } from "lucide-react";
 import Link from "next/link";
@@ -34,6 +35,7 @@ import { McpServersSectionSkeleton } from "./mcp-servers-section";
 import { PluginsSectionSkeleton } from "./plugins/plugins-section";
 import { PreferencesSectionSkeleton } from "./preferences-section";
 import { SecretsSectionSkeleton } from "./secrets/secrets-section";
+import { SkillsSectionSkeleton } from "./skills/skills-section";
 
 /** Skeleton shown while auth is loading for the combined profile page */
 function ProfilePageSkeleton() {
@@ -111,6 +113,12 @@ const baseSidebarItems = [
     label: "Models",
     href: "/settings/models",
     icon: SlidersHorizontal,
+  },
+  {
+    id: "skills",
+    label: "Skills",
+    href: "/settings/skills",
+    icon: Sparkles,
   },
   {
     id: "mcp-servers",
@@ -292,6 +300,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <PreferencesSectionSkeleton />
     ) : activeItem?.id === "models" ? (
       <PreferencesSectionSkeleton />
+    ) : activeItem?.id === "skills" ? (
+      <SkillsSectionSkeleton />
     ) : activeItem?.id === "mcp-servers" ? (
       <McpServersSectionSkeleton />
     ) : activeItem?.id === "plugins" ? (

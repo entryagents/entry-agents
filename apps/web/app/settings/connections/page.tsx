@@ -3,6 +3,10 @@ import { Suspense } from "react";
 import { AccountsSection, AccountsSectionSkeleton } from "../accounts-section";
 import { VercelSection, VercelSectionSkeleton } from "../vercel-section";
 import { ProviderConnectionsSection } from "../provider-connections-section";
+import {
+  ComposioToolkitsSection,
+  ComposioToolkitsSectionSkeleton,
+} from "./composio-toolkits-section";
 
 export const metadata: Metadata = {
   title: "Connections",
@@ -19,6 +23,9 @@ export default function ConnectionsPage() {
       <ProviderConnectionsSection />
       <Suspense fallback={<AccountsSectionSkeleton />}>
         <AccountsSection />
+      </Suspense>
+      <Suspense fallback={<ComposioToolkitsSectionSkeleton />}>
+        <ComposioToolkitsSection />
       </Suspense>
     </>
   );

@@ -15,12 +15,21 @@ const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
 
 const HERO_SPECS = [
   {
-    value: "5 roles",
-    label: "Architect · Explorer · Executor · Reviewer · Design",
+    value: "Direct + Team",
+    label: "Fast single loop by default · On-demand specialist subagents",
   },
-  { value: "3 transports", label: "HTTP, SSE & sandbox stdio MCP" },
-  { value: "AES-256-GCM", label: "Runtime secret vault & log redaction" },
-  { value: "Resumable", label: "Durable Workflow SDK step checkpoints" },
+  {
+    value: "17+ /skills",
+    label: "Invoke /unslop, /frontend-design, /code-review & GitHub packs",
+  },
+  {
+    value: "App Actions",
+    label: "GitHub, Vercel, Gmail, Slack, Linear & Notion integrations",
+  },
+  {
+    value: "Offline-Resilient",
+    label: "Runs in the cloud & syncs automatically when Wi-Fi returns",
+  },
 ] as const;
 
 export function SignedOutHero() {
@@ -61,7 +70,10 @@ export function SignedOutHero() {
                 className="inline-flex items-center gap-2 rounded-lg border border-(--l-border) bg-(--l-surface)/85 px-3 py-1 text-xs text-(--l-fg-2) backdrop-blur-xs"
               >
                 <span className="size-1.5 rounded-full bg-emerald-500" />
-                <span>Autonomous engineering in isolated cloud workspaces</span>
+                <span>
+                  Cloud coding agent with invocable /skills &amp; on-demand
+                  specialists
+                </span>
               </motion.div>
 
               <motion.h1
@@ -74,7 +86,8 @@ export function SignedOutHero() {
                 }}
                 className="mt-5 text-balance text-3xl font-semibold leading-[1.06] tracking-tight sm:text-5xl md:text-6xl"
               >
-                Ship software with an agent team in its own cloud sandbox
+                Fast for everyday code. Scales to a specialist team when you
+                invoke it.
               </motion.h1>
 
               <motion.p
@@ -87,10 +100,24 @@ export function SignedOutHero() {
                 }}
                 className="mt-4 max-w-[62ch] text-pretty text-base leading-relaxed text-(--l-fg-2) sm:mt-5 sm:text-lg"
               >
-                Delegate architecture, discovery, implementation, and review to
-                specialist subagents sharing a live Team Board. Every session
-                runs inside a dedicated Linux sandbox with durable workflow
-                checkpoints that keep executing even when you close your laptop.
+                Ship fixes and features directly in an isolated Linux cloud
+                sandbox. When a task calls for deeper craft, invoke{" "}
+                <code className="rounded border border-(--l-border) bg-(--l-surface) px-1.5 py-0.5 font-mono text-xs text-(--l-fg)">
+                  /unslop
+                </code>
+                ,{" "}
+                <code className="rounded border border-(--l-border) bg-(--l-surface) px-1.5 py-0.5 font-mono text-xs text-(--l-fg)">
+                  /frontend-design
+                </code>
+                , or dispatch{" "}
+                <code className="rounded border border-(--l-border) bg-(--l-surface) px-1.5 py-0.5 font-mono text-xs text-(--l-fg)">
+                  /architect
+                </code>{" "}
+                and{" "}
+                <code className="rounded border border-(--l-border) bg-(--l-surface) px-1.5 py-0.5 font-mono text-xs text-(--l-fg)">
+                  /reviewer
+                </code>{" "}
+                subagents on demand.
               </motion.p>
 
               <motion.div

@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Plus, Search, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Plus, Search, Sparkles, X } from "lucide-react";
 import { type ThemePreference, useTheme } from "@/app/providers";
 import {
   DEFAULT_SANDBOX_TYPE,
@@ -559,11 +560,6 @@ export function PreferencesSection() {
     isSaving,
     copiedPublicProfile,
     publicProfilePath,
-    globalSkillName,
-    setGlobalSkillName,
-    globalSkillSource,
-    setGlobalSkillSource,
-    globalSkillsError,
     handleThemeChange,
     handleSandboxChange,
     handleDiffModeChange,
@@ -575,8 +571,6 @@ export function PreferencesSection() {
     handleAlertSoundEnabledChange,
     handlePublicUsageEnabledChange,
     handleCopyPublicProfileUrl,
-    handleAddGlobalSkillRef,
-    handleRemoveGlobalSkillRef,
   } = state;
 
   return (
@@ -806,104 +800,37 @@ export function PreferencesSection() {
       <div className="border-t border-border/50" />
 
       {/* ── Skills ── */}
-      <div className="space-y-4">
-        <SectionHeader>Skills</SectionHeader>
-
-        <div className="grid gap-3">
+      <div className="space-y-3">
+        <SectionHeader>Agent Skills</SectionHeader>
+        <div className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
           <div className="space-y-1">
-            <Label>Global Skills</Label>
-            <p className="text-xs text-muted-foreground">
-              Skills from GitHub installed outside the repo for every new
-              session. Repo skills with the same name take precedence.
-            </p>
-          </div>
-
-          {(preferences?.globalSkillRefs ?? []).length > 0 ? (
-            <div className="divide-y divide-border/60 rounded-lg border border-border/70">
-              {(preferences?.globalSkillRefs ?? []).map(
-                (globalSkillRef, index) => (
-                  <div
-                    key={`${globalSkillRef.source}-${globalSkillRef.skillName}`}
-                    className="flex items-center gap-3 px-3 py-2.5"
-                  >
-                    <div className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="truncate text-sm font-medium">
-                        {globalSkillRef.skillName}
-                      </span>
-                      <span className="truncate font-mono text-xs text-muted-foreground">
-                        {globalSkillRef.source}
-                      </span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-destructive shrink-0"
-                      onClick={() => handleRemoveGlobalSkillRef(index)}
-                      disabled={isSaving}
-                      aria-label={`Remove ${globalSkillRef.skillName}`}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </div>
-                ),
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-emerald-500" />
+              <span className="text-sm font-medium">
+                17 Built-in Skills &amp; GitHub Skill Packs
+              </span>
+              {(preferences?.globalSkillRefs ?? []).length > 0 && (
+                <span className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                  {(preferences?.globalSkillRefs ?? []).length} GitHub{" "}
+                  {(preferences?.globalSkillRefs ?? []).length === 1
+                    ? "pack"
+                    : "packs"}
+                </span>
               )}
             </div>
-          ) : (
-            <p className="text-xs italic text-muted-foreground">
-              No global skills configured yet.
-            </p>
-          )}
-
-          <div className="grid gap-2.5 rounded-lg border border-dashed border-border/60 p-3">
-            <div className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end">
-              <div className="grid gap-1.5">
-                <Label
-                  htmlFor="global-skill-source"
-                  className="text-xs font-medium"
-                >
-                  Repository source
-                </Label>
-                <Input
-                  id="global-skill-source"
-                  value={globalSkillSource}
-                  onChange={(event) => setGlobalSkillSource(event.target.value)}
-                  placeholder="vercel/ai"
-                  disabled={isSaving}
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label
-                  htmlFor="global-skill-name"
-                  className="text-xs font-medium"
-                >
-                  Skill name
-                </Label>
-                <Input
-                  id="global-skill-name"
-                  value={globalSkillName}
-                  onChange={(event) => setGlobalSkillName(event.target.value)}
-                  placeholder="ai-sdk"
-                  disabled={isSaving}
-                />
-              </div>
-              <Button
-                type="button"
-                onClick={handleAddGlobalSkillRef}
-                disabled={isSaving}
-              >
-                <Plus />
-                Add
-              </Button>
-            </div>
             <p className="text-xs text-muted-foreground">
-              Enter the GitHub <code>owner/repo</code> source and the skill
-              name, e.g. <code>vercel/ai</code> + <code>ai-sdk</code>.
+              Browse built-in skills (<code>/unslop</code>,{" "}
+              <code>/frontend-design</code>, <code>/code-review</code>,{" "}
+              <code>/composio</code>), inspect <code>SKILL.md</code>{" "}
+              instructions, or 1-click install GitHub skill repositories.
             </p>
-            {globalSkillsError && (
-              <p className="text-xs text-destructive">{globalSkillsError}</p>
-            )}
           </div>
+          <Button asChild variant="outline" size="sm" className="shrink-0">
+            <Link href="/settings/skills">
+              Manage Skills
+              <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+            </Link>
+          </Button>
         </div>
       </div>
     </div>
@@ -934,63 +861,95 @@ export function ModelPreferencesSection() {
   } = state;
 
   return (
-    <div className="space-y-4">
-      <SectionHeader>Model Preferences</SectionHeader>
+    <div className="space-y-6">
+      <div className="space-y-4">
+        <SectionHeader>Model Preferences</SectionHeader>
 
-      <div className="grid gap-6 sm:grid-cols-2">
-        <div className="grid gap-2">
-          <Label htmlFor="model">Default Model</Label>
-          <ModelCombobox
-            value={selectedDefaultModelId}
-            items={defaultModelOptions.map((option) => ({
-              id: option.id,
-              label: option.label,
-              description: option.description,
-            }))}
-            placeholder="Select a model"
-            searchPlaceholder="Search models..."
-            emptyText={modelOptionsLoading ? "Loading..." : "No models found."}
-            disabled={isSaving || modelOptionsLoading}
-            onChange={handleModelChange}
-          />
-          <p className="text-xs text-muted-foreground">
-            The AI model used for new chats.
-          </p>
-        </div>
-
-        <div className="grid gap-2">
-          <Label htmlFor="subagent-model">Subagent Model</Label>
-          <ModelCombobox
-            value={selectedSubagentModelId}
-            items={[
-              { id: "auto", label: "Same as main model" },
-              ...subagentModelOptions.map((option) => ({
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div className="grid gap-2">
+            <Label htmlFor="model">Default Model</Label>
+            <ModelCombobox
+              value={selectedDefaultModelId}
+              items={defaultModelOptions.map((option) => ({
                 id: option.id,
                 label: option.label,
                 description: option.description,
-              })),
-            ]}
-            placeholder="Select a model"
-            searchPlaceholder="Search models..."
-            emptyText={modelOptionsLoading ? "Loading..." : "No models found."}
-            disabled={isSaving || modelOptionsLoading}
-            onChange={handleSubagentModelChange}
-          />
-          <p className="text-xs text-muted-foreground">
-            For explorer and executor subagents.
-          </p>
+              }))}
+              placeholder="Select a model"
+              searchPlaceholder="Search models..."
+              emptyText={
+                modelOptionsLoading ? "Loading..." : "No models found."
+              }
+              disabled={isSaving || modelOptionsLoading}
+              onChange={handleModelChange}
+            />
+            <p className="text-xs text-muted-foreground">
+              The AI model used for new chats.
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="subagent-model">Subagent Model</Label>
+            <ModelCombobox
+              value={selectedSubagentModelId}
+              items={[
+                { id: "auto", label: "Same as main model" },
+                ...subagentModelOptions.map((option) => ({
+                  id: option.id,
+                  label: option.label,
+                  description: option.description,
+                })),
+              ]}
+              placeholder="Select a model"
+              searchPlaceholder="Search models..."
+              emptyText={
+                modelOptionsLoading ? "Loading..." : "No models found."
+              }
+              disabled={isSaving || modelOptionsLoading}
+              onChange={handleSubagentModelChange}
+            />
+            <p className="text-xs text-muted-foreground">
+              For on-demand specialist subagents (/architect, /explorer,
+              /executor, /reviewer, /design).
+            </p>
+          </div>
         </div>
+
+        <EnabledModelsSection
+          modelOptions={modelOptions}
+          modelOptionsLoading={modelOptionsLoading}
+          enabledModelIds={enabledModelIds}
+          onAddModel={handleAddModel}
+          onRemoveModel={handleRemoveModel}
+          onSetEnabledModels={handleSetEnabledModels}
+          disabled={isSaving}
+        />
       </div>
 
-      <EnabledModelsSection
-        modelOptions={modelOptions}
-        modelOptionsLoading={modelOptionsLoading}
-        enabledModelIds={enabledModelIds}
-        onAddModel={handleAddModel}
-        onRemoveModel={handleRemoveModel}
-        onSetEnabledModels={handleSetEnabledModels}
-        disabled={isSaving}
-      />
+      <div className="border-t border-border/50 pt-6">
+        <div className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-emerald-500" />
+              <span className="text-sm font-medium">
+                Agent Skills &amp; Slash Commands
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Skills now have a dedicated catalog where you can inspect{" "}
+              <code>SKILL.md</code> instructions and install GitHub skill packs
+              (such as <code>/unslop</code> and <code>/frontend-design</code>)
+              with one click.
+            </p>
+          </div>
+          <Button asChild variant="outline" size="sm" className="shrink-0">
+            <Link href="/settings/skills">
+              Open Skills Catalog
+              <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

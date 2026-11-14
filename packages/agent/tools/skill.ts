@@ -3,6 +3,10 @@ import { tool } from "ai";
 import { z } from "zod";
 import { getSandbox } from "./utils";
 import {
+  BUILTIN_SKILLS,
+  getBuiltinSkillsMetadata,
+} from "../skills/builtin/seed";
+import {
   extractSkillBody,
   substituteArguments,
   injectSkillDirectory,
@@ -21,7 +25,7 @@ interface SkillAgentContext {
  */
 function getSkills(experimental_context: unknown): SkillMetadata[] {
   const context = experimental_context as SkillAgentContext | undefined;
-  return context?.skills ?? [];
+  return context?.skills ?? getBuiltinSkillsMetadata();
 }
 
 const skillInputSchema = z.object({
@@ -34,17 +38,17 @@ export const skillTool = tool({
 
 When users ask you to perform tasks, check if any of the available skills can help complete the task more effectively. Skills provide specialized capabilities and domain knowledge.
 
-When users ask you to run a "slash command" or reference "/<something>" (e.g., "/commit", "/review-pr"), they are referring to a skill. Use this tool to invoke the corresponding skill.
+When users ask you to run a "slash command" or reference "/<something>" (e.g., "/unslop", "/frontend-design", "/code-review", "/plan-mode"), they are referring to a skill. Use this tool to invoke the corresponding skill.
 
 Example:
-  User: "run /commit"
-  Assistant: [Calls skill tool with skill: "commit"]
+  User: "run /unslop on this page"
+  Assistant: [Calls skill tool with skill: "unslop"]
 
 How to invoke:
 - Use this tool with the skill name and optional arguments
 - Examples:
-  - skill: "pdf" - invoke the pdf skill
-  - skill: "commit", args: "-m 'Fix bug'" - invoke with arguments
+  - skill: "unslop" - invoke the unslop UI design & redline skill
+  - skill: "frontend-design", args: "dashboard" - invoke with arguments
 
 Important:
 - When a skill is relevant, invoke this tool IMMEDIATELY as your first action
@@ -54,14 +58,15 @@ Important:
 - If you see a <command-name> tag in the conversation, the skill is ALREADY loaded - follow its instructions directly`,
   inputSchema: skillInputSchema,
   execute: async ({ skill, args }, { experimental_context }) => {
-    const sandbox = await getSandbox(experimental_context, "skill");
     const skills = getSkills(experimental_context);
 
     // Find the skill by name (case-insensitive to match slash command behavior)
-    const normalizedSkillName = skill.toLowerCase();
-    const foundSkill = skills.find(
-      (s) => s.name.toLowerCase() === normalizedSkillName,
-    );
+    const normalizedSkillName = skill.toLowerCase().replace(/^\//, "");
+    const foundSkill =
+      skills.find((s) => s.name.toLowerCase() === normalizedSkillName) ??
+      getBuiltinSkillsMetadata().find(
+        (s) => s.name.toLowerCase() === normalizedSkillName,
+      );
     if (!foundSkill) {
       const availableSkills = skills.map((s) => s.name).join(", ");
       return {
@@ -78,17 +83,26 @@ Important:
       };
     }
 
-    // Load skill content via sandbox
+    // Load skill content via sandbox, falling back to in-memory BUILTIN_SKILLS
     const skillFilePath = path.join(foundSkill.path, foundSkill.filename);
-    let fileContent: string;
+    let fileContent: string | undefined;
     try {
+      const sandbox = await getSandbox(experimental_context, "skill");
       fileContent = await sandbox.readFile(skillFilePath, "utf-8");
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return {
-        success: false,
-        error: `Failed to read skill file: ${message}`,
-      };
+      const builtinMatch = BUILTIN_SKILLS.find(
+        (b) => b.name.toLowerCase() === normalizedSkillName,
+      );
+      const builtinContent = builtinMatch?.files["SKILL.md"];
+      if (builtinContent) {
+        fileContent = builtinContent;
+      } else {
+        const message = err instanceof Error ? err.message : String(err);
+        return {
+          success: false,
+          error: `Failed to read skill file: ${message}`,
+        };
+      }
     }
 
     // Parse and extract body (skip frontmatter)

@@ -282,13 +282,13 @@ export function ModelPerformanceTable({
           <div>
             <CardTitle className="flex items-center gap-2 text-sm font-medium">
               <Cpu className="size-4 text-muted-foreground" strokeWidth={1.5} />
-              Models, cache hit rates &amp; speed ({data.window})
+              Models, multi-provider prompt cache &amp; speed ({data.window})
             </CardTitle>
             <CardDescription className="text-xs">
-              Per-model reliability, P50/P95 latency (
+              All providers tracked — Anthropic, OpenAI, Google Gemini,
+              DeepSeek, xAI &amp; custom gateways · P50/P95 latency (
               {formatDurationMs(data.runs.p50DurationMs)} /{" "}
-              {formatDurationMs(data.runs.p95DurationMs)}), throughput (TPS),
-              and prompt caching performance
+              {formatDurationMs(data.runs.p95DurationMs)})
             </CardDescription>
           </div>
           <Link
@@ -300,18 +300,60 @@ export function ModelPerformanceTable({
           </Link>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        {data.cache.byProvider.length > 0 && (
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+            {data.cache.byProvider.map((prov) => (
+              <div
+                key={prov.provider}
+                className="rounded-lg border bg-muted/15 p-3 text-xs"
+              >
+                <div className="flex items-center justify-between gap-1.5">
+                  <span className="font-medium text-foreground">
+                    {prov.label}
+                  </span>
+                  <span
+                    className={`font-mono font-medium tabular-nums ${
+                      prov.hitPct >= 50
+                        ? "text-emerald-500"
+                        : prov.hitPct > 0
+                          ? "text-foreground"
+                          : "text-muted-foreground"
+                    }`}
+                  >
+                    {prov.hitPct.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
+                  {prov.strategy}
+                </div>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground tabular-nums">
+                  <span>
+                    {formatTokens(prov.cachedInputTokens)} /{" "}
+                    {formatTokens(prov.inputTokens)}
+                  </span>
+                  <span>{formatUsd(prov.estimatedSavingsUsd)} saved</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
         {data.perModel.length === 0 ? (
           <div className="rounded-lg border border-dashed py-8 text-center text-xs text-muted-foreground">
             No model runs or usage events recorded in this window
           </div>
         ) : (
           <div className="max-h-96 overflow-x-auto overflow-y-auto rounded-lg border">
-            <Table className="min-w-[680px]">
+            <Table className="min-w-[740px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-xs">Model</TableHead>
-                  <TableHead className="text-right text-xs">Turns</TableHead>
+                  <TableHead className="text-xs">
+                    Model &amp; cache architecture
+                  </TableHead>
+                  <TableHead className="text-right text-xs">
+                    Turns / Chats
+                  </TableHead>
                   <TableHead className="text-right text-xs">Error %</TableHead>
                   <TableHead className="text-right text-xs">
                     Avg latency
@@ -330,18 +372,16 @@ export function ModelPerformanceTable({
                 {data.perModel.map((row) => (
                   <TableRow key={row.modelId}>
                     <TableCell>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex flex-wrap items-center gap-1.5">
                         <span className="font-mono text-xs font-medium">
                           {row.modelId}
                         </span>
-                        {row.isDeepSeek && (
-                          <Badge
-                            variant="secondary"
-                            className="px-1.5 py-0 font-mono text-[11px] font-normal"
-                          >
-                            DeepSeek KV
-                          </Badge>
-                        )}
+                        <Badge
+                          variant="secondary"
+                          className="px-1.5 py-0 font-mono text-[10px] font-normal"
+                        >
+                          {row.cacheStrategy}
+                        </Badge>
                       </div>
                       {row.provider && (
                         <div className="text-[11px] text-muted-foreground">
@@ -350,12 +390,16 @@ export function ModelPerformanceTable({
                       )}
                     </TableCell>
                     <TableCell className="text-right text-xs tabular-nums">
-                      <div>{row.runs || row.usageEvents}</div>
-                      {row.failedRuns > 0 && (
-                        <div className="text-[11px] text-destructive">
-                          {row.failedRuns} failed
-                        </div>
-                      )}
+                      <div>{row.runs || row.usageEvents} turns</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {row.activeChatsCount} chats
+                        {row.failedRuns > 0 && (
+                          <span className="text-destructive">
+                            {" "}
+                            · {row.failedRuns} failed
+                          </span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <Badge

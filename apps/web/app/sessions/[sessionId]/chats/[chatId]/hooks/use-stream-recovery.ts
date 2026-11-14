@@ -64,6 +64,10 @@ export function useStreamRecovery({
   maybeRecoverStreamRef.current = (opts?: {
     isVisibilityRecovery?: boolean;
   }) => {
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      return;
+    }
+
     const now = Date.now();
     const recoveryDecision = getStreamRecoveryDecision({
       now,
@@ -193,10 +197,18 @@ export function useStreamRecovery({
     };
 
     const onOnline = () => {
-      retryChatStream({
-        auto: true,
-        strategy: isChatInFlight ? "reconnect" : "soft",
-      });
+      // Reset throttle so online recovery runs immediately.
+      lastStreamRecoveryAtRef.current = 0;
+      // When `isChatInFlight` is true, `AbortableChatTransport` is already
+      // waiting on the `online` event inside `waitForRetryOrOnline` to resume
+      // from `chunkIndex` without tearing down the active stream. Only call
+      // `retryChatStream` directly if the stream already exited (`!isChatInFlight`).
+      if (!isChatInFlight) {
+        retryChatStream({
+          auto: true,
+          strategy: "soft",
+        });
+      }
       maybeRecoverStreamOnVisibility();
     };
 

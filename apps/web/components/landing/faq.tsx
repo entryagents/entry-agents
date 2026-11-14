@@ -4,32 +4,32 @@ const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "What is Entry Agents?",
     answer:
-      "Entry Agents is a cloud platform for autonomous software engineering. A main agent coordinates specialized Architect, Explorer, Executor, Reviewer, and Design subagents inside an isolated cloud Workspace with filesystem, terminal, MCP, and git integration.",
+      "Entry Agents is a cloud coding platform where each session runs inside an isolated Linux workspace with git, terminal, live preview, invocable /skills, and on-demand specialist subagents.",
   },
   {
-    question: "How does the multi-agent team work together?",
+    question: "Does Entry always run 5 agents on every prompt?",
     answer:
-      "Subagents coordinate through a shared Team Board where architectural plans, file discoveries, task checklists, and verification status are posted cleanly. You can inspect every subagent's reasoning, tool calls, and token usage live from the session header.",
+      "No. By default, Entry executes directly in a fast single-agent loop so everyday edits, questions, and bug fixes happen immediately. Specialist subagents (/architect, /explorer, /executor, /reviewer, /design) are dispatched only when you invoke them or when a large multi-file task benefits from parallel work.",
   },
   {
-    question: "Can I extend Entry with plugins and custom /commands?",
+    question: "How do /skills work?",
     answer:
-      "Yes. Built-in and custom plugins hook into context assembly, tool execution boundaries (with secret/PII redaction), permission rules, and composer slash commands — configurable per user in Settings → Plugins.",
+      "Entry ships with 17 built-in skills — including /unslop, /frontend-design, /code-review, /plan-mode, and /composio — and lets you install GitHub skill repositories in one click from Settings → Skills. Type / in the chat composer to invoke any skill.",
   },
   {
-    question: "How does Entry handle disconnects and long-running tasks?",
+    question: "What happens if I lose internet or close my browser mid-turn?",
     answer:
-      "Every turn runs on durable Workflow SDK checkpoints backed by Redis streams and Postgres. You can close your laptop or switch devices mid-run and reconnect straight back into the live execution stream with zero lost output.",
+      "Every turn executes on durable server checkpoints. If you toggle off mobile data, lose Wi-Fi, or switch devices, the agent finishes its work in the cloud and automatically syncs the conversation as soon as you reconnect.",
   },
   {
-    question: "How does Entry Agents keep my code and API keys safe?",
+    question: "Which apps and integrations can the agent use?",
     answer:
-      "Each session runs inside its own isolated Workspace boundary. OAuth tokens and personal API secrets are encrypted with AES-256-GCM at rest, injected only at tool execution time, and automatically scrubbed from tool output logs.",
+      "In addition to native GitHub and Vercel integrations, you can connect Gmail, Slack, Notion, Linear, Google Calendar, Google Drive, Jira, Figma, and Discord from Settings → Connections.",
   },
   {
-    question: "Which AI models and MCP servers does Entry Agents support?",
+    question: "Which AI models are supported?",
     answer:
-      "Entry supports Claude, GPT, Gemini, DeepSeek, and gateway models with mid-session switching, alongside user-configured stdio and HTTP MCP servers available to your agent inside the sandbox.",
+      "Entry supports Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek, and xAI Grok models with automatic prompt prefix caching and mid-session model switching.",
   },
 ];
 

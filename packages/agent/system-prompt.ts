@@ -100,12 +100,14 @@ Each tool's description documents its own usage and when-not-to-use rules -- rea
 Available subagents:
 ${buildSubagentSummaryLines()}
 
-# Multi-Agent Team & Shared Board
+# Execution Mode: Fast Single-Agent Default & On-Demand Specialist Team
 
-For multi-file features, architectural changes, or parallelizable investigations, run as a coordinated team:
-1. Launch \`architect\` or \`explorer\` subagents first (or in parallel) and use \`team_board\` (\`plan_tasks\`, \`post\`) to publish architecture contracts and task assignments.
-2. Dispatch independent \`executor\` and \`design\` subagents in parallel whenever their file scopes do not overlap; each teammate reads \`team_board\` automatically and writes back artifacts and handoffs.
-3. Finish multi-file changes with a \`reviewer\` pass so issues are caught before reporting completion.
+- **Default to direct execution**: For everyday questions, single-file edits, targeted bug fixes, and standard features, execute directly in your main loop without spawning subagents. Do NOT spawn all 5 subagents on routine turns.
+- **On-demand specialist invocation**: When the user starts a message with \`/architect\`, \`/explorer\`, \`/executor\`, \`/reviewer\`, \`/design\`, or \`@architect\`/\`@explorer\`/\`@executor\`/\`@reviewer\`/\`@design\`, immediately dispatch that specialist subagent via \`task\` as your FIRST tool call. When the user invokes \`/team-plan\`, coordinate the relevant specialists via \`team_board\`.
+- **Autonomous team scaling**: For large multi-file features, cross-cutting architectural changes, or parallelizable investigations, scale up to a coordinated team:
+  1. Launch \`architect\` or \`explorer\` subagents first (or in parallel) and use \`team_board\` (\`plan_tasks\`, \`post\`) to publish architecture contracts and task assignments.
+  2. Dispatch independent \`executor\` and \`design\` subagents in parallel whenever their file scopes do not overlap; each teammate reads \`team_board\` automatically and writes back artifacts and handoffs.
+  3. Finish multi-file changes with a \`reviewer\` pass so issues are caught before reporting completion.
 
 # Verification Loop
 
@@ -500,6 +502,17 @@ function buildMcpPrompt(summary: McpPromptSummary): string {
         `- \`${server.name}\` (${server.toolCount} tool${server.toolCount === 1 ? "" : "s"})`,
     );
 
+  const hasComposio = summary.servers.some(
+    (s) => s.name.toLowerCase() === "composio",
+  );
+  const composioGuidance = hasComposio
+    ? `\n\n### Composio App Integrations (Gmail, Slack, Notion, Linear, Calendar, Drive, Jira, Figma, etc.)
+- The \`composio\` server gives you access to 500+ app integrations via Composio Tool Router.
+- When the user asks to read/send Gmail, post to Slack, query Notion, create Linear/Jira issues, check Google Calendar/Drive, or use any external SaaS app:
+  1. Search for the Composio meta-tools or app tools via \`tool_search({ query: "composio" })\` (or call \`mcp__composio__COMPOSIO_SEARCH_TOOLS\` directly if exposed).
+  2. If the user has not authorized that app yet, use \`COMPOSIO_MANAGE_CONNECTIONS\` to generate an OAuth Connect Link and present it clearly, or direct them to **Settings -> Connections -> Composio App Integrations**.`
+    : "";
+
   if (summary.bridged) {
     return `
 ## Connected MCP Servers (On-Demand Tool Bridge)
@@ -510,7 +523,7 @@ To keep context fast, their schemas are indexed on-demand behind three bridge to
 1. Call \`tool_search({ query })\` with keywords or a server name (e.g., \`"${summary.servers[0]?.name ?? "github"}"\`) to find matching tool names.
 2. Call \`tool_describe({ tools })\` to load the exact parameter schema for the selected tool(s).
 3. Call \`tool_call({ tool, arguments })\` to run the tool.
-Use these MCP tools whenever the user's request involves an external service listed above.`;
+Use these MCP tools whenever the user's request involves an external service listed above.${composioGuidance}`;
   }
 
   const sortedDirect = [...summary.directToolNames].sort((a, b) =>
@@ -525,7 +538,7 @@ Use these MCP tools whenever the user's request involves an external service lis
 ## Connected MCP Servers
 These external MCP servers are connected and ready to call directly:
 ${serverLines.join("\n")}${directPreview}
-Call the \`mcp__<server>__<tool>\` tools directly whenever the user's request matches an external service listed above.`;
+Call the \`mcp__<server>__<tool>\` tools directly whenever the user's request matches an external service listed above.${composioGuidance}`;
 }
 
 /**

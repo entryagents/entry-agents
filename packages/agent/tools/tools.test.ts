@@ -776,6 +776,29 @@ describe("tools execute behavior", () => {
     });
   });
 
+  test("skillTool loads built-in unslop skill via in-memory fallback when sandbox read fails", async () => {
+    const sandbox = {
+      workingDirectory: "/repo",
+      readFile: async () => {
+        throw new Error("ENOENT: sandbox file not seeded yet");
+      },
+    };
+
+    const result = await skillTool.execute?.(
+      { skill: "/unslop" },
+      executionOptions({ ...createContext(sandbox), skills: [] }),
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      skillName: "/unslop",
+      skillPath: "/root/.agents/skills/unslop",
+    });
+    expect(result && "content" in result ? result.content : "").toContain(
+      "Unslop",
+    );
+  });
+
   test("taskTool exposes both subagent types without approval gates", async () => {
     const explorerNeedsApproval = await getNeedsApprovalResult(
       taskTool.needsApproval,

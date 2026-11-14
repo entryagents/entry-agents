@@ -4,6 +4,8 @@ import { parseSkillFrontmatter } from "../discovery";
 import { frontmatterToOptions } from "../types";
 import { BUILTIN_SKILLS } from "./generated";
 
+export { BUILTIN_SKILLS };
+
 /**
  * Ensure the curated set of built-in, generically-useful skills (browser
  * automation, no-API-key web search, ...) exist in a sandbox's global skills

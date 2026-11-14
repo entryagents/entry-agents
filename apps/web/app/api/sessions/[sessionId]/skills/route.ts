@@ -1,4 +1,8 @@
-import { discoverSkills } from "@entry-agents/agent";
+import {
+  discoverSkills,
+  getBuiltinSkillsMetadata,
+  type SkillMetadata,
+} from "@entry-agents/agent";
 import { connectSandbox } from "@entry-agents/sandbox";
 import {
   requireAuthenticatedUser,
@@ -17,7 +21,7 @@ import {
 export type SkillSuggestion = {
   name: string;
   description: string;
-  source?: "skill" | "plugin";
+  source?: "skill" | "plugin" | "team";
   pluginName?: string;
 };
 
@@ -29,10 +33,20 @@ type RouteContext = {
   params: Promise<{ sessionId: string }>;
 };
 
-function toSkillSuggestions(
-  skills: Awaited<ReturnType<typeof discoverSkills>>,
-): SkillSuggestion[] {
-  return skills
+function mergeWithBuiltinSkills(discovered: SkillMetadata[]): SkillMetadata[] {
+  const seen = new Set(discovered.map((s) => s.name.toLowerCase()));
+  const merged = [...discovered];
+  for (const builtin of getBuiltinSkillsMetadata()) {
+    if (!seen.has(builtin.name.toLowerCase())) {
+      seen.add(builtin.name.toLowerCase());
+      merged.push(builtin);
+    }
+  }
+  return merged;
+}
+
+function toSkillSuggestions(skills: SkillMetadata[]): SkillSuggestion[] {
+  return mergeWithBuiltinSkills(skills)
     .filter((skill) => skill.options.userInvocable !== false)
     .map((skill) => ({
       name: skill.name,
@@ -58,8 +72,10 @@ export async function GET(req: Request, context: RouteContext) {
 
   const { sessionRecord } = sessionContext;
   const sandboxState = sessionRecord.sandboxState;
-  if (!sandboxState) {
-    return Response.json({ error: "Sandbox not initialized" }, { status: 400 });
+  if (!sandboxState || !hasRuntimeSandboxState(sandboxState)) {
+    return Response.json({
+      skills: toSkillSuggestions(getBuiltinSkillsMetadata()),
+    });
   }
 
   const refresh = new URL(req.url).searchParams.get("refresh") === "1";
@@ -69,10 +85,6 @@ export async function GET(req: Request, context: RouteContext) {
     if (cachedSkills !== null) {
       return Response.json({ skills: toSkillSuggestions(cachedSkills) });
     }
-  }
-
-  if (!hasRuntimeSandboxState(sandboxState)) {
-    return Response.json({ error: "Sandbox not initialized" }, { status: 400 });
   }
 
   try {
@@ -94,15 +106,11 @@ export async function GET(req: Request, context: RouteContext) {
         ),
         ...buildHibernatedLifecycleUpdate(),
       });
-      return Response.json(
-        { error: "Sandbox is unavailable. Please resume sandbox." },
-        { status: 409 },
-      );
+    } else {
+      console.error("Failed to discover skills:", error);
     }
-    console.error("Failed to discover skills:", error);
-    return Response.json(
-      { error: "Failed to connect to sandbox" },
-      { status: 500 },
-    );
+    return Response.json({
+      skills: toSkillSuggestions(getBuiltinSkillsMetadata()),
+    });
   }
 }

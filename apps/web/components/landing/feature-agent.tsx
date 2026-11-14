@@ -86,14 +86,18 @@ const ROLES: readonly {
     scope: "read-only · audit",
     steps: [
       { tool: "bash", arg: "git diff --stat", duration: "0.3s" },
-      { tool: "read", arg: "lib/plugins/encryption.ts", duration: "0.4s" },
+      {
+        tool: "read",
+        arg: "apps/web/lib/abortable-chat-transport.ts",
+        duration: "0.4s",
+      },
       {
         tool: "team_board",
         arg: "update_task T-03 -> completed",
         duration: "0.5s",
       },
     ],
-    note: "Approved: AES-256-GCM key isolation & regression tests verified.",
+    note: "Approved: edge cases, type safety & regression tests verified.",
   },
 ];
 

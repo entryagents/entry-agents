@@ -17,9 +17,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type {
-  AdminTelemetryPayload,
-  AdminTelemetryWindow,
+import {
+  ADMIN_TELEMETRY_WINDOW_LABELS,
+  ADMIN_TELEMETRY_WINDOWS,
+  type AdminTelemetryPayload,
+  type AdminTelemetryWindow,
 } from "@/lib/db/admin-telemetry";
 import {
   formatDurationMs,
@@ -42,7 +44,16 @@ import {
 type PollIntervalMs = 5000 | 15000 | 30000 | 0;
 type TelemetrySectionFilter = "all" | "live" | "plugins" | "sandboxes" | "ops";
 
-const WINDOW_OPTIONS: AdminTelemetryWindow[] = ["1h", "24h", "7d", "30d"];
+const QUICK_WINDOW_OPTIONS: AdminTelemetryWindow[] = [
+  "1h",
+  "24h",
+  "7d",
+  "30d",
+  "3m",
+  "6m",
+  "1y",
+  "all",
+];
 const POLL_OPTIONS: Array<{ value: PollIntervalMs; label: string }> = [
   { value: 5000, label: "Live 5s" },
   { value: 15000, label: "15s" },
@@ -172,8 +183,8 @@ export function AdminLiveTelemetryDashboard() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center rounded-md border border-border/80 bg-muted/20 p-0.5 text-xs">
-            {WINDOW_OPTIONS.map((w) => (
+          <div className="flex flex-wrap items-center rounded-md border border-border/80 bg-muted/20 p-0.5 text-xs">
+            {QUICK_WINDOW_OPTIONS.map((w) => (
               <button
                 key={w}
                 type="button"
@@ -184,10 +195,25 @@ export function AdminLiveTelemetryDashboard() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {w}
+                {w === "all" ? "All" : w}
               </button>
             ))}
           </div>
+
+          <select
+            aria-label="Telemetry time window"
+            value={windowRange}
+            onChange={(e) =>
+              setWindowRange(e.target.value as AdminTelemetryWindow)
+            }
+            className="h-7 rounded-md border border-border/80 bg-background px-2 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {ADMIN_TELEMETRY_WINDOWS.map((w) => (
+              <option key={w} value={w}>
+                {ADMIN_TELEMETRY_WINDOW_LABELS[w]}
+              </option>
+            ))}
+          </select>
 
           <div className="flex items-center rounded-md border border-border/80 bg-muted/20 p-0.5 text-xs">
             {POLL_OPTIONS.map((opt) => (
@@ -311,7 +337,7 @@ export function AdminLiveTelemetryDashboard() {
               <Card className="rounded-xl">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
                   <CardTitle className="text-xs font-medium text-muted-foreground">
-                    Prompt cache
+                    Prompt cache (all models)
                   </CardTitle>
                   <Zap
                     className="size-4 text-muted-foreground"
@@ -323,7 +349,7 @@ export function AdminLiveTelemetryDashboard() {
                     {data.cache.overallHitPct.toFixed(1)}%
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    DeepSeek {data.cache.deepSeek.hitPct.toFixed(1)}% ·{" "}
+                    {data.cache.byProvider.length} providers ·{" "}
                     {formatUsd(data.cache.estimatedSavingsUsd)} saved
                   </p>
                 </CardContent>

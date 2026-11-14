@@ -140,12 +140,14 @@ export class AbortableChatTransport<
   private _state: {
     controller: AbortController;
     lastChunkAt: number;
+    activeSendMessagesCount: number;
   };
 
   constructor(options: AbortableWorkflowChatTransportOptions<UI_MESSAGE>) {
     const state = {
       controller: new AbortController(),
       lastChunkAt: 0,
+      activeSendMessagesCount: 0,
     };
     const outerFetch: FetchFunction = options?.fetch ?? globalThis.fetch;
 
@@ -205,7 +207,10 @@ export class AbortableChatTransport<
               signal: combinedSignal,
             });
 
-            if (response.status === 204 && startIndex > 0) {
+            if (
+              response.status === 204 &&
+              (startIndex > 0 || state.activeSendMessagesCount > 0)
+            ) {
               state.lastChunkAt = Date.now();
               return createSyntheticFinishSseResponse();
             }
@@ -269,6 +274,58 @@ export class AbortableChatTransport<
     return this._state.lastChunkAt;
   }
 
+  override async sendMessages(
+    options: Parameters<WorkflowChatTransport<UI_MESSAGE>["sendMessages"]>[0],
+  ) {
+    const state = this._state;
+    state.activeSendMessagesCount += 1;
+    let decremented = false;
+    const decrementOnce = () => {
+      if (decremented) return;
+      decremented = true;
+      state.activeSendMessagesCount = Math.max(
+        0,
+        state.activeSendMessagesCount - 1,
+      );
+    };
+
+    try {
+      const stream = await super.sendMessages(options);
+      const reader = stream.getReader();
+      return new ReadableStream({
+        async pull(controller) {
+          try {
+            const next = await reader.read();
+            if (next.done) {
+              decrementOnce();
+              controller.close();
+            } else {
+              state.lastChunkAt = Date.now();
+              controller.enqueue(next.value);
+            }
+          } catch (err) {
+            decrementOnce();
+            if (
+              err instanceof Error &&
+              err.message.startsWith("Failed to fetch chat: 204")
+            ) {
+              controller.close();
+              return;
+            }
+            throw err;
+          }
+        },
+        async cancel(reason) {
+          decrementOnce();
+          await reader.cancel(reason);
+        },
+      });
+    } catch (error) {
+      decrementOnce();
+      throw error;
+    }
+  }
+
   override async reconnectToStream(
     options: Parameters<
       WorkflowChatTransport<UI_MESSAGE>["reconnectToStream"]
@@ -316,12 +373,23 @@ export class AbortableChatTransport<
           controller.enqueue(first.value);
         },
         async pull(controller) {
-          const next = await reader.read();
-          if (next.done) {
-            controller.close();
-          } else {
-            state.lastChunkAt = Date.now();
-            controller.enqueue(next.value);
+          try {
+            const next = await reader.read();
+            if (next.done) {
+              controller.close();
+            } else {
+              state.lastChunkAt = Date.now();
+              controller.enqueue(next.value);
+            }
+          } catch (err) {
+            if (
+              err instanceof Error &&
+              err.message.startsWith("Failed to fetch chat: 204")
+            ) {
+              controller.close();
+              return;
+            }
+            throw err;
           }
         },
         async cancel(reason) {

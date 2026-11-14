@@ -38,27 +38,99 @@ import {
   workflowRunSteps,
 } from "./schema";
 
-export type AdminTelemetryWindow = "1h" | "24h" | "7d" | "30d";
+export const ADMIN_TELEMETRY_WINDOWS = [
+  "1h",
+  "24h",
+  "7d",
+  "30d",
+  "2m",
+  "3m",
+  "4m",
+  "5m",
+  "6m",
+  "7m",
+  "8m",
+  "9m",
+  "10m",
+  "11m",
+  "1y",
+  "2y",
+  "all",
+] as const;
 
-const WINDOW_MS: Record<AdminTelemetryWindow, number> = {
+export type AdminTelemetryWindow = (typeof ADMIN_TELEMETRY_WINDOWS)[number];
+
+export const ADMIN_TELEMETRY_WINDOW_LABELS: Record<
+  AdminTelemetryWindow,
+  string
+> = {
+  "1h": "1 hour",
+  "24h": "24 hours",
+  "7d": "7 days",
+  "30d": "30 days",
+  "2m": "2 months",
+  "3m": "3 months",
+  "4m": "4 months",
+  "5m": "5 months",
+  "6m": "6 months",
+  "7m": "7 months",
+  "8m": "8 months",
+  "9m": "9 months",
+  "10m": "10 months",
+  "11m": "11 months",
+  "1y": "1 year",
+  "2y": "2 years",
+  all: "All time",
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const WINDOW_MS: Record<Exclude<AdminTelemetryWindow, "all">, number> = {
   "1h": 60 * 60 * 1000,
-  "24h": 24 * 60 * 60 * 1000,
-  "7d": 7 * 24 * 60 * 60 * 1000,
-  "30d": 30 * 24 * 60 * 60 * 1000,
+  "24h": DAY_MS,
+  "7d": 7 * DAY_MS,
+  "30d": 30 * DAY_MS,
+  "2m": 60 * DAY_MS,
+  "3m": 90 * DAY_MS,
+  "4m": 120 * DAY_MS,
+  "5m": 150 * DAY_MS,
+  "6m": 180 * DAY_MS,
+  "7m": 210 * DAY_MS,
+  "8m": 240 * DAY_MS,
+  "9m": 270 * DAY_MS,
+  "10m": 300 * DAY_MS,
+  "11m": 330 * DAY_MS,
+  "1y": 365 * DAY_MS,
+  "2y": 730 * DAY_MS,
 };
 
 const WINDOW_BUCKETS: Record<AdminTelemetryWindow, number> = {
-  "1h": 12, // 5m buckets
-  "24h": 24, // 1h buckets
-  "7d": 14, // 12h buckets
-  "30d": 15, // 2d buckets
+  "1h": 12,
+  "24h": 24,
+  "7d": 14,
+  "30d": 15,
+  "2m": 15,
+  "3m": 15,
+  "4m": 16,
+  "5m": 15,
+  "6m": 18,
+  "7m": 14,
+  "8m": 16,
+  "9m": 18,
+  "10m": 15,
+  "11m": 15,
+  "1y": 12,
+  "2y": 24,
+  all: 16,
 };
+
+const VALID_WINDOWS = new Set<string>(ADMIN_TELEMETRY_WINDOWS);
 
 export function parseAdminTelemetryWindow(
   value: string | null | undefined,
 ): AdminTelemetryWindow {
-  if (value === "1h" || value === "24h" || value === "7d" || value === "30d") {
-    return value;
+  if (typeof value === "string" && VALID_WINDOWS.has(value)) {
+    return value as AdminTelemetryWindow;
   }
   return "24h";
 }
@@ -89,10 +161,25 @@ export interface TelemetryTimeBucket {
   spendUsd: number;
 }
 
+export interface TelemetryProviderCacheRow {
+  provider: string;
+  label: string;
+  strategy: string;
+  events: number;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  hitPct: number;
+  spendUsd: number;
+  estimatedSavingsUsd: number;
+}
+
 export interface TelemetryModelRow {
   modelId: string;
   provider: string | null;
+  cacheStrategy: string;
   isDeepSeek: boolean;
+  activeChatsCount: number;
   runs: number;
   completedRuns: number;
   failedRuns: number;
@@ -168,6 +255,7 @@ export interface AdminTelemetryPayload {
   cache: {
     overallHitPct: number;
     estimatedSavingsUsd: number;
+    byProvider: TelemetryProviderCacheRow[];
     deepSeek: {
       events: number;
       inputTokens: number;
@@ -413,6 +501,12 @@ function formatBucketLabel(
       hour12: false,
     });
   }
+  if (window === "1y" || window === "2y" || window === "all") {
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      year: "2-digit",
+    });
+  }
   return date.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -428,12 +522,100 @@ function isDeepSeekModel(
   return m.includes("deepseek") || p.includes("deepseek");
 }
 
+export function resolveProviderCacheMeta(
+  modelId: string | null,
+  provider: string | null,
+): {
+  providerKey: string;
+  providerLabel: string;
+  cacheStrategy: string;
+  discountMultiplier: number;
+} {
+  const m = (modelId ?? "").toLowerCase();
+  const p = (provider ?? "").toLowerCase();
+  const combined = `${p}/${m}`;
+
+  if (combined.includes("deepseek")) {
+    return {
+      providerKey: "deepseek",
+      providerLabel: "DeepSeek",
+      cacheStrategy: "Disk Prefix KV (64-tok)",
+      discountMultiplier: 9,
+    };
+  }
+  if (combined.includes("anthropic") || combined.includes("claude")) {
+    return {
+      providerKey: "anthropic",
+      providerLabel: "Anthropic",
+      cacheStrategy: "Ephemeral 3-Breakpoint",
+      discountMultiplier: 9,
+    };
+  }
+  if (
+    combined.includes("openai") ||
+    combined.includes("gpt-") ||
+    combined.includes("/o1") ||
+    combined.includes("/o3") ||
+    combined.includes("/o4")
+  ) {
+    return {
+      providerKey: "openai",
+      providerLabel: "OpenAI",
+      cacheStrategy: "Auto Prefix KV (1024-tok)",
+      discountMultiplier: 4,
+    };
+  }
+  if (combined.includes("google") || combined.includes("gemini")) {
+    return {
+      providerKey: "google",
+      providerLabel: "Google Gemini",
+      cacheStrategy: "Implicit Context Cache",
+      discountMultiplier: 4,
+    };
+  }
+  if (combined.includes("xai") || combined.includes("grok")) {
+    return {
+      providerKey: "xai",
+      providerLabel: "xAI Grok",
+      cacheStrategy: "Prefix KV Cache",
+      discountMultiplier: 4,
+    };
+  }
+  if (combined.includes("moonshot") || combined.includes("kimi")) {
+    return {
+      providerKey: "moonshot",
+      providerLabel: "Moonshot Kimi",
+      cacheStrategy: "Context KV Cache",
+      discountMultiplier: 4,
+    };
+  }
+  const fallbackKey =
+    p || (m.includes("/") ? (m.split("/")[0] ?? "other") : "other");
+  return {
+    providerKey: fallbackKey,
+    providerLabel:
+      fallbackKey.charAt(0).toUpperCase() + fallbackKey.slice(1) || "Other",
+    cacheStrategy: "Gateway Prompt Cache",
+    discountMultiplier: 4,
+  };
+}
+
+const CORE_FLEET_MODELS: Array<{ modelId: string; provider: string }> = [
+  { modelId: "anthropic/claude-sonnet-4.6", provider: "anthropic" },
+  { modelId: "anthropic/claude-opus-4.6", provider: "anthropic" },
+  { modelId: "openai/gpt-5.4", provider: "openai" },
+  { modelId: "google/gemini-3.1-pro", provider: "google" },
+  { modelId: "deepseek/deepseek-v3.2", provider: "deepseek" },
+  { modelId: "deepseek/deepseek-r1", provider: "deepseek" },
+  { modelId: "xai/grok-4", provider: "xai" },
+];
+
 export async function getAdminTelemetry(
   window: AdminTelemetryWindow = "24h",
 ): Promise<AdminTelemetryPayload> {
   const now = Date.now();
-  const windowMs = WINDOW_MS[window];
-  const since = new Date(now - windowMs);
+  const windowMs = window === "all" ? 730 * DAY_MS : WINDOW_MS[window];
+  const since = window === "all" ? new Date(0) : new Date(now - windowMs);
   const sinceIso = since.toISOString();
   const oneHourAgoIso = new Date(now - 60 * 60 * 1000).toISOString();
 
@@ -857,9 +1039,31 @@ export async function getAdminTelemetry(
   }
 
   // --- Usage & Cache & Per-model stats & TimeSeries ---
+  const chatsByModelRows = await db
+    .select({
+      modelId: chats.modelId,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(chats)
+    .groupBy(chats.modelId)
+    .catch(() => []);
+
   const bucketCount = WINDOW_BUCKETS[window];
-  const bucketMs = windowMs / bucketCount;
-  const startMs = now - windowMs;
+  let effectiveWindowMs = windowMs;
+  if (window === "all") {
+    let earliestMs = now - 365 * DAY_MS;
+    for (const row of usageWindowRows) {
+      const t = row.createdAt.getTime();
+      if (t < earliestMs) earliestMs = t;
+    }
+    for (const run of runsWindowRows) {
+      const t = run.finishedAt.getTime();
+      if (t < earliestMs) earliestMs = t;
+    }
+    effectiveWindowMs = Math.max(DAY_MS, now - earliestMs);
+  }
+  const bucketMs = effectiveWindowMs / bucketCount;
+  const startMs = now - effectiveWindowMs;
   const timeSeries: TelemetryTimeBucket[] = Array.from(
     { length: bucketCount },
     (_, i) => {
@@ -882,6 +1086,7 @@ export async function getAdminTelemetry(
     {
       modelId: string;
       provider: string | null;
+      activeChatsCount: number;
       runs: number;
       completedRuns: number;
       failedRuns: number;
@@ -898,11 +1103,13 @@ export async function getAdminTelemetry(
 
   const ensureModel = (modelId: string | null, provider: string | null) => {
     const key = modelId ?? "unknown";
+    const meta = resolveProviderCacheMeta(key, provider);
     let entry = modelStatsMap.get(key);
     if (!entry) {
       entry = {
         modelId: key,
-        provider,
+        provider: provider ?? meta.providerKey,
+        activeChatsCount: 0,
         runs: 0,
         completedRuns: 0,
         failedRuns: 0,
@@ -922,6 +1129,61 @@ export async function getAdminTelemetry(
     return entry;
   };
 
+  // Seed core fleet models so every provider is represented even in quiet windows
+  for (const fleetModel of CORE_FLEET_MODELS) {
+    ensureModel(fleetModel.modelId, fleetModel.provider);
+  }
+
+  // Record active/total chats per modelId
+  for (const chatRow of chatsByModelRows) {
+    if (!chatRow.modelId) continue;
+    const entry = ensureModel(chatRow.modelId, null);
+    entry.activeChatsCount += chatRow.count;
+  }
+
+  const providerCacheMap = new Map<
+    string,
+    {
+      provider: string;
+      label: string;
+      strategy: string;
+      events: number;
+      inputTokens: number;
+      cachedInputTokens: number;
+      outputTokens: number;
+      spendUsd: number;
+      estimatedSavingsUsd: number;
+    }
+  >();
+
+  const ensureProviderCache = (
+    modelId: string | null,
+    provider: string | null,
+  ) => {
+    const meta = resolveProviderCacheMeta(modelId, provider);
+    let pEntry = providerCacheMap.get(meta.providerKey);
+    if (!pEntry) {
+      pEntry = {
+        provider: meta.providerKey,
+        label: meta.providerLabel,
+        strategy: meta.cacheStrategy,
+        events: 0,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        spendUsd: 0,
+        estimatedSavingsUsd: 0,
+      };
+      providerCacheMap.set(meta.providerKey, pEntry);
+    }
+    return { pEntry, meta };
+  };
+
+  // Seed all core providers so multi-provider cache tracking is always visible
+  for (const fleetModel of CORE_FLEET_MODELS) {
+    ensureProviderCache(fleetModel.modelId, fleetModel.provider);
+  }
+
   let deepSeekEvents = 0;
   let deepSeekInputTokens = 0;
   let deepSeekCachedInputTokens = 0;
@@ -936,6 +1198,13 @@ export async function getAdminTelemetry(
     m.cachedInputTokens += row.cachedInputTokens;
     m.outputTokens += row.outputTokens;
     m.spendUsd += row.costUsd ?? 0;
+
+    const { pEntry, meta } = ensureProviderCache(row.modelId, row.provider);
+    pEntry.events += 1;
+    pEntry.inputTokens += row.inputTokens;
+    pEntry.cachedInputTokens += row.cachedInputTokens;
+    pEntry.outputTokens += row.outputTokens;
+    pEntry.spendUsd += row.costUsd ?? 0;
 
     if (isDeepSeekModel(row.modelId, row.provider)) {
       deepSeekEvents += 1;
@@ -953,14 +1222,13 @@ export async function getAdminTelemetry(
       row.costUsd > 0
     ) {
       const cachedRatio = Math.min(1, row.cachedInputTokens / row.inputTokens);
-      // Conservative average cached-read discount (75-90% cheaper input tokens):
-      // assume ~50% of billed event spend came from input tokens when output exists.
       const estInputShare =
         row.costUsd *
         (row.inputTokens / (row.inputTokens + row.outputTokens * 3));
-      const multiplier = isDeepSeekModel(row.modelId, row.provider) ? 9 : 4;
-      estimatedCacheSavingsUsd +=
-        estInputShare * cachedRatio * (multiplier - 1) * 0.25;
+      const rowSavings =
+        estInputShare * cachedRatio * (meta.discountMultiplier - 1) * 0.25;
+      estimatedCacheSavingsUsd += rowSavings;
+      pEntry.estimatedSavingsUsd += rowSavings;
     }
 
     const idx = Math.min(
@@ -1018,6 +1286,7 @@ export async function getAdminTelemetry(
 
   const perModel: TelemetryModelRow[] = [...modelStatsMap.values()]
     .map((m) => {
+      const meta = resolveProviderCacheMeta(m.modelId, m.provider);
       const finishedDenominator = m.runs;
       const errorRatePct =
         finishedDenominator > 0
@@ -1038,8 +1307,10 @@ export async function getAdminTelemetry(
 
       return {
         modelId: m.modelId,
-        provider: m.provider,
+        provider: m.provider ?? meta.providerKey,
         isDeepSeek: isDeepSeekModel(m.modelId, m.provider),
+        cacheStrategy: meta.cacheStrategy,
+        activeChatsCount: m.activeChatsCount,
         runs: m.runs,
         completedRuns: m.completedRuns,
         failedRuns: m.failedRuns,
@@ -1058,7 +1329,34 @@ export async function getAdminTelemetry(
     .toSorted((a, b) => {
       if (b.spendUsd !== a.spendUsd) return b.spendUsd - a.spendUsd;
       if (b.runs !== a.runs) return b.runs - a.runs;
+      if (b.usageEvents !== a.usageEvents) return b.usageEvents - a.usageEvents;
+      if (b.activeChatsCount !== a.activeChatsCount) {
+        return b.activeChatsCount - a.activeChatsCount;
+      }
       return b.inputTokens - a.inputTokens;
+    });
+
+  const cacheByProvider: TelemetryProviderCacheRow[] = [
+    ...providerCacheMap.values(),
+  ]
+    .map((p) => ({
+      provider: p.provider,
+      label: p.label,
+      strategy: p.strategy,
+      events: p.events,
+      inputTokens: p.inputTokens,
+      cachedInputTokens: p.cachedInputTokens,
+      outputTokens: p.outputTokens,
+      hitPct:
+        p.inputTokens > 0
+          ? Math.min(100, (p.cachedInputTokens / p.inputTokens) * 100)
+          : 0,
+      spendUsd: p.spendUsd,
+      estimatedSavingsUsd: p.estimatedSavingsUsd,
+    }))
+    .toSorted((a, b) => {
+      if (b.inputTokens !== a.inputTokens) return b.inputTokens - a.inputTokens;
+      return b.events - a.events;
     });
 
   const usageAgg = usageAggRows[0];
@@ -1572,6 +1870,7 @@ export async function getAdminTelemetry(
     cache: {
       overallHitPct,
       estimatedSavingsUsd: estimatedCacheSavingsUsd,
+      byProvider: cacheByProvider,
       deepSeek: {
         events: deepSeekEvents,
         inputTokens: deepSeekInputTokens,

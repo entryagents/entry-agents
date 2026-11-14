@@ -16,12 +16,62 @@ export interface UseSessionSkillsReturn {
   refresh: () => Promise<SkillsResponse | undefined>;
 }
 
+const TEAM_SPECIALIST_COMMANDS: SkillSuggestion[] = [
+  {
+    name: "architect",
+    description:
+      "Dispatch the Architect subagent to decompose system design, contracts, and file boundaries",
+    source: "team",
+  },
+  {
+    name: "explorer",
+    description:
+      "Dispatch the Explorer subagent for fast read-only codebase search and dependency tracing",
+    source: "team",
+  },
+  {
+    name: "executor",
+    description:
+      "Dispatch the Executor subagent to implement scoped code changes and run verification",
+    source: "team",
+  },
+  {
+    name: "reviewer",
+    description:
+      "Dispatch the Reviewer subagent for pre-merge correctness, security, and regression audit",
+    source: "team",
+  },
+  {
+    name: "design",
+    description:
+      "Dispatch the UI Craft subagent for layout, typography, responsive polish, and visual QA",
+    source: "team",
+  },
+  {
+    name: "team-plan",
+    description:
+      "Coordinate the multi-agent specialist team via the shared team board for complex features",
+    source: "team",
+  },
+];
+
+const FEATURED_SKILL_ORDER = [
+  "unslop",
+  "frontend-design",
+  "code-review",
+  "plan-mode",
+  "baseline-ui",
+  "web-animation-design",
+  "composio",
+  "workflow",
+];
+
 export function useSessionSkills(
   sessionId: string,
   sandboxConnected: boolean,
 ): UseSessionSkillsReturn {
-  const endpoint = sandboxConnected
-    ? `/api/sessions/${sessionId}/skills`
+  const endpoint = sessionId
+    ? `/api/sessions/${sessionId}/skills?connected=${sandboxConnected ? "1" : "0"}`
     : null;
   const { data, error, isLoading, mutate } = useSWR<SkillsResponse>(
     endpoint,
@@ -38,14 +88,37 @@ export function useSessionSkills(
   });
 
   const mergedSkills = useMemo<SkillSuggestion[] | null>(() => {
-    const skillList = data?.skills ?? [];
+    const skillList = [...(data?.skills ?? [])].sort((a, b) => {
+      const aFeatured = FEATURED_SKILL_ORDER.indexOf(a.name.toLowerCase());
+      const bFeatured = FEATURED_SKILL_ORDER.indexOf(b.name.toLowerCase());
+      if (aFeatured !== -1 || bFeatured !== -1) {
+        if (aFeatured === -1) return 1;
+        if (bFeatured === -1) return -1;
+        return aFeatured - bFeatured;
+      }
+      return a.name.localeCompare(b.name);
+    });
     const pluginCmds = pluginCmdData?.commands ?? [];
-    if (skillList.length === 0 && pluginCmds.length === 0) {
-      return data ? [] : null;
-    }
 
     const seen = new Set<string>();
     const combined: SkillSuggestion[] = [];
+
+    for (const skill of skillList) {
+      const key = skill.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push({
+        ...skill,
+        source: "skill",
+      });
+    }
+
+    for (const teamCmd of TEAM_SPECIALIST_COMMANDS) {
+      const key = teamCmd.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push(teamCmd);
+    }
 
     for (const cmd of pluginCmds) {
       const key = cmd.name.toLowerCase();
@@ -56,16 +129,6 @@ export function useSessionSkills(
         description: cmd.description,
         source: "plugin",
         pluginName: cmd.pluginName,
-      });
-    }
-
-    for (const skill of skillList) {
-      const key = skill.name.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      combined.push({
-        ...skill,
-        source: "skill",
       });
     }
 
