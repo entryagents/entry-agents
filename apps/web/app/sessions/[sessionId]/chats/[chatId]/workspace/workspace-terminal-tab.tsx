@@ -5,15 +5,12 @@ import {
   Copy,
   ExternalLink,
   Loader2,
-  Play,
-  RotateCcw,
   Terminal as TerminalIcon,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,

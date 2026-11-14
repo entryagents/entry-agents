@@ -11,6 +11,16 @@ This file provides guidance for AI coding agents working in this repository.
 - [Code Style & Patterns](docs/agents/code-style.md)
 - [Lessons Learned](docs/agents/lessons-learned.md)
 
+## Mandatory UI Quality Rule (`unslop`)
+
+**Every time you design, build, restyle, or review UI in this repository** (pages, components, modals, sidebars, dashboards, landing sections, charts, or mobile/desktop layouts), you **MUST** first read and follow [`.agents/skills/unslop/SKILL.md`](.agents/skills/unslop/SKILL.md) (and its reference guides under [`.agents/skills/unslop/references/`](.agents/skills/unslop/references/) as needed).
+
+No exceptions:
+
+- Check every screen and change on both **desktop and mobile** viewports (`375px` and `1440px`), stacking cleanly in reading order with zero horizontal overflow.
+- Follow the `unslop` passes in order: **Spacing (4px grid), Color (one tinted neutral ramp + single accent, quiet hairline borders, no glow/gradient/blob slop), Icons (Lucide line icons at consistent stroke, zero UI emojis), Copy (plain, sentence case, no exclamation marks or trailing periods on labels/headings, no hype copy), Type (weights 400–600, `tabular-nums`, no uppercase tracked micro-labels), Layout (real product proportions), Details (nested radii), Visuals (real product / authentic visual), Motion (explicit transitions, one curve, no unmotivated pulsing).**
+- Do not add features, widgets, or copy that invent unverified claims or surface internal plumbing trivia (cache implementation details, internal skill counts, encryption jargon) to end users.
+
 ## Authentication
 
 Authentication uses [Better Auth](https://www.better-auth.com/) with Vercel OAuth (sign-in) and GitHub OAuth (repo access). Config lives in `apps/web/lib/auth/config.ts`. Sessions are managed by better-auth's built-in session system — there is no manual JWE/encryption layer.

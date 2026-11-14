@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 import { UserMessageFold } from "@/components/user-message-fold";
 import { GitDataPartCard } from "./git-data-part-card";
+import { InlineTeamTimeline } from "./inline-team-timeline";
 import {
   SmoothedAssistantMarkdown,
   SmoothedThinkingBlock,
@@ -103,6 +104,20 @@ function getReasoningGroupText(parts: ReasoningMessagePart[]): string {
     .join("\n\n");
 }
 
+function isTeamCoordinationToolName(toolName: string | undefined): boolean {
+  return toolName === "task" || toolName === "team_board";
+}
+
+function getToolPartName(part: WebAgentUIMessagePart): string | undefined {
+  if (!isToolUIPart(part)) return undefined;
+  const named = (part as { toolName?: unknown; name?: unknown }).toolName;
+  if (typeof named === "string") return named;
+  if (part.type.startsWith("tool-")) {
+    return part.type.slice(5);
+  }
+  return undefined;
+}
+
 export interface ChatMessageFeedProps {
   messages: WebAgentUIMessage[];
   isStreaming?: boolean;
@@ -110,6 +125,11 @@ export interface ChatMessageFeedProps {
   activeApprovalId?: string | null;
   onApproveTool?: (id: string) => void;
   onDenyTool?: (id: string, reason?: string) => void;
+  onOpenSubagentTab?: (
+    subagentId: string,
+    title?: string,
+    subagentType?: string,
+  ) => void;
   onCopyAssistantMessage?: (messageId: string, text: string) => void;
   copiedAssistantMessageId?: string | null;
   onForkAssistantMessage?: (messageId: string) => void;
@@ -143,6 +163,11 @@ interface ChatMessageRowProps {
   activeApprovalId: string | null;
   onApproveTool?: (id: string) => void;
   onDenyTool?: (id: string, reason?: string) => void;
+  onOpenSubagentTab?: (
+    subagentId: string,
+    title?: string,
+    subagentType?: string,
+  ) => void;
   onCopyAssistantMessage?: (messageId: string, text: string) => void;
   isCopiedAssistant: boolean;
   onForkAssistantMessage?: (messageId: string) => void;
@@ -173,6 +198,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   activeApprovalId,
   onApproveTool,
   onDenyTool,
+  onOpenSubagentTab,
   onCopyAssistantMessage,
   isCopiedAssistant,
   onForkAssistantMessage,
@@ -192,8 +218,34 @@ const ChatMessageRow = memo(function ChatMessageRow({
   isActionsActive,
   onToggleActions,
 }: ChatMessageRowProps) {
+  const { isTeamTurn, firstTeamGroupIndex } = useMemo(() => {
+    let taskCount = 0;
+    let hasTeamBoard = false;
+    let firstIndex = -1;
+
+    groups.forEach((group, groupIndex) => {
+      if (group.type !== "part") return;
+      const name = getToolPartName(group.part);
+      if (!name) return;
+      if (name === "task") {
+        taskCount += 1;
+      } else if (name === "team_board") {
+        hasTeamBoard = true;
+      }
+      if (firstIndex === -1 && isTeamCoordinationToolName(name)) {
+        firstIndex = groupIndex;
+      }
+    });
+
+    return {
+      isTeamTurn:
+        !readOnly && m.role === "assistant" && (taskCount >= 2 || hasTeamBoard),
+      firstTeamGroupIndex: firstIndex,
+    };
+  }, [groups, m.role, readOnly]);
+
   const renderGroups = (isToolCallsExpanded: boolean) =>
-    groups.map((group) => {
+    groups.map((group, groupIndex) => {
       if (group.type === "reasoning-group") {
         if (!isToolCallsExpanded) return null;
         const hasRenderableContentAfterGroup = m.parts
@@ -402,7 +454,28 @@ const ChatMessageRow = memo(function ChatMessageRow({
       }
 
       if (isToolUIPart(p)) {
-        const toolName = (p as { toolName?: string }).toolName;
+        const toolName = getToolPartName(p);
+        if (isTeamTurn && isTeamCoordinationToolName(toolName)) {
+          if (groupIndex === firstTeamGroupIndex) {
+            return (
+              <div
+                key={`${m.id}-team-timeline`}
+                className="min-w-0 w-full py-1"
+              >
+                <InlineTeamTimeline
+                  message={m}
+                  isStreaming={isMessageStreaming}
+                  activeApprovalId={activeApprovalId}
+                  onOpenSubagentTab={onOpenSubagentTab}
+                  onApproveTool={onApproveTool}
+                  onDenyTool={onDenyTool}
+                />
+              </div>
+            );
+          }
+          return null;
+        }
+
         const isAlwaysVisibleTool =
           p.type === "tool-task" ||
           toolName === "task" ||
@@ -617,6 +690,7 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
   activeApprovalId = null,
   onApproveTool,
   onDenyTool,
+  onOpenSubagentTab,
   onCopyAssistantMessage,
   copiedAssistantMessageId = null,
   onForkAssistantMessage,
@@ -731,6 +805,7 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
             activeApprovalId={activeApprovalId}
             onApproveTool={onApproveTool}
             onDenyTool={onDenyTool}
+            onOpenSubagentTab={onOpenSubagentTab}
             onCopyAssistantMessage={onCopyAssistantMessage}
             isCopiedAssistant={copiedAssistantMessageId === m.id}
             onForkAssistantMessage={onForkAssistantMessage}

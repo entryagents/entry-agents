@@ -9,10 +9,11 @@ export function LandingFooter() {
         <div className="border-t border-(--l-border) py-12 sm:py-16">
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             <div className="sm:col-span-2">
-              <Logo className="h-[17px]" />
+              <Logo className="h-5" />
               <p className="mt-3 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">
-                Autonomous software engineering with specialist agent teams,
-                isolated cloud sandboxes, and durable workflow execution.
+                Cloud software engineering workspaces with live in-chat
+                multi-agent coordination, real Linux containers, and durable
+                execution.
               </p>
             </div>
 
@@ -21,31 +22,31 @@ export function LandingFooter() {
               <div className="mt-3 flex flex-col gap-2">
                 <Link
                   href="/ai-coding-agent"
-                  className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
                 >
                   AI coding agent
                 </Link>
                 <Link
                   href="/guide"
-                  className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
                 >
                   Beginner guide
                 </Link>
                 <Link
                   href="/pricing"
-                  className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
                 >
                   Pricing
                 </Link>
                 <Link
                   href="/model"
-                  className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
                 >
                   Models
                 </Link>
                 <Link
                   href="/login"
-                  className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
                 >
                   Sign in
                 </Link>
@@ -53,31 +54,29 @@ export function LandingFooter() {
             </div>
 
             <div>
-              <div className="text-xs font-medium text-(--l-fg)">
-                Architecture
-              </div>
+              <div className="text-xs font-medium text-(--l-fg)">Resources</div>
               <div className="mt-3 flex flex-col gap-2">
+                <Link
+                  href="/settings/connections"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
+                >
+                  App connections
+                </Link>
                 <a
                   href="https://ai-sdk.dev/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
                 >
                   AI SDK
                 </a>
-                <span className="text-sm text-(--l-fg-2)">
-                  Cloud Workspaces
-                </span>
-                <span className="text-sm text-(--l-fg-2)">
-                  Entry Gateway &amp; Vault
-                </span>
                 <a
                   href="https://useworkflow.dev/"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
                 >
-                  Workflow SDK
+                  Workflow DevKit
                 </a>
               </div>
             </div>

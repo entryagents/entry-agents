@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 
 const STEPS = [
-  { label: "claimActiveStream", ms: 400 },
-  { label: "runAgentStep", ms: 1300 },
-  { label: "runPostTurnPluginsStep", ms: 450 },
-  { label: "persistFinalAssistantMessage", ms: 450 },
-  { label: "recordWorkflowUsage", ms: 400 },
-  { label: "refreshDiffCache", ms: 500 },
+  { label: "Lock cloud run", ms: 400 },
+  { label: "Execute edits & tests", ms: 1300 },
+  { label: "Checkpoint partial stream", ms: 450 },
+  { label: "Persist final message", ms: 450 },
+  { label: "Refresh branch diff", ms: 400 },
+  { label: "Sync connected device", ms: 500 },
 ] as const;
 
 export function FeatureWorkflow() {
@@ -40,11 +40,11 @@ export function FeatureWorkflow() {
   const done = active >= STEPS.length;
 
   return (
-    <div className="flex h-[290px] flex-col justify-between bg-(--l-code-bg) px-5 py-4 font-mono text-xs">
+    <div className="flex min-h-[288px] flex-col justify-between bg-(--l-code-bg) px-5 py-4 font-mono text-xs">
       <div>
         <div className="flex items-center justify-between text-[11px]">
-          <span className="text-(--l-panel-fg-3)">workflow · chat.ts</span>
-          <span className="text-(--l-panel-fg-3)">durable</span>
+          <span className="text-(--l-panel-fg-3)">execution checkpoint</span>
+          <span className="text-(--l-panel-fg-3)">resumable</span>
         </div>
 
         <div className="mt-4 space-y-2">
@@ -55,8 +55,8 @@ export function FeatureWorkflow() {
             return (
               <div
                 key={step.label}
-                className="flex items-center justify-between gap-2.5 leading-relaxed transition-opacity duration-200"
-                style={{ opacity: isActive ? 1 : isDone ? 0.65 : 0.22 }}
+                className="flex items-center justify-between gap-3 leading-relaxed transition-opacity duration-200"
+                style={{ opacity: isActive ? 1 : isDone ? 0.65 : 0.24 }}
               >
                 <div className="flex min-w-0 items-center gap-2.5">
                   <span
@@ -87,8 +87,8 @@ export function FeatureWorkflow() {
 
       <div className="border-t border-(--l-panel-border) pt-3 text-[11px] tabular-nums text-(--l-panel-fg-2)">
         {done
-          ? `complete · ${STEPS.length}/${STEPS.length} steps persisted`
-          : `step ${Math.min(active + 1, STEPS.length)}/${STEPS.length} · stream resumable`}
+          ? `Complete · ${STEPS.length}/${STEPS.length} checkpoints persisted`
+          : `Step ${Math.min(active + 1, STEPS.length)}/${STEPS.length} · resumable on reconnect`}
       </div>
     </div>
   );

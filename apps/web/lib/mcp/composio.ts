@@ -2,11 +2,20 @@ import type { McpServerConfig } from "@entry-agents/agent";
 
 const COMPOSIO_MCP_SERVER_NAME = "composio";
 
+export type ComposioToolkitCategory =
+  | "Communication"
+  | "Productivity"
+  | "Engineering"
+  | "Design"
+  | "CRM"
+  | "Integration";
+
 export interface ComposioToolkitCatalogItem {
   slug: string;
   name: string;
   description: string;
-  category: "Communication" | "Productivity" | "Engineering" | "Design" | "CRM";
+  category: ComposioToolkitCategory;
+  logo: string | null;
   isConnected: boolean;
   status: "ACTIVE" | "INITIATED" | "EXPIRED" | "NOT_CONNECTED";
   connectedAccountId: string | null;
@@ -15,7 +24,7 @@ export interface ComposioToolkitCatalogItem {
 export const COMPOSIO_POPULAR_TOOLKITS: Array<
   Omit<
     ComposioToolkitCatalogItem,
-    "isConnected" | "status" | "connectedAccountId"
+    "logo" | "isConnected" | "status" | "connectedAccountId"
   >
 > = [
   {
@@ -103,33 +112,20 @@ export const COMPOSIO_POPULAR_TOOLKITS: Array<
   },
 ];
 
-async function resolveComposioApiKey(userId: string): Promise<{
-  apiKey: string | null;
-  source: "env" | "user_secret" | null;
-}> {
+const PRESET_BY_SLUG = new Map(
+  COMPOSIO_POPULAR_TOOLKITS.map((item) => [item.slug.toLowerCase(), item]),
+);
+
+function resolveComposioApiKey(): string | null {
   const envKey = process.env.COMPOSIO_API_KEY?.trim();
-  if (envKey) {
-    return { apiKey: envKey, source: "env" };
-  }
+  return envKey && envKey.length > 0 ? envKey : null;
+}
 
-  try {
-    const { getDecryptedUserSecretsForExecution } =
-      await import("@/lib/db/secrets");
-    const { secrets } = await getDecryptedUserSecretsForExecution(userId);
-    const match = secrets.find(
-      (s) => s.name.toUpperCase() === "COMPOSIO_API_KEY" && s.value.trim(),
-    );
-    if (match) {
-      return { apiKey: match.value.trim(), source: "user_secret" };
-    }
-  } catch (error) {
-    console.warn(
-      "[composio-mcp] Failed to check user secrets for COMPOSIO_API_KEY:",
-      error instanceof Error ? error.message : error,
-    );
+export class ComposioAccountNotFoundError extends Error {
+  constructor(message = "Connected Composio account not found for this user.") {
+    super(message);
+    this.name = "ComposioAccountNotFoundError";
   }
-
-  return { apiKey: null, source: null };
 }
 
 async function resumeOrCreateComposioSession(
@@ -158,7 +154,7 @@ async function resumeOrCreateComposioSession(
 export async function getComposioMcpServerConfig(
   userId: string,
 ): Promise<McpServerConfig | null> {
-  const { apiKey } = await resolveComposioApiKey(userId);
+  const apiKey = resolveComposioApiKey();
   if (!apiKey) {
     return null;
   }
@@ -194,31 +190,149 @@ export async function getComposioMcpServerConfig(
   }
 }
 
+export async function getConnectedComposioToolkitsForUser(
+  userId: string,
+): Promise<string[]> {
+  const apiKey = resolveComposioApiKey();
+  if (!apiKey) {
+    return [];
+  }
+
+  try {
+    const { Composio } = await import("@composio/core");
+    const { getComposioSessionId } = await import("@/lib/db/composio-sessions");
+
+    const composio = new Composio({ apiKey });
+    const existingSessionId = await getComposioSessionId(userId);
+    const session = await resumeOrCreateComposioSession(
+      composio,
+      userId,
+      existingSessionId,
+    );
+
+    if (typeof session.toolkits !== "function") {
+      return [];
+    }
+
+    const connected = await session.toolkits({
+      isConnected: true,
+      limit: 100,
+    });
+
+    const slugs = new Set<string>();
+    for (const item of connected.items ?? []) {
+      if (item.connection?.isActive === false) continue;
+      const slug = item.slug?.trim().toLowerCase();
+      if (slug) {
+        slugs.add(slug);
+      }
+    }
+
+    return Array.from(slugs).toSorted();
+  } catch (error) {
+    console.warn(
+      `[composio-mcp] Failed to inspect connected toolkits for user ${userId}:`,
+      error instanceof Error ? error.message : error,
+    );
+    return [];
+  }
+}
+
 export interface ComposioToolkitsStatusResult {
   configured: boolean;
-  keySource: "env" | "user_secret" | null;
   sessionId: string | null;
   mcpUrl: string | null;
   toolkits: ComposioToolkitCatalogItem[];
   error?: string;
 }
 
+interface RemoteToolkitState {
+  slug: string;
+  name?: string;
+  logo?: string;
+  connection?: {
+    isActive?: boolean;
+    connectedAccount?: {
+      id?: string;
+      status?: string;
+    };
+  };
+}
+
+function toCatalogStatus(connection: RemoteToolkitState["connection"]): {
+  isConnected: boolean;
+  status: ComposioToolkitCatalogItem["status"];
+  connectedAccountId: string | null;
+} {
+  const isActive = Boolean(connection?.isActive);
+  const rawStatus = connection?.connectedAccount?.status?.toUpperCase();
+  const status: ComposioToolkitCatalogItem["status"] = isActive
+    ? "ACTIVE"
+    : rawStatus === "INITIATED"
+      ? "INITIATED"
+      : rawStatus === "EXPIRED"
+        ? "EXPIRED"
+        : "NOT_CONNECTED";
+
+  return {
+    isConnected: isActive,
+    status,
+    connectedAccountId: connection?.connectedAccount?.id ?? null,
+  };
+}
+
+function toCatalogItem(
+  slug: string,
+  remote?: RemoteToolkitState,
+): ComposioToolkitCatalogItem {
+  const normalizedSlug = slug.toLowerCase();
+  const preset = PRESET_BY_SLUG.get(normalizedSlug);
+  const conn = toCatalogStatus(remote?.connection);
+
+  return {
+    slug: preset?.slug ?? normalizedSlug,
+    name: preset?.name ?? remote?.name ?? slug,
+    description:
+      preset?.description ??
+      "Connect this app via Composio Tool Router so agents can discover and run its actions.",
+    category: preset?.category ?? "Integration",
+    logo: remote?.logo ?? null,
+    ...conn,
+  };
+}
+
+function matchesSearchQuery(
+  item: Pick<ComposioToolkitCatalogItem, "slug" | "name" | "description">,
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    item.slug.toLowerCase().includes(q) ||
+    item.name.toLowerCase().includes(q) ||
+    item.description.toLowerCase().includes(q)
+  );
+}
+
 export async function listComposioToolkitsForUser(
   userId: string,
+  options?: { search?: string },
 ): Promise<ComposioToolkitsStatusResult> {
+  const searchQuery = options?.search?.trim() ?? "";
+
   const defaultToolkits: ComposioToolkitCatalogItem[] =
     COMPOSIO_POPULAR_TOOLKITS.map((t) => ({
       ...t,
+      logo: null,
       isConnected: false,
-      status: "NOT_CONNECTED",
+      status: "NOT_CONNECTED" as const,
       connectedAccountId: null,
-    }));
+    })).filter((item) => matchesSearchQuery(item, searchQuery));
 
-  const { apiKey, source } = await resolveComposioApiKey(userId);
+  const apiKey = resolveComposioApiKey();
   if (!apiKey) {
     return {
       configured: false,
-      keySource: null,
       sessionId: null,
       mcpUrl: null,
       toolkits: defaultToolkits,
@@ -237,42 +351,101 @@ export async function listComposioToolkitsForUser(
       existingSessionId,
     );
 
-    const slugs = COMPOSIO_POPULAR_TOOLKITS.map((t) => t.slug);
-    const remote = await session.toolkits({
-      toolkits: slugs,
-      limit: 50,
-    });
+    const popularSlugs = COMPOSIO_POPULAR_TOOLKITS.map((t) => t.slug);
+    const [catalogRemote, connectedRemote] = await Promise.all([
+      searchQuery
+        ? session.toolkits({
+            search: searchQuery,
+            limit: 36,
+          })
+        : session.toolkits({
+            toolkits: popularSlugs,
+            limit: 50,
+          }),
+      session
+        .toolkits({
+          isConnected: true,
+          limit: 100,
+        })
+        .catch(() => ({ items: [] as RemoteToolkitState[] })),
+    ]);
 
-    const remoteBySlug = new Map(
-      (remote.items ?? []).map((item) => [item.slug.toLowerCase(), item]),
-    );
+    const remoteBySlug = new Map<string, RemoteToolkitState>();
+    for (const item of catalogRemote.items ?? []) {
+      remoteBySlug.set(item.slug.toLowerCase(), item);
+    }
+    for (const item of connectedRemote.items ?? []) {
+      const key = item.slug.toLowerCase();
+      const existing = remoteBySlug.get(key);
+      remoteBySlug.set(key, {
+        ...existing,
+        ...item,
+        logo: item.logo ?? existing?.logo,
+        connection: item.connection ?? existing?.connection,
+      });
+    }
 
-    const merged: ComposioToolkitCatalogItem[] = COMPOSIO_POPULAR_TOOLKITS.map(
-      (preset) => {
-        const found = remoteBySlug.get(preset.slug.toLowerCase());
-        const isActive = Boolean(found?.connection?.isActive);
-        const rawStatus =
-          found?.connection?.connectedAccount?.status?.toUpperCase();
-        const status: ComposioToolkitCatalogItem["status"] = isActive
-          ? "ACTIVE"
-          : rawStatus === "INITIATED"
-            ? "INITIATED"
-            : rawStatus === "EXPIRED"
-              ? "EXPIRED"
-              : "NOT_CONNECTED";
+    if (searchQuery) {
+      const slugOrder: string[] = [];
+      const seenSlugs = new Set<string>();
+      const pushSlug = (slug: string) => {
+        const lower = slug.toLowerCase();
+        if (!seenSlugs.has(lower)) {
+          seenSlugs.add(lower);
+          slugOrder.push(lower);
+        }
+      };
 
-        return {
-          ...preset,
-          isConnected: isActive,
-          status,
-          connectedAccountId: found?.connection?.connectedAccount?.id ?? null,
-        };
-      },
-    );
+      for (const preset of COMPOSIO_POPULAR_TOOLKITS) {
+        if (matchesSearchQuery(preset, searchQuery)) {
+          pushSlug(preset.slug);
+        }
+      }
+      for (const item of catalogRemote.items ?? []) {
+        pushSlug(item.slug);
+      }
+      for (const item of connectedRemote.items ?? []) {
+        const candidate = toCatalogItem(item.slug, item);
+        if (matchesSearchQuery(candidate, searchQuery)) {
+          pushSlug(item.slug);
+        }
+      }
+
+      const items = slugOrder
+        .map((slug) => toCatalogItem(slug, remoteBySlug.get(slug)))
+        .toSorted((a, b) => {
+          if (a.isConnected !== b.isConnected) {
+            return a.isConnected ? -1 : 1;
+          }
+          return a.name.localeCompare(b.name);
+        });
+
+      return {
+        configured: true,
+        sessionId: session.sessionId,
+        mcpUrl: session.mcp?.url ?? null,
+        toolkits: items,
+      };
+    }
+
+    const merged: ComposioToolkitCatalogItem[] = [];
+    const includedSlugs = new Set<string>();
+
+    for (const preset of COMPOSIO_POPULAR_TOOLKITS) {
+      const key = preset.slug.toLowerCase();
+      includedSlugs.add(key);
+      merged.push(toCatalogItem(key, remoteBySlug.get(key)));
+    }
+
+    for (const item of connectedRemote.items ?? []) {
+      const key = item.slug.toLowerCase();
+      if (includedSlugs.has(key)) continue;
+      includedSlugs.add(key);
+      merged.push(toCatalogItem(key, remoteBySlug.get(key)));
+    }
 
     return {
       configured: true,
-      keySource: source,
       sessionId: session.sessionId,
       mcpUrl: session.mcp?.url ?? null,
       toolkits: merged,
@@ -285,7 +458,6 @@ export async function listComposioToolkitsForUser(
     );
     return {
       configured: true,
-      keySource: source,
       sessionId: null,
       mcpUrl: null,
       toolkits: defaultToolkits,
@@ -303,10 +475,10 @@ export async function authorizeComposioToolkitForUser(params: {
   redirectUrl: string;
   connectionId: string | null;
 }> {
-  const { apiKey } = await resolveComposioApiKey(params.userId);
+  const apiKey = resolveComposioApiKey();
   if (!apiKey) {
     throw new Error(
-      "Composio API key is not configured. Add COMPOSIO_API_KEY in Connections or API Keys & Secrets.",
+      "Composio integration is not configured on this server (COMPOSIO_API_KEY is unset).",
     );
   }
 
@@ -339,4 +511,46 @@ export async function authorizeComposioToolkitForUser(params: {
     redirectUrl: connectionRequest.redirectUrl,
     connectionId: connectionRequest.id ?? null,
   };
+}
+
+export async function disconnectComposioAccountForUser(params: {
+  userId: string;
+  connectedAccountId: string;
+}): Promise<{ ok: true }> {
+  const apiKey = resolveComposioApiKey();
+  if (!apiKey) {
+    throw new Error(
+      "Composio integration is not configured on this server (COMPOSIO_API_KEY is unset).",
+    );
+  }
+
+  const { Composio } = await import("@composio/core");
+  const composio = new Composio({ apiKey });
+
+  let cursor: string | undefined;
+  let ownedByUser = false;
+  for (let page = 0; page < 10; page += 1) {
+    const accounts = await composio.connectedAccounts.list({
+      userIds: [params.userId],
+      limit: 100,
+      ...(cursor ? { cursor } : {}),
+    });
+
+    if (accounts.items.some((item) => item.id === params.connectedAccountId)) {
+      ownedByUser = true;
+      break;
+    }
+
+    if (!accounts.nextCursor) {
+      break;
+    }
+    cursor = accounts.nextCursor;
+  }
+
+  if (!ownedByUser) {
+    throw new ComposioAccountNotFoundError();
+  }
+
+  await composio.connectedAccounts.delete(params.connectedAccountId);
+  return { ok: true };
 }

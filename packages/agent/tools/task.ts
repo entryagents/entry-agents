@@ -219,9 +219,14 @@ IMPORTANT:
     let budgetStopped = false;
     let budgetStopReason: "window" | "credit" | undefined;
 
+    const verificationDirective =
+      subagentType === "executor" || subagentType === "design"
+        ? "\n\nVerification & Team Discipline:\n- If working on a shared team task, check `team_board` (`read`) and update your task (`update_task`) with the exact `files` you claim and concrete `verification` command evidence.\n- Before finishing, run relevant typecheck/lint/test/build checks for your changes and report the exact verification command + result (or explain why unavailable) in **Summary**."
+        : "";
+
     const userPrompt = isFollowUp
-      ? `Follow-up Task: ${task}\n\nInstructions:\n${instructions}\n\nPlease proceed with this follow-up using your previous findings and context. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`
-      : `Task: ${task}\n\nInstructions:\n${instructions}\n\nPlease complete this task thoroughly. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`;
+      ? `Follow-up Task: ${task}\n\nInstructions:\n${instructions}${verificationDirective}\n\nPlease proceed with this follow-up using your previous findings and context. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`
+      : `Task: ${task}\n\nInstructions:\n${instructions}${verificationDirective}\n\nPlease complete this task thoroughly. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`;
 
     const parentContext = experimental_context as AgentContext | undefined;
     const teamId = parentContext?.teamId ?? "default-team";
@@ -310,6 +315,7 @@ IMPORTANT:
       startedAt,
       modelId: subagentModelId,
       sessionId: activeSessionId,
+      teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
       status: "starting",
       depth: currentDepth + 1,
     };
@@ -330,6 +336,7 @@ IMPORTANT:
         startedAt,
         modelId: subagentModelId,
         sessionId: activeSessionId,
+        teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
         status: "failed",
         depth: currentDepth + 1,
       };
@@ -357,6 +364,7 @@ IMPORTANT:
                 toolCallCount,
                 streamedText: streamedTextChunks.join(""),
                 executedTools: [...executedTools],
+                teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
                 status: "running",
                 usage,
                 startedAt,
@@ -402,6 +410,7 @@ IMPORTANT:
             toolCallCount,
             streamedText: streamedTextChunks.join(""),
             executedTools: [...executedTools],
+            teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
             status: "running",
             usage,
             startedAt,
@@ -434,6 +443,7 @@ IMPORTANT:
             toolCallCount,
             streamedText: streamedTextChunks.join(""),
             executedTools: [...executedTools],
+            teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
             status: "running",
             usage,
             startedAt,
@@ -469,6 +479,7 @@ IMPORTANT:
             toolCallCount,
             streamedText: streamedTextChunks.join(""),
             executedTools: [...executedTools],
+            teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
             status: "running",
             usage,
             startedAt,

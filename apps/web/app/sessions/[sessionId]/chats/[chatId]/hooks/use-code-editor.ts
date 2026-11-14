@@ -38,27 +38,10 @@ function getErrorMessage(body: unknown, fallback: string): string {
   return body.error;
 }
 
-function parseLaunchResponse(body: unknown): CodeEditorLaunchResponse | null {
-  if (!isRecord(body)) {
-    return null;
-  }
-
-  const { url, port } = body;
-  if (
-    typeof url !== "string" ||
-    typeof port !== "number" ||
-    !Number.isFinite(port)
-  ) {
-    return null;
-  }
-
-  return { url, port };
-}
-
 export function useCodeEditor({
   sessionId,
   canRun,
-  ensureSandboxReady,
+  ensureSandboxReady: _ensureSandboxReady,
 }: {
   sessionId: string;
   canRun: boolean;
@@ -120,63 +103,6 @@ export function useCodeEditor({
   const openEditorPage = useCallback(() => {
     router.push(`/codespace/${sessionId}`);
   }, [router, sessionId]);
-
-  /**
-   * Ensure code-server is running and return the launch response.
-   * Returns the existing info if already ready, otherwise launches.
-   */
-  const ensureRunning =
-    useCallback(async (): Promise<CodeEditorLaunchResponse | null> => {
-      if (state.status === "ready") {
-        return state.info;
-      }
-
-      if (state.status === "starting" || state.status === "stopping") {
-        return null;
-      }
-
-      setState({ status: "starting" });
-
-      try {
-        const sandboxReady = await ensureSandboxReady?.();
-        if (sandboxReady === false) {
-          throw new Error("Failed to start sandbox");
-        }
-
-        const response = await fetch(`/api/sessions/${sessionId}/code-editor`, {
-          method: "POST",
-        });
-        const body: unknown = await response.json().catch(() => null);
-
-        if (!response.ok) {
-          throw new Error(
-            getErrorMessage(body, "Failed to launch code editor"),
-          );
-        }
-
-        const launchResponse = parseLaunchResponse(body);
-        if (!launchResponse) {
-          throw new Error("Invalid code editor response");
-        }
-
-        setState({
-          status: "ready",
-          info: launchResponse,
-        });
-
-        return launchResponse;
-      } catch (error) {
-        console.error("Failed to launch code editor:", error);
-        setState({
-          status: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Failed to launch code editor",
-        });
-        return null;
-      }
-    }, [ensureSandboxReady, sessionId, state]);
 
   const handleOpen = useCallback(async () => {
     // Navigate directly to /codespace/[sessionId] which wakes/provisions the

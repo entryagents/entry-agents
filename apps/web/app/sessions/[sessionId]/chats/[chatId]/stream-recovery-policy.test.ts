@@ -297,7 +297,7 @@ describe("getDeadTurnRetryAction (hard strategy)", () => {
           parts: [
             {
               type: "text",
-              text: "The request took too long and timed out. Please try again. This looks like a repeating issue rather than a one-off, so retrying probably won't help -- try switching models, or let us know if it keeps happening.",
+              text: "The request took too long and timed out. Please try again. This error happened multiple times on this chat; inspect the tool output above or switch models before retrying.",
             },
           ],
         },

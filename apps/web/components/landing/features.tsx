@@ -22,15 +22,20 @@ function Spotlight({
   readonly window: ReactNode;
 }) {
   return (
-    <div className="grid items-center gap-8 border-t border-(--l-border) py-14 sm:py-20 lg:grid-cols-12 lg:gap-12">
-      <div className={cn("lg:col-span-5", flip ? "lg:order-2" : "lg:order-1")}>
+    <div className="grid items-center gap-8 border-t border-(--l-border) py-12 sm:py-20 lg:grid-cols-12 lg:gap-12">
+      <div
+        className={cn(
+          "min-w-0 lg:col-span-5",
+          flip ? "lg:order-2" : "lg:order-1",
+        )}
+      >
         <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
           {title}
         </h2>
         <p className="mt-4 max-w-[58ch] text-pretty text-base leading-relaxed text-(--l-fg-2)">
           {description}
         </p>
-        <ul className="mt-5 space-y-2.5 sm:mt-6">
+        <ul className="mt-6 space-y-3">
           {bullets.map((b) => (
             <li
               key={b}
@@ -43,7 +48,12 @@ function Spotlight({
         </ul>
       </div>
 
-      <div className={cn("lg:col-span-7", flip ? "lg:order-1" : "lg:order-2")}>
+      <div
+        className={cn(
+          "min-w-0 lg:col-span-7",
+          flip ? "lg:order-1" : "lg:order-2",
+        )}
+      >
         <Stage>
           <Window>{windowContent}</Window>
         </Stage>
@@ -57,35 +67,35 @@ export function LandingFeatures() {
     <section>
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-10">
         <Spotlight
-          title="Fast by default. Specialist team when you invoke it."
-          description="Everyday edits and bug fixes run directly in a tight single-agent loop with zero orchestration overhead. When you tackle a cross-cutting feature or UI overhaul, invoke /skills or dispatch focused subagents on demand."
+          title="Fast alone. Coordinated inline when a feature spans the codebase"
+          description="Routine changes execute straight through in a fast single-agent loop with zero overhead. When work requires parallel discovery, implementation, and review, Entry runs specialists visibly inside the same chat turn."
           bullets={[
-            "Direct single-agent execution for fast everyday coding",
-            "Invoke /unslop, /frontend-design, /code-review, or /plan-mode in one keystroke",
-            "Dispatch /architect, /explorer, /executor, /reviewer, or /design when needed",
+            "Direct single-agent path for everyday fixes and refactors",
+            "Live in-chat Team timeline with non-overlapping file ownership",
+            "Inspect any individual specialist transcript without losing your place",
           ]}
           window={<FeatureAgent />}
         />
 
         <Spotlight
-          title="Cloud sandboxes with your entire stack connected"
-          description="Every session provisions an isolated Linux workspace with repository checkout, terminal, live dev preview, and 1-click integrations with GitHub, Vercel, Gmail, Slack, Linear, and Notion."
+          title="Isolated Linux workspaces connected to your entire stack"
+          description="Every session provisions a clean cloud container checked out to your branch with shell, code editor, live app preview, and one-click connections to GitHub, Vercel, Gmail, Slack, Linear, and Notion."
           bullets={[
-            "Instant branch isolation with interactive diff & file review",
-            "Auto-hibernate on inactivity with instant workspace restore",
-            "Connect Gmail, Slack, Notion, Linear, and Calendar from Settings",
+            "Live side-by-side diffs, branch commits, and one-click pull requests",
+            "Automatic idle snapshots so your files and dependencies stay ready",
+            "Read tickets, inspect threads, and post updates through Settings → Connections",
           ]}
           flip
           window={<FeatureSandbox />}
         />
 
         <Spotlight
-          title="Durable workflows that never drop a turn"
-          description="Agent turns execute on checkpointed server workflows. Toggle off cellular data, lose Wi-Fi, or switch from laptop to phone mid-turn — Entry keeps working and syncs your chat automatically."
+          title="Durable cloud runs that finish even when your connection drops"
+          description="Every prompt executes on server-side checkpoints. Toggle off cellular data, close your laptop, or pick up from your phone mid-turn and your session catches up cleanly the moment you reconnect."
           bullets={[
-            "Zero lost output across network drops or page reloads",
-            "Switch models or reasoning effort mid-run for your next prompt",
-            "Automatic diff snapshots and optional PR creation when done",
+            "Zero lost output across network interruptions or browser reloads",
+            "Switch models or reasoning depth between turns inside the same workspace",
+            "Every code edit and command result persists directly to session history",
           ]}
           window={<FeatureWorkflow />}
         />

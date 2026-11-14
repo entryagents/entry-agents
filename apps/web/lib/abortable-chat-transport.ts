@@ -201,8 +201,13 @@ export class AbortableChatTransport<
 
         while (true) {
           try {
+            const headers = new Headers(init?.headers);
+            if (state.activeSendMessagesCount > 0) {
+              headers.set("x-entry-mid-turn", "1");
+            }
             const response = await outerFetch(input, {
               ...init,
+              headers,
               cache: "no-store",
               signal: combinedSignal,
             });

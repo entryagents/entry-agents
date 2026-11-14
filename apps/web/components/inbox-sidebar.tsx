@@ -2,10 +2,7 @@
 
 import {
   Archive,
-  ChevronDown,
   CircleDashed,
-  FolderGit2,
-  MessageSquare,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -20,16 +17,12 @@ import {
   SmilePlus,
   Sun,
   X,
-  CreditCard,
-  User,
 } from "lucide-react";
 import { useTheme } from "@/app/providers";
 import { EntryMark } from "@/components/entry-mark";
 import {
   DesktopBalanceBox,
   DesktopCodexBillingStatus,
-  SidebarBalancePill,
-  SidebarPlanBadge,
   useBillingMe,
   formatExpirationDate,
 } from "@/components/sidebar-billing-widget";
@@ -105,15 +98,6 @@ const sessionRowPerformanceStyle: CSSProperties = {
   contentVisibility: "auto",
   containIntrinsicSize: "2.25rem",
 };
-
-function getAvatarFallback(username: string): string {
-  const normalized = username.trim();
-  if (!normalized) {
-    return "?";
-  }
-
-  return normalized.slice(0, 2).toUpperCase();
-}
 
 function DiffStats({
   added,
@@ -303,23 +287,6 @@ function SessionPopoverContent({ session }: { session: SessionWithUnread }) {
   );
 }
 
-type SessionRepoGroup = {
-  id: string;
-  label: string;
-  sessions: SessionWithUnread[];
-};
-
-function getRepoGroupId(session: SessionWithUnread): string {
-  const repoName = session.repoName?.trim();
-  const repoOwner = session.repoOwner?.trim();
-
-  if (!repoName) {
-    return "repo:unscoped";
-  }
-
-  return `repo:${repoOwner ?? ""}/${repoName}`.toLowerCase();
-}
-
 function getRepoGroupLabel(session: SessionWithUnread): string {
   const repoName = session.repoName?.trim();
   const repoOwner = session.repoOwner?.trim();
@@ -329,40 +296,6 @@ function getRepoGroupLabel(session: SessionWithUnread): string {
   }
 
   return repoOwner ? `${repoOwner}/${repoName}` : repoName;
-}
-
-function groupSessionsByRepo(
-  sessions: SessionWithUnread[],
-): SessionRepoGroup[] {
-  const groups = new Map<string, SessionRepoGroup>();
-
-  for (const session of sessions) {
-    const groupId = getRepoGroupId(session);
-    const existingGroup = groups.get(groupId);
-
-    if (existingGroup) {
-      existingGroup.sessions.push(session);
-      continue;
-    }
-
-    groups.set(groupId, {
-      id: groupId,
-      label: getRepoGroupLabel(session),
-      sessions: [session],
-    });
-  }
-
-  const result = Array.from(groups.values());
-  const unscopedIndex = result.findIndex((g) => g.id === "repo:unscoped");
-  if (unscopedIndex > 0) {
-    const [unscoped] = result.splice(unscopedIndex, 1);
-    result.unshift(unscoped);
-  }
-  return result;
-}
-
-function getRepoGroupContentId(groupId: string): string {
-  return `repo-group-panel-${groupId.replace(/[^a-z0-9-]+/gi, "-")}`;
 }
 
 type SessionRowProps = {
@@ -768,7 +701,7 @@ export function InboxSidebar({
   onArchiveSession,
   onUnarchiveSession,
   onOpenNewSession,
-  onCreateSessionForRepo,
+  onCreateSessionForRepo: _onCreateSessionForRepo,
   onCreateSessionFromBranch,
   initialUser,
 }: InboxSidebarProps) {
@@ -899,47 +832,6 @@ export function InboxSidebar({
       );
     });
   }, [desktopSearchQuery, displayedSessions, isMobile]);
-  const groupedSessions = useMemo(
-    () => groupSessionsByRepo(filteredDisplayedSessions),
-    [filteredDisplayedSessions],
-  );
-  const activeGroupId = useMemo(
-    () =>
-      groupedSessions.find((group) =>
-        group.sessions.some((session) => session.id === activeSessionId),
-      )?.id ?? null,
-    [activeSessionId, groupedSessions],
-  );
-  const [collapsedGroupIds, setCollapsedGroupIds] = useState<
-    Record<string, boolean>
-  >({});
-
-  useEffect(() => {
-    setCollapsedGroupIds((current) => {
-      const next: Record<string, boolean> = {};
-      let changed = false;
-
-      for (const group of groupedSessions) {
-        const nextCollapsed =
-          group.id === activeGroupId ? false : (current[group.id] ?? false);
-
-        next[group.id] = nextCollapsed;
-
-        if (current[group.id] !== nextCollapsed) {
-          changed = true;
-        }
-      }
-
-      if (!changed) {
-        const currentIds = Object.keys(current);
-        if (currentIds.length !== groupedSessions.length) {
-          changed = true;
-        }
-      }
-
-      return changed ? next : current;
-    });
-  }, [activeGroupId, groupedSessions]);
 
   const handleSessionClick = useCallback(
     (session: SessionWithUnread) => {
@@ -957,13 +849,6 @@ export function InboxSidebar({
     },
     [onSessionPrefetch],
   );
-
-  const handleToggleRepoGroup = useCallback((groupId: string) => {
-    setCollapsedGroupIds((current) => ({
-      ...current,
-      [groupId]: !current[groupId],
-    }));
-  }, []);
 
   const handleArchiveSession = useCallback((session: SessionWithUnread) => {
     setArchiveConfirmSession(session);
@@ -1032,14 +917,6 @@ export function InboxSidebar({
   const handleRetryArchivedSessions = useCallback(() => {
     void fetchArchivedSessionsPage({ offset: 0, replace: true });
   }, [fetchArchivedSessionsPage]);
-
-  const handleCreateForRepo = useCallback(
-    (owner: string, repo: string) => {
-      if (isMobile) setOpenMobile(false);
-      onCreateSessionForRepo(owner, repo);
-    },
-    [isMobile, setOpenMobile, onCreateSessionForRepo],
-  );
 
   const handleOpenBranchPicker = useCallback((owner: string, repo: string) => {
     setBranchPickerRepo({ owner, repo });

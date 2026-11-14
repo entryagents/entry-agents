@@ -167,42 +167,42 @@ export function SubagentChatView({
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* 1. Subagent Top Control Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/20 px-4 py-2.5 select-none">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-3 py-2.5 select-none sm:px-4">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="-ml-2 h-8 px-2 text-muted-foreground hover:text-foreground transition-colors"
+            className="-ml-1.5 h-8 shrink-0 px-2 text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Back to main chat"
           >
             <ArrowLeft className="h-4 w-4 mr-1" />
-            <span className="hidden sm:inline text-xs">Chat</span>
+            <span className="text-xs">Chat</span>
           </Button>
 
           <div className="h-4 w-px bg-border shrink-0" />
 
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:gap-2">
             <SubagentIcon
               type={data.subagentType}
               className="h-4 w-4 shrink-0 text-foreground"
             />
-            <span className="text-sm font-semibold truncate max-w-[180px] sm:max-w-md">
+            <span className="min-w-0 max-w-full truncate text-sm font-semibold sm:max-w-md">
               {data.title}
             </span>
             <SubagentRoleBadge subagentType={data.subagentType} />
-            <StatusBadge status={data.status} />
+            <StatusBadge status={data.status} size="sm" />
           </div>
         </div>
 
         {/* Live Metrics Pill & Stop Run Button */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="hidden md:flex items-center gap-2 font-mono text-xs text-muted-foreground">
-            {elapsed && <span className="tabular-nums">{elapsed}</span>}
+        <div className="flex w-full flex-wrap items-center justify-between gap-2 shrink-0 sm:w-auto sm:justify-end sm:gap-3">
+          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] sm:text-xs text-muted-foreground tabular-nums">
+            {elapsed && <span>{elapsed}</span>}
             {data.toolCallCount !== null && (
               <>
-                <span>·</span>
-                <span className="tabular-nums">
+                {elapsed && <span>·</span>}
+                <span>
                   {data.toolCallCount} tool{data.toolCallCount !== 1 ? "s" : ""}
                 </span>
               </>
@@ -210,9 +210,7 @@ export function SubagentChatView({
             {data.inputTokens !== null && (
               <>
                 <span>·</span>
-                <span className="tabular-nums">
-                  {formatTokens(data.inputTokens)} tokens
-                </span>
+                <span>{formatTokens(data.inputTokens)} tokens</span>
               </>
             )}
           </div>
@@ -263,7 +261,7 @@ export function SubagentChatView({
 
       {/* 3. Read-Only Status Footer (No prompt composer for user) */}
       <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-3 select-none">
-        <div className="mx-auto max-w-4xl flex items-center justify-between text-xs text-muted-foreground">
+        <div className="mx-auto max-w-4xl flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
           {isLive ? (
             <div className="flex items-center gap-2">
               <span className="h-1.5 w-1.5 rounded-full bg-foreground/50" />

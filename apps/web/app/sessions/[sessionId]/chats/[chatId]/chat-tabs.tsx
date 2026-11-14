@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { FileText, GitCompare, Pencil, Plus, X } from "lucide-react";
+import { GitCompare, Pencil, Plus, X } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -49,12 +49,10 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     changesTabDismissed,
     setChangesTabDismissed,
     focusedFilePath,
-    setFocusedFilePath,
     agentOpenFiles,
     switchAgentFileTab,
     closeAgentFileTab,
     fileTabDismissed,
-    setFileTabDismissed,
     activeSubagentId,
     activeSubagentTitle,
     activeSubagentType,
@@ -184,16 +182,6 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
       setChangesTabDismissed(true);
     },
     [setActiveView, setFocusedDiffFile, setChangesTabDismissed],
-  );
-
-  const handleCloseFile = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      setActiveView("chat");
-      setFocusedFilePath(null);
-      setFileTabDismissed(true);
-    },
-    [setActiveView, setFocusedFilePath, setFileTabDismissed],
   );
 
   const handleCloseSubagent = useCallback(

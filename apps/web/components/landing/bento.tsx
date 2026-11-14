@@ -1,4 +1,16 @@
+import { CheckCircle2, Layers, Plug, Terminal, Users } from "lucide-react";
 import Link from "next/link";
+
+const CONNECTED_APPS = [
+  "GitHub",
+  "Vercel",
+  "Gmail",
+  "Slack",
+  "Linear",
+  "Notion",
+  "Google Calendar",
+  "Jira",
+] as const;
 
 export function LandingBento() {
   return (
@@ -8,168 +20,186 @@ export function LandingBento() {
           <div className="grid gap-6 lg:grid-cols-12 lg:items-end">
             <div className="lg:col-span-7">
               <h2 className="text-balance text-3xl font-semibold leading-[1.08] tracking-tight sm:text-4xl md:text-5xl">
-                Built for how engineers actually ship
+                Built for shipping production software end to end
               </h2>
             </div>
             <div className="lg:col-span-5">
               <p className="max-w-[54ch] text-pretty text-base leading-relaxed text-(--l-fg-2)">
-                Direct single-agent speed when you want a quick fix, invocable{" "}
-                <code className="font-mono text-xs">/skills</code> and
-                specialist subagents when you need depth, and native workspace
-                integrations across your stack.
+                Stay inside one workspace from first prompt to verified pull
+                request, whether a single agent knocks out a fix or a specialist
+                team builds across files together.
               </p>
             </div>
           </div>
 
-          {/* Asymmetric 12-column architectural grid (7 + 5, then 5 + 7) */}
+          {/* Asymmetric 12-column grid (7 + 5, then 5 + 7) */}
           <div className="mt-10 grid gap-4 lg:mt-12 lg:grid-cols-12">
-            {/* Primary Card 1 (7 cols) */}
-            <article className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7">
+            {/* Primary Card 1 (7 cols): Live In-Chat Team Mode */}
+            <article className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7">
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
-                  <span className="font-medium text-(--l-fg-2)">
-                    Adaptive execution
+                  <span className="inline-flex items-center gap-2 font-medium text-(--l-fg-2)">
+                    <Users
+                      className="size-4 text-(--l-fg-3)"
+                      strokeWidth={1.5}
+                    />
+                    <span>Live in-chat Team mode</span>
                   </span>
-                  <span className="font-mono text-[11px] tabular-nums">
-                    /architect · /explorer · /executor · /reviewer · /design
+                  <span className="font-mono text-xs tabular-nums">
+                    4 specialists · 1 conversation
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                  Single-agent speed by default, specialist team on demand
+                  Watch the whole team work right inside your main chat
                 </h3>
-                <p className="mt-2.5 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
-                  Routine prompts run straight through without spawning
-                  unnecessary subagents. When you invoke a specialist or launch
-                  a multi-file feature, subagents coordinate through a shared
-                  Team Board with live token and step visibility.
+                <p className="mt-3 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
+                  No hidden side drawers required to follow multi-agent runs.
+                  Architect, Explorer, Executor, and Reviewer stream their task
+                  claims, touched files, and test checks live inside the turn
+                  before handing back a single verified summary.
                 </p>
               </div>
 
-              <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
                 {[
-                  { role: "/architect", mode: "System boundaries" },
-                  { role: "/explorer", mode: "Fast codebase map" },
-                  { role: "/executor", mode: "Scoped edits & tests" },
-                  { role: "/reviewer", mode: "Pre-PR verification" },
+                  { role: "Architect", focus: "Plan & file locks" },
+                  { role: "Explorer", focus: "Codebase discovery" },
+                  { role: "Executor", focus: "Scoped implementation" },
+                  { role: "Reviewer", focus: "Checks & edge cases" },
                 ].map((item) => (
                   <div
                     key={item.role}
-                    className="rounded-xl border border-(--l-border) bg-(--l-surface-2) px-3 py-2.5"
+                    className="rounded-xl border border-(--l-border) bg-(--l-surface-2) px-3 py-3"
                   >
                     <div className="font-mono text-xs font-medium text-(--l-fg)">
                       {item.role}
                     </div>
-                    <div className="mt-0.5 text-[11px] text-(--l-fg-3)">
-                      {item.mode}
+                    <div className="mt-1 text-xs text-(--l-fg-3)">
+                      {item.focus}
                     </div>
                   </div>
                 ))}
               </div>
             </article>
 
-            {/* Supporting Card 1 (5 cols): Invocable Skills */}
-            <article className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5">
+            {/* Supporting Card 1 (5 cols): Full 3-pane Workspace */}
+            <article className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5">
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
-                  <span className="font-medium text-(--l-fg-2)">
-                    Invocable Skills Catalog
+                  <span className="inline-flex items-center gap-2 font-medium text-(--l-fg-2)">
+                    <Terminal
+                      className="size-4 text-(--l-fg-3)"
+                      strokeWidth={1.5}
+                    />
+                    <span>Real dev environment</span>
                   </span>
-                  <span className="font-mono text-[11px]">
-                    17 built-in + GitHub packs
+                  <span className="font-mono text-xs">
+                    Shell · Editor · Preview
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                  Type <code>/unslop</code> or install any GitHub skill pack
+                  Terminal, code editor, diffs, and live preview in every room
                 </h3>
-                <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
-                  Invoke domain skills directly from the composer (
-                  <code>/unslop</code>, <code>/frontend-design</code>,{" "}
-                  <code>/code-review</code>, <code>/plan-mode</code>) or add
-                  community skill repositories in one click.
+                <p className="mt-3 text-sm leading-relaxed text-(--l-fg-2)">
+                  Open any modified file or diff inline, return cleanly to your
+                  exact scroll position in the conversation, or test the running
+                  app live in mobile and desktop preview frames.
                 </p>
               </div>
 
-              <div className="mt-6 rounded-xl border border-(--l-border) bg-(--l-code-bg) p-3.5 font-mono text-[11px] leading-relaxed text-(--l-panel-fg-2)">
-                <div className="text-(--l-panel-fg-3)">
-                  # Composer invocation
+              <div className="mt-6 rounded-xl border border-(--l-border) bg-(--l-code-bg) p-4 font-mono text-xs leading-relaxed text-(--l-panel-fg-2)">
+                <div className="flex items-center justify-between text-(--l-panel-fg-3)">
+                  <span>workspace/main</span>
+                  <span>branch ready</span>
                 </div>
-                <div className="mt-1 text-emerald-500">
-                  ✓ /unslop loaded SKILL.md + references/tokens.md
-                </div>
-                <div className="text-(--l-panel-fg)">
-                  ✓ /frontend-design audited mobile &amp; desktop layout
+                <div className="mt-2 flex items-center gap-2 text-(--l-panel-fg)">
+                  <CheckCircle2
+                    className="size-3.5 shrink-0 text-emerald-500"
+                    strokeWidth={1.5}
+                  />
+                  <span>
+                    Interactive diffs synced across desktop &amp; phone
+                  </span>
                 </div>
               </div>
             </article>
 
-            {/* Supporting Card 2 (5 cols): Workspace Integrations */}
-            <article className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5">
+            {/* Supporting Card 2 (5 cols): Connected Apps */}
+            <article className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5">
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
-                  <span className="font-medium text-(--l-fg-2)">
-                    Workspace Integrations
+                  <span className="inline-flex items-center gap-2 font-medium text-(--l-fg-2)">
+                    <Plug
+                      className="size-4 text-(--l-fg-3)"
+                      strokeWidth={1.5}
+                    />
+                    <span>Connected apps</span>
                   </span>
-                  <span className="font-mono text-[11px]">
-                    GitHub · Vercel · Composio
+                  <span className="font-mono text-xs tabular-nums">
+                    One-click OAuth
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                  Connected to Gmail, Slack, Linear, Notion &amp; GitHub
+                  Bring tickets, docs, and notifications straight into the
+                  session
                 </h3>
-                <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
-                  Authorize your workspace apps once in Settings and let Entry
-                  triage Linear tickets, read Slack threads, draft Gmail
-                  updates, and open verified GitHub pull requests.
+                <p className="mt-3 text-sm leading-relaxed text-(--l-fg-2)">
+                  Connect Gmail, Slack, Linear, Notion, and Google Calendar from
+                  Settings. Agents act across every connected app alongside your
+                  GitHub repositories and Vercel deployments.
                 </p>
               </div>
 
-              <div className="mt-6 flex flex-wrap gap-2 font-mono text-[11px]">
-                <span className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 text-(--l-fg-2)">
-                  Gmail &amp; Calendar
-                </span>
-                <span className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 text-(--l-fg-2)">
-                  Slack &amp; Linear
-                </span>
-                <span className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 text-(--l-fg-2)">
-                  Notion &amp; Figma
-                </span>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {CONNECTED_APPS.map((app) => (
+                  <span
+                    key={app}
+                    className="rounded-lg border border-(--l-border) bg-(--l-surface-2) px-2.5 py-1 font-mono text-xs text-(--l-fg-2)"
+                  >
+                    {app}
+                  </span>
+                ))}
               </div>
             </article>
 
-            {/* Primary Card 2 (7 cols) */}
-            <article className="flex flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7">
+            {/* Primary Card 2 (7 cols): Frontier Model Routing & Durable Execution */}
+            <article className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7">
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
-                  <span className="font-medium text-(--l-fg-2)">
-                    Multi-Provider Prompt Caching &amp; Durable Streams
+                  <span className="inline-flex items-center gap-2 font-medium text-(--l-fg-2)">
+                    <Layers
+                      className="size-4 text-(--l-fg-3)"
+                      strokeWidth={1.5}
+                    />
+                    <span>Frontier models &amp; durable continuity</span>
                   </span>
-                  <span className="font-mono text-[11px] tabular-nums">
+                  <span className="font-mono text-xs">
                     Claude · GPT · Gemini · DeepSeek
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                  Prefix-cached across every frontier model and offline-proof
+                  Switch models mid-session and never lose work to flaky Wi-Fi
                 </h3>
-                <p className="mt-2.5 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
-                  Static instructions stay byte-identical across turns so
-                  Anthropic, OpenAI, Gemini, and DeepSeek hit provider KV caches
-                  automatically — while server-checkpointed streams survive
-                  network drops without losing a single token.
+                <p className="mt-3 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
+                  Route everyday tasks to fast frontier models or step up to
+                  deep reasoning architectures on the next turn. Because
+                  execution runs in checkpointed cloud workflows, toggling
+                  airplane mode or closing your browser never stalls progress.
                 </p>
               </div>
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-(--l-border) pt-4">
                 <div className="flex flex-wrap gap-6 font-mono text-xs tabular-nums">
                   <div>
-                    <span className="text-(--l-fg-3)">Prompt cache</span>{" "}
+                    <span className="text-(--l-fg-3)">Stream sync</span>{" "}
                     <span className="font-medium text-(--l-fg)">
-                      All frontier providers
+                      Resumes on reconnect
                     </span>
                   </div>
                   <div>
-                    <span className="text-(--l-fg-3)">Stream recovery</span>{" "}
+                    <span className="text-(--l-fg-3)">Billing</span>{" "}
                     <span className="font-medium text-(--l-fg)">
-                      Automatic on reconnect
+                      Zero token markup
                     </span>
                   </div>
                 </div>

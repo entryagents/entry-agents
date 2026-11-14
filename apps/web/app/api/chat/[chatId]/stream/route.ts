@@ -91,13 +91,15 @@ export async function GET(request: Request, context: RouteContext) {
 
   const { chat } = chatContext;
   const { startIndex } = parsedStartIndex;
-  const isMidStreamReconnect = typeof startIndex === "number" && startIndex > 0;
+  const isMidStreamReconnect =
+    (typeof startIndex === "number" && startIndex > 0) ||
+    request.headers.get("x-entry-mid-turn") === "1";
 
   if (!chat.activeStreamId) {
-    // When a client was already reading a live stream (startIndex > 0) and
-    // lost connectivity while the workflow finished and cleared activeStreamId,
-    // replay the remaining chunks (startIndex..end) from the completed run so
-    // the client receives the tail and real finish event without truncation.
+    // When a client was already reading a live stream (startIndex > 0 or active mid-turn)
+    // and lost connectivity while the workflow finished and cleared activeStreamId,
+    // replay the remaining chunks from the completed run so the client receives the
+    // complete output and real finish event without losing its turn.
     if (isMidStreamReconnect) {
       const completedRunId = await getLatestCompletedWorkflowRunIdForChat(
         chatId,

@@ -3,6 +3,7 @@ import { SUBAGENT_REGISTRY } from "../../subagents/registry";
 import {
   TeamBoard,
   clearTeamBoard,
+  findFileOwnershipConflicts,
   formatTeamContextSummary,
   getOrCreateTeamBoard,
   rebuildTeamBoardFromMessages,
@@ -14,18 +15,27 @@ describe("TeamBoard & subagent coordination", () => {
 
     board.upsertTasks(
       [
-        { id: "T1", title: "Inspect auth boundary", assignedRole: "explorer" },
+        {
+          id: "T1",
+          title: "Inspect auth boundary",
+          assignedRole: "explorer",
+          files: ["./apps/web/lib/auth/config.ts"],
+        },
         {
           id: "T2",
           title: "Ship callback handler",
           assignedRole: "executor",
           dependsOn: ["T1"],
+          files: ["apps/web/app/api/auth/[...all]/route.ts"],
         },
       ],
       "architect",
     );
 
-    board.updateTaskStatus("T1", "completed", "explorer", "Mapped config.ts");
+    board.updateTaskStatus("T1", "completed", "explorer", {
+      notes: "Mapped config.ts",
+      verification: "bun test lib/auth/config.test.ts (pass)",
+    });
 
     board.postEntry({
       kind: "finding",
@@ -48,6 +58,11 @@ describe("TeamBoard & subagent coordination", () => {
     expect(snap.tasks).toHaveLength(2);
     expect(snap.tasks[0]?.status).toBe("completed");
     expect(snap.tasks[0]?.notes).toBe("Mapped config.ts");
+    expect(snap.tasks[0]?.verification).toBe(
+      "bun test lib/auth/config.test.ts (pass)",
+    );
+    expect(snap.tasks[0]?.files).toEqual(["apps/web/lib/auth/config.ts"]);
+    expect(snap.fileConflicts).toBeUndefined();
 
     const executorInbox = board.listEntries({ targetRole: "executor" });
     expect(executorInbox).toHaveLength(2);
@@ -55,10 +70,57 @@ describe("TeamBoard & subagent coordination", () => {
     const summary = formatTeamContextSummary(board);
     expect(summary).toContain("## Shared Team Board Snapshot");
     expect(summary).toContain("[completed] `T1` (explorer)");
+    expect(summary).toContain(
+      "verified: bun test lib/auth/config.test.ts (pass)",
+    );
     expect(summary).toContain("OAuth route found");
   });
 
-  test("rebuildTeamBoardFromMessages reconstructs entries and tasks across team_board and task parts", () => {
+  test("detects active file ownership conflicts while ignoring completed tasks", () => {
+    const board = new TeamBoard("team_conflict");
+    board.upsertTasks(
+      [
+        {
+          id: "T1",
+          title: "Refactor composer",
+          assignedRole: "executor",
+          status: "in_progress",
+          files: ["./apps/web/components/composer.tsx", "apps/web/lib/a.ts"],
+        },
+        {
+          id: "T2",
+          title: "Restyle composer",
+          assignedRole: "design",
+          status: "open",
+          files: ["apps/web/components/composer.tsx", "apps/web/lib/b.ts"],
+        },
+        {
+          id: "T3",
+          title: "Read composer",
+          assignedRole: "explorer",
+          status: "completed",
+          files: ["apps/web/components/composer.tsx"],
+        },
+      ],
+      "architect",
+    );
+
+    const conflicts = findFileOwnershipConflicts(board.listTasks());
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]).toEqual({
+      file: "apps/web/components/composer.tsx",
+      roles: ["executor", "design"],
+      taskIds: ["T1", "T2"],
+    });
+
+    const snap = board.snapshot();
+    expect(snap.fileConflicts).toEqual(conflicts);
+    expect(formatTeamContextSummary(board)).toContain(
+      "### File Ownership Warnings",
+    );
+  });
+
+  test("rebuildTeamBoardFromMessages reconstructs entries, tasks, files, and verification", () => {
     const teamId = `team_replay_${Date.now()}`;
     clearTeamBoard(teamId);
 
@@ -90,6 +152,7 @@ describe("TeamBoard & subagent coordination", () => {
                       title: "Write encryption module",
                       assignedRole: "executor",
                       status: "in_progress",
+                      files: ["packages/crypto/aes.ts"],
                       updatedBy: "architect",
                       updatedAt: 100,
                     },
@@ -121,6 +184,8 @@ describe("TeamBoard & subagent coordination", () => {
                     title: "Write encryption module",
                     assignedRole: "executor",
                     status: "completed",
+                    files: ["packages/crypto/aes.ts"],
+                    verification: "bun test packages/crypto/aes.test.ts",
                     updatedBy: "executor",
                     updatedAt: 200,
                   },
@@ -136,6 +201,10 @@ describe("TeamBoard & subagent coordination", () => {
     const snap = rebuilt.snapshot();
     expect(snap.entries.map((e) => e.id)).toEqual(["tb_1", "tb_2"]);
     expect(snap.tasks[0]?.status).toBe("completed");
+    expect(snap.tasks[0]?.files).toEqual(["packages/crypto/aes.ts"]);
+    expect(snap.tasks[0]?.verification).toBe(
+      "bun test packages/crypto/aes.test.ts",
+    );
     expect(getOrCreateTeamBoard(teamId)).toBe(rebuilt);
     clearTeamBoard(teamId);
   });

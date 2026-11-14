@@ -1,25 +1,20 @@
 "use client";
 
 import {
-  AlertTriangle,
   Check,
   ChevronDown,
   ExternalLink,
-  FileCode,
-  FolderGit2,
   GitBranch,
   GitCommit,
   GitCompare,
   GitMerge,
   GitPullRequest,
-  GitPullRequestClosed,
-  History,
   Loader2,
   RefreshCw,
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { DiffFile } from "@/app/api/sessions/[sessionId]/diff/route";
 import type { GitPanelProps } from "../git-panel";
 import { useGitPanel } from "../git-panel-context";
@@ -58,7 +53,7 @@ import {
   getMergeReadiness,
   type MergeReadinessResponse,
 } from "@/lib/github/queries/pr";
-import type { CheckRun, MergeMethod } from "@/lib/github/pulls";
+import type { MergeMethod } from "@/lib/github/pulls";
 import { cn } from "@/lib/utils";
 
 function StatusBadge({ status }: { status: DiffFile["status"] }) {
@@ -75,7 +70,6 @@ function StatusBadge({ status }: { status: DiffFile["status"] }) {
           D
         </span>
       );
-    case "modified":
     default:
       return (
         <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-amber-500/15 text-[10px] font-bold text-amber-600 dark:text-amber-400">
@@ -94,12 +88,12 @@ export function WorkspaceGitTab(props: GitPanelProps) {
     diffFiles,
     diffSummary,
     refreshDiff,
-    gitStatus,
+    gitStatus: _gitStatus,
     gitStatusLoading,
     refreshGitStatus,
     onCommitted,
     isAgentWorking,
-    hasSandbox,
+    hasSandbox: _hasSandbox,
     onMerged,
     onFixChecks,
     onCreateRepoClick,
@@ -158,7 +152,9 @@ export function WorkspaceGitTab(props: GitPanelProps) {
         if (!cancelled && res) {
           setReadiness(res);
         }
-      } catch {}
+      } catch {
+        // Best-effort polling; next tick retries automatically.
+      }
     };
 
     void fetchReadiness();
@@ -240,6 +236,7 @@ export function WorkspaceGitTab(props: GitPanelProps) {
         await refreshDiff();
       }
     } catch {
+      // Discard dialog stays open for retry on failure.
     } finally {
       setIsDiscarding(false);
     }
@@ -256,6 +253,7 @@ export function WorkspaceGitTab(props: GitPanelProps) {
         await refreshDiff();
       }
     } catch {
+      // Discard confirmation dialog remains visible on error.
     } finally {
       setIsDiscarding(false);
     }
@@ -531,10 +529,13 @@ export function WorkspaceGitTab(props: GitPanelProps) {
               return (
                 <div
                   key={file.path}
-                  onClick={() => openFileTab(file.path)}
-                  className="group flex items-center justify-between px-2.5 py-1.5 text-xs hover:bg-muted/50 cursor-pointer transition-colors"
+                  className="group flex items-center justify-between px-2.5 py-1.5 text-xs hover:bg-muted/50 transition-colors"
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => openFileTab(file.path)}
+                    className="flex flex-1 items-center gap-2 min-w-0 text-left cursor-pointer focus-visible:outline-none focus-visible:underline"
+                  >
                     <StatusBadge status={file.status} />
                     <div className="flex items-baseline gap-1 min-w-0 font-mono">
                       <span className="font-medium text-foreground truncate">
@@ -546,7 +547,7 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                         </span>
                       )}
                     </div>
-                  </div>
+                  </button>
 
                   <div className="flex items-center gap-1.5 shrink-0">
                     <div className="flex items-center gap-1 text-[10px] font-mono">

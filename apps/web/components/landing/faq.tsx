@@ -1,35 +1,35 @@
-import { SITE_URL } from "@/lib/site";
+import Link from "next/link";
 
 const faqs: readonly { question: string; answer: string }[] = [
   {
-    question: "What is Entry Agents?",
+    question: "What is Entry Agents",
     answer:
-      "Entry Agents is a cloud coding platform where each session runs inside an isolated Linux workspace with git, terminal, live preview, invocable /skills, and on-demand specialist subagents.",
+      "Entry Agents is a cloud software engineering workspace where every session runs inside an isolated Linux environment with git branches, terminal, live preview, connected workplace apps, and optional specialist multi-agent teams.",
   },
   {
-    question: "Does Entry always run 5 agents on every prompt?",
+    question: "How is Team Mode different from single-agent mode",
     answer:
-      "No. By default, Entry executes directly in a fast single-agent loop so everyday edits, questions, and bug fixes happen immediately. Specialist subagents (/architect, /explorer, /executor, /reviewer, /design) are dispatched only when you invoke them or when a large multi-file task benefits from parallel work.",
+      "By default, Entry executes directly in a single fast loop so bug fixes and focused edits finish immediately. For multi-file builds or explicit team requests, Architect, Explorer, Executor, and Reviewer run visibly inside your main chat turn with file-claim coordination so changes never collide.",
   },
   {
-    question: "How do /skills work?",
+    question: "What happens if I lose internet or close my browser mid-turn",
     answer:
-      "Entry ships with 17 built-in skills — including /unslop, /frontend-design, /code-review, /plan-mode, and /composio — and lets you install GitHub skill repositories in one click from Settings → Skills. Type / in the chat composer to invoke any skill.",
+      "All work runs on durable cloud checkpoints. If you drop cellular signal, close your laptop, or open the session on your phone, Entry finishes the turn on the server and automatically reconciles every message and file diff when you reconnect.",
   },
   {
-    question: "What happens if I lose internet or close my browser mid-turn?",
+    question: "Which tools and workplace apps can the agent use",
     answer:
-      "Every turn executes on durable server checkpoints. If you toggle off mobile data, lose Wi-Fi, or switch devices, the agent finishes its work in the cloud and automatically syncs the conversation as soon as you reconnect.",
+      "Beyond native GitHub repositories and Vercel previews, you can connect Gmail, Slack, Notion, Linear, Google Calendar, Google Drive, Jira, Figma, and hundreds of other apps directly in Settings → Connections.",
   },
   {
-    question: "Which apps and integrations can the agent use?",
+    question: "Which AI models are supported",
     answer:
-      "In addition to native GitHub and Vercel integrations, you can connect Gmail, Slack, Notion, Linear, Google Calendar, Google Drive, Jira, Figma, and Discord from Settings → Connections.",
+      "Entry supports frontier models from Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek, and xAI Grok, and lets you switch models or reasoning depth between turns in any workspace.",
   },
   {
-    question: "Which AI models are supported?",
+    question: "Do I need a GitHub repository to start",
     answer:
-      "Entry supports Anthropic Claude, OpenAI GPT, Google Gemini, DeepSeek, and xAI Grok models with automatic prompt prefix caching and mid-session model switching.",
+      "No. You can start with a blank cloud workspace or uploaded files, build and preview an application directly, and optionally connect a repository later to commit and open pull requests.",
   },
 ];
 
@@ -55,31 +55,31 @@ export function LandingFaq() {
       />
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-10">
         <div className="grid gap-10 border-t border-(--l-border) py-16 md:py-24 lg:grid-cols-[minmax(240px,360px)_1fr]">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
               Frequently asked questions
             </h2>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">
-              How Entry Agents works, how the specialist agent team coordinates,
-              and how sandboxes and runtime secrets stay isolated. See{" "}
-              <a
-                href={`${SITE_URL}/pricing`}
+              How workspaces run in the cloud, how inline team mode coordinates,
+              and how usage pricing works. See{" "}
+              <Link
+                href="/pricing"
                 className="underline underline-offset-4 hover:text-(--l-fg)"
               >
                 pricing
-              </a>{" "}
+              </Link>{" "}
               and{" "}
-              <a
-                href={`${SITE_URL}/model`}
+              <Link
+                href="/model"
                 className="underline underline-offset-4 hover:text-(--l-fg)"
               >
                 models
-              </a>{" "}
-              for token rates.
+              </Link>{" "}
+              for live rates.
             </p>
           </div>
 
-          <div className="divide-y divide-(--l-border-subtle) border-y border-(--l-border-subtle)">
+          <div className="min-w-0 divide-y divide-(--l-border-subtle) border-y border-(--l-border-subtle)">
             {faqs.map((f, index) => (
               <details
                 key={f.question}
@@ -90,7 +90,7 @@ export function LandingFaq() {
                   <span>{f.question}</span>
                   <span
                     aria-hidden="true"
-                    className="font-mono text-xs text-(--l-fg-3) transition-transform group-open:rotate-45"
+                    className="font-mono text-xs text-(--l-fg-3) transition-transform duration-150 group-open:rotate-45"
                   >
                     +
                   </span>

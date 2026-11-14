@@ -90,6 +90,10 @@ export function ThinkingBlock({
         {text}
       </p>
     </div>
+  ) : isStreaming ? (
+    <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2">
+      <p className="text-[13px] text-muted-foreground">Reasoning…</p>
+    </div>
   ) : undefined;
 
   return (
@@ -98,6 +102,8 @@ export function ThinkingBlock({
       icon={<Brain className="h-3.5 w-3.5" />}
       summary={summary}
       state={isStreaming ? STREAMING_STATE : COMPLETED_STATE}
+      defaultExpanded={isStreaming}
+      autoExpanded={isStreaming}
       expandedContent={expandedContent}
     />
   );

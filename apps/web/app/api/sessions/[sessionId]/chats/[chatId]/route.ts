@@ -122,7 +122,7 @@ export async function GET(req: Request, context: RouteContext) {
       isStreaming = false;
     }
   } else if (
-    ACTIVE_CHAT_RUN_STATUSES.includes(chatStatus as any) &&
+    ACTIVE_CHAT_RUN_STATUSES.some((s) => s === chatStatus) &&
     chatContext.chat.runStatusUpdatedAt &&
     Date.now() - new Date(chatContext.chat.runStatusUpdatedAt).getTime() >
       120_000

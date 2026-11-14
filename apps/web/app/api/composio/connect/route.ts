@@ -1,11 +1,10 @@
 import { z } from "zod";
 import { requireAuthenticatedUser } from "@/app/api/sessions/_lib/session-context";
 import {
-  createUserSecret,
-  listUserSecrets,
-  updateUserSecret,
-} from "@/lib/db/secrets";
-import { authorizeComposioToolkitForUser } from "@/lib/mcp/composio";
+  authorizeComposioToolkitForUser,
+  ComposioAccountNotFoundError,
+  disconnectComposioAccountForUser,
+} from "@/lib/mcp/composio";
 
 const connectBodySchema = z.discriminatedUnion("action", [
   z.object({
@@ -13,8 +12,8 @@ const connectBodySchema = z.discriminatedUnion("action", [
     toolkitSlug: z.string().trim().min(1).max(64),
   }),
   z.object({
-    action: z.literal("save_api_key"),
-    apiKey: z.string().trim().min(8).max(512),
+    action: z.literal("disconnect"),
+    connectedAccountId: z.string().trim().min(1).max(128),
   }),
 ]);
 
@@ -38,41 +37,23 @@ export async function POST(req: Request) {
     );
   }
 
-  if (parsedBody.action === "save_api_key") {
+  if (parsedBody.action === "disconnect") {
     try {
-      const existing = await listUserSecrets(auth.userId);
-      const found = existing.find(
-        (s) => s.name.toUpperCase() === "COMPOSIO_API_KEY",
-      );
-      if (found) {
-        await updateUserSecret({
-          userId: auth.userId,
-          id: found.id,
-          value: parsedBody.apiKey,
-          description:
-            "Composio API key for Gmail, Slack, Notion, Linear, and 500+ app integrations",
-          allowedHosts: ["backend.composio.dev"],
-          injectInSandbox: false,
-        });
-      } else {
-        await createUserSecret({
-          userId: auth.userId,
-          name: "COMPOSIO_API_KEY",
-          value: parsedBody.apiKey,
-          description:
-            "Composio API key for Gmail, Slack, Notion, Linear, and 500+ app integrations",
-          allowedHosts: ["backend.composio.dev"],
-          injectInSandbox: false,
-        });
-      }
-      return Response.json({ ok: true });
+      const result = await disconnectComposioAccountForUser({
+        userId: auth.userId,
+        connectedAccountId: parsedBody.connectedAccountId,
+      });
+      return Response.json(result);
     } catch (error) {
+      if (error instanceof ComposioAccountNotFoundError) {
+        return Response.json({ error: error.message }, { status: 404 });
+      }
       return Response.json(
         {
           error:
             error instanceof Error
               ? error.message
-              : "Failed to save Composio API key",
+              : "Failed to disconnect Composio account",
         },
         { status: 500 },
       );

@@ -1,7 +1,7 @@
 "use client";
 
 import { isReasoningUIPart, isToolUIPart } from "ai";
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
 import { ToolCallsSummaryBar } from "./tool-calls-summary-bar";
 
@@ -74,7 +74,15 @@ export function AssistantMessageGroups({
   startedAt,
   children,
 }: AssistantMessageGroupsProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null);
+  const prevStreamingRef = useRef(isStreaming);
+
+  useEffect(() => {
+    if (prevStreamingRef.current && !isStreaming) {
+      setManualExpanded(null);
+    }
+    prevStreamingRef.current = isStreaming;
+  }, [isStreaming]);
 
   const hasCollapsible = useMemo(
     () => messageHasCollapsibleContent(message),
@@ -90,8 +98,11 @@ export function AssistantMessageGroups({
     [message],
   );
 
-  // Force expand when there's an active approval the user needs to respond to
-  const effectiveExpanded = isExpanded || hasActiveApproval;
+  // Stay expanded (ungrouped) while streaming so progress reads sequentially,
+  // or when an active approval needs user attention; collapse on completion
+  // unless toggled manually.
+  const effectiveExpanded =
+    hasActiveApproval || (manualExpanded ?? isStreaming);
 
   // Stopped early because this turn tripped a billing safeguard.
   // Distinct wording per cause: creditExhausted means the account ran
@@ -154,7 +165,7 @@ export function AssistantMessageGroups({
     <>
       <ToolCallsSummaryBar
         isExpanded={effectiveExpanded}
-        onToggle={() => setIsExpanded((v) => !v)}
+        onToggle={() => setManualExpanded(!effectiveExpanded)}
         isStreaming={isStreaming}
         toolCallCount={toolCallCount}
         changedFiles={changedFiles}

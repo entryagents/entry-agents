@@ -9,8 +9,8 @@ export function Stage({
   readonly children: ReactNode;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-surface-2) p-2 sm:p-4 md:p-6">
-      <div className="relative">{children}</div>
+    <div className="relative min-w-0 w-full overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-surface-2) p-2 sm:p-4 md:p-6">
+      <div className="relative min-w-0">{children}</div>
     </div>
   );
 }

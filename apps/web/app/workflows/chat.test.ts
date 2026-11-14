@@ -776,7 +776,7 @@ describe("runAgentWorkflow", () => {
           type: "text-delta",
           id: "setup-error",
           delta:
-            "The response was interrupted. Click Retry to continue where you left off, or switch models if the issue persists. This looks like a repeating issue rather than a one-off, so retrying probably won't help -- try switching models, or let us know if it keeps happening.",
+            "Generation could not be completed cleanly. Retry to resume from the last checkpoint, or send another message. This error happened multiple times on this chat; inspect the tool output above or switch models before retrying.",
         },
       ]),
     );
@@ -802,7 +802,7 @@ describe("runAgentWorkflow", () => {
       writtenChunks.some(
         (chunk) =>
           chunk.type === "text-delta" &&
-          (chunk as { delta?: string }).delta?.includes("repeating issue"),
+          (chunk as { delta?: string }).delta?.includes("multiple times"),
       ),
     ).toBe(false);
   });

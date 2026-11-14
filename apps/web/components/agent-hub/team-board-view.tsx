@@ -195,6 +195,25 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
         </button>
       </div>
 
+      {feed.fileConflicts.length > 0 && (
+        <section className="space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
+          <div className="flex items-center gap-1.5 font-medium">
+            <AlertCircle className="size-3.5 shrink-0" />
+            <span>
+              File ownership overlap detected ({feed.fileConflicts.length})
+            </span>
+          </div>
+          <ul className="space-y-1 text-[11px] text-amber-700/90 dark:text-amber-300/90">
+            {feed.fileConflicts.map((conflict) => (
+              <li key={conflict.file} className="break-all">
+                <code className="font-mono">{conflict.file}</code> — claimed by{" "}
+                {conflict.roles.join(", ")} ({conflict.taskIds.join(", ")})
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       {feed.tasks.length > 0 && (
         <section className="space-y-2">
           <div className="flex items-center justify-between">
@@ -226,9 +245,26 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
                     </span>
                     <SubagentRoleBadge subagentType={task.assignedRole} />
                   </div>
+                  {task.files && task.files.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {task.files.map((file) => (
+                        <span
+                          key={file}
+                          className="rounded border border-border/60 bg-background/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                        >
+                          {file}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   {task.notes && (
                     <p className="text-[11px] leading-relaxed text-muted-foreground">
                       {task.notes}
+                    </p>
+                  )}
+                  {task.verification && (
+                    <p className="font-mono text-[10px] leading-relaxed text-emerald-700 dark:text-emerald-400">
+                      Verified: {task.verification}
                     </p>
                   )}
                 </div>

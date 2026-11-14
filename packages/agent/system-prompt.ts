@@ -394,6 +394,7 @@ export interface McpPromptSummary {
   bridged: boolean;
   servers: Array<{ name: string; toolCount: number }>;
   directToolNames: string[];
+  composioConnectedToolkits?: string[];
 }
 
 export interface BuildSystemPromptOptions {
@@ -505,12 +506,20 @@ function buildMcpPrompt(summary: McpPromptSummary): string {
   const hasComposio = summary.servers.some(
     (s) => s.name.toLowerCase() === "composio",
   );
+  const connectedToolkits = (summary.composioConnectedToolkits ?? [])
+    .map((slug) => slug.trim().toLowerCase())
+    .filter((slug) => slug.length > 0)
+    .toSorted();
+  const connectedToolkitsLine =
+    connectedToolkits.length > 0
+      ? `\n- Connected user apps right now: ${connectedToolkits.map((slug) => `\`${slug}\``).join(", ")}.`
+      : "\n- No user apps are connected yet — if a requested integration isn't connected, generate an OAuth link via `COMPOSIO_MANAGE_CONNECTIONS` or ask them to connect it in **Settings -> Connections**.";
   const composioGuidance = hasComposio
     ? `\n\n### Composio App Integrations (Gmail, Slack, Notion, Linear, Calendar, Drive, Jira, Figma, etc.)
-- The \`composio\` server gives you access to 500+ app integrations via Composio Tool Router.
-- When the user asks to read/send Gmail, post to Slack, query Notion, create Linear/Jira issues, check Google Calendar/Drive, or use any external SaaS app:
-  1. Search for the Composio meta-tools or app tools via \`tool_search({ query: "composio" })\` (or call \`mcp__composio__COMPOSIO_SEARCH_TOOLS\` directly if exposed).
-  2. If the user has not authorized that app yet, use \`COMPOSIO_MANAGE_CONNECTIONS\` to generate an OAuth Connect Link and present it clearly, or direct them to **Settings -> Connections -> Composio App Integrations**.`
+- The \`composio\` server gives you access to 500+ app integrations via Composio Tool Router.${connectedToolkitsLine}
+- When the user asks to read/send Gmail, post to Slack, query Notion, create Linear/Jira issues, check Google Calendar/Drive, or use any connected SaaS app:
+  1. Discover the exact action tools via \`tool_search({ query })\` (or call \`mcp__composio__COMPOSIO_SEARCH_TOOLS\` directly if exposed).
+  2. Execute actions on any connected app right away; if an app is not yet authorized, use \`COMPOSIO_MANAGE_CONNECTIONS\` to generate an OAuth Connect Link and present it clearly, or point the user to **Settings -> Connections**.`
     : "";
 
   if (summary.bridged) {

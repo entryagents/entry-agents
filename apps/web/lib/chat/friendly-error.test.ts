@@ -17,7 +17,7 @@ describe("isFriendlyChatErrorText", () => {
   test("matches with the repeat-failure suffix appended", () => {
     expect(
       isFriendlyChatErrorText(
-        "The request took too long and timed out. Please try again. This looks like a repeating issue rather than a one-off, so retrying probably won't help -- try switching models, or let us know if it keeps happening.",
+        "The request took too long and timed out. Please try again. This error happened multiple times on this chat; inspect the tool output above or switch models before retrying.",
       ),
     ).toBe(true);
   });

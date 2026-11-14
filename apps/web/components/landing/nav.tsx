@@ -42,7 +42,7 @@ export function LandingNav({
     >
       <div className="mx-auto flex h-14 max-w-[1320px] items-center justify-between px-4 sm:h-16 sm:px-6 lg:px-10">
         <div className="flex items-center gap-8">
-          <Logo className="h-[17px]" />
+          <Logo className="h-5" />
 
           <div className="hidden items-center gap-6 text-sm text-(--l-fg-2) md:flex">
             {NAV_LINKS.map((link) => (

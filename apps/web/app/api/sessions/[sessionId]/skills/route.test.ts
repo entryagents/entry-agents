@@ -36,6 +36,7 @@ const updateCalls: Array<Record<string, unknown>> = [];
 let sessionRecord: TestSessionRecord;
 let cachedSkills: SkillMetadata[] | null;
 let discoveredSkills: SkillMetadata[];
+let builtinSkills: SkillMetadata[];
 let isAuthenticated = true;
 
 function registerRouteMocks() {
@@ -159,6 +160,7 @@ function registerRouteMocks() {
       discoverCalls.push({ skillDirs });
       return discoveredSkills;
     },
+    getBuiltinSkillsMetadata: () => builtinSkills,
     // Added later (built-in skill library seeding, called from
     // lib/skills/directories.ts's getSandboxSkillDirectories) -- this
     // mock predated that feature and was missing the export entirely,
@@ -193,6 +195,7 @@ describe("/api/sessions/[sessionId]/skills", () => {
     };
     cachedSkills = null;
     discoveredSkills = [];
+    builtinSkills = [];
     registerRouteMocks();
   });
 
@@ -314,5 +317,70 @@ describe("/api/sessions/[sessionId]/skills", () => {
         skills: discoveredSkills,
       },
     ]);
+  });
+
+  test("falls back to builtin skills when sandbox has no runtime state and deduplicates discovered names", async () => {
+    builtinSkills = [
+      {
+        name: "unslop",
+        description: "Polish UI layouts",
+        path: "/builtin/unslop",
+        filename: "SKILL.md",
+        options: {},
+      },
+      {
+        name: "ship",
+        description: "Builtin ship description",
+        path: "/builtin/ship",
+        filename: "SKILL.md",
+        options: {},
+      },
+    ];
+
+    sessionRecord.sandboxState = null;
+    const { GET } = await loadRouteModule();
+    const fallbackResponse = await GET(
+      new Request("http://localhost/api/sessions/session-1/skills"),
+      {
+        params: Promise.resolve({ sessionId: "session-1" }),
+      },
+    );
+
+    expect(fallbackResponse.ok).toBe(true);
+    expect(await fallbackResponse.json()).toEqual({
+      skills: [
+        { name: "unslop", description: "Polish UI layouts" },
+        { name: "ship", description: "Builtin ship description" },
+      ],
+    });
+
+    sessionRecord.sandboxState = {
+      type: "vercel",
+      sandboxId: "sbx-123",
+    };
+    discoveredSkills = [
+      {
+        name: "SHIP",
+        description: "Custom workspace ship skill",
+        path: "/workspace/.agents/skills/ship",
+        filename: "SKILL.md",
+        options: {},
+      },
+    ];
+
+    const mergedResponse = await GET(
+      new Request("http://localhost/api/sessions/session-1/skills?refresh=1"),
+      {
+        params: Promise.resolve({ sessionId: "session-1" }),
+      },
+    );
+
+    expect(mergedResponse.ok).toBe(true);
+    expect(await mergedResponse.json()).toEqual({
+      skills: [
+        { name: "SHIP", description: "Custom workspace ship skill" },
+        { name: "unslop", description: "Polish UI layouts" },
+      ],
+    });
   });
 });

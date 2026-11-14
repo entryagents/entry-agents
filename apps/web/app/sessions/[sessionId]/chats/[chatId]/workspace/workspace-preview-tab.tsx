@@ -261,6 +261,7 @@ export function WorkspacePreviewTab({
               viewport === "mobile" && "w-[375px] max-w-full",
             )}
           >
+            {/* oxlint-disable react/iframe-missing-sandbox -- cross-origin sandbox/Vercel preview requires allow-same-origin alongside allow-scripts for SPA storage */}
             <iframe
               key={iframeKey}
               ref={iframeRef}
@@ -269,6 +270,7 @@ export function WorkspacePreviewTab({
               className="h-full w-full border-0 bg-background"
               sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
             />
+            {/* oxlint-enable react/iframe-missing-sandbox */}
           </div>
         ) : isDevServerStarting ? (
           <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">

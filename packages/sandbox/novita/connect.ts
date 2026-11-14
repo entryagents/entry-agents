@@ -22,8 +22,7 @@ async function prepareWorkspace(
   }
 
   const source = state.source;
-  const git =
-    'GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="Authorization: Bearer ${GITHUB_TOKEN:-}" git';
+  const git = `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.extraheader GIT_CONFIG_VALUE_0="Authorization: Bearer \${GITHUB_TOKEN:-}" git`;
 
   if (source?.repo) {
     const hasRepository = await sandbox.exec(

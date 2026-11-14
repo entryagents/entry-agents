@@ -222,14 +222,23 @@ export interface TeamFeedTask {
   assignedRole: string;
   status: "open" | "in_progress" | "completed" | "blocked";
   dependsOn?: string[];
+  files?: string[];
   notes?: string;
+  verification?: string;
   updatedBy: string;
   updatedAt: number;
+}
+
+export interface TeamFeedFileConflict {
+  file: string;
+  roles: string[];
+  taskIds: string[];
 }
 
 export interface TeamFeedState {
   entries: TeamFeedEntry[];
   tasks: TeamFeedTask[];
+  fileConflicts: TeamFeedFileConflict[];
 }
 
 function isTeamBoardPart(part: unknown): part is RawToolPart {
@@ -246,9 +255,43 @@ function isTeamBoardPart(part: unknown): part is RawToolPart {
   );
 }
 
+function computeTaskFileConflicts(
+  tasks: TeamFeedTask[],
+): TeamFeedFileConflict[] {
+  const byFile = new Map<
+    string,
+    { roles: Set<string>; taskIds: Set<string> }
+  >();
+  for (const task of tasks) {
+    if (task.status === "completed" || !task.files) continue;
+    for (const rawFile of task.files) {
+      const cleaned = rawFile.trim().replace(/^\.\//, "");
+      if (!cleaned) continue;
+      let bucket = byFile.get(cleaned);
+      if (!bucket) {
+        bucket = { roles: new Set(), taskIds: new Set() };
+        byFile.set(cleaned, bucket);
+      }
+      bucket.roles.add(task.assignedRole);
+      bucket.taskIds.add(task.id);
+    }
+  }
+  const conflicts: TeamFeedFileConflict[] = [];
+  for (const [file, bucket] of byFile.entries()) {
+    if (bucket.taskIds.size >= 2) {
+      conflicts.push({
+        file,
+        roles: [...bucket.roles],
+        taskIds: [...bucket.taskIds],
+      });
+    }
+  }
+  return conflicts;
+}
+
 export function deriveTeamFeed(messages: unknown): TeamFeedState {
   if (!Array.isArray(messages)) {
-    return { entries: [], tasks: [] };
+    return { entries: [], tasks: [], fileConflicts: [] };
   }
 
   const entryMap = new Map<string, TeamFeedEntry>();
@@ -308,6 +351,15 @@ export function deriveTeamFeed(messages: unknown): TeamFeedState {
             ? statusRaw
             : "open"
         ) as TeamFeedTask["status"];
+        const prevTask = taskMap.get(t.id);
+        const files = Array.isArray(t.files)
+          ? t.files.filter((f): f is string => typeof f === "string")
+          : prevTask?.files;
+        const verification =
+          typeof t.verification === "string" && t.verification.trim().length > 0
+            ? t.verification.trim()
+            : prevTask?.verification;
+
         taskMap.set(t.id, {
           id: t.id,
           title: t.title,
@@ -320,8 +372,16 @@ export function deriveTeamFeed(messages: unknown): TeamFeedState {
                   (d): d is string => typeof d === "string",
                 ),
               }
-            : {}),
-          ...(typeof t.notes === "string" ? { notes: t.notes } : {}),
+            : prevTask?.dependsOn
+              ? { dependsOn: prevTask.dependsOn }
+              : {}),
+          ...(files && files.length > 0 ? { files } : {}),
+          ...(typeof t.notes === "string"
+            ? { notes: t.notes }
+            : prevTask?.notes
+              ? { notes: prevTask.notes }
+              : {}),
+          ...(verification ? { verification } : {}),
           updatedBy: typeof t.updatedBy === "string" ? t.updatedBy : "main",
           updatedAt: numberOrNull(t.updatedAt) ?? 0,
         });
@@ -341,8 +401,10 @@ export function deriveTeamFeed(messages: unknown): TeamFeedState {
     }
   }
 
+  const tasks = [...taskMap.values()];
   return {
     entries: [...entryMap.values()].sort((a, b) => a.createdAt - b.createdAt),
-    tasks: [...taskMap.values()],
+    tasks,
+    fileConflicts: computeTaskFileConflicts(tasks),
   };
 }

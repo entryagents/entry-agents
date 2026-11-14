@@ -1,6 +1,7 @@
 import { tool, type UIToolInvocation } from "ai";
 import { z } from "zod";
 import {
+  findFileOwnershipConflicts,
   getOrCreateTeamBoard,
   type TeamBoardEntry,
   type TeamBoardSnapshot,
@@ -68,7 +69,9 @@ const teamBoardInputSchema = z.object({
     .array(z.string().trim().max(260))
     .max(20)
     .optional()
-    .describe("For post: relevant repository-relative file paths"),
+    .describe(
+      "For post, plan_tasks, or update_task: claimed/modified repository-relative file paths",
+    ),
   tasks: z
     .array(
       z.object({
@@ -86,7 +89,9 @@ const teamBoardInputSchema = z.object({
           .default("executor"),
         status: teamTaskStatusSchema.optional(),
         dependsOn: z.array(z.string().trim().max(48)).max(10).optional(),
+        files: z.array(z.string().trim().max(260)).max(20).optional(),
         notes: z.string().trim().max(400).optional(),
+        verification: z.string().trim().max(500).optional(),
       }),
     )
     .max(20)
@@ -108,6 +113,14 @@ const teamBoardInputSchema = z.object({
     .max(400)
     .optional()
     .describe("For update_task: optional progress note"),
+  verification: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .describe(
+      "For update_task: concrete test/typecheck/lint/build command or runtime verification evidence",
+    ),
 });
 
 export type TeamBoardToolInput = z.infer<typeof teamBoardInputSchema>;
@@ -129,8 +142,8 @@ export const teamBoardTool = tool({
 Actions:
 - \`post\`: Publish a codebase finding, architecture decision, handoff note, modified artifact list, or blocker for other teammates.
 - \`read\`: Inspect recent findings, handoffs, and active team tasks from other agents before exploring or editing.
-- \`plan_tasks\`: Break down multi-agent work into assigned team tasks (\`architect\`/\`main\`).
-- \`update_task\`: Claim (\`in_progress\`), complete (\`completed\`), or mark a team task \`blocked\`.`,
+- \`plan_tasks\`: Break down multi-agent work into assigned team tasks (\`architect\`/\`main\`), including non-overlapping \`files\` ownership.
+- \`update_task\`: Claim (\`in_progress\`), complete (\`completed\` with \`verification\` evidence), or mark a team task \`blocked\`.`,
   inputSchema: teamBoardInputSchema,
   execute: async (
     input,
@@ -183,6 +196,8 @@ Actions:
           ...(input.authorRole ? { authorRole: input.authorRole } : {}),
           ...(input.targetRole ? { targetRole: input.targetRole } : {}),
         });
+        const tasks = board.listTasks();
+        const fileConflicts = findFileOwnershipConflicts(tasks);
         return {
           action: "read",
           teamId,
@@ -190,7 +205,8 @@ Actions:
           teamSnapshot: {
             teamId,
             entries: filteredEntries,
-            tasks: board.listTasks(),
+            tasks,
+            ...(fileConflicts.length > 0 ? { fileConflicts } : {}),
           },
         };
       }
@@ -232,7 +248,13 @@ Actions:
           input.taskId,
           input.status,
           authorRole,
-          input.notes,
+          {
+            ...(input.notes !== undefined ? { notes: input.notes } : {}),
+            ...(input.files !== undefined ? { files: input.files } : {}),
+            ...(input.verification !== undefined
+              ? { verification: input.verification }
+              : {}),
+          },
         );
         return {
           action: "update_task",
@@ -245,7 +267,7 @@ Actions:
     }
   },
   toModelOutput: ({ output }) => {
-    const { entries, tasks } = output.teamSnapshot;
+    const { entries, tasks, fileConflicts } = output.teamSnapshot;
     const summaryParts: string[] = [];
 
     if (output.action === "post" && output.postedEntry) {
@@ -259,7 +281,7 @@ Actions:
     } else if (output.action === "update_task") {
       summaryParts.push(
         output.updatedTask
-          ? `Task \`${output.updatedTask.id}\` marked \`${output.updatedTask.status}\`.`
+          ? `Task \`${output.updatedTask.id}\` marked \`${output.updatedTask.status}\`${output.updatedTask.verification ? ` (verified: ${output.updatedTask.verification})` : ""}.`
           : "Task ID not found on team board.",
       );
     } else {
@@ -267,8 +289,14 @@ Actions:
         `Team board has ${entries.length} entries and ${tasks.length} tasks.`,
       );
       for (const task of tasks) {
+        const files = task.files?.length
+          ? ` [files: ${task.files.join(", ")}]`
+          : "";
+        const verified = task.verification
+          ? ` | verified: ${task.verification}`
+          : "";
         summaryParts.push(
-          `- Task [${task.status}] \`${task.id}\` (${task.assignedRole}): ${task.title}${task.notes ? ` — ${task.notes}` : ""}`,
+          `- Task [${task.status}] \`${task.id}\` (${task.assignedRole}): ${task.title}${files}${task.notes ? ` — ${task.notes}` : ""}${verified}`,
         );
       }
       for (const entry of entries.slice(-15)) {
@@ -278,6 +306,18 @@ Actions:
           : "";
         summaryParts.push(
           `- (${entry.kind}) **${entry.authorRole}${target}**: **${entry.title}**${files}\n  ${entry.content}`,
+        );
+      }
+    }
+
+    if (fileConflicts && fileConflicts.length > 0) {
+      summaryParts.push(
+        "",
+        `File ownership overlap warning (${fileConflicts.length}):`,
+      );
+      for (const conflict of fileConflicts) {
+        summaryParts.push(
+          `- \`${conflict.file}\` claimed by ${conflict.taskIds.join(", ")} (${conflict.roles.join(", ")})`,
         );
       }
     }

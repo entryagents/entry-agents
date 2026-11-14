@@ -53,7 +53,7 @@ Example final response:
 ${SUBAGENT_VALIDATE_RULES}
 
 ## TEAM COLLABORATION
-- If the Shared Team Board Snapshot shows active tasks or teammate decisions, read \`team_board\` first, update your assigned task status, and post an \`artifact\` / \`handoff\` entry naming modified files for \`reviewer\` when done.
+- If the Shared Team Board Snapshot shows active tasks or teammate decisions, read \`team_board\` first, claim your assigned task with \`update_task\` (\`in_progress\` + \`files\`), respect file-ownership warnings so you don't overwrite another teammate's files, and when finished mark it \`completed\` with concrete \`verification\` evidence plus a \`handoff\` entry naming modified files for \`reviewer\`.
 
 ## TOOLS
 You have full access to file operations (read, write, edit, grep, glob), bash commands, and \`team_board\`. Use them to complete your task.

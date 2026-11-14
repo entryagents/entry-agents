@@ -176,6 +176,11 @@ const callOptionsSchema = z.object({
   onSecretUsed: z.custom<(names: string[]) => void>().optional(),
   teamId: z.string().optional(),
   plugins: z.custom<ResolvedEntryPlugin[]>().optional(),
+  mcpMetadata: z
+    .object({
+      composioConnectedToolkits: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -360,6 +365,7 @@ export const openAgent = new ToolLoopAgent({
           bridged: boolean;
           servers: Array<{ name: string; toolCount: number }>;
           directToolNames: string[];
+          composioConnectedToolkits?: string[];
         }
       | undefined;
 
@@ -384,6 +390,12 @@ export const openAgent = new ToolLoopAgent({
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([name, toolCount]) => ({ name, toolCount })),
           directToolNames: disclosedExtraTools.bridged ? [] : extraKeys,
+          ...(options.mcpMetadata?.composioConnectedToolkits
+            ? {
+                composioConnectedToolkits:
+                  options.mcpMetadata.composioConnectedToolkits,
+              }
+            : {}),
         };
       }
     }

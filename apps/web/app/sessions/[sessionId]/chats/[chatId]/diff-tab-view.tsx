@@ -3,6 +3,7 @@
 import { PatchDiff } from "@pierre/diffs/react";
 import {
   AlignJustify,
+  ArrowLeft,
   ChevronRight,
   Columns2,
   Download,
@@ -242,7 +243,8 @@ export function DiffTabView() {
     refreshDiff,
     gitStatus,
   } = useSessionChatWorkspaceContext();
-  const { focusedDiffFile, focusedDiffRequestId, diffScope } = useGitPanel();
+  const { focusedDiffFile, focusedDiffRequestId, diffScope, setActiveView } =
+    useGitPanel();
   const isMobile = useIsMobile();
   const { preferences } = useUserPreferences();
   const [diffStyle, setDiffStyle] = useState<DiffStyle>("unified");
@@ -386,13 +388,24 @@ export function DiffTabView() {
         filename={downloadFilename ?? "changes.diff"}
       />
       {/* Toolbar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-medium font-mono">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setActiveView("chat")}
+            className="-ml-1.5 h-7 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+            aria-label="Back to chat"
+          >
+            <ArrowLeft className="h-3.5 w-3.5 sm:mr-1" />
+            <span className="hidden sm:inline">Chat</span>
+          </Button>
+          <div className="h-4 w-px shrink-0 bg-border" />
+          <span className="truncate font-mono text-xs font-medium sm:text-sm">
             {visibleFiles.length} file{visibleFiles.length !== 1 ? "s" : ""}{" "}
             changed
           </span>
-          <div className="flex shrink-0 items-center gap-1.5 text-xs">
+          <div className="flex shrink-0 items-center gap-1.5 text-xs tabular-nums">
             {summaryAdds > 0 && (
               <span className="text-green-600 dark:text-green-500">
                 +{summaryAdds}
@@ -405,7 +418,7 @@ export function DiffTabView() {
             )}
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

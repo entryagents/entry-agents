@@ -8,96 +8,101 @@ const ROLES: readonly {
   readonly id: RoleKey;
   readonly label: string;
   readonly scope: string;
+  readonly claimedFile: string;
   readonly steps: readonly {
-    readonly tool: string;
-    readonly arg: string;
+    readonly action: string;
+    readonly target: string;
     readonly duration: string;
   }[];
   readonly note: string;
 }[] = [
   {
     id: "architect",
-    label: "architect",
-    scope: "read-only · planner",
+    label: "Architect",
+    scope: "plan & boundaries",
+    claimedFile: "routes/session.ts",
     steps: [
       {
-        tool: "dir_list",
-        arg: "packages/agent apps/web",
-        duration: "0.2s",
+        action: "inspect",
+        target: "workspace repository layout",
+        duration: "0.3s",
       },
       {
-        tool: "read",
-        arg: "packages/agent/plugins/types.ts",
+        action: "lock",
+        target: "split edits across 3 non-conflicting files",
+        duration: "0.5s",
+      },
+      {
+        action: "post",
+        target: "inline team task plan",
         duration: "0.4s",
       },
-      {
-        tool: "team_board",
-        arg: "plan_tasks (3 assigned)",
-        duration: "0.6s",
-      },
     ],
-    note: "Posted module boundaries & task checklist to Team Board.",
+    note: "Posted plan & assigned non-overlapping file ownership inline",
   },
   {
     id: "explorer",
-    label: "explorer",
-    scope: "read-only · discovery",
+    label: "Explorer",
+    scope: "fast discovery",
+    claimedFile: "auth/config.ts",
     steps: [
-      { tool: "glob", arg: "app/api/**/route.ts", duration: "0.3s" },
+      { action: "find", target: "app/api/**/route.ts", duration: "0.3s" },
       {
-        tool: "grep",
-        arg: "sessionLayoutShell | headerActionsRef",
+        action: "trace",
+        target: "session middleware & token validation",
         duration: "0.5s",
       },
       {
-        tool: "team_board",
-        arg: "post 'Header portal mount contract'",
-        duration: "0.4s",
+        action: "hand off",
+        target: "exact line references to executor",
+        duration: "0.3s",
       },
     ],
-    note: "Mapped 4 integration files and handed off line ranges cleanly.",
+    note: "Mapped 4 integration files so executor edits cleanly on first pass",
   },
   {
     id: "executor",
-    label: "executor",
-    scope: "workspace write · verify",
+    label: "Executor",
+    scope: "code & test",
+    claimedFile: "api/callback.ts",
     steps: [
       {
-        tool: "write",
-        arg: "components/command-palette.tsx",
+        action: "edit",
+        target: "app/api/github/callback/route.ts",
         duration: "1.1s",
       },
       {
-        tool: "edit",
-        arg: "session-chat-content.tsx",
+        action: "edit",
+        target: "lib/github/installations.ts",
         duration: "0.8s",
       },
       {
-        tool: "bash",
-        arg: "pnpm typecheck && bun test",
-        duration: "3.2s",
+        action: "test",
+        target: "pnpm typecheck && bun test",
+        duration: "2.4s",
       },
     ],
-    note: "Implemented changes; verification-gate confirmed 0 type errors.",
+    note: "Applied scoped changes and confirmed all unit tests pass",
   },
   {
     id: "reviewer",
-    label: "reviewer",
-    scope: "read-only · audit",
+    label: "Reviewer",
+    scope: "verification gate",
+    claimedFile: "callback.test.ts",
     steps: [
-      { tool: "bash", arg: "git diff --stat", duration: "0.3s" },
+      { action: "diff", target: "git diff --stat main", duration: "0.3s" },
       {
-        tool: "read",
-        arg: "apps/web/lib/abortable-chat-transport.ts",
-        duration: "0.4s",
-      },
-      {
-        tool: "team_board",
-        arg: "update_task T-03 -> completed",
+        action: "audit",
+        target: "error paths & state token expiry",
         duration: "0.5s",
       },
+      {
+        action: "approve",
+        target: "all team tasks marked verified",
+        duration: "0.4s",
+      },
     ],
-    note: "Approved: edge cases, type safety & regression tests verified.",
+    note: "Verified zero file conflicts, edge cases, and clean test status",
   },
 ];
 
@@ -116,10 +121,10 @@ export function FeatureAgent() {
   const role = ROLES[roleIdx] ?? ROLES[0];
 
   return (
-    <div className="flex min-h-[280px] flex-col justify-between bg-(--l-code-bg) px-4 py-4 font-mono text-xs sm:px-5">
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) pb-2.5">
-          <div className="flex items-center gap-1 overflow-x-auto">
+    <div className="flex min-h-[288px] flex-col justify-between bg-(--l-code-bg) px-4 py-4 font-mono text-xs sm:px-5">
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) pb-3">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1">
             {ROLES.map((item, i) => {
               const active = i === roleIdx;
               return (
@@ -130,7 +135,7 @@ export function FeatureAgent() {
                     setPaused(true);
                     setRoleIdx(i);
                   }}
-                  className={`shrink-0 rounded px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
+                  className={`shrink-0 cursor-pointer rounded px-2 py-1 text-xs transition-colors duration-150 ${
                     active
                       ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                       : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg-2)"
@@ -141,27 +146,27 @@ export function FeatureAgent() {
               );
             })}
           </div>
-          <span className="text-[11px] text-(--l-panel-fg-4)">
-            {role.scope}
+          <span className="truncate text-[11px] text-(--l-panel-fg-4)">
+            {role.scope} · {role.claimedFile}
           </span>
         </div>
 
         <div className="mt-4 space-y-2">
           {role.steps.map((step, i) => (
             <div
-              key={`${role.id}-${step.tool}-${i}`}
+              key={`${role.id}-${step.action}-${i}`}
               className="flex items-center justify-between gap-3 py-0.5 text-[11px]"
             >
               <div className="flex min-w-0 items-center gap-2.5">
-                <span className="text-(--l-panel-fg-2)">▸</span>
-                <span className="w-20 shrink-0 text-(--l-panel-fg)">
-                  {step.tool}
+                <span className="text-(--l-panel-fg-2)">›</span>
+                <span className="w-16 shrink-0 text-(--l-panel-fg)">
+                  {step.action}
                 </span>
                 <span className="truncate text-(--l-panel-fg-3)">
-                  {step.arg}
+                  {step.target}
                 </span>
               </div>
-              <span className="shrink-0 text-[11px] tabular-nums text-(--l-panel-fg-4)">
+              <span className="shrink-0 tabular-nums text-(--l-panel-fg-4)">
                 {step.duration}
               </span>
             </div>

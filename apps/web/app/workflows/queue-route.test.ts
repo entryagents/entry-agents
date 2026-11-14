@@ -83,14 +83,19 @@ function makeTx(): FakeTx {
 
 mock.module("@/lib/db/client", () => ({
   db: {
-    transaction: (cb: (tx: FakeTx) => Promise<unknown>) => {
+    transaction: async (runTx: (tx: FakeTx) => Promise<unknown>) => {
       spies.transaction();
-      const run = txChain.then(() => cb(makeTx()));
-      txChain = run.then(
-        () => undefined,
-        () => undefined,
-      );
-      return run;
+      const prev = txChain;
+      let release!: () => void;
+      txChain = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      try {
+        await prev;
+        return await runTx(makeTx());
+      } finally {
+        release();
+      }
     },
   },
 }));

@@ -83,10 +83,7 @@ export async function requireOwnedSession(
 ): Promise<OwnedSessionResult> {
   const { userId, sessionId, forbiddenMessage = "Forbidden" } = params;
 
-  const [sessionRecord, authSession] = await Promise.all([
-    sessionsDb.getSessionById(sessionId),
-    getServerSession(),
-  ]);
+  const sessionRecord = await sessionsDb.getSessionById(sessionId);
   if (!sessionRecord) {
     return {
       ok: false,
@@ -148,10 +145,9 @@ export async function requireOwnedSessionChat(
 ): Promise<OwnedSessionChatResult> {
   const { userId, sessionId, chatId, forbiddenMessage = "Forbidden" } = params;
 
-  const [sessionRecord, chat, authSession] = await Promise.all([
+  const [sessionRecord, chat] = await Promise.all([
     sessionsDb.getSessionById(sessionId),
     sessionsDb.getChatById(chatId),
-    getServerSession(),
   ]);
 
   if (!sessionRecord) {

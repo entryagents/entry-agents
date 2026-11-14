@@ -1,13 +1,11 @@
 "use client";
 
 import {
-  Check,
   CheckCircle2,
   ChevronRight,
   Download,
   ExternalLink,
   FileCode,
-  FolderGit2,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -78,7 +76,6 @@ function FileStatusIndicator({ status }: { status: DiffFile["status"] }) {
           -
         </span>
       );
-    case "modified":
     default:
       return (
         <span
@@ -94,18 +91,18 @@ function FileStatusIndicator({ status }: { status: DiffFile["status"] }) {
 export function WorkspaceReviewTab({
   session,
   hasRepo,
-  hasExistingPr,
+  hasExistingPr: _hasExistingPr,
   existingPrUrl,
   diffFiles,
-  diffSummary,
+  diffSummary: _diffSummary,
   diffRefreshing = false,
   refreshDiff,
-  gitStatus,
+  gitStatus: _gitStatus,
   gitStatusLoading = false,
   refreshGitStatus,
-  onCommitted,
+  onCommitted: _onCommitted,
   onMerged,
-  hasSandbox,
+  hasSandbox: _hasSandbox,
   onOpenFile,
   onCreateRepoClick,
 }: WorkspaceReviewTabProps) {
@@ -265,7 +262,7 @@ export function WorkspaceReviewTab({
     link.download = `changes-${session.id.slice(0, 8)}.patch`;
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
     URL.revokeObjectURL(url);
     toast.success("Downloaded patch file");
   }, [uncommittedFiles, session.id]);
@@ -851,10 +848,14 @@ export function WorkspaceReviewTab({
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1">
-              <label className="text-xs font-medium text-foreground">
+              <label
+                htmlFor="review-pr-title"
+                className="text-xs font-medium text-foreground"
+              >
                 PR Title
               </label>
               <Input
+                id="review-pr-title"
                 value={prTitle}
                 onChange={(e) => setPrTitle(e.target.value)}
                 placeholder="Brief summary of changes..."
@@ -863,9 +864,9 @@ export function WorkspaceReviewTab({
             </div>
             {prDescription && (
               <div className="space-y-1">
-                <label className="text-xs font-medium text-foreground">
+                <span className="block text-xs font-medium text-foreground">
                   Description
-                </label>
+                </span>
                 <div className="max-h-32 overflow-y-auto rounded-md border border-border bg-muted/30 p-2 text-xs font-mono whitespace-pre-wrap">
                   {prDescription}
                 </div>

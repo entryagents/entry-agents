@@ -4033,7 +4033,7 @@ const runAgentStep = async (
     try {
       const [
         { getEnabledMcpServersForRequest, recordMcpServerConnectionResult },
-        { getComposioMcpServerConfig },
+        { getComposioMcpServerConfig, getConnectedComposioToolkitsForUser },
         { prepareMcpServersForExecution },
       ] = await Promise.all([
         import("@/lib/db/mcp-servers"),
@@ -4069,7 +4069,15 @@ const runAgentStep = async (
       // same combined server list -- createMcpToolSet() doesn't care
       // which source a server config came from. Never throws: absent
       // COMPOSIO_API_KEY or any SDK failure resolves to null.
-      const composioServer = await getComposioMcpServerConfig(userId);
+      const [composioServer, composioConnectedToolkits] = await Promise.all([
+        getComposioMcpServerConfig(userId),
+        getConnectedComposioToolkitsForUser(userId),
+      ]);
+      if (composioServer) {
+        fullAgentOptions.mcpMetadata = {
+          composioConnectedToolkits,
+        };
+      }
       const combinedServers = composioServer
         ? [...enabledServers, composioServer]
         : enabledServers;

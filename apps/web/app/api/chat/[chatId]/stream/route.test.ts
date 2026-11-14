@@ -210,6 +210,24 @@ describe("GET /api/chat/[chatId]/stream", () => {
     expect(response.headers.get("x-workflow-stream-tail-index")).toBe("12");
   });
 
+  test("replays completed run from 0 when activeStreamId is null and x-entry-mid-turn header is present", async () => {
+    chatRecord = { sessionId: "session-1", activeStreamId: null };
+    latestCompletedRunId = "wrun_completed-999";
+    const { GET } = await routeModulePromise;
+
+    const req = new Request(
+      "http://localhost/api/chat/chat-1/stream?startIndex=0",
+      {
+        method: "GET",
+        headers: { cookie: "session=abc", "x-entry-mid-turn": "1" },
+      },
+    );
+    const response = await GET(req, routeContext);
+    expect(response.status).toBe(200);
+    expect(lastStartIndex).toBe(0);
+    expect(response.headers.get("x-workflow-stream-tail-index")).toBe("12");
+  });
+
   test("returns stream response when workflow is running", async () => {
     workflowRunStatus = "running";
     const { GET } = await routeModulePromise;

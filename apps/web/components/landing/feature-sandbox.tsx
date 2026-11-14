@@ -5,31 +5,31 @@ import { useEffect, useState } from "react";
 const STAGES = [
   {
     state: "provisioning",
-    description: "Cloning repository into an isolated container.",
+    description: "Cloning repository into an isolated Linux container",
     snapshot: "—",
     cost: "$0.02/m",
   },
   {
     state: "active",
-    description: "Filesystem, terminal, and git ready for the agent.",
+    description: "Filesystem, terminal, editor, and preview server ready",
     snapshot: "—",
     cost: "$0.02/m",
   },
   {
     state: "hibernating",
-    description: "Capturing copy-on-write snapshot after idle timeout.",
-    snapshot: "syncing...",
+    description: "Saving disk snapshot automatically after idle timeout",
+    snapshot: "syncing",
     cost: "$0.01/m",
   },
   {
     state: "hibernated",
-    description: "Zero compute billed · full disk state preserved.",
+    description: "Zero compute billed while full disk state stays intact",
     snapshot: "snap_a1b2c3",
     cost: "$0.00",
   },
   {
     state: "restoring",
-    description: "Waking from snapshot on next prompt.",
+    description: "Resuming from snapshot immediately on your next message",
     snapshot: "snap_a1b2c3",
     cost: "$0.02/m",
   },
@@ -50,7 +50,7 @@ export function FeatureSandbox() {
   const entry = STAGES[idx] ?? STAGES[0];
 
   return (
-    <div className="flex h-[290px] flex-col justify-between bg-(--l-code-bg) px-5 py-4 font-mono text-xs">
+    <div className="flex min-h-[288px] flex-col justify-between bg-(--l-code-bg) px-5 py-4 font-mono text-xs">
       <div>
         <div className="flex items-center justify-between text-[11px] text-(--l-panel-fg-3)">
           <span>sandbox</span>
@@ -69,11 +69,11 @@ export function FeatureSandbox() {
                 setManual(true);
                 setIdx(i);
               }}
-              className="flex-1 py-1 cursor-pointer"
+              className="flex-1 cursor-pointer py-1"
             >
               <div className="h-0.5 overflow-hidden bg-(--l-panel-fg-5)">
                 <div
-                  className="h-full transition-colors duration-300"
+                  className="h-full transition-colors duration-200"
                   style={{
                     backgroundColor:
                       i <= idx ? "var(--l-panel-fg)" : "transparent",
@@ -85,7 +85,7 @@ export function FeatureSandbox() {
         </div>
 
         <div className="mt-6">
-          <div className="text-base font-semibold text-(--l-panel-fg)">
+          <div className="text-base font-medium text-(--l-panel-fg)">
             {entry.state}
           </div>
           <div className="mt-1 font-sans text-xs leading-relaxed text-(--l-panel-fg-2)">
@@ -94,7 +94,7 @@ export function FeatureSandbox() {
         </div>
       </div>
 
-      <div className="flex gap-8 border-t border-(--l-panel-border) pt-3 text-[11px] tabular-nums">
+      <div className="flex flex-wrap gap-6 border-t border-(--l-panel-border) pt-3 text-[11px] tabular-nums sm:gap-8">
         <div>
           <div className="text-(--l-panel-fg-3)">branch</div>
           <div className="mt-0.5 text-(--l-panel-fg-2)">feat/github-oauth</div>

@@ -3,7 +3,7 @@
 import type { ToolRenderState } from "@entry-agents/shared/lib/tool-state";
 import { CircleX, Loader2, Minus, OctagonPause, Plus } from "lucide-react";
 import type React from "react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ApprovalButtons } from "./approval-buttons";
 
@@ -23,6 +23,8 @@ export type ToolLayoutProps = {
   onApprove?: (id: string) => void;
   onDeny?: (id: string, reason?: string) => void;
   defaultExpanded?: boolean;
+  /** Controlled transition trigger: syncs expanded state only when value transitions. */
+  autoExpanded?: boolean;
   /** Tool-specific icon (Lucide element). */
   icon?: ReactNode;
   /** @deprecated Use `icon` instead. */
@@ -80,12 +82,15 @@ export function ToolLayout({
   onApprove,
   onDeny,
   defaultExpanded = false,
+  autoExpanded,
   icon,
   indicator,
   nameClassName,
   onHeaderClick,
 }: ToolLayoutProps) {
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const initialExpanded = autoExpanded ?? defaultExpanded;
+  const [isExpanded, setIsExpanded] = useState(initialExpanded);
+  const prevAutoExpandedRef = useRef(autoExpanded);
   const showApprovalButtons = Boolean(
     state.approvalRequested && !state.isActiveApproval && state.approvalId,
   );
@@ -103,7 +108,7 @@ export function ToolLayout({
     state.approvalRequested && !showApprovalButtons && !state.interrupted;
   const isExpandedPanelVisible = isExpanded && hasExpandedDetails;
   const [shouldRenderExpandedContent, setShouldRenderExpandedContent] =
-    useState(defaultExpanded && hasExpandedDetails);
+    useState(initialExpanded && hasExpandedDetails);
 
   // Error & interrupted state flags
   const showErrorHeader = hasError;
@@ -113,6 +118,21 @@ export function ToolLayout({
     isInterrupted && !hasError && isExpandedPanelVisible;
   const hasErrorMeta = hasRenderableContent(errorMeta);
   const hasTrailingMeta = !showErrorHeader && !showInterruptedHeader && hasMeta;
+
+  useEffect(() => {
+    if (autoExpanded === undefined) {
+      prevAutoExpandedRef.current = autoExpanded;
+      return;
+    }
+    if (prevAutoExpandedRef.current === autoExpanded) {
+      return;
+    }
+    prevAutoExpandedRef.current = autoExpanded;
+    if (autoExpanded) {
+      setShouldRenderExpandedContent(true);
+    }
+    setIsExpanded(autoExpanded);
+  }, [autoExpanded]);
 
   useEffect(() => {
     if (!hasExpandedDetails) {

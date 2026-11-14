@@ -878,6 +878,7 @@ export function SessionChatContent({
   const {
     activeView,
     activeSubagentId,
+    openSubagentTab,
     closeSubagentTab,
     gitPanelOpen,
     openFileTab,
@@ -1023,8 +1024,24 @@ export function SessionChatContent({
     freePlanModelId,
     freeTierAllowedModelIds,
   } = useSessionChatMetadataContext();
+  const isOnline = useSyncExternalStore(
+    useCallback((callback: () => void) => {
+      if (typeof window === "undefined") return () => {};
+      window.addEventListener("online", callback);
+      window.addEventListener("offline", callback);
+      return () => {
+        window.removeEventListener("online", callback);
+        window.removeEventListener("offline", callback);
+      };
+    }, []),
+    () => (typeof navigator === "undefined" ? true : navigator.onLine),
+    () => true,
+  );
   const { containerRef, isAtBottom, scrollToBottom, scrollIfAtBottom } =
-    useScrollToBottom<HTMLDivElement>({ chatId: chatInfo.id });
+    useScrollToBottom<HTMLDivElement>({
+      chatId: chatInfo.id,
+      isVisible: activeView === "chat",
+    });
   // Two independent block reasons can both apply: freeTierGate is the
   // admin-controlled capacity kill-switch (all non-admin users, plan
   // irrelevant); creditGate is this specific user's own balance hitting
@@ -3286,45 +3303,65 @@ export function SessionChatContent({
               onClose={closeSubagentTab}
               onStopRun={() => void stopChatStream()}
             />
-          ) : (
-            <>
-              {/* Messages */}
-              <div className="relative flex-1 overflow-hidden">
-                <div ref={containerRef} className="h-full overflow-y-auto">
-                  <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
-                    <OpenFileProvider onOpenFile={handleOpenFileTab}>
-                      <div className="space-y-6">
-                        <ChatMessageFeed
-                          messages={renderMessages}
-                          isStreaming={isChatInFlight}
-                          streamdownComponents={streamdownComponents}
-                          onApproveTool={handleApproveTool}
-                          onDenyTool={handleDenyTool}
-                          onCopyAssistantMessage={handleCopyAssistantMessage}
-                          copiedAssistantMessageId={copiedAssistantMessageId}
-                          onForkAssistantMessage={handleForkAssistantMessage}
-                          forkingAssistantMessageId={forkingAssistantMessageId}
-                          onCopyUserMessage={handleCopyUserMessage}
-                          copiedUserMessageId={copiedUserMessageId}
-                          onResendUserMessage={handleResendUserMessage}
-                          resendingMessageId={resendingMessageId}
-                          onDeleteMessage={handleDeleteUserMessage}
-                          deletingMessageId={deletingMessageId}
-                          hasMessageActionInFlight={hasMessageActionInFlight}
-                          modelOptions={modelOptions}
-                          messageDurationMap={messageDurationMap}
-                          messageStartedAtMap={messageStartedAtMap}
-                          lastSendTimestamp={lastSendTimestampRef.current}
-                          lastUserMessageSentAt={lastUserMessageSentAt}
-                          readOnly={false}
-                          agentName="Entry"
-                          emptyStateMessage="Send a message to get started"
-                          showThinkingIndicator={showThinkingIndicator}
-                          workspaceStatusMessage={
-                            workspaceStatus?.message ?? "Thinking…"
-                          }
-                        />
-                        {error && (
+          ) : null}
+
+          <div
+            className={
+              activeView === "chat"
+                ? "flex min-w-0 flex-1 flex-col overflow-hidden"
+                : "hidden"
+            }
+          >
+            {/* Messages */}
+            <div className="relative flex-1 overflow-hidden">
+              <div ref={containerRef} className="h-full overflow-y-auto">
+                <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
+                  <OpenFileProvider onOpenFile={handleOpenFileTab}>
+                    <div className="space-y-6">
+                      <ChatMessageFeed
+                        messages={renderMessages}
+                        isStreaming={isChatInFlight}
+                        streamdownComponents={streamdownComponents}
+                        onApproveTool={handleApproveTool}
+                        onDenyTool={handleDenyTool}
+                        onOpenSubagentTab={openSubagentTab}
+                        onCopyAssistantMessage={handleCopyAssistantMessage}
+                        copiedAssistantMessageId={copiedAssistantMessageId}
+                        onForkAssistantMessage={handleForkAssistantMessage}
+                        forkingAssistantMessageId={forkingAssistantMessageId}
+                        onCopyUserMessage={handleCopyUserMessage}
+                        copiedUserMessageId={copiedUserMessageId}
+                        onResendUserMessage={handleResendUserMessage}
+                        resendingMessageId={resendingMessageId}
+                        onDeleteMessage={handleDeleteUserMessage}
+                        deletingMessageId={deletingMessageId}
+                        hasMessageActionInFlight={hasMessageActionInFlight}
+                        modelOptions={modelOptions}
+                        messageDurationMap={messageDurationMap}
+                        messageStartedAtMap={messageStartedAtMap}
+                        lastSendTimestamp={lastSendTimestampRef.current}
+                        lastUserMessageSentAt={lastUserMessageSentAt}
+                        readOnly={false}
+                        agentName="Entry"
+                        emptyStateMessage="Send a message to get started"
+                        showThinkingIndicator={showThinkingIndicator}
+                        workspaceStatusMessage={
+                          workspaceStatus?.message ?? "Thinking…"
+                        }
+                      />
+                      {error &&
+                        (!isOnline ? (
+                          <div
+                            role="status"
+                            className="flex w-fit max-w-[85%] items-center gap-2.5 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+                          >
+                            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                            <span>
+                              Offline — waiting for your connection to resume
+                              automatically.
+                            </span>
+                          </div>
+                        ) : (
                           // Inline, chat-bubble-style error card that lands
                           // right where the failed response would've been —
                           // not a full-width banner shouting from the top of
@@ -3347,129 +3384,126 @@ export function SessionChatContent({
                               Retry
                             </Button>
                           </div>
-                        )}
-                      </div>
-                    </OpenFileProvider>
-                  </div>
+                        ))}
+                    </div>
+                  </OpenFileProvider>
                 </div>
-                {!isAtBottom && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-secondary text-secondary-foreground hover:bg-accent"
-                    onClick={scrollToBottom}
-                  >
-                    <ArrowDown className="h-4 w-4" />
-                  </Button>
-                )}
               </div>
+              {!isAtBottom && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-secondary text-secondary-foreground hover:bg-accent"
+                  onClick={scrollToBottom}
+                >
+                  <ArrowDown className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
 
-              {/* Input */}
-              <div className="p-4 pb-2 sm:pb-8">
-                <div className="mx-auto max-w-4xl space-y-2">
-                  {sandboxCreateError && (
-                    <SandboxCreateErrorBanner
-                      error={sandboxCreateError}
-                      onDismiss={() => setSandboxCreateError(null)}
-                    />
-                  )}
-                  {restoreError && (
-                    <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      <span>{restoreError}</span>
-                      <button
-                        type="button"
-                        onClick={() => setRestoreError(null)}
-                        className="ml-2 rounded p-0.5 hover:bg-destructive/20"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                  {deleteMessageError && (
-                    <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                      <span>{deleteMessageError}</span>
-                      <button
-                        type="button"
-                        onClick={() => setDeleteMessageError(null)}
-                        className="ml-2 rounded p-0.5 hover:bg-destructive/20"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                  <ChatComposer
-                    ref={composerRef}
-                    isArchived={isArchived}
-                    isChatInFlight={isChatInFlight}
-                    hasPendingResponse={hasPendingResponse}
-                    composerGate={composerGate}
-                    modelId={chatInfo.modelId}
-                    reasoningEffort={chatInfo.reasoningEffort}
-                    modelOptions={modelOptions}
-                    modelOptionsLoading={modelOptionsLoading}
-                    isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
-                    freePlanModelId={freePlanModelId}
-                    freeTierAllowedModelIds={freeTierAllowedModelIds}
-                    onModelChange={handleModelChange}
-                    onReasoningEffortChange={handleReasoningEffortChange}
-                    onUpgradeRequired={handleUpgradeRequired}
-                    permissionMode={permissionMode}
-                    isTogglingPermissionMode={isTogglingPermissionMode}
-                    onPermissionModeChange={handlePermissionModeChange}
-                    files={files}
-                    filesLoading={filesLoading}
-                    skills={skills}
-                    skillsLoading={skillsLoading}
-                    pendingQuestions={pendingQuestions}
-                    hasPendingQuestion={hasPendingQuestion}
-                    onSubmitQuestionAnswers={handleQuestionSubmit}
-                    onCancelQuestion={handleQuestionCancel}
-                    queuedCount={queuedMessages.length}
-                    inboxUnreadCount={inboxUnreadCount}
-                    isSendingInbox={isSendingInbox}
-                    onSubmitMessage={submitBuiltMessage}
-                    onEnqueueMessage={enqueueComposerMessage}
-                    onSendInboxMessage={sendInboxMessage}
-                    onStopStream={handleStopStream}
-                    overlaySlot={
-                      <SandboxInputOverlay
-                        isArchived={isArchived}
-                        snapshotPending={isArchiveSnapshotPending}
-                        router={router}
-                        freeTierBlocked={Boolean(composerGate)}
-                        freeTierBlockedReason={composerGate?.reason ?? null}
-                      />
-                    }
-                    topPanelsSlot={
-                      <>
-                        <QueuedPromptsPanel
-                          prompts={queuedMessages}
-                          onRemove={removeQueuedMessage}
-                          onEdit={updateQueuedMessageText}
-                          onReorder={reorderQueuedMessages}
-                        />
-                        <PinnedTodoPanel todos={latestTodos} />
-                      </>
-                    }
-                    contextUsageSlot={
-                      <ContextUsageIndicator
-                        inputTokens={tokenUsage.inputTokens}
-                        conversationInputTokens={conversationUsage.inputTokens}
-                        conversationCachedInputTokens={
-                          conversationUsage.cachedInputTokens
-                        }
-                        conversationOutputTokens={
-                          conversationUsage.outputTokens
-                        }
-                        conversationCost={conversationCost}
-                        contextLimit={contextLimit ?? DEFAULT_CONTEXT_LIMIT}
-                      />
-                    }
+            {/* Input */}
+            <div className="p-4 pb-2 sm:pb-8">
+              <div className="mx-auto max-w-4xl space-y-2">
+                {sandboxCreateError && (
+                  <SandboxCreateErrorBanner
+                    error={sandboxCreateError}
+                    onDismiss={() => setSandboxCreateError(null)}
                   />
-                </div>
+                )}
+                {restoreError && (
+                  <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    <span>{restoreError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setRestoreError(null)}
+                      className="ml-2 rounded p-0.5 hover:bg-destructive/20"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+                {deleteMessageError && (
+                  <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    <span>{deleteMessageError}</span>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteMessageError(null)}
+                      className="ml-2 rounded p-0.5 hover:bg-destructive/20"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+                <ChatComposer
+                  ref={composerRef}
+                  isArchived={isArchived}
+                  isChatInFlight={isChatInFlight}
+                  hasPendingResponse={hasPendingResponse}
+                  composerGate={composerGate}
+                  modelId={chatInfo.modelId}
+                  reasoningEffort={chatInfo.reasoningEffort}
+                  modelOptions={modelOptions}
+                  modelOptionsLoading={modelOptionsLoading}
+                  isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
+                  freePlanModelId={freePlanModelId}
+                  freeTierAllowedModelIds={freeTierAllowedModelIds}
+                  onModelChange={handleModelChange}
+                  onReasoningEffortChange={handleReasoningEffortChange}
+                  onUpgradeRequired={handleUpgradeRequired}
+                  permissionMode={permissionMode}
+                  isTogglingPermissionMode={isTogglingPermissionMode}
+                  onPermissionModeChange={handlePermissionModeChange}
+                  files={files}
+                  filesLoading={filesLoading}
+                  skills={skills}
+                  skillsLoading={skillsLoading}
+                  pendingQuestions={pendingQuestions}
+                  hasPendingQuestion={hasPendingQuestion}
+                  onSubmitQuestionAnswers={handleQuestionSubmit}
+                  onCancelQuestion={handleQuestionCancel}
+                  queuedCount={queuedMessages.length}
+                  inboxUnreadCount={inboxUnreadCount}
+                  isSendingInbox={isSendingInbox}
+                  onSubmitMessage={submitBuiltMessage}
+                  onEnqueueMessage={enqueueComposerMessage}
+                  onSendInboxMessage={sendInboxMessage}
+                  onStopStream={handleStopStream}
+                  overlaySlot={
+                    <SandboxInputOverlay
+                      isArchived={isArchived}
+                      snapshotPending={isArchiveSnapshotPending}
+                      router={router}
+                      freeTierBlocked={Boolean(composerGate)}
+                      freeTierBlockedReason={composerGate?.reason ?? null}
+                    />
+                  }
+                  topPanelsSlot={
+                    <>
+                      <QueuedPromptsPanel
+                        prompts={queuedMessages}
+                        onRemove={removeQueuedMessage}
+                        onEdit={updateQueuedMessageText}
+                        onReorder={reorderQueuedMessages}
+                      />
+                      <PinnedTodoPanel todos={latestTodos} />
+                    </>
+                  }
+                  contextUsageSlot={
+                    <ContextUsageIndicator
+                      inputTokens={tokenUsage.inputTokens}
+                      conversationInputTokens={conversationUsage.inputTokens}
+                      conversationCachedInputTokens={
+                        conversationUsage.cachedInputTokens
+                      }
+                      conversationOutputTokens={conversationUsage.outputTokens}
+                      conversationCost={conversationCost}
+                      contextLimit={contextLimit ?? DEFAULT_CONTEXT_LIMIT}
+                    />
+                  }
+                />
               </div>
-            </>
-          )}
+            </div>
+          </div>
         </div>
       </div>
 

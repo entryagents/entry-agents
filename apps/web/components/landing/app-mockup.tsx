@@ -1,15 +1,29 @@
 "use client";
 
+import {
+  CheckCircle2,
+  FileCode2,
+  GitBranch,
+  Terminal,
+  Users,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 
-const EASE_OUT_QUINT = [0.23, 1, 0.32, 1] as const;
+const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
-type SessionId = "oauth" | "cache" | "reconnect" | "plugins";
-type InspectorTab = "changes" | "team";
+type SessionId = "oauth" | "direct" | "reconnect" | "integrations";
+type InspectorTab = "changes" | "branch";
 
-type ToolRow = {
-  readonly kind: "agent" | "board" | "edit" | "bash";
+type InlineAgentEntry = {
+  readonly role: string;
+  readonly summary: string;
+  readonly file: string;
+  readonly duration: string;
+};
+
+type DirectStepEntry = {
+  readonly kind: "edit" | "bash" | "plug";
   readonly label: string;
   readonly arg: string;
   readonly meta: string;
@@ -17,22 +31,14 @@ type ToolRow = {
 
 type DiffLine = {
   readonly type: "ctx" | "add" | "del";
-  readonly oldNum?: number;
-  readonly newNum?: number;
+  readonly lineNum?: number;
   readonly text: string;
 };
 
-type TeamAgentRow = {
-  readonly role: string;
-  readonly task: string;
-  readonly tokens: string;
-  readonly duration: string;
-};
-
-type TeamChecklistRow = {
-  readonly id: string;
-  readonly title: string;
-  readonly role: string;
+type BranchFileRow = {
+  readonly path: string;
+  readonly additions: number;
+  readonly deletions: number;
 };
 
 type WorkspaceSession = {
@@ -40,18 +46,19 @@ type WorkspaceSession = {
   readonly title: string;
   readonly branch: string;
   readonly age: string;
+  readonly modeLabel: string;
   readonly prompt: string;
-  readonly tools: readonly ToolRow[];
+  readonly inlineTeam: readonly InlineAgentEntry[] | null;
+  readonly directSteps: readonly DirectStepEntry[];
   readonly response: string;
-  readonly files: readonly string[];
   readonly diffFile: string;
   readonly diffStats: {
     readonly additions: number;
     readonly deletions: number;
   };
   readonly diffLines: readonly DiffLine[];
-  readonly teamAgents: readonly TeamAgentRow[];
-  readonly teamTasks: readonly TeamChecklistRow[];
+  readonly branchFiles: readonly BranchFileRow[];
+  readonly prCheckSummary: string;
   readonly model: string;
   readonly effort: string;
 };
@@ -59,503 +66,322 @@ type WorkspaceSession = {
 const WORKSPACE_SESSIONS: readonly WorkspaceSession[] = [
   {
     id: "oauth",
-    title: "GitHub App OAuth callback",
+    title: "GitHub OAuth & PR checks",
     branch: "feat/github-oauth",
     age: "2m",
+    modeLabel: "Team mode inline",
     prompt:
-      "Wire GitHub App installation callback into Better Auth and verify token scoping.",
-    tools: [
+      "Wire GitHub App installation callback into session storage and verify token scoping across API routes.",
+    inlineTeam: [
       {
-        kind: "agent",
-        label: "Architect Subagent",
-        arg: "Mapped callback boundary & 3 team tasks",
-        meta: "1.2s",
+        role: "Architect",
+        summary:
+          "Defined callback state contract & locked 3 non-overlapping files",
+        file: "oauth-contract.ts",
+        duration: "1.2s",
       },
       {
-        kind: "agent",
-        label: "Explorer Subagent",
-        arg: "lib/auth/config.ts, app/api/github/**",
-        meta: "1.8s",
+        role: "Explorer",
+        summary: "Mapped auth handlers & session lookup helpers",
+        file: "lib/auth/config.ts",
+        duration: "1.6s",
       },
       {
-        kind: "edit",
-        label: "Edit",
-        arg: "apps/web/app/api/github/callback/route.ts",
-        meta: "+34 −6",
+        role: "Executor",
+        summary:
+          "Implemented verified callback route & installation persistence",
+        file: "api/github/callback/route.ts",
+        duration: "3.4s",
       },
+      {
+        role: "Reviewer",
+        summary: "Verified CSRF cookie check, token redaction & 14 tests",
+        file: "callback.test.ts",
+        duration: "1.5s",
+      },
+    ],
+    directSteps: [
       {
         kind: "bash",
-        label: "Bash",
+        label: "Test suite",
         arg: "pnpm typecheck && bun test github-callback.test.ts",
-        meta: "3.4s",
-      },
-      {
-        kind: "board",
-        label: "Team Board",
-        arg: "Reviewer approved token redaction & state check",
-        meta: "3/3 done",
+        meta: "14/14 passed",
       },
     ],
     response:
-      "Connected the GitHub App installation callback to the session store, scoped installation tokens per repository, and verified all 14 callback tests pass.",
-    files: [
-      "app/api/github/callback/route.ts",
-      "lib/auth/config.ts",
-      "lib/github/installations.ts",
-    ],
+      "Connected the GitHub App installation callback cleanly, scoped tokens per repository, and verified all 14 callback tests in the sandbox.",
     diffFile: "app/api/github/callback/route.ts",
     diffStats: { additions: 34, deletions: 6 },
     diffLines: [
       {
         type: "ctx",
-        oldNum: 41,
-        newNum: 41,
+        lineNum: 41,
         text: "  const session = await getServerSession(request);",
       },
       {
         type: "del",
-        oldNum: 42,
+        lineNum: 42,
         text: "  if (!installationId) return NextResponse.redirect('/');",
       },
       {
         type: "add",
-        newNum: 42,
+        lineNum: 42,
         text: "  const verified = await verifyInstallationState(stateCookie, state);",
       },
       {
         type: "add",
-        newNum: 43,
+        lineNum: 43,
         text: "  if (!verified || !installationId) {",
       },
       {
         type: "add",
-        newNum: 44,
+        lineNum: 44,
         text: "    return NextResponse.redirect(new URL('/settings/connections', request.url));",
       },
       {
         type: "add",
-        newNum: 45,
+        lineNum: 45,
         text: "  }",
       },
       {
         type: "ctx",
-        oldNum: 43,
-        newNum: 46,
+        lineNum: 46,
         text: "  await linkGithubInstallation(session.user.id, installationId);",
       },
     ],
-    teamAgents: [
-      {
-        role: "Architect",
-        task: "Callback state & token scope contract",
-        tokens: "4.2k",
-        duration: "1.2s",
-      },
-      {
-        role: "Explorer",
-        task: "Locate auth config & installation helpers",
-        tokens: "3.8k",
-        duration: "1.8s",
-      },
-      {
-        role: "Executor",
-        task: "Implement route handler & unit tests",
-        tokens: "8.1k",
-        duration: "4.0s",
-      },
-      {
-        role: "Reviewer",
-        task: "Verify CSRF state & secret redaction",
-        tokens: "2.9k",
-        duration: "1.5s",
-      },
+    branchFiles: [
+      { path: "app/api/github/callback/route.ts", additions: 22, deletions: 4 },
+      { path: "lib/github/installations.ts", additions: 8, deletions: 2 },
+      { path: "lib/github/callback.test.ts", additions: 4, deletions: 0 },
     ],
-    teamTasks: [
-      {
-        id: "T-1",
-        title: "Verify state cookie before linking installation",
-        role: "Architect",
-      },
-      {
-        id: "T-2",
-        title: "Persist installation ID on user connection row",
-        role: "Executor",
-      },
-      {
-        id: "T-3",
-        title: "Confirm token never enters client response",
-        role: "Reviewer",
-      },
-    ],
+    prCheckSummary: "Typecheck & 14 callback tests green",
     model: "Claude Opus 4.6",
     effort: "high",
   },
   {
-    id: "cache",
-    title: "Split prompt cache prefix",
-    branch: "perf/prompt-cache",
-    age: "18m",
+    id: "direct",
+    title: "Fix retry backoff guard",
+    branch: "fix/retry-backoff",
+    age: "14m",
+    modeLabel: "Direct agent",
     prompt:
-      "Separate static system instructions from volatile branch metadata so turns hit the provider prefix cache.",
-    tools: [
-      {
-        kind: "agent",
-        label: "Explorer Subagent",
-        arg: "packages/agent/system-prompt.ts",
-        meta: "1.1s",
-      },
+      "Cap exponential retry delay in the transport client at 15s and add jitter bounds.",
+    inlineTeam: null,
+    directSteps: [
       {
         kind: "edit",
-        label: "Edit",
-        arg: "packages/agent/system-prompt.ts",
-        meta: "+28 −14",
-      },
-      {
-        kind: "edit",
-        label: "Edit",
-        arg: "packages/agent/open-agent.ts",
-        meta: "+19 −5",
+        label: "Edit file",
+        arg: "apps/web/lib/abortable-chat-transport.ts",
+        meta: "+12 −3",
       },
       {
         kind: "bash",
-        label: "Bash",
-        arg: "bun test packages/agent/prompt-cache.test.ts",
-        meta: "1.9s",
+        label: "Verify",
+        arg: "bun test apps/web/lib/chat/friendly-error.test.ts",
+        meta: "18/18 passed",
       },
     ],
     response:
-      "Isolated dynamic git branch and sandbox status into the trailing system block while keeping the core prompt byte-identical across turns.",
-    files: ["packages/agent/system-prompt.ts", "packages/agent/open-agent.ts"],
-    diffFile: "packages/agent/system-prompt.ts",
-    diffStats: { additions: 28, deletions: 14 },
+      "Updated the backoff curve to clamp jittered delays at 15s directly without spinning up extra agents.",
+    diffFile: "lib/abortable-chat-transport.ts",
+    diffStats: { additions: 12, deletions: 3 },
     diffLines: [
       {
         type: "ctx",
-        oldNum: 88,
-        newNum: 88,
-        text: "export function buildSystemPromptBlocks(opts: PromptOptions) {",
+        lineNum: 108,
+        text: "export function computeRetryDelayMs(attempt: number): number {",
       },
       {
         type: "del",
-        oldNum: 89,
-        text: "  return STATIC_INSTRUCTIONS + '\\nBranch: ' + opts.branch;",
+        lineNum: 109,
+        text: "  return 1000 * 2 ** attempt;",
       },
       {
         type: "add",
-        newNum: 89,
-        text: "  return {",
+        lineNum: 109,
+        text: "  const capped = Math.min(15_000, 1000 * 2 ** Math.min(attempt, 5));",
       },
       {
         type: "add",
-        newNum: 90,
-        text: "    stablePrefix: STATIC_INSTRUCTIONS,",
+        lineNum: 110,
+        text: "  const jitter = Math.round(capped * 0.15 * Math.random());",
       },
       {
         type: "add",
-        newNum: 91,
-        text: "    dynamicTail: formatRuntimeContext(opts),",
-      },
-      {
-        type: "add",
-        newNum: 92,
-        text: "  };",
+        lineNum: 111,
+        text: "  return capped + jitter;",
       },
       {
         type: "ctx",
-        oldNum: 90,
-        newNum: 93,
+        lineNum: 112,
         text: "}",
       },
     ],
-    teamAgents: [
-      {
-        role: "Explorer",
-        task: "Audit volatile fields in system prompt builder",
-        tokens: "3.1k",
-        duration: "1.1s",
-      },
-      {
-        role: "Executor",
-        task: "Split stablePrefix & dynamicTail blocks",
-        tokens: "6.4k",
-        duration: "2.8s",
-      },
+    branchFiles: [
+      { path: "lib/abortable-chat-transport.ts", additions: 12, deletions: 3 },
     ],
-    teamTasks: [
-      {
-        id: "T-1",
-        title: "Keep tool definitions deterministically sorted",
-        role: "Explorer",
-      },
-      {
-        id: "T-2",
-        title: "Attach cache_control breakpoint to stable prefix",
-        role: "Executor",
-      },
-    ],
-    model: "DeepSeek V3.2",
+    prCheckSummary: "Single-agent pass · 18/18 green",
+    model: "Claude Sonnet 4.6",
     effort: "medium",
   },
   {
     id: "reconnect",
-    title: "Durable stream reconnect",
+    title: "Offline-proof mobile run",
     branch: "fix/stream-resume",
     age: "1h",
+    modeLabel: "Durable resume",
     prompt:
-      "Ensure reloading a chat mid-turn resumes the active workflow stream without duplicating tool rows.",
-    tools: [
-      {
-        kind: "agent",
-        label: "Explorer Subagent",
-        arg: "app/workflows/chat.ts, app/api/chat/[chatId]/stream/route.ts",
-        meta: "1.5s",
-      },
+      "Ensure losing cellular signal mid-turn resumes live server progress without duplicate messages.",
+    inlineTeam: null,
+    directSteps: [
       {
         kind: "edit",
-        label: "Edit",
-        arg: "apps/web/app/workflows/chat-post-finish.ts",
+        label: "Edit file",
+        arg: "apps/web/app/api/chat/[chatId]/stream/route.ts",
         meta: "+22 −4",
       },
       {
         kind: "bash",
-        label: "Bash",
+        label: "Verify",
         arg: "bun test apps/web/app/workflows/chat.test.ts",
-        meta: "2.7s",
+        meta: "29/29 passed",
       },
     ],
     response:
-      "Checkpointed assistant tool results after each workflow step and guarded final stream cleanup with compare-and-set ownership.",
-    files: [
-      "app/workflows/chat-post-finish.ts",
-      "app/api/chat/[chatId]/stream/route.ts",
-    ],
-    diffFile: "app/workflows/chat-post-finish.ts",
+      "Server checkpoints persisted each tool step while offline and reattached seamlessly when the browser came back online.",
+    diffFile: "app/api/chat/[chatId]/stream/route.ts",
     diffStats: { additions: 22, deletions: 4 },
     diffLines: [
       {
         type: "ctx",
-        oldNum: 230,
-        newNum: 230,
-        text: "  const dedupedMessage = dedupeMessageReasoning(message);",
+        lineNum: 142,
+        text: "  const streamResult = await attachDurableStream(runId, startIndex);",
       },
       {
         type: "del",
-        oldNum: 231,
-        text: "  await upsertChatMessage(dedupedMessage);",
+        lineNum: 143,
+        text: "  return createEmptyResponse();",
       },
       {
         type: "add",
-        newNum: 231,
-        text: "  await upsertChatMessageAndClearActiveStream(",
+        lineNum: 143,
+        text: "  if (streamResult.status === 'active') {",
       },
       {
         type: "add",
-        newNum: 232,
-        text: "    { id: dedupedMessage.id, chatId, role: 'assistant', parts: sanitized },",
+        lineNum: 144,
+        text: "    return createUIMessageStreamResponse({ stream: streamResult.stream });",
       },
       {
         type: "add",
-        newNum: 233,
-        text: "    workflowRunId,",
-      },
-      {
-        type: "add",
-        newNum: 234,
-        text: "    { finalizeStatus: 'completed' },",
-      },
-      {
-        type: "add",
-        newNum: 235,
-        text: "  );",
+        lineNum: 145,
+        text: "  }",
       },
     ],
-    teamAgents: [
+    branchFiles: [
       {
-        role: "Explorer",
-        task: "Trace activeStreamId ownership across reload",
-        tokens: "4.0k",
-        duration: "1.5s",
-      },
-      {
-        role: "Executor",
-        task: "Atomic message upsert + stream pointer clear",
-        tokens: "7.2k",
-        duration: "3.1s",
+        path: "app/api/chat/[chatId]/stream/route.ts",
+        additions: 22,
+        deletions: 4,
       },
     ],
-    teamTasks: [
-      {
-        id: "T-1",
-        title: "Persist mid-turn tool checkpoints per step",
-        role: "Executor",
-      },
-      {
-        id: "T-2",
-        title: "Guard activeStreamId clear on workflowRunId",
-        role: "Executor",
-      },
-    ],
+    prCheckSummary: "Reconnect tests 29/29 passing",
     model: "Claude Sonnet 4.6",
     effort: "high",
   },
   {
-    id: "plugins",
-    title: "Invoke /unslop UI redline",
-    branch: "feat/unslop-polish",
-    age: "4h",
+    id: "integrations",
+    title: "Linear issue to PR",
+    branch: "feat/linear-triage",
+    age: "3h",
+    modeLabel: "Connected apps",
     prompt:
-      "/unslop Redesign the billing dashboard header and remove generic AI card gradients.",
-    tools: [
+      "Fetch bug ENG-418 from Linear, reproduce the failing webhook signature check, and post the PR link to #engineering in Slack.",
+    inlineTeam: [
       {
-        kind: "board",
-        label: "Invoked Skill",
-        arg: "/unslop · SKILL.md + references/tokens.md",
-        meta: "loaded",
+        role: "Explorer",
+        summary: "Read Linear issue ENG-418 & located webhook verifier",
+        file: "lib/webhooks/verify.ts",
+        duration: "1.4s",
       },
       {
-        kind: "agent",
-        label: "Design Subagent",
-        arg: "Audited spacing, tabular numerals & border contrast",
-        meta: "1.6s",
+        role: "Executor",
+        summary: "Patched raw-body HMAC verification & added replay test",
+        file: "verify.test.ts",
+        duration: "2.9s",
       },
+    ],
+    directSteps: [
       {
-        kind: "edit",
-        label: "Edit",
-        arg: "apps/web/app/settings/usage/usage-header.tsx",
-        meta: "+38 −29",
-      },
-      {
-        kind: "bash",
-        label: "Bash",
-        arg: "pnpm typecheck && pnpm check",
-        meta: "1.9s",
+        kind: "plug",
+        label: "Connected",
+        arg: "Linear · GitHub · Slack #engineering",
+        meta: "synced",
       },
     ],
     response:
-      "Applied `/unslop` design rules: replaced decorative gradients with 1px structural hairlines, aligned KPI metrics with `tabular-nums`, and verified mobile responsiveness.",
-    files: [
-      "app/settings/usage/usage-header.tsx",
-      "components/ui/metric-card.tsx",
-    ],
-    diffFile: "app/settings/usage/usage-header.tsx",
-    diffStats: { additions: 38, deletions: 29 },
+      "Fixed the raw-body HMAC check for ENG-418, opened PR #142, and posted verification notes to Slack.",
+    diffFile: "lib/webhooks/verify.ts",
+    diffStats: { additions: 19, deletions: 7 },
     diffLines: [
       {
         type: "del",
-        oldNum: 18,
-        text: "  <div className='bg-gradient-to-r from-purple-500/20 to-blue-500/10 p-6 shadow-xl'>",
+        lineNum: 28,
+        text: "  const payload = JSON.stringify(await request.json());",
       },
       {
         type: "add",
-        newNum: 18,
-        text: "  <div className='rounded-xl border border-border bg-card px-5 py-4'>",
-      },
-      {
-        type: "add",
-        newNum: 19,
-        text: "    <span className='font-mono text-2xl font-semibold tabular-nums'>",
+        lineNum: 28,
+        text: "  const rawPayload = await request.text();",
       },
       {
         type: "ctx",
-        oldNum: 19,
-        newNum: 20,
-        text: "      {formatCurrency(totalSpend)}",
+        lineNum: 29,
+        text: "  return timingSafeVerify(rawPayload, signatureHeader);",
       },
     ],
-    teamAgents: [
-      {
-        role: "Design",
-        task: "Apply /unslop typography & spacing hierarchy",
-        tokens: "4.6k",
-        duration: "1.6s",
-      },
-      {
-        role: "Reviewer",
-        task: "Verify dark/light contrast & mobile layout",
-        tokens: "2.2k",
-        duration: "1.1s",
-      },
+    branchFiles: [
+      { path: "lib/webhooks/verify.ts", additions: 11, deletions: 5 },
+      { path: "lib/webhooks/verify.test.ts", additions: 8, deletions: 2 },
     ],
-    teamTasks: [
-      {
-        id: "T-1",
-        title: "Strip decorative glow & enforce 1px border tokens",
-        role: "Design",
-      },
-      {
-        id: "T-2",
-        title: "Verify mobile 375px & desktop 1440px breakpoints",
-        role: "Reviewer",
-      },
-    ],
-    model: "Claude Sonnet 4.6",
+    prCheckSummary: "PR #142 open · Linear ENG-418 updated",
+    model: "GPT-5.2",
     effort: "high",
   },
 ];
 
-function ToolIcon({ kind }: { readonly kind: ToolRow["kind"] }) {
-  if (kind === "agent") {
-    return (
-      <svg
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        className="size-3 shrink-0 text-(--l-panel-fg-3)"
-        aria-hidden="true"
-      >
-        <circle cx="8" cy="5" r="2.2" />
-        <path d="M3.5 13c.6-2.2 2.3-3.5 4.5-3.5s3.9 1.3 4.5 3.5" />
-      </svg>
-    );
-  }
-  if (kind === "board") {
-    return (
-      <svg
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        className="size-3 shrink-0 text-(--l-panel-fg-3)"
-        aria-hidden="true"
-      >
-        <rect x="2.5" y="2.5" width="11" height="11" rx="1.5" />
-        <path d="M5 6h6M5 9h4" />
-      </svg>
-    );
-  }
+function StepIcon({ kind }: { readonly kind: DirectStepEntry["kind"] }) {
   if (kind === "bash") {
     return (
-      <svg
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        className="size-3 shrink-0 text-(--l-panel-fg-3)"
+      <Terminal
+        className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
+        strokeWidth={1.5}
         aria-hidden="true"
-      >
-        <path d="M4 5.5L7 8l-3 2.5M8.5 10.5H12" />
-      </svg>
+      />
+    );
+  }
+  if (kind === "plug") {
+    return (
+      <GitBranch
+        className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
+        strokeWidth={1.5}
+        aria-hidden="true"
+      />
     );
   }
   return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      className="size-3 shrink-0 text-(--l-panel-fg-3)"
+    <FileCode2
+      className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
+      strokeWidth={1.5}
       aria-hidden="true"
-    >
-      <path d="M9.5 3.5l3 3L5.5 13.5H2.5v-3L9.5 3.5z" />
-    </svg>
+    />
   );
 }
 
 export function AppMockup() {
   const [selectedId, setSelectedId] = useState<SessionId>("oauth");
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("changes");
-  const [mobilePane, setMobilePane] = useState<"chat" | "changes" | "team">(
+  const [mobilePane, setMobilePane] = useState<"chat" | "changes" | "branch">(
     "chat",
   );
   const session =
@@ -564,25 +390,25 @@ export function AppMockup() {
 
   return (
     <div
-      className="overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-panel) ring-1 ring-(--l-panel-border)"
+      className="min-w-0 w-full overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-panel) ring-1 ring-(--l-panel-border)"
       style={{ boxShadow: "var(--l-window-shadow)" }}
     >
-      {/* Workspace Header Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) px-3 py-2.5 lg:px-4">
+      {/* Workspace top bar */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) px-4 py-3">
         <div className="flex min-w-0 items-center gap-2 text-xs">
           <span className="truncate font-medium text-(--l-panel-fg)">
             entryagents/entry-agents
           </span>
           <span className="text-(--l-panel-fg-4)">/</span>
-          <span className="truncate font-mono text-[11px] text-(--l-panel-fg-2)">
+          <span className="truncate font-mono text-xs text-(--l-panel-fg-2)">
             {session.branch}
           </span>
         </div>
 
-        <div className="flex items-center gap-3 font-mono text-[11px] text-(--l-panel-fg-3)">
+        <div className="flex items-center gap-3 font-mono text-xs text-(--l-panel-fg-3)">
           <span className="inline-flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-emerald-500" />
-            <span>sandbox active</span>
+            <span>{session.modeLabel}</span>
           </span>
           <span className="text-(--l-panel-fg-4)">·</span>
           <span className="tabular-nums">
@@ -591,15 +417,15 @@ export function AppMockup() {
         </div>
       </div>
 
-      {/* Mobile & Tablet (<lg) Session + Pane Switcher Bar */}
-      <div className="flex flex-col gap-2 border-b border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 lg:hidden">
-        <div className="flex items-center gap-1 overflow-x-auto pb-0.5 sm:hidden">
+      {/* Mobile & tablet switcher */}
+      <div className="flex min-w-0 flex-col gap-2 border-b border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 lg:hidden">
+        <div className="flex max-w-full items-center gap-1 overflow-x-auto pb-1 sm:hidden">
           {WORKSPACE_SESSIONS.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => setSelectedId(s.id)}
-              className={`shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              className={`shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${
                 s.id === selectedId
                   ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                   : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg-2)"
@@ -610,57 +436,56 @@ export function AppMockup() {
           ))}
         </div>
 
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1 rounded-md border border-(--l-panel-border) bg-(--l-panel) p-0.5 text-[11px]">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-lg border border-(--l-panel-border) bg-(--l-panel) p-1 text-xs">
             <button
               type="button"
               onClick={() => setMobilePane("chat")}
-              className={`rounded px-2.5 py-1 font-medium transition-colors ${
+              className={`rounded-md px-2.5 py-1 font-medium transition-colors duration-150 ${
                 mobilePane === "chat"
                   ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                   : "text-(--l-panel-fg-3)"
               }`}
             >
-              Transcript
+              Chat
             </button>
             <button
               type="button"
               onClick={() => setMobilePane("changes")}
-              className={`rounded px-2.5 py-1 font-medium transition-colors ${
+              className={`rounded-md px-2.5 py-1 font-medium tabular-nums transition-colors duration-150 ${
                 mobilePane === "changes"
                   ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                   : "text-(--l-panel-fg-3)"
               }`}
             >
-              Diff (+{session.diffStats.additions} −
-              {session.diffStats.deletions})
+              Diff +{session.diffStats.additions} −{session.diffStats.deletions}
             </button>
             <button
               type="button"
-              onClick={() => setMobilePane("team")}
-              className={`rounded px-2.5 py-1 font-medium transition-colors ${
-                mobilePane === "team"
+              onClick={() => setMobilePane("branch")}
+              className={`rounded-md px-2.5 py-1 font-medium tabular-nums transition-colors duration-150 ${
+                mobilePane === "branch"
                   ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                   : "text-(--l-panel-fg-3)"
               }`}
             >
-              Team ({session.teamAgents.length})
+              Files ({session.branchFiles.length})
             </button>
           </div>
-          <span className="hidden font-mono text-[11px] text-(--l-panel-fg-3) sm:inline">
+          <span className="hidden font-mono text-xs text-(--l-panel-fg-3) sm:inline">
             {session.model}
           </span>
         </div>
       </div>
 
-      {/* 3-Pane Workspace Body */}
-      <div className="flex">
-        {/* Left Pane: Sessions List */}
+      {/* 3-pane workspace layout */}
+      <div className="flex min-w-0">
+        {/* Left pane: sessions */}
         <div className="hidden w-52 shrink-0 border-r border-(--l-panel-border) sm:block lg:w-56">
-          <div className="p-2.5">
-            <div className="mb-1.5 flex items-center justify-between px-2 py-1 text-[11px] text-(--l-panel-fg-3)">
+          <div className="p-3">
+            <div className="mb-2 flex items-center justify-between px-2 py-1 text-xs text-(--l-panel-fg-3)">
               <span className="font-medium">Sessions</span>
-              <span className="font-mono text-[11px] text-(--l-panel-fg-4)">
+              <span className="rounded border border-(--l-panel-border) px-1 py-0.5 font-mono text-[10px] text-(--l-panel-fg-4)">
                 ⌘K
               </span>
             </div>
@@ -672,7 +497,7 @@ export function AppMockup() {
                     key={s.id}
                     type="button"
                     onClick={() => setSelectedId(s.id)}
-                    className={`flex w-full flex-col rounded-md px-2.5 py-2 text-left transition-colors cursor-pointer ${
+                    className={`flex w-full cursor-pointer flex-col rounded-lg px-2.5 py-2 text-left transition-colors duration-150 ${
                       active
                         ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                         : "text-(--l-panel-fg-3) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg-2)"
@@ -682,7 +507,7 @@ export function AppMockup() {
                       <span className="truncate text-xs font-medium">
                         {s.title}
                       </span>
-                      <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--l-panel-fg-4)">
+                      <span className="shrink-0 font-mono text-xs tabular-nums text-(--l-panel-fg-4)">
                         {s.age}
                       </span>
                     </div>
@@ -696,80 +521,117 @@ export function AppMockup() {
           </div>
         </div>
 
-        {/* Center Pane: Chat Transcript & Composer (visible on desktop or when mobilePane === 'chat') */}
+        {/* Center pane: live chat + inline team coordination */}
         <div
           className={`min-w-0 flex-1 flex-col ${
             mobilePane === "chat" ? "flex" : "hidden lg:flex"
           }`}
         >
-          <div className="min-h-[320px] flex-1 overflow-hidden sm:min-h-[400px]">
+          <div className="min-h-[340px] min-w-0 flex-1 overflow-hidden sm:min-h-[416px]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={session.id}
                 initial={{ opacity: 0, transform: "translateY(4px)" }}
                 animate={{ opacity: 1, transform: "translateY(0px)" }}
                 exit={{ opacity: 0, transform: "translateY(-4px)" }}
-                transition={{ duration: 0.18, ease: EASE_OUT_QUINT }}
-                className="mx-auto max-w-2xl space-y-3.5 px-3.5 py-4 sm:px-5 sm:py-5"
+                transition={{ duration: 0.16, ease: EASE_OUT }}
+                className="mx-auto min-w-0 max-w-2xl space-y-4 px-4 py-4 sm:px-5 sm:py-5"
               >
-                {/* User Message */}
+                {/* Prompt bubble */}
                 <div className="flex justify-end">
-                  <div className="max-w-[90%] rounded-2xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3.5 py-2">
+                  <div className="max-w-[92%] rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3.5 py-2.5">
                     <p className="text-xs leading-relaxed text-(--l-panel-fg)">
                       {session.prompt}
                     </p>
                   </div>
                 </div>
 
-                {/* Compact Tool Call Feed */}
-                <div className="space-y-1 py-0.5">
-                  {session.tools.map((tool, idx) => (
+                {/* Live in-chat Team timeline card (when team mode runs in the turn) */}
+                {session.inlineTeam && (
+                  <div className="min-w-0 overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface)">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) px-3 py-2 text-xs">
+                      <div className="flex items-center gap-2 font-medium text-(--l-panel-fg)">
+                        <Users
+                          className="size-3.5 text-(--l-accent)"
+                          strokeWidth={1.5}
+                        />
+                        <span>Team execution inline</span>
+                      </div>
+                      <span className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-3)">
+                        {session.inlineTeam.length} specialists · 0 conflicts
+                      </span>
+                    </div>
+                    <div className="divide-y divide-(--l-panel-border)">
+                      {session.inlineTeam.map((agent) => (
+                        <div
+                          key={agent.role}
+                          className="flex min-w-0 flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <CheckCircle2
+                              className="size-3.5 shrink-0 text-emerald-500"
+                              strokeWidth={1.5}
+                              aria-hidden="true"
+                            />
+                            <span className="w-16 shrink-0 font-medium text-(--l-panel-fg)">
+                              {agent.role}
+                            </span>
+                            <span className="truncate text-(--l-panel-fg-2)">
+                              {agent.summary}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2 font-mono text-[11px] text-(--l-panel-fg-4)">
+                            <span className="hidden sm:inline">
+                              {agent.file}
+                            </span>
+                            <span className="tabular-nums">
+                              {agent.duration}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Direct tool steps */}
+                <div className="space-y-1">
+                  {session.directSteps.map((step) => (
                     <div
-                      key={`${session.id}-${tool.label}-${idx}`}
-                      className="flex items-center justify-between gap-3 rounded-md px-2 py-1 text-[11px] transition-colors hover:bg-(--l-panel-surface)"
+                      key={`${session.id}-${step.label}-${step.arg}`}
+                      className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-xs transition-colors duration-150 hover:bg-(--l-panel-surface)"
                     >
                       <div className="flex min-w-0 items-center gap-2">
-                        <ToolIcon kind={tool.kind} />
+                        <StepIcon kind={step.kind} />
                         <span className="shrink-0 font-medium text-(--l-panel-fg-2)">
-                          {tool.label}
+                          {step.label}
                         </span>
                         <span className="truncate font-mono text-[11px] text-(--l-panel-fg-3)">
-                          {tool.arg}
+                          {step.arg}
                         </span>
                       </div>
                       <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--l-panel-fg-4)">
-                        {tool.meta}
+                        {step.meta}
                       </span>
                     </div>
                   ))}
                 </div>
 
-                {/* Assistant Response */}
-                <p className="text-xs leading-[1.65] text-(--l-panel-fg-2)">
+                {/* Synthesized assistant summary */}
+                <p className="text-xs leading-relaxed text-(--l-panel-fg-2)">
                   {session.response}
                 </p>
-
-                {/* Touched Files */}
-                <div className="flex flex-wrap gap-1.5 pt-0.5">
-                  {session.files.map((file) => (
-                    <span
-                      key={file}
-                      className="inline-flex items-center gap-1.5 rounded border border-(--l-panel-border) bg-(--l-panel-surface) px-2 py-0.5 font-mono text-[11px] text-(--l-panel-fg-2)"
-                    >
-                      {file}
-                    </span>
-                  ))}
-                </div>
               </motion.div>
             </AnimatePresence>
           </div>
 
-          {/* Composer */}
-          <div className="px-3.5 pb-3.5 pt-1 sm:px-5 sm:pb-4">
+          {/* Composer bar */}
+          <div className="px-4 pb-4 pt-1 sm:px-5">
             <div className="mx-auto max-w-2xl overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface)">
-              <div className="px-3.5 py-2">
-                <span className="text-[11px] text-(--l-panel-fg-4)">
-                  Ask anything, @ to mention files, or / for commands...
+              <div className="px-3.5 py-2.5">
+                <span className="text-xs text-(--l-panel-fg-4)">
+                  Describe what to build, or ask a team of specialists to
+                  collaborate
                 </span>
               </div>
               <div className="flex items-center justify-between border-t border-(--l-panel-border) px-3 py-1.5">
@@ -795,49 +657,47 @@ export function AppMockup() {
           </div>
         </div>
 
-        {/* Right Pane: Changes & Team Inspector (always visible on lg+, or on <lg when mobilePane !== 'chat') */}
+        {/* Right pane: diff & branch changes */}
         <div
-          className={`w-full shrink-0 flex-col border-(--l-panel-border) lg:flex lg:w-80 lg:border-l ${
+          className={`min-w-0 w-full shrink-0 flex-col border-(--l-panel-border) lg:flex lg:w-80 lg:border-l ${
             mobilePane === "chat" ? "hidden" : "flex"
           }`}
         >
           <div className="hidden items-center justify-between border-b border-(--l-panel-border) px-3 py-2 lg:flex">
-            <div className="flex items-center gap-1 rounded-md bg-(--l-panel-surface) p-0.5 text-[11px]">
+            <div className="flex items-center gap-1 rounded-md bg-(--l-panel-surface) p-0.5 text-xs">
               <button
                 type="button"
                 onClick={() => setInspectorTab("changes")}
-                className={`rounded px-2 py-0.5 font-medium transition-colors cursor-pointer ${
+                className={`cursor-pointer rounded px-2 py-0.5 font-medium transition-colors duration-150 ${
                   inspectorTab === "changes"
                     ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                     : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg-2)"
                 }`}
               >
-                Changes
+                Diff
               </button>
               <button
                 type="button"
-                onClick={() => setInspectorTab("team")}
-                className={`rounded px-2 py-0.5 font-medium transition-colors cursor-pointer ${
-                  inspectorTab === "team"
+                onClick={() => setInspectorTab("branch")}
+                className={`cursor-pointer rounded px-2 py-0.5 font-medium transition-colors duration-150 ${
+                  inspectorTab === "branch"
                     ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                     : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg-2)"
                 }`}
               >
-                Team ({session.teamAgents.length})
+                Files ({session.branchFiles.length})
               </button>
             </div>
             <span className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-4)">
-              {inspectorTab === "changes"
-                ? `${session.files.length} files`
-                : `${session.teamTasks.length} tasks`}
+              +{session.diffStats.additions} −{session.diffStats.deletions}
             </span>
           </div>
 
-          <div className="flex-1 overflow-hidden p-3.5">
+          <div className="min-w-0 flex-1 overflow-hidden p-3.5">
             {mobilePane === "changes" ||
             (mobilePane === "chat" && inspectorTab === "changes") ? (
-              <div className="space-y-2.5">
-                <div className="flex items-center justify-between font-mono text-[11px]">
+              <div className="min-w-0 space-y-3">
+                <div className="flex min-w-0 items-center justify-between gap-2 font-mono text-[11px]">
                   <span className="truncate text-(--l-panel-fg-2)">
                     {session.diffFile}
                   </span>
@@ -846,20 +706,20 @@ export function AppMockup() {
                     {session.diffStats.deletions}
                   </span>
                 </div>
-                <div className="overflow-x-auto rounded-lg border border-(--l-panel-border) bg-(--l-code-bg) py-1.5 font-mono text-[11px] leading-[1.6]">
+                <div className="min-w-0 max-w-full overflow-x-auto rounded-lg border border-(--l-panel-border) bg-(--l-code-bg) py-1.5 font-mono text-[11px] leading-[1.6]">
                   {session.diffLines.map((line, idx) => (
                     <div
                       key={idx}
                       className={`flex px-2 ${
                         line.type === "add"
-                          ? "bg-emerald-500/10 text-emerald-400"
+                          ? "bg-emerald-500/10 text-emerald-500"
                           : line.type === "del"
-                            ? "bg-rose-500/10 text-rose-400"
+                            ? "bg-rose-500/10 text-rose-500"
                             : "text-(--l-panel-fg-3)"
                       }`}
                     >
                       <span className="w-6 shrink-0 select-none pr-1.5 text-right tabular-nums opacity-45">
-                        {line.newNum ?? line.oldNum ?? ""}
+                        {line.lineNum ?? ""}
                       </span>
                       <span className="w-3 shrink-0 select-none opacity-70">
                         {line.type === "add"
@@ -872,67 +732,32 @@ export function AppMockup() {
                     </div>
                   ))}
                 </div>
-                <div className="space-y-1 pt-1">
-                  <div className="text-[11px] font-medium text-(--l-panel-fg-3)">
-                    Modified in branch
-                  </div>
-                  {session.files.map((file) => (
-                    <div
-                      key={file}
-                      className="flex items-center justify-between rounded px-1.5 py-1 font-mono text-[11px] text-(--l-panel-fg-3)"
-                    >
-                      <span className="truncate">{file}</span>
-                      <span className="text-(--l-panel-fg-4)">M</span>
-                    </div>
-                  ))}
+                <div className="rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-xs text-(--l-panel-fg-2)">
+                  {session.prCheckSummary}
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="space-y-1.5">
-                  <div className="text-[11px] font-medium text-(--l-panel-fg-3)">
-                    Subagents
-                  </div>
-                  {session.teamAgents.map((agent) => (
+                <div className="text-xs font-medium text-(--l-panel-fg-3)">
+                  Changed on branch
+                </div>
+                <div className="space-y-1">
+                  {session.branchFiles.map((file) => (
                     <div
-                      key={agent.role}
-                      className="rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) px-2.5 py-2"
+                      key={file.path}
+                      className="flex items-center justify-between gap-2 rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) px-2.5 py-2 font-mono text-[11px]"
                     >
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-medium text-(--l-panel-fg)">
-                          {agent.role}
-                        </span>
-                        <span className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-4)">
-                          {agent.tokens} · {agent.duration}
-                        </span>
-                      </div>
-                      <p className="mt-0.5 truncate text-[11px] text-(--l-panel-fg-3)">
-                        {agent.task}
-                      </p>
+                      <span className="truncate text-(--l-panel-fg-2)">
+                        {file.path}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-(--l-panel-fg-4)">
+                        +{file.additions} −{file.deletions}
+                      </span>
                     </div>
                   ))}
                 </div>
-
-                <div className="space-y-1.5 pt-1">
-                  <div className="text-[11px] font-medium text-(--l-panel-fg-3)">
-                    Team board
-                  </div>
-                  {session.teamTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className="flex items-start gap-2 rounded px-1.5 py-1 text-[11px]"
-                    >
-                      <span className="mt-1 size-1.5 shrink-0 rounded-full bg-emerald-500" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-(--l-panel-fg-2)">
-                          {task.title}
-                        </div>
-                        <div className="font-mono text-[11px] text-(--l-panel-fg-4)">
-                          {task.id} · {task.role}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                <div className="border-t border-(--l-panel-border) pt-3 text-xs text-(--l-panel-fg-3)">
+                  {session.prCheckSummary}
                 </div>
               </div>
             )}

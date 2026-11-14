@@ -67,6 +67,7 @@
     "streamdown": "^2.7.1",
     "swr": "^2.3.8",
     "tailwind-merge": "^3.4.0",
+    "three": "^0.187.0",
     "vaul": "^1.1.2",
     "workflow": "5.5.0",
     "zod": "catalog:"
@@ -77,6 +78,7 @@
     "@types/node": "^20",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
+    "@types/three": "^0.187.0",
     "dotenv": "^17.4.2",
     "drizzle-kit": "^0.31.8",
     "tailwindcss": "^4",

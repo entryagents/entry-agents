@@ -72,7 +72,7 @@ export async function GET(req: Request, context: RouteContext) {
 
   const { sessionRecord } = sessionContext;
   const sandboxState = sessionRecord.sandboxState;
-  if (!sandboxState || !hasRuntimeSandboxState(sandboxState)) {
+  if (!sandboxState) {
     return Response.json({
       skills: toSkillSuggestions(getBuiltinSkillsMetadata()),
     });
@@ -85,6 +85,12 @@ export async function GET(req: Request, context: RouteContext) {
     if (cachedSkills !== null) {
       return Response.json({ skills: toSkillSuggestions(cachedSkills) });
     }
+  }
+
+  if (!hasRuntimeSandboxState(sandboxState)) {
+    return Response.json({
+      skills: toSkillSuggestions(getBuiltinSkillsMetadata()),
+    });
   }
 
   try {

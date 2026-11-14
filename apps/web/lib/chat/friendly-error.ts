@@ -101,7 +101,7 @@ const CATEGORY_MESSAGES: Record<ChatErrorCategory, string> = {
     "The sandbox workspace could not be initialized. Entry is switching to a writable workspace path and retrying the session. Resend this message in a moment.",
   // The residual category: an error signature Entry doesn't recognize.
   unknown:
-    "The response was interrupted. Click Retry to continue where you left off, or switch models if the issue persists.",
+    "Generation could not be completed cleanly. Retry to resume from the last checkpoint, or send another message.",
 };
 
 /** Classifies a raw error (or a raw error-message string pulled back out
@@ -338,14 +338,13 @@ export function classifyChatError(error: unknown): ChatErrorCategory {
 }
 
 const REPEAT_FAILURE_SUFFIX =
-  " This looks like a repeating issue rather than a one-off, so retrying probably won't help -- try switching models, or let us know if it keeps happening.";
+  " This error happened multiple times on this chat; inspect the tool output above or switch models before retrying.";
 
 /**
  * @param isRepeatFailure When true, appends a note that this chat has hit
  * the same error category before (see countRecentFailuresWithCategory in
  * lib/db/workflow-runs.ts). Never set for "aborted" -- callers should
- * check the category first, a user-initiated stop is never a "repeating
- * issue."
+ * check the category first, a user-initiated stop is never repeated.
  */
 export function toFriendlyChatErrorText(
   error: unknown,

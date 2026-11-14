@@ -21,6 +21,7 @@ import {
   getOrCreateChatInstance,
 } from "@/lib/chat-instance-manager";
 import { cleanupChatRouteOnUnmount } from "@/lib/chat-route-cleanup";
+import { isFriendlyChatErrorText } from "@/lib/chat/friendly-error";
 import {
   CONTINUE_AFTER_ERROR_PROMPT,
   getDeadTurnRetryAction,
@@ -167,6 +168,34 @@ export function useSessionChatRuntime({
         },
         onFinish: () => {
           triggerBillingSync();
+          const lastMsg =
+            chatInstance.messages[chatInstance.messages.length - 1];
+          const hasRenderableReply =
+            lastMsg?.role === "assistant" &&
+            lastMsg.parts.some(
+              (p) =>
+                (p.type === "text" && p.text.trim().length > 0) ||
+                p.type.startsWith("tool-") ||
+                p.type === "reasoning",
+            );
+          if (!hasRenderableReply) {
+            void fetch(`/api/sessions/${sessionId}/chats/${chatId}`, {
+              cache: "no-store",
+            })
+              .then(async (res) => {
+                if (!res.ok) return;
+                const data = (await res.json()) as {
+                  messages?: WebAgentUIMessage[];
+                };
+                if (Array.isArray(data.messages) && data.messages.length > 0) {
+                  chatInstance.messages = mergePreservingLocalWork(
+                    data.messages,
+                    chatInstance.messages,
+                  );
+                }
+              })
+              .catch(() => {});
+          }
         },
         onError: () => {
           triggerBillingSync();
@@ -332,13 +361,14 @@ export function useSessionChatRuntime({
                 return;
               }
               const data = (await res.json()) as {
+                status?: string;
                 messages?: WebAgentUIMessage[];
                 isStreaming?: boolean;
               };
               if (!data?.isStreaming) {
-                // Server confirms the workflow run has finished. If local
-                // transport is still stuck in a reconnect loop, tear it down
-                // and hydrate the authoritative persisted messages from DB.
+                // Server confirms no workflow run is active. If the local
+                // transport is still looping, tear it down cleanly and hydrate
+                // the authoritative persisted messages from DB.
                 if (
                   chatInstance.status === "streaming" ||
                   chatInstance.status === "submitted"
@@ -350,16 +380,57 @@ export function useSessionChatRuntime({
                   }
                   abortChatInstanceTransport(chatId);
                 }
-                if (data?.messages) {
-                  chat.setMessages(
-                    mergePreservingLocalWork(
+                const mergedMessages = data?.messages
+                  ? mergePreservingLocalWork(
                       data.messages,
                       chatInstance.messages,
-                    ),
-                  );
+                    )
+                  : chatInstance.messages;
+                if (data?.messages) {
+                  chat.setMessages(mergedMessages);
                 }
                 clearChatWorkspaceStatus(chatId);
                 triggerBillingSync();
+
+                const lastMerged = mergedMessages[mergedMessages.length - 1];
+                const lastIsCompletedNonErrorAssistant =
+                  lastMerged?.role === "assistant" &&
+                  lastMerged.parts.some(
+                    (part) =>
+                      (part.type === "text" &&
+                        part.text.trim().length > 0 &&
+                        !isFriendlyChatErrorText(part.text)) ||
+                      part.type.startsWith("tool-") ||
+                      part.type === "reasoning",
+                  );
+
+                if (
+                  data?.status === "completed" ||
+                  (data?.status !== "failed" &&
+                    data?.status !== "cancelled" &&
+                    lastIsCompletedNonErrorAssistant)
+                ) {
+                  // Turn succeeded while client was offline/disconnected; clear
+                  // any stale client-side network error card immediately.
+                  chat.clearError();
+                  return;
+                }
+
+                if (userStoppedRef.current) {
+                  return;
+                }
+
+                const retryAction = getDeadTurnRetryAction(
+                  mergedMessages,
+                  strategy === "hard" ? "hard" : "soft",
+                );
+                if (retryAction === "continue") {
+                  await chat.sendMessage({
+                    text: CONTINUE_AFTER_ERROR_PROMPT,
+                  });
+                } else if (retryAction === "regenerate") {
+                  await chat.regenerate();
+                }
                 return;
               }
               if (resumeAttachedToNothing) {
@@ -391,17 +462,6 @@ export function useSessionChatRuntime({
               return;
             }
 
-            // The turn is dead server-side. ONE shared, strategy-aware
-            // decision for both the manual Retry button and auto
-            // recovery (2026-09-13, owner: "improve the whole retry
-            // process, both retries"):
-            // - real partial work -> CONTINUE from it (keeps the partial
-            //   response in history; auto-recovery may self-heal too,
-            //   since continuing never repeats completed work)
-            // - nothing worth keeping -> hard: REGENERATE (drops the
-            //   error notice, clean re-run); soft: do nothing and keep
-            //   the error visible (never re-runs a full turn without the
-            //   user asking)
             const retryAction = getDeadTurnRetryAction(
               messagesBeforeResume,
               strategy === "hard" ? "hard" : "soft",
@@ -413,8 +473,6 @@ export function useSessionChatRuntime({
             } else if (retryAction === "regenerate") {
               await chat.regenerate();
             }
-            // "none": dead turn with nothing worth continuing in auto
-            // recovery -- intentionally do nothing.
           }
         } catch (error) {
           // resumeStream() throws on transport-level failures (network

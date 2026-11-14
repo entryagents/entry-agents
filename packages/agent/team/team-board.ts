@@ -28,19 +28,80 @@ export interface TeamWorkItem {
   assignedRole: string;
   status: TeamTaskStatus;
   dependsOn?: string[];
+  files?: string[];
   notes?: string;
+  verification?: string;
   updatedBy: string;
   updatedAt: number;
+}
+
+export interface TeamFileConflict {
+  file: string;
+  roles: string[];
+  taskIds: string[];
 }
 
 export interface TeamBoardSnapshot {
   teamId: string;
   entries: TeamBoardEntry[];
   tasks: TeamWorkItem[];
+  fileConflicts?: TeamFileConflict[];
 }
 
 const MAX_BOARD_ENTRIES = 80;
 const MAX_TEAM_TASKS = 50;
+
+function normalizeFileClaimList(files: string[] | undefined): string[] {
+  if (!files || files.length === 0) return [];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const raw of files) {
+    const cleaned = raw.trim().replace(/^\.\//, "");
+    if (!cleaned || seen.has(cleaned)) continue;
+    seen.add(cleaned);
+    normalized.push(cleaned);
+  }
+  return normalized;
+}
+
+/**
+ * Detects active (non-completed) tasks claiming overlapping repository paths
+ * so teammates avoid colliding edits on the same file.
+ */
+export function findFileOwnershipConflicts(
+  tasks: TeamWorkItem[],
+): TeamFileConflict[] {
+  const byFile = new Map<
+    string,
+    { roles: Set<string>; taskIds: Set<string> }
+  >();
+
+  for (const task of tasks) {
+    if (task.status === "completed") continue;
+    const files = normalizeFileClaimList(task.files);
+    for (const file of files) {
+      let bucket = byFile.get(file);
+      if (!bucket) {
+        bucket = { roles: new Set(), taskIds: new Set() };
+        byFile.set(file, bucket);
+      }
+      bucket.roles.add(task.assignedRole);
+      bucket.taskIds.add(task.id);
+    }
+  }
+
+  const conflicts: TeamFileConflict[] = [];
+  for (const [file, bucket] of byFile.entries()) {
+    if (bucket.taskIds.size >= 2) {
+      conflicts.push({
+        file,
+        roles: [...bucket.roles],
+        taskIds: [...bucket.taskIds],
+      });
+    }
+  }
+  return conflicts;
+}
 
 export class TeamBoard {
   public readonly teamId: string;
@@ -90,7 +151,9 @@ export class TeamBoard {
       assignedRole: string;
       status?: TeamTaskStatus;
       dependsOn?: string[];
+      files?: string[];
       notes?: string;
+      verification?: string;
     }>,
     updatedBy: string,
   ): TeamWorkItem[] {
@@ -100,17 +163,28 @@ export class TeamBoard {
         break;
       }
       const prev = this.tasks.get(item.id);
+      const nextFiles =
+        item.files !== undefined
+          ? normalizeFileClaimList(item.files)
+          : prev?.files;
+      const nextVerification =
+        item.verification !== undefined
+          ? item.verification.trim() || undefined
+          : prev?.verification;
+
       this.tasks.set(item.id, {
         id: item.id,
         title: item.title.trim(),
         assignedRole: item.assignedRole,
         status: item.status ?? prev?.status ?? "open",
         ...(item.dependsOn ? { dependsOn: item.dependsOn } : {}),
+        ...(nextFiles && nextFiles.length > 0 ? { files: nextFiles } : {}),
         ...(item.notes !== undefined
           ? { notes: item.notes }
           : prev?.notes
             ? { notes: prev.notes }
             : {}),
+        ...(nextVerification ? { verification: nextVerification } : {}),
         updatedBy,
         updatedAt: now,
       });
@@ -122,16 +196,38 @@ export class TeamBoard {
     taskId: string,
     status: TeamTaskStatus,
     updatedBy: string,
-    notes?: string,
+    notesOrOptions?:
+      | string
+      | {
+          notes?: string;
+          files?: string[];
+          verification?: string;
+        },
   ): TeamWorkItem | null {
     const existing = this.tasks.get(taskId);
     if (!existing) return null;
+
+    const opts =
+      typeof notesOrOptions === "string"
+        ? { notes: notesOrOptions }
+        : (notesOrOptions ?? {});
+    const nextFiles =
+      opts.files !== undefined
+        ? normalizeFileClaimList(opts.files)
+        : existing.files;
+    const nextVerification =
+      opts.verification !== undefined
+        ? opts.verification.trim() || undefined
+        : existing.verification;
+
     const updated: TeamWorkItem = {
       ...existing,
       status,
       updatedBy,
       updatedAt: Date.now(),
-      ...(notes !== undefined ? { notes } : {}),
+      ...(nextFiles && nextFiles.length > 0 ? { files: nextFiles } : {}),
+      ...(opts.notes !== undefined ? { notes: opts.notes } : {}),
+      ...(nextVerification ? { verification: nextVerification } : {}),
     };
     this.tasks.set(taskId, updated);
     return updated;
@@ -162,10 +258,13 @@ export class TeamBoard {
   }
 
   snapshot(): TeamBoardSnapshot {
+    const tasks = this.listTasks();
+    const fileConflicts = findFileOwnershipConflicts(tasks);
     return {
       teamId: this.teamId,
       entries: [...this.entries],
-      tasks: this.listTasks(),
+      tasks,
+      ...(fileConflicts.length > 0 ? { fileConflicts } : {}),
     };
   }
 }
@@ -255,8 +354,23 @@ export function formatTeamContextSummary(board: TeamBoard): string {
   if (snap.tasks.length > 0) {
     lines.push("", "### Team Tasks");
     for (const task of snap.tasks.slice(-15)) {
+      const files = task.files?.length
+        ? ` [files: ${task.files.slice(0, 6).join(", ")}]`
+        : "";
+      const verified = task.verification
+        ? ` | verified: ${task.verification}`
+        : "";
       lines.push(
-        `- [${task.status}] \`${task.id}\` (${task.assignedRole}): ${task.title}${task.notes ? ` — ${task.notes}` : ""}`,
+        `- [${task.status}] \`${task.id}\` (${task.assignedRole}): ${task.title}${files}${task.notes ? ` — ${task.notes}` : ""}${verified}`,
+      );
+    }
+  }
+
+  if (snap.fileConflicts && snap.fileConflicts.length > 0) {
+    lines.push("", "### File Ownership Warnings");
+    for (const conflict of snap.fileConflicts) {
+      lines.push(
+        `- Overlap on \`${conflict.file}\` across tasks ${conflict.taskIds.join(", ")} (${conflict.roles.join(", ")}) — coordinate before editing.`,
       );
     }
   }

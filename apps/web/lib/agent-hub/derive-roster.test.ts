@@ -148,17 +148,76 @@ describe("deriveAgentHubRoster", () => {
 });
 
 describe("deriveTeamFeed", () => {
-  test("reconstructs chronological entries and latest task states from team_board and task parts", () => {
+  test("reconstructs chronological entries, task files, verification, and conflicts", () => {
     const feed = deriveTeamFeed(msgs);
     expect(feed.entries.map((e) => e.id)).toEqual(["tb_a1", "tb_a2"]);
     expect(feed.entries[0]?.files).toEqual(["packages/agent/tools/team.ts"]);
     expect(feed.tasks).toHaveLength(1);
     expect(feed.tasks[0]?.status).toBe("completed");
     expect(feed.tasks[0]?.updatedBy).toBe("executor");
+    expect(feed.fileConflicts).toEqual([]);
+
+    const conflictFeed = deriveTeamFeed([
+      {
+        id: "a2",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-team_board",
+            toolCallId: "tb_c",
+            state: "output-available",
+            output: {
+              teamSnapshot: {
+                teamId: "s2",
+                entries: [],
+                tasks: [
+                  {
+                    id: "T1",
+                    title: "Edit feed",
+                    assignedRole: "executor",
+                    status: "in_progress",
+                    files: ["apps/web/components/chat/chat-message-feed.tsx"],
+                    updatedBy: "architect",
+                    updatedAt: 1,
+                  },
+                  {
+                    id: "T2",
+                    title: "Style feed",
+                    assignedRole: "design",
+                    status: "open",
+                    files: ["./apps/web/components/chat/chat-message-feed.tsx"],
+                    verification: "pnpm check",
+                    updatedBy: "architect",
+                    updatedAt: 2,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(conflictFeed.tasks[1]?.verification).toBe("pnpm check");
+    expect(conflictFeed.fileConflicts).toEqual([
+      {
+        file: "apps/web/components/chat/chat-message-feed.tsx",
+        roles: ["executor", "design"],
+        taskIds: ["T1", "T2"],
+      },
+    ]);
   });
 
   test("handles empty and invalid inputs gracefully", () => {
-    expect(deriveTeamFeed(null)).toEqual({ entries: [], tasks: [] });
-    expect(deriveTeamFeed([])).toEqual({ entries: [], tasks: [] });
+    expect(deriveTeamFeed(null)).toEqual({
+      entries: [],
+      tasks: [],
+      fileConflicts: [],
+    });
+    expect(deriveTeamFeed([])).toEqual({
+      entries: [],
+      tasks: [],
+      fileConflicts: [],
+    });
   });
 });
