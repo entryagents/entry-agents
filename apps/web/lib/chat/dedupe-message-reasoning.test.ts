@@ -174,6 +174,49 @@ describe("dedupeMessageParts", () => {
     expect(result.parts).toHaveLength(1);
     expect((result.parts[0] as typeof part2).state).toBe("output-available");
   });
+
+  test("collapses orphaned input-available tool calls when a retried step completes the same command under a new toolCallId", () => {
+    const orphanedBash = {
+      type: "tool-bash" as const,
+      toolCallId: "call_attempt1_1",
+      state: "input-available" as const,
+      input: {
+        command: "sed -n '1500,1620p' apps/web/app/workflows/chat.ts",
+      },
+    };
+    const completedBash = {
+      type: "tool-bash" as const,
+      toolCallId: "call_attempt2_1",
+      state: "output-available" as const,
+      input: {
+        command: "sed -n '1500,1620p' apps/web/app/workflows/chat.ts",
+      },
+      output: { stdout: "line 1500...", stderr: "", exitCode: 0 },
+    };
+    const inlineSetupError = {
+      type: "text" as const,
+      text: "Generation could not be completed cleanly. Retry to resume from the last checkpoint, or send another message.",
+    };
+
+    const message = msg([
+      reasoning("Let's inspect chat.ts"),
+      orphanedBash as unknown as WebAgentUIMessage["parts"][number],
+      inlineSetupError,
+      reasoning("Let's inspect chat.ts"),
+      completedBash as unknown as WebAgentUIMessage["parts"][number],
+    ]);
+
+    const result = dedupeMessageParts(message);
+    expect(result.parts).toHaveLength(2);
+    expect(result.parts[0]?.type).toBe("reasoning");
+    expect((result.parts[1] as typeof completedBash).toolCallId).toBe(
+      "call_attempt2_1",
+    );
+    expect((result.parts[1] as typeof completedBash).state).toBe(
+      "output-available",
+    );
+    expect(result.metadata?.turnError).toBe(inlineSetupError.text);
+  });
 });
 
 describe("dedupeMessageList", () => {

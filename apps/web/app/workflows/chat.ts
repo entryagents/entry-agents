@@ -78,6 +78,7 @@ import { sanitizeMessageToolInputs } from "@/lib/chat/sanitize-tool-inputs";
 import {
   type ChatErrorCategory,
   classifyChatError,
+  isFriendlyChatErrorText,
   serializeErrorForDiagnostics,
   toFriendlyChatErrorText,
 } from "@/lib/chat/friendly-error";
@@ -420,7 +421,23 @@ const convertMessages = async (
   const dedupedMessages = messages
     .map(dedupeMessageReasoning)
     .map(canonicalizeMessageParts)
-    .map(sanitizeMessageToolInputs);
+    .map(sanitizeMessageToolInputs)
+    .map((msg) => {
+      if (msg.role !== "assistant" || !Array.isArray(msg.parts)) {
+        return msg;
+      }
+      const cleanedParts = msg.parts.filter(
+        (part) =>
+          !(
+            part.type === "text" &&
+            typeof part.text === "string" &&
+            isFriendlyChatErrorText(part.text)
+          ),
+      );
+      return cleanedParts.length === msg.parts.length
+        ? msg
+        : { ...msg, parts: cleanedParts };
+    });
   const modelMessages = await convertToModelMessages<WebAgentUIMessage>(
     dedupedMessages,
     {
@@ -3299,13 +3316,24 @@ export async function runAgentWorkflow(options: Options) {
       };
     }
 
+    const errorText = getSetupErrorMessage(error, isRepeatFailure);
     if (pendingAssistantResponse.parts.length === 0 && !streamClosed) {
-      const errorText = getSetupErrorMessage(error, isRepeatFailure);
       pendingAssistantResponse = {
         ...pendingAssistantResponse,
         parts: [{ type: "text", text: errorText }],
       };
       await sendTextMessage(writable, "setup-error", errorText);
+    } else if (
+      pendingAssistantResponse.parts.length > 0 &&
+      errorCategory !== "aborted"
+    ) {
+      pendingAssistantResponse = {
+        ...pendingAssistantResponse,
+        metadata: {
+          ...pendingAssistantResponse.metadata,
+          turnError: errorText,
+        },
+      };
     }
 
     if (pendingAssistantResponse.parts.length > 0) {
@@ -3548,6 +3576,10 @@ const runAgentStep = async (
   let mcpToolSet: Awaited<ReturnType<typeof createMcpToolSet>> | undefined;
   let streamWriter: WritableStreamDefaultWriter<UIMessageChunk> | undefined;
   let streamWriteFailed = false;
+  let hasEmittedStreamChunks = false;
+  let responseMessage: WebAgentUIMessage | undefined;
+  let lastStepUsage: LanguageModelUsage | undefined;
+  let lastStepCost: number | undefined;
   let stepSecretRedactor: SecretRedactor | undefined;
   const usedSecretNames = new Set<string>();
   const triggeredPluginSlugs = new Set<string>();
@@ -3560,9 +3592,6 @@ const runAgentStep = async (
   };
 
   try {
-    let responseMessage: WebAgentUIMessage | undefined;
-    let lastStepUsage: LanguageModelUsage | undefined;
-    let lastStepCost: number | undefined;
     const lastOriginalMessage = originalMessages.at(-1);
     const existingStepFinishReasons: WebAgentStepFinishMetadata[] =
       lastOriginalMessage?.role === "assistant"
@@ -4741,6 +4770,15 @@ const runAgentStep = async (
             responseMessage = finishedResponseMessage;
           },
         })) {
+          if (
+            part.type === "text-delta" ||
+            part.type === "reasoning-delta" ||
+            part.type === "tool-input-start" ||
+            part.type === "tool-input-available" ||
+            part.type === "tool-output-available"
+          ) {
+            hasEmittedStreamChunks = true;
+          }
           if (!streamWriteFailed) {
             try {
               coalescingWriter.write(part);
@@ -5037,16 +5075,27 @@ const runAgentStep = async (
 
     if (isAbortError(error)) {
       const abortedFinishReason: FinishReason = "stop";
-      // Deliberately `withoutUndefined`: this branch sets four fields to
+      // Deliberately `withoutUndefined`: this branch sets optional fields to
       // `undefined` explicitly, and an `undefined` step return value cannot
-      // be persisted by the Workflow SDK.
+      // be persisted by the Workflow SDK. Preserve any partial responseMessage
+      // that finished assembling before the abort signal fired.
+      const abortedResponseMessage = responseMessage
+        ? {
+            ...responseMessage,
+            metadata: withModelMetadata(
+              responseMessage.metadata,
+              selectedModelId,
+              modelId,
+            ),
+          }
+        : undefined;
       return withoutUndefined({
-        responseMessage: undefined,
+        responseMessage: abortedResponseMessage,
         responseMessages: [],
         finishReason: abortedFinishReason,
         rawFinishReason: undefined,
-        stepUsage: undefined,
-        stepCost: undefined,
+        stepUsage: lastStepUsage,
+        stepCost: lastStepCost,
         stepWasAborted: true,
         remainingBalanceCents,
         remainingWindowBudgetCents,
@@ -5091,7 +5140,16 @@ const runAgentStep = async (
     // class of error `FatalError` exists for -- skips the Workflow SDK's
     // retries entirely so a permanent, param-level failure fails once
     // and immediately instead of 4 times.
-    if (isNonRetryableApiCallError(errorWithStepTiming)) {
+    //
+    // Additionally, if `hasEmittedStreamChunks` is true, this step has ALREADY
+    // written reasoning/text/tool chunks into the live `writable` stream under
+    // `messageId`. Letting the Workflow SDK retry `runAgentStep` would write
+    // a second copy of reasoning, text, and tool calls into the SAME message
+    // (causing the "two models working / repeating Thought + Bash" split bug).
+    if (
+      isNonRetryableApiCallError(errorWithStepTiming) ||
+      hasEmittedStreamChunks
+    ) {
       // FatalError's constructor only takes a message string (see
       // node_modules/workflow's own docs -- no options/cause param), so
       // stepTiming has to be reattached manually to keep the outer
