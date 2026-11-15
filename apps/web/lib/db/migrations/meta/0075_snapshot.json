@@ -1,5 +1,5 @@
 {
-  "id": "beeaafaa-28d9-4ae0-bf49-1773c9c96a2b",
+  "id": "5a225c6f-6d6f-4f9f-ad3d-4941ba528bf1",
   "prevId": "17c10c11-1117-4f98-909a-157374577528",
   "version": "7",
   "dialect": "postgresql",
@@ -1220,21 +1220,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "composio_connected_accounts_account_id_idx": {
-          "name": "composio_connected_accounts_account_id_idx",
-          "columns": [
-            {
-              "expression": "connected_account_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -1249,7 +1234,13 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "composio_connected_accounts_connected_account_id_unique": {
+          "name": "composio_connected_accounts_connected_account_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["connected_account_id"]
+        }
+      },
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
