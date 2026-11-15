@@ -140,6 +140,8 @@ describe("deriveAgentHubRoster", () => {
       live: 1,
       inputTokens: 1700,
       outputTokens: 100,
+      cachedInputTokens: 0,
+      cacheWriteTokens: 0,
     });
     expect(isLiveStatus("completed")).toBe(false);
     expect(deriveAgentHubRoster(null)).toEqual([]);

@@ -59,21 +59,25 @@ const callOptionsSchema = z.object({
   teamId: z.string().optional(),
   teamContext: z.string().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
+  contextWindow: z.number().int().positive().optional(),
+  compactionThreshold: z.number().positive().optional(),
 });
 
 export type ArchitectCallOptions = z.infer<typeof callOptionsSchema>;
 
+const architectTools = {
+  read: readFileTool(),
+  dir_list: dirListTool(),
+  grep: grepTool(),
+  glob: globTool(),
+  bash: bashTool(),
+  team_board: teamBoardTool,
+};
+
 export const architectSubagent = new ToolLoopAgent({
   model: createInertPlaceholderModel(defaultModelLabel),
   instructions: ARCHITECT_SYSTEM_PROMPT,
-  tools: {
-    read: readFileTool(),
-    dir_list: dirListTool(),
-    grep: grepTool(),
-    glob: globTool(),
-    bash: bashTool(),
-    team_board: teamBoardTool,
-  },
+  tools: architectTools,
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
   prepareStep: ({ messages, model, experimental_context }) => {
@@ -101,25 +105,22 @@ export const architectSubagent = new ToolLoopAgent({
 
     const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider(defaultModelLabel);
-    const teamBlock = options.teamContext ? `\n\n${options.teamContext}` : "";
+    const teamBlock = options.teamContext ? `${options.teamContext}\n\n` : "";
     return {
       ...settings,
       model,
+      tools: addCacheControl({
+        tools: settings.tools ?? architectTools,
+        model,
+      }),
       ...(options.maxOutputTokens
         ? { maxOutputTokens: options.maxOutputTokens }
         : {}),
       instructions: addCacheControl({
-        instructions: `${ARCHITECT_SYSTEM_PROMPT}
-
-${SUBAGENT_WORKING_DIR}${teamBlock}
-
-## Your Task
-${options.task}
-
-## Detailed Instructions
-${options.instructions}
-
-${ARCHITECT_REMINDER}`,
+        instructions: [
+          `${ARCHITECT_SYSTEM_PROMPT}\n\n${SUBAGENT_WORKING_DIR}`,
+          `${teamBlock}## Your Task\n${options.task}\n\n## Detailed Instructions\n${options.instructions}\n\n${ARCHITECT_REMINDER}`,
+        ],
         model,
       }),
       experimental_context: {
@@ -127,6 +128,8 @@ ${ARCHITECT_REMINDER}`,
         model,
         teamId: options.teamId ?? "default-team",
         agentRole: "architect",
+        contextWindow: options.contextWindow,
+        compactionThreshold: options.compactionThreshold,
       },
     };
   },
