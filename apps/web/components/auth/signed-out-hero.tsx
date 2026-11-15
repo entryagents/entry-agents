@@ -6,7 +6,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRef } from "react";
 import { AppMockup } from "@/components/landing/app-mockup";
-import { LandingBento } from "@/components/landing/bento";
 import { ConnectedStackShowcase } from "@/components/landing/connected-stack-showcase";
 import { EntryLogo3D } from "@/components/landing/entry-logo-3d";
 import { LandingFaq } from "@/components/landing/faq";
@@ -17,29 +16,6 @@ import { Stage } from "@/components/landing/stage";
 
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
-const HERO_CAPABILITIES = [
-  {
-    title: "Direct or Team Waves",
-    summary:
-      "Fast single-agent loop for focused edits, or wave-coordinated specialists streaming inline",
-  },
-  {
-    title: "Cloud Linux Sandbox",
-    summary:
-      "Isolated repository branch, shell, live app preview, and side-by-side diffs in every session",
-  },
-  {
-    title: "99% Caching & $5–$40 Plans",
-    summary:
-      "Up to 99% prompt token caching and 3.8x credit value ($13 Goat) with zero token markup",
-  },
-  {
-    title: "Offline-Durable Runs",
-    summary:
-      "Execution continues on cloud checkpoints across Wi-Fi drops, closed tabs, and device handoffs",
-  },
-] as const;
-
 export function SignedOutHero() {
   const heroStageRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
@@ -48,6 +24,8 @@ export function SignedOutHero() {
   });
   const opticsScale = useTransform(scrollYProgress, [0, 1], [1.02, 1.1]);
   const opticsShiftY = useTransform(scrollYProgress, [0, 1], [0, 24]);
+  const stageY = useTransform(scrollYProgress, [0, 0.5], [16, 0]);
+  const stageScale = useTransform(scrollYProgress, [0, 0.5], [0.985, 1]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -150,37 +128,14 @@ export function SignedOutHero() {
               </motion.div>
             </div>
 
-            {/* Aligned architectural summary bar */}
-            <div className="mt-8 grid grid-cols-1 gap-3 sm:mt-12 sm:grid-cols-2 lg:grid-cols-4">
-              {HERO_CAPABILITIES.map((item, idx) => (
-                <motion.div
-                  key={item.title}
-                  initial={{ opacity: 0, transform: "translateY(10px)" }}
-                  animate={{ opacity: 1, transform: "translateY(0px)" }}
-                  transition={{
-                    duration: 0.34,
-                    delay: 0.14 + idx * 0.04,
-                    ease: EASE_OUT,
-                  }}
-                  className="min-w-0 rounded-xl border border-(--l-border) bg-(--l-surface) p-4 transition-colors duration-150 hover:border-(--l-fg-4)"
-                >
-                  <div className="font-mono text-xs font-medium text-(--l-fg)">
-                    {item.title}
-                  </div>
-                  <p className="mt-1.5 text-xs leading-relaxed text-(--l-fg-3)">
-                    {item.summary}
-                  </p>
-                </motion.div>
-              ))}
-            </div>
-
             {/* Interactive 3-pane workspace showcase */}
             <motion.div
+              style={{ y: stageY, scale: stageScale }}
               initial={{ opacity: 0, transform: "translateY(14px)" }}
               whileInView={{ opacity: 1, transform: "translateY(0px)" }}
               viewport={{ once: true, amount: 0.15 }}
               transition={{ duration: 0.42, ease: EASE_OUT }}
-              className="mt-8 min-w-0 sm:mt-12"
+              className="mt-10 min-w-0 sm:mt-14"
             >
               <Stage>
                 <AppMockup />
@@ -191,7 +146,6 @@ export function SignedOutHero() {
 
         <ConnectedStackShowcase />
         <LandingFeatures />
-        <LandingBento />
         <LandingFaq />
         <LandingFooter />
       </div>

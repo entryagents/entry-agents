@@ -118,12 +118,18 @@ export function AssistantMessageGroups({
         ? "This turn crossed its $5 spend cap"
         : message.metadata?.turnTimedOut
           ? "This task reached the maximum turn duration"
-          : null;
+          : !isStreaming && message.metadata?.turnError
+            ? message.metadata.turnError
+            : null;
 
-  const stopNoticeTitle = stopNotice ? stopNotice.split(". ")[0] + "." : null;
-  const stopNoticeBody = stopNotice
-    ? stopNotice.slice(stopNotice.indexOf(". ") + 2)
+  const dotIdx = stopNotice ? stopNotice.indexOf(". ") : -1;
+  const stopNoticeTitle = stopNotice
+    ? dotIdx !== -1
+      ? `${stopNotice.slice(0, dotIdx)}.`
+      : stopNotice
     : null;
+  const stopNoticeBody =
+    stopNotice && dotIdx !== -1 ? stopNotice.slice(dotIdx + 2) : null;
 
   const stopNoticeCard = stopNotice ? (
     <div

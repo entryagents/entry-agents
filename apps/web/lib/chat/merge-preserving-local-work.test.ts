@@ -155,4 +155,34 @@ describe("mergePreservingLocalWork", () => {
     expect(merged[0]?.metadata?.totalMessageUsage?.totalTokens).toBe(1550);
     expect(merged[0]?.metadata?.selectedModelId).toBe("claude-3-7-sonnet");
   });
+
+  test("moves server setup-error fallback to metadata.turnError instead of splitting local partial work", () => {
+    const setupErrorText =
+      "Generation could not be completed cleanly. Retry to resume from the last checkpoint, or send another message.";
+    const serverMsgs: WebAgentUIMessage[] = [
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [{ type: "text", text: setupErrorText }],
+      },
+    ];
+    const localMsgs: WebAgentUIMessage[] = [
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          { type: "reasoning", text: "Inspecting chat workflow..." },
+          { type: "text", text: "Let's check lines 1500-1750." },
+        ],
+      },
+    ];
+
+    const merged = mergePreservingLocalWork(serverMsgs, localMsgs);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.parts).toEqual([
+      { type: "reasoning", text: "Inspecting chat workflow..." },
+      { type: "text", text: "Let's check lines 1500-1750." },
+    ]);
+    expect(merged[0]?.metadata?.turnError).toBe(setupErrorText);
+  });
 });

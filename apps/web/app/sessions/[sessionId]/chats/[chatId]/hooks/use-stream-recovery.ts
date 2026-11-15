@@ -49,11 +49,18 @@ export function useStreamRecovery({
   const inFlightStartedAtRef = useRef<number | null>(null);
   const lastStreamRecoveryAtRef = useRef(0);
   const streamRecoveryProbeInFlightRef = useRef(false);
+  const hasAutoRetriedCurrentErrorRef = useRef(false);
   const lastServerStampRef = useRef<{
     chatId: string;
     stamp: string;
     isStreaming: boolean;
   } | null>(null);
+
+  useEffect(() => {
+    if (status !== "error") {
+      hasAutoRetriedCurrentErrorRef.current = false;
+    }
+  }, [status, chatId]);
 
   // Keep the recovery logic in a ref so event-listener effects never
   // churn during streaming. The ref is updated on every render (cheap) while
@@ -84,12 +91,17 @@ export function useStreamRecovery({
       return;
     }
 
-    lastStreamRecoveryAtRef.current = now;
-
     if (recoveryDecision === "retry-error") {
+      if (hasAutoRetriedCurrentErrorRef.current) {
+        return;
+      }
+      hasAutoRetriedCurrentErrorRef.current = true;
+      lastStreamRecoveryAtRef.current = now;
       retryChatStream({ auto: true });
       return;
     }
+
+    lastStreamRecoveryAtRef.current = now;
 
     streamRecoveryProbeInFlightRef.current = true;
 
@@ -197,8 +209,9 @@ export function useStreamRecovery({
     };
 
     const onOnline = () => {
-      // Reset throttle so online recovery runs immediately.
+      // Reset throttle and error auto-retry latch so online recovery runs immediately.
       lastStreamRecoveryAtRef.current = 0;
+      hasAutoRetriedCurrentErrorRef.current = false;
       // When `isChatInFlight` is true, `AbortableChatTransport` is already
       // waiting on the `online` event inside `waitForRetryOrOnline` to resume
       // from `chunkIndex` without tearing down the active stream. Only call

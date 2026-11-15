@@ -8,7 +8,7 @@ import {
   buildActiveLifecycleUpdate,
   buildLifecycleActivityUpdate,
 } from "@/lib/sandbox/lifecycle";
-import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
+import { dedupeMessageParts } from "@/lib/chat/dedupe-message-reasoning";
 import { sanitizeMessageForDatabase } from "@/lib/chat/sanitize-db-message";
 import type {
   WorkflowRunStatus,
@@ -163,7 +163,7 @@ export async function persistAssistantMessageWithToolResultsInternal(
 
   try {
     const { upsertChatMessageScoped } = await import("@/lib/db/sessions");
-    const dedupedMessage = dedupeMessageReasoning(message);
+    const dedupedMessage = dedupeMessageParts(message);
     const sanitized = sanitizeMessageForDatabase(dedupedMessage);
     const result = await upsertChatMessageScoped({
       id: dedupedMessage.id,
@@ -206,7 +206,7 @@ export async function persistAssistantMessage(
   try {
     const { updateChatAssistantActivity, upsertChatMessageScoped } =
       await import("@/lib/db/sessions");
-    const dedupedMessage = dedupeMessageReasoning(message);
+    const dedupedMessage = dedupeMessageParts(message);
     const sanitized = sanitizeMessageForDatabase(dedupedMessage);
     const result = await upsertChatMessageScoped({
       id: dedupedMessage.id,
@@ -251,7 +251,7 @@ export async function persistFinalAssistantMessage(
       updateChatAssistantActivity,
       upsertChatMessageAndClearActiveStream,
     } = await import("@/lib/db/sessions");
-    const dedupedMessage = dedupeMessageReasoning(message);
+    const dedupedMessage = dedupeMessageParts(message);
     const sanitized = sanitizeMessageForDatabase(dedupedMessage);
     const result = await upsertChatMessageAndClearActiveStream(
       {
