@@ -161,7 +161,7 @@ export function ModelSelectorCompact({
                 ? "Change model for next prompt (⌘⌥/)"
                 : "Change model (⌘⌥/)"
             }
-            className="flex h-8 min-w-0 max-w-full shrink items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-60 sm:text-sm"
+            className="flex h-8 min-w-0 max-w-full shrink items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background/60 hover:text-foreground active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60 sm:text-sm"
           >
             {selectedOption && (
               <ProviderIcon
@@ -169,7 +169,9 @@ export function ModelSelectorCompact({
                 className="size-3.5 shrink-0"
               />
             )}
-            <span className="max-w-[160px] truncate">{displayText}</span>
+            <span className="max-w-[148px] truncate sm:max-w-[168px]">
+              {displayText}
+            </span>
             <ChevronDown className="size-3 shrink-0" strokeWidth={1.5} />
           </button>
         </PopoverTrigger>

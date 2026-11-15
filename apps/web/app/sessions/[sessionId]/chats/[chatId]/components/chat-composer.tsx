@@ -517,7 +517,7 @@ export const ChatComposer = memo(
           )}
           {topPanelsSlot}
           <div
-            className={`relative overflow-hidden rounded-2xl bg-muted transition-colors ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
+            className={`relative overflow-hidden rounded-2xl border border-border/80 bg-muted/75 transition-[border-color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] ${isDragging ? "border-foreground/30 ring-2 ring-ring" : ""}`}
           >
             <form
               onSubmit={async (e) => {
@@ -614,7 +614,7 @@ export const ChatComposer = memo(
                         "Free tier ended — upgrade your account to use Entry"
                       : showInlineQuestion
                         ? inlineQuestion.placeholder
-                        : "Request changes, type / to invoke a skill or subagent, or @ to reference files..."
+                        : "Request changes, type / for commands or skills, or @ to reference files..."
                   }
                   rows={1}
                   onFocus={handleTextareaFocus}
@@ -690,244 +690,256 @@ export const ChatComposer = memo(
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-1 px-3 pb-2 sm:flex-nowrap sm:gap-2">
-                <div className="order-2 flex shrink-0 items-center gap-1 sm:order-1 sm:gap-2">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={openFilePicker}
-                    disabled={isArchived}
-                    className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
-                  >
-                    <Paperclip className="size-4" strokeWidth={1.5} />
-                  </Button>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={isArchived || Boolean(composerGate)}
-                        onClick={() => {
-                          const nextVal = input.startsWith("/")
-                            ? input
-                            : input.trim().length > 0
-                              ? `/${input}`
-                              : "/";
-                          setInput(nextVal);
-                          setCursorPosition(1);
-                          setTimeout(() => {
-                            if (inputRef.current) {
-                              inputRef.current.focus();
-                              inputRef.current.setSelectionRange(1, 1);
-                            }
-                          }, 0);
-                        }}
-                        className="h-8 shrink-0 gap-1 rounded-full border border-border/70 bg-background/60 px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-                      >
-                        <Terminal
-                          className="size-3.5 text-muted-foreground"
-                          strokeWidth={1.5}
-                        />
-                        <span className="font-mono text-xs">/</span>
-                        <span className="hidden md:inline text-xs">Invoke</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      Invoke a skill (/unslop, /frontend-design) or specialist
-                      subagent (/architect, /reviewer)
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
+              <div className="@container px-3 pb-2">
+                <div className="flex flex-wrap items-center gap-1.5 @[560px]:flex-nowrap @[560px]:gap-2">
+                  <div className="order-2 flex shrink-0 items-center gap-1 @[560px]:order-1 @[560px]:gap-1.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={openFilePicker}
+                      disabled={isArchived}
+                      aria-label="Attach files"
+                      className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background/60 hover:text-foreground active:scale-[0.97]"
+                    >
+                      <Paperclip className="size-4" strokeWidth={1.5} />
+                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={isArchived || Boolean(composerGate)}
+                          aria-label="Open slash commands"
+                          onClick={() => {
+                            const nextVal = input.startsWith("/")
+                              ? input
+                              : input.trim().length > 0
+                                ? `/${input}`
+                                : "/";
+                            setInput(nextVal);
+                            setCursorPosition(1);
+                            setTimeout(() => {
+                              if (inputRef.current) {
+                                inputRef.current.focus();
+                                inputRef.current.setSelectionRange(1, 1);
+                              }
+                            }, 0);
+                          }}
+                          className="h-8 shrink-0 gap-1 rounded-lg border border-border/80 bg-background/70 px-2 text-xs font-medium text-muted-foreground transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background hover:text-foreground active:scale-[0.97]"
+                        >
+                          <Terminal
+                            className="size-3.5 text-muted-foreground"
+                            strokeWidth={1.5}
+                          />
+                          <span className="font-mono text-xs">/</span>
+                          <span className="hidden @[560px]:inline text-xs">
+                            Invoke
+                          </span>
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        Invoke a command (/team, /unslop) or specialist
+                        (/architect, /reviewer)
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
 
-                {modelId && (
-                  <div className="order-1 flex min-w-0 basis-full items-center gap-1 pb-0.5 sm:order-2 sm:basis-auto sm:shrink sm:gap-2 sm:pb-0">
-                    <ModelSelectorCompact
-                      value={modelId}
-                      modelOptions={modelOptions}
-                      disabled={isArchived || modelOptionsLoading}
-                      appliesToNextPrompt={isBusy}
-                      reasoningEffort={sanitizedReasoningEffort}
-                      defaultReasoningEffort={defaultReasoningEffort}
-                      reasoningLevels={selectedModelLevels}
-                      onReasoningEffortChange={onReasoningEffortChange}
-                      onCloseAutoFocus={() => {
-                        window.requestAnimationFrame(() => {
-                          const textarea = inputRef.current;
-                          if (!textarea) {
-                            return;
-                          }
-                          textarea.focus();
-                          const nextCursorPosition = Math.min(
-                            cursorPosition,
-                            textarea.value.length,
-                          );
-                          textarea.setSelectionRange(
-                            nextCursorPosition,
-                            nextCursorPosition,
-                          );
-                        });
-                      }}
-                      onChange={onModelChange}
-                      isFreeTierLocked={isFreeTierLocked}
-                      freePlanModelId={freePlanModelId}
-                      freeTierUnlockedModelIds={freeTierAllowedModelIds}
-                      onUpgradeRequired={onUpgradeRequired}
-                    />
-                    {selectedModelLevels.length > 0 && (
-                      <ReasoningEffortSelector
-                        value={sanitizedReasoningEffort}
-                        defaultEffort={defaultReasoningEffort}
-                        levels={selectedModelLevels}
+                  {modelId && (
+                    <div className="order-1 flex min-w-0 basis-full items-center gap-1 pb-0.5 @[560px]:order-2 @[560px]:basis-auto @[560px]:shrink @[560px]:gap-1.5 @[560px]:pb-0">
+                      <ModelSelectorCompact
+                        value={modelId}
+                        modelOptions={modelOptions}
                         disabled={isArchived || modelOptionsLoading}
                         appliesToNextPrompt={isBusy}
-                        onChange={onReasoningEffortChange}
+                        reasoningEffort={sanitizedReasoningEffort}
+                        defaultReasoningEffort={defaultReasoningEffort}
+                        reasoningLevels={selectedModelLevels}
+                        onReasoningEffortChange={onReasoningEffortChange}
+                        onCloseAutoFocus={() => {
+                          window.requestAnimationFrame(() => {
+                            const textarea = inputRef.current;
+                            if (!textarea) {
+                              return;
+                            }
+                            textarea.focus();
+                            const nextCursorPosition = Math.min(
+                              cursorPosition,
+                              textarea.value.length,
+                            );
+                            textarea.setSelectionRange(
+                              nextCursorPosition,
+                              nextCursorPosition,
+                            );
+                          });
+                        }}
+                        onChange={onModelChange}
+                        isFreeTierLocked={isFreeTierLocked}
+                        freePlanModelId={freePlanModelId}
+                        freeTierUnlockedModelIds={freeTierAllowedModelIds}
+                        onUpgradeRequired={onUpgradeRequired}
                       />
+                      {selectedModelLevels.length > 0 && (
+                        <ReasoningEffortSelector
+                          value={sanitizedReasoningEffort}
+                          defaultEffort={defaultReasoningEffort}
+                          levels={selectedModelLevels}
+                          disabled={isArchived || modelOptionsLoading}
+                          appliesToNextPrompt={isBusy}
+                          onChange={onReasoningEffortChange}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  <div className="order-3 flex shrink-0 items-center gap-1 @[560px]:gap-1.5">
+                    <PermissionModeSelector
+                      value={permissionMode}
+                      onChange={onPermissionModeChange}
+                      disabled={isArchived || isTogglingPermissionMode}
+                    />
+                    {contextUsageSlot}
+                  </div>
+
+                  <div className="order-4 ml-auto flex shrink-0 items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={handleMicClick}
+                      disabled={isArchived || recordingState === "processing"}
+                      aria-label={
+                        recordingState === "recording"
+                          ? "Stop voice recording"
+                          : "Start voice input"
+                      }
+                      className={`relative h-8 w-8 shrink-0 rounded-lg transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] ${
+                        recordingState === "recording"
+                          ? "bg-red-500/15 text-red-500 ring-1 ring-red-500/40"
+                          : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
+                      }`}
+                    >
+                      {recordingState === "processing" ? (
+                        <Loader2
+                          className="size-4 animate-spin"
+                          strokeWidth={1.5}
+                        />
+                      ) : (
+                        <Mic className="size-4" strokeWidth={1.5} />
+                      )}
+                    </Button>
+
+                    {showInlineQuestion ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          inlineQuestion.handleNext();
+                        }}
+                        disabled={!inlineQuestion.hasCurrentAnswer}
+                        className="h-8 shrink-0 rounded-full bg-primary px-3 text-xs text-primary-foreground transition-[transform,background-color,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/90 active:scale-[0.97] disabled:opacity-30"
+                      >
+                        <Check className="size-3.5" strokeWidth={1.5} />
+                        <span className="sm:hidden">
+                          {inlineQuestion.compactButtonLabel}
+                        </span>
+                        <span className="hidden sm:inline">
+                          {inlineQuestion.buttonLabel}
+                        </span>
+                      </Button>
+                    ) : isBusy && !hasComposerContent ? (
+                      <Button
+                        type="button"
+                        size="icon"
+                        onClick={onStopStream}
+                        aria-label="Stop generation"
+                        className="h-8 w-8 shrink-0 rounded-full bg-destructive text-destructive-foreground transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-destructive/90 active:scale-[0.97]"
+                        style={{ touchAction: "manipulation" }}
+                      >
+                        <Square className="size-3 fill-current" />
+                      </Button>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="relative inline-flex shrink-0">
+                            <Button
+                              type="submit"
+                              size="icon"
+                              onTouchEnd={() => {
+                                inputRef.current?.blur();
+                              }}
+                              disabled={
+                                isArchived ||
+                                Boolean(composerGate) ||
+                                (!isBusy && !hasComposerContent)
+                              }
+                              aria-label={
+                                isBusy ? "Queue message" : "Send message"
+                              }
+                              className="h-8 w-8 rounded-full bg-primary text-primary-foreground transition-[transform,background-color,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/90 active:scale-[0.97] disabled:opacity-30"
+                            >
+                              <ArrowUp className="size-4" strokeWidth={1.5} />
+                            </Button>
+                            {isBusy && (
+                              <span
+                                className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none tabular-nums text-white ring-2 ring-background"
+                                aria-hidden="true"
+                              >
+                                {queuedCount + 1}
+                              </span>
+                            )}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          {isBusy
+                            ? `Queue message (position ${queuedCount + 1})`
+                            : "Send message"}
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {isBusy && input.trim().length > 0 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="relative inline-flex shrink-0">
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="secondary"
+                              disabled={
+                                isArchived ||
+                                Boolean(composerGate) ||
+                                isSendingInbox
+                              }
+                              onClick={async () => {
+                                const text = input.trim();
+                                if (!text) return;
+                                setInput("");
+                                await onSendInboxMessage(text);
+                                inputRef.current?.blur();
+                              }}
+                              className="h-8 w-8 rounded-lg border border-primary/30 bg-primary/10 text-primary transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/20 active:scale-[0.97]"
+                              aria-label="Send to agent inbox"
+                            >
+                              <Inbox className="size-4" strokeWidth={1.5} />
+                            </Button>
+                            {inboxUnreadCount > 0 && (
+                              <span
+                                className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none tabular-nums text-primary-foreground ring-2 ring-background"
+                                aria-hidden="true"
+                              >
+                                {inboxUnreadCount}
+                              </span>
+                            )}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          Send to agent inbox (agent reads on next step)
+                        </TooltipContent>
+                      </Tooltip>
                     )}
                   </div>
-                )}
-
-                <div className="order-3 flex shrink-0 items-center gap-1 sm:gap-2">
-                  <PermissionModeSelector
-                    value={permissionMode}
-                    onChange={onPermissionModeChange}
-                    disabled={isArchived || isTogglingPermissionMode}
-                  />
-                  {contextUsageSlot}
-                </div>
-
-                <div className="order-4 ml-auto flex shrink-0 items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={handleMicClick}
-                    disabled={isArchived || recordingState === "processing"}
-                    className={`relative h-8 w-8 shrink-0 rounded-full ${
-                      recordingState === "recording"
-                        ? "text-red-500"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {recordingState === "recording" && (
-                      <span className="absolute inset-0 animate-pulse rounded-full bg-red-500/30" />
-                    )}
-                    {recordingState === "processing" ? (
-                      <Loader2
-                        className="size-4 animate-spin"
-                        strokeWidth={1.5}
-                      />
-                    ) : (
-                      <Mic className="size-4" strokeWidth={1.5} />
-                    )}
-                  </Button>
-
-                  {showInlineQuestion ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        inlineQuestion.handleNext();
-                      }}
-                      disabled={!inlineQuestion.hasCurrentAnswer}
-                      className="h-8 shrink-0 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
-                    >
-                      <Check className="size-3.5" strokeWidth={1.5} />
-                      <span className="sm:hidden">
-                        {inlineQuestion.compactButtonLabel}
-                      </span>
-                      <span className="hidden sm:inline">
-                        {inlineQuestion.buttonLabel}
-                      </span>
-                    </Button>
-                  ) : isBusy && !hasComposerContent ? (
-                    <Button
-                      type="button"
-                      size="icon"
-                      onClick={onStopStream}
-                      className="h-8 w-8 shrink-0 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      style={{ touchAction: "manipulation" }}
-                    >
-                      <Square className="size-3 fill-current" />
-                    </Button>
-                  ) : (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="relative inline-flex shrink-0">
-                          <Button
-                            type="submit"
-                            size="icon"
-                            onTouchEnd={() => {
-                              inputRef.current?.blur();
-                            }}
-                            disabled={
-                              isArchived ||
-                              Boolean(composerGate) ||
-                              (!isBusy && !hasComposerContent)
-                            }
-                            className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
-                          >
-                            <ArrowUp className="size-4" strokeWidth={1.5} />
-                          </Button>
-                          {isBusy && (
-                            <span
-                              className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none tabular-nums text-white ring-2 ring-background"
-                              aria-hidden="true"
-                            >
-                              {queuedCount + 1}
-                            </span>
-                          )}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        {isBusy
-                          ? `Queue message (position ${queuedCount + 1})`
-                          : "Send message"}
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-                  {isBusy && input.trim().length > 0 && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span className="relative inline-flex shrink-0">
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="secondary"
-                            disabled={
-                              isArchived ||
-                              Boolean(composerGate) ||
-                              isSendingInbox
-                            }
-                            onClick={async () => {
-                              const text = input.trim();
-                              if (!text) return;
-                              setInput("");
-                              await onSendInboxMessage(text);
-                              inputRef.current?.blur();
-                            }}
-                            className="h-8 w-8 rounded-full border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
-                            aria-label="Send to agent inbox"
-                          >
-                            <Inbox className="size-4" strokeWidth={1.5} />
-                          </Button>
-                          {inboxUnreadCount > 0 && (
-                            <span
-                              className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none tabular-nums text-primary-foreground ring-2 ring-background"
-                              aria-hidden="true"
-                            >
-                              {inboxUnreadCount}
-                            </span>
-                          )}
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="top">
-                        Send to agent inbox (agent reads on next step)
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
                 </div>
               </div>
             </form>

@@ -6,7 +6,7 @@ import {
   ExternalLink,
   GitCommit,
   Loader2,
-  Sparkles,
+  PenLine,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
@@ -467,11 +467,11 @@ export function CommitDialog({
                     <Label>Commit mode</Label>
                     <TabsList className="grid w-full grid-cols-2">
                       <TabsTrigger value="ai">
-                        <Sparkles className="h-4 w-4" />
+                        <PenLine className="h-4 w-4" strokeWidth={1.5} />
                         AI message
                       </TabsTrigger>
                       <TabsTrigger value="manual">
-                        <GitCommit className="h-4 w-4" />
+                        <GitCommit className="h-4 w-4" strokeWidth={1.5} />
                         Manual message
                       </TabsTrigger>
                     </TabsList>
