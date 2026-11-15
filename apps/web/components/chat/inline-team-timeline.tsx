@@ -5,25 +5,29 @@ import { isToolUIPart } from "ai";
 import {
   AlertCircle,
   ArrowRight,
+  ArrowUpRight,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Circle,
   Clock,
-  ExternalLink,
   FileCode2,
+  GitBranch,
   Layers,
   PanelRight,
+  PauseCircle,
   Users,
+  XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
-import {
-  StatusBadge,
-  SubagentIcon,
-  SubagentRoleBadge,
-} from "@/components/agent-hub/agent-status";
+import { StatusBadge, SubagentIcon } from "@/components/agent-hub/agent-status";
 import { useNow } from "@/components/agent-hub/use-now";
+import {
+  getSubagentRoleTag,
+  getSubagentToolSummary,
+} from "@/components/subagent-chat/subagent-tool-item";
 import { ApprovalButtons } from "@/components/tool-call/approval-buttons";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,8 +36,10 @@ import {
   isLiveStatus,
   summarizeAgentHub,
   type AgentHubEntry,
+  type TeamFeedEntry,
   type TeamFeedTask,
 } from "@/lib/agent-hub/derive-roster";
+import { formatSubagentModelTag } from "@/lib/agent-hub/subagent-tab-data";
 import { cn } from "@/lib/utils";
 
 export interface InlineTeamTimelineProps {
@@ -51,6 +57,22 @@ export interface InlineTeamTimelineProps {
 
 type RosterFilter = "all" | "live" | "done";
 
+const ENTRY_KIND_STYLE: Record<TeamFeedEntry["kind"], string> = {
+  contract:
+    "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  challenge:
+    "border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  debate: "border-border/80 bg-muted/60 text-foreground",
+  verification:
+    "border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  decision: "border-border/70 bg-muted/40 text-foreground",
+  handoff: "border-border/70 bg-muted/40 text-foreground",
+  finding: "border-border/70 bg-muted/40 text-muted-foreground",
+  artifact: "border-border/70 bg-muted/40 text-muted-foreground",
+  blocker: "border-red-500/35 bg-red-500/10 text-red-700 dark:text-red-300",
+  question: "border-border/70 bg-muted/40 text-muted-foreground",
+};
+
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
   const m = Math.floor(total / 60);
@@ -60,19 +82,7 @@ function formatElapsed(ms: number): string {
 
 function formatToolActivity(pending: AgentHubEntry["pending"]): string | null {
   if (!pending) return null;
-  const input = pending.input;
-  let detail = "";
-  if (input && typeof input === "object") {
-    const rec = input as Record<string, unknown>;
-    const candidate =
-      rec.filePath ?? rec.path ?? rec.command ?? rec.pattern ?? rec.query;
-    if (typeof candidate === "string") {
-      detail = candidate.trim();
-    }
-  }
-  if (detail.length > 56) {
-    detail = `${detail.slice(0, 53)}...`;
-  }
+  const detail = getSubagentToolSummary(pending.name, pending.input);
   return detail ? `${pending.name} · ${detail}` : pending.name;
 }
 
@@ -83,25 +93,59 @@ function formatLiveExcerpt(
   if (!rawText) return { text: null, truncated: false };
   const normalized = rawText.trim();
   if (!normalized) return { text: null, truncated: false };
-  if (expanded || normalized.length <= 280) {
-    return { text: normalized, truncated: normalized.length > 280 };
+  if (expanded || normalized.length <= 240) {
+    return { text: normalized, truncated: normalized.length > 240 };
   }
   return {
-    text: `…${normalized.slice(-280).trimStart()}`,
+    text: `…${normalized.slice(-240).trimStart()}`,
     truncated: true,
   };
+}
+
+function insertComposerMention(role: string) {
+  const cleaned = role.trim().replace(/^@+/, "");
+  if (!cleaned || cleaned === "all" || typeof window === "undefined") return;
+  window.dispatchEvent(
+    new CustomEvent("entry:insert-composer-prompt", {
+      detail: { text: `@${cleaned} ` },
+    }),
+  );
 }
 
 function TaskStatusGlyph({ status }: { status: TeamFeedTask["status"] }) {
   switch (status) {
     case "completed":
-      return <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />;
+      return (
+        <CheckCircle2
+          className="size-3.5 shrink-0 text-emerald-500"
+          strokeWidth={1.5}
+        />
+      );
     case "in_progress":
-      return <Clock className="size-3.5 shrink-0 text-amber-500" />;
+      return (
+        <Clock className="size-3.5 shrink-0 text-amber-500" strokeWidth={1.5} />
+      );
     case "blocked":
-      return <AlertCircle className="size-3.5 shrink-0 text-red-500" />;
+      return (
+        <AlertCircle
+          className="size-3.5 shrink-0 text-red-500"
+          strokeWidth={1.5}
+        />
+      );
+    case "parked":
+      return (
+        <PauseCircle
+          className="size-3.5 shrink-0 text-muted-foreground"
+          strokeWidth={1.5}
+        />
+      );
     default:
-      return <Circle className="size-3.5 shrink-0 text-muted-foreground/60" />;
+      return (
+        <Circle
+          className="size-3.5 shrink-0 text-muted-foreground/60"
+          strokeWidth={1.5}
+        />
+      );
   }
 }
 
@@ -128,7 +172,7 @@ export function InlineTeamTimeline({
   const now = useNow(anyLive);
   const [boardExpanded, setBoardExpanded] = useState<boolean | null>(null);
   const [rosterFilter, setRosterFilter] = useState<RosterFilter>("all");
-  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>(
+  const [expandedLanes, setExpandedLanes] = useState<Record<string, boolean>>(
     {},
   );
 
@@ -160,6 +204,16 @@ export function InlineTeamTimeline({
     return map;
   }, [teamFeed.tasks]);
 
+  const worktreeByRole = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const task of teamFeed.tasks) {
+      if (task.worktreeBranch && !map.has(task.assignedRole)) {
+        map.set(task.assignedRole, task.worktreeBranch);
+      }
+    }
+    return map;
+  }, [teamFeed.tasks]);
+
   const visibleRoster = useMemo(() => {
     if (rosterFilter === "live") {
       return roster.filter((entry) => isLiveStatus(entry.status));
@@ -180,20 +234,31 @@ export function InlineTeamTimeline({
   const isBoardOpen =
     boardExpanded !== null ? boardExpanded : anyLive || roster.length === 0;
   const totalTokens = totals.inputTokens + totals.outputTokens;
+  const teamCacheHitPct =
+    totals.inputTokens > 0 && totals.cachedInputTokens > 0
+      ? Math.min(
+          100,
+          Math.round((totals.cachedInputTokens / totals.inputTokens) * 100),
+        )
+      : null;
 
   return (
     <section
       aria-label="Agent team execution"
-      className="my-2 w-full min-w-0 overflow-hidden rounded-xl border border-border/80 bg-card text-card-foreground"
+      className="my-2 w-full min-w-0 overflow-hidden rounded-lg border border-border/80 bg-background text-foreground"
     >
-      {/* Header strip */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-muted/25 px-3 py-2.5 sm:px-4">
+      {/* Dense ledger header strip */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/70 bg-muted/20 px-3 py-2">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border border-border/70 bg-background text-foreground">
-            <Users className="size-3.5" strokeWidth={1.5} />
-          </span>
-          <span className="text-xs font-semibold text-foreground sm:text-sm">
+          <Users
+            className="size-3.5 shrink-0 text-muted-foreground"
+            strokeWidth={1.5}
+          />
+          <span className="text-xs font-semibold text-foreground">
             Team execution
+          </span>
+          <span className="font-mono text-[11px] text-muted-foreground">
+            /team
           </span>
           {roster.length > 0 && (
             <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
@@ -213,14 +278,14 @@ export function InlineTeamTimeline({
             </span>
           )}
           {contractCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground tabular-nums">
+            <span className="inline-flex items-center gap-1 rounded border border-border/70 bg-background px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
               <FileCode2 className="size-3 shrink-0" strokeWidth={1.5} />
               {contractCount} contract{contractCount === 1 ? "" : "s"}
             </span>
           )}
           {teamFeed.fileConflicts.length > 0 && (
             <span className="inline-flex items-center gap-1 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 tabular-nums">
-              <AlertCircle className="size-3 shrink-0" />
+              <AlertCircle className="size-3 shrink-0" strokeWidth={1.5} />
               {teamFeed.fileConflicts.length} overlap
               {teamFeed.fileConflicts.length === 1 ? "" : "s"}
             </span>
@@ -245,7 +310,7 @@ export function InlineTeamTimeline({
                   type="button"
                   onClick={() => setRosterFilter(tab.id)}
                   className={cn(
-                    "rounded px-2 py-0.5 transition-colors tabular-nums cursor-pointer",
+                    "rounded px-2 py-0.5 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] tabular-nums cursor-pointer",
                     rosterFilter === tab.id
                       ? "bg-muted font-medium text-foreground"
                       : "text-muted-foreground hover:text-foreground",
@@ -259,6 +324,7 @@ export function InlineTeamTimeline({
           {totalTokens > 0 && (
             <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
               {formatTokens(totalTokens)} tok
+              {teamCacheHitPct !== null ? ` · ${teamCacheHitPct}% cached` : ""}
             </span>
           )}
           <Button
@@ -268,29 +334,32 @@ export function InlineTeamTimeline({
             onClick={() => {
               window.dispatchEvent(new CustomEvent("entry:toggle-agent-hub"));
             }}
-            className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+            className="h-7 gap-1 px-2 text-xs text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-foreground"
           >
             <PanelRight className="size-3.5" strokeWidth={1.5} />
-            <span>Inspect hub</span>
+            <span>Team pane</span>
           </Button>
         </div>
       </div>
 
       {/* Dependency Wave Pipeline bar */}
       {teamFeed.waves.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 border-b border-border/60 bg-background/50 px-3 py-2 text-[11px] sm:px-4">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-border/70 bg-muted/10 px-3 py-1.5 text-[11px]">
           <span className="inline-flex items-center gap-1 font-mono text-muted-foreground">
             <Layers className="size-3 shrink-0" strokeWidth={1.5} />
-            Pipeline:
+            Waves:
           </span>
           {teamFeed.waves.map((wave, idx) => (
             <div key={wave.wave} className="inline-flex items-center gap-1.5">
               {idx > 0 && (
-                <ArrowRight className="size-3 text-muted-foreground/60" />
+                <ArrowRight
+                  className="size-3 text-muted-foreground/60"
+                  strokeWidth={1.5}
+                />
               )}
               <span
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono tabular-nums",
+                  "inline-flex items-center gap-1 rounded border px-1.5 py-0.5 font-mono tabular-nums",
                   wave.status === "completed" &&
                     "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
                   wave.status === "active" &&
@@ -302,9 +371,7 @@ export function InlineTeamTimeline({
                 )}
               >
                 <span>Wave {wave.wave}</span>
-                <span className="text-[10px] opacity-75">
-                  ({wave.taskIds.length})
-                </span>
+                <span className="opacity-75">({wave.taskIds.length})</span>
               </span>
             </div>
           ))}
@@ -313,9 +380,12 @@ export function InlineTeamTimeline({
 
       {/* File overlap warning strip when active teammates claim the same path */}
       {teamFeed.fileConflicts.length > 0 && (
-        <div className="border-b border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 sm:px-4">
+        <div className="border-b border-amber-500/25 bg-amber-500/5 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
           <div className="flex items-start gap-2">
-            <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+            <AlertCircle
+              className="mt-0.5 size-3.5 shrink-0"
+              strokeWidth={1.5}
+            />
             <div className="min-w-0 space-y-0.5">
               <p className="font-medium">
                 Overlapping file claims across active tasks
@@ -331,151 +401,133 @@ export function InlineTeamTimeline({
         </div>
       )}
 
-      {/* Live teammate cards directly in main chat */}
+      {/* Flush hairline-divided teammate lanes matching TaskRenderer */}
       {visibleRoster.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-2 sm:p-4">
+        <div className="divide-y divide-border/70">
           {visibleRoster.map((entry) => {
             const live = isLiveStatus(entry.status);
+            const failed =
+              entry.status === "failed" || entry.status === "denied";
             const elapsed =
               live && entry.startedAt !== null
                 ? formatElapsed(now - entry.startedAt)
                 : null;
             const activity = live ? formatToolActivity(entry.pending) : null;
-            const isCardExpanded = Boolean(expandedCards[entry.id]);
+            const isLaneExpanded = Boolean(expandedLanes[entry.id]);
             const excerpt = formatLiveExcerpt(
               entry.streamedText,
-              isCardExpanded,
+              isLaneExpanded,
             );
             const approvalId = approvalIdByCallId.get(entry.id);
             const claimedFiles = filesByRole.get(entry.subagentType) ?? [];
+            const worktreeBranch =
+              entry.worktreeBranch ??
+              worktreeByRole.get(entry.subagentType) ??
+              null;
             const entryTokens =
               (entry.inputTokens ?? 0) + (entry.outputTokens ?? 0);
+            const cacheHitPct =
+              entry.inputTokens &&
+              entry.inputTokens > 0 &&
+              entry.cachedInputTokens &&
+              entry.cachedInputTokens > 0
+                ? Math.min(
+                    100,
+                    Math.round(
+                      (entry.cachedInputTokens / entry.inputTokens) * 100,
+                    ),
+                  )
+                : null;
+            const roleTag = getSubagentRoleTag(entry.subagentType);
+            const modelTag = formatSubagentModelTag(entry.modelId);
 
             return (
-              <article
+              <div
                 key={entry.id}
-                className="flex min-w-0 flex-col justify-between gap-2.5 rounded-lg border border-border/70 bg-background/70 p-3 transition-colors"
+                className={cn(
+                  "min-w-0 border-l-2 py-2.5 pl-3 pr-3 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                  failed
+                    ? "border-l-destructive/75"
+                    : live
+                      ? "border-l-foreground/45"
+                      : "border-l-border hover:border-l-foreground/35",
+                )}
               >
-                <div className="min-w-0 space-y-2">
-                  {/* Top row: Role + live status + elapsed timer */}
-                  <div className="flex flex-wrap items-center justify-between gap-1.5">
-                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                      <SubagentRoleBadge subagentType={entry.subagentType} />
-                      <StatusBadge status={entry.status} size="sm" />
-                    </div>
+                {/* Primary Single-Row Lane Header */}
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+                      {failed ? (
+                        <XCircle
+                          className="size-3.5 text-destructive"
+                          strokeWidth={1.5}
+                        />
+                      ) : entry.status === "completed" ? (
+                        <Check
+                          className="size-3.5 text-muted-foreground"
+                          strokeWidth={1.5}
+                        />
+                      ) : (
+                        <span className="size-1.5 rounded-full bg-emerald-500" />
+                      )}
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() => insertComposerMention(entry.subagentType)}
+                      title={`Tag @${entry.subagentType} in composer`}
+                      className="inline-flex shrink-0 items-center gap-1 font-mono text-xs font-medium text-foreground/85 hover:underline cursor-pointer"
+                    >
+                      <SubagentIcon
+                        type={entry.subagentType}
+                        className="size-3.5 text-muted-foreground"
+                      />
+                      <span>@{roleTag}</span>
+                    </button>
+
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 truncate text-[13px] font-medium",
+                        failed ? "text-destructive" : "text-foreground",
+                      )}
+                    >
+                      {entry.title}
+                    </span>
+
+                    <StatusBadge status={entry.status} size="sm" />
+                  </div>
+
+                  {/* Right telemetry + Trace action */}
+                  <div className="flex shrink-0 items-center gap-2">
                     <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground tabular-nums">
                       {elapsed && <span>{elapsed}</span>}
                       {entry.toolCallCount !== null && (
                         <span>
                           {elapsed ? "· " : ""}
-                          {entry.toolCallCount} tool
-                          {entry.toolCallCount === 1 ? "" : "s"}
+                          {entry.toolCallCount}{" "}
+                          {entry.toolCallCount === 1 ? "step" : "steps"}
                         </span>
                       )}
                       {entryTokens > 0 && (
-                        <span>· {formatTokens(entryTokens)}</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Assigned task title */}
-                  <div className="flex min-w-0 items-start gap-2">
-                    <SubagentIcon
-                      type={entry.subagentType}
-                      className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-                    />
-                    <p className="min-w-0 text-xs font-medium leading-snug text-foreground line-clamp-2">
-                      {entry.title}
-                    </p>
-                  </div>
-
-                  {/* Current active tool target while streaming */}
-                  {activity && (
-                    <div className="truncate rounded-md border border-border/60 bg-muted/40 px-2 py-1 font-mono text-[11px] text-foreground/85">
-                      {activity}
-                    </div>
-                  )}
-
-                  {/* Claimed files when mapped via team_board */}
-                  {claimedFiles.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {claimedFiles.slice(0, 3).map((file) => (
-                        <span
-                          key={file}
-                          className="max-w-full truncate rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-                        >
-                          {file}
+                        <span className="hidden sm:inline">
+                          · {formatTokens(entryTokens)} tok
                         </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Real-time streamed text / summary excerpt */}
-                  {excerpt.text && (
-                    <div className="space-y-1 rounded-md bg-muted/25 px-2.5 py-2">
-                      <p
-                        className={cn(
-                          "whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground",
-                          !isCardExpanded && "line-clamp-3",
-                        )}
-                      >
-                        {excerpt.text}
-                      </p>
-                      {excerpt.truncated && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedCards((prev) => ({
-                              ...prev,
-                              [entry.id]: !isCardExpanded,
-                            }))
-                          }
-                          className="text-[11px] font-medium text-foreground/80 hover:text-foreground cursor-pointer"
+                      )}
+                      {cacheHitPct !== null && (
+                        <span className="hidden md:inline">
+                          · {cacheHitPct}% cached
+                        </span>
+                      )}
+                      {modelTag && (
+                        <span
+                          className="hidden max-w-[110px] truncate lg:inline"
+                          title={entry.modelId ?? undefined}
                         >
-                          {isCardExpanded ? "Show less" : "Read full output"}
-                        </button>
+                          · {modelTag}
+                        </span>
                       )}
                     </div>
-                  )}
 
-                  {/* Error text if teammate failed */}
-                  {entry.errorText && (
-                    <p className="break-words rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400">
-                      {entry.errorText}
-                    </p>
-                  )}
-
-                  {/* Interactive tool approval if awaiting confirmation */}
-                  {approvalId &&
-                    (!activeApprovalId || activeApprovalId === approvalId) && (
-                      <ApprovalButtons
-                        approvalId={approvalId}
-                        onApprove={onApproveTool}
-                        onDeny={onDenyTool}
-                      />
-                    )}
-                </div>
-
-                {/* Card footer */}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-2">
-                  <span className="truncate font-mono text-[11px] text-muted-foreground">
-                    {entry.modelId ?? "Default model"}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        window.dispatchEvent(
-                          new CustomEvent("entry:insert-composer-prompt", {
-                            detail: { text: `@${entry.subagentType} ` },
-                          }),
-                        );
-                      }}
-                      className="inline-flex shrink-0 items-center gap-1 rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
-                      title={`Tag @${entry.subagentType} in composer`}
-                    >
-                      <span>@{entry.subagentType}</span>
-                    </button>
                     {onOpenSubagentTab && (
                       <button
                         type="button"
@@ -486,79 +538,139 @@ export function InlineTeamTimeline({
                             entry.subagentType,
                           )
                         }
-                        className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                        aria-label={`Inspect trace for ${entry.title}`}
+                        className="inline-flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-[11px] font-medium text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground cursor-pointer"
                       >
                         <span>Inspect trace</span>
-                        <ExternalLink className="size-3" strokeWidth={1.5} />
+                        <ArrowUpRight className="size-3" strokeWidth={1.5} />
                       </button>
                     )}
                   </div>
                 </div>
-              </article>
+
+                {/* Live single-line activity ticker */}
+                {activity && (
+                  <div className="mt-1 flex min-w-0 items-center gap-1.5 pl-6 font-mono text-[11px] text-muted-foreground">
+                    <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />
+                    <span className="truncate">{activity}</span>
+                  </div>
+                )}
+
+                {/* Worktree branch + claimed files strip */}
+                {(worktreeBranch || claimedFiles.length > 0) && (
+                  <div className="mt-1 flex flex-wrap items-center gap-1.5 pl-6">
+                    {worktreeBranch && (
+                      <span className="inline-flex items-center gap-1 rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                        <GitBranch className="size-3" strokeWidth={1.5} />
+                        {worktreeBranch}
+                      </span>
+                    )}
+                    {claimedFiles.slice(0, 4).map((file) => (
+                      <span
+                        key={file}
+                        className="max-w-full truncate rounded border border-border/60 bg-muted/20 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                      >
+                        {file}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Streamed excerpt */}
+                {excerpt.text && (
+                  <div className="mt-1.5 pl-6">
+                    <p
+                      className={cn(
+                        "whitespace-pre-wrap break-words text-xs leading-relaxed text-muted-foreground",
+                        !isLaneExpanded && "line-clamp-2",
+                      )}
+                    >
+                      {excerpt.text}
+                    </p>
+                    {excerpt.truncated && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpandedLanes((prev) => ({
+                            ...prev,
+                            [entry.id]: !isLaneExpanded,
+                          }))
+                        }
+                        className="mt-0.5 text-[11px] font-medium text-foreground/80 hover:text-foreground cursor-pointer"
+                      >
+                        {isLaneExpanded ? "Show less" : "Show full output"}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Error text if teammate failed */}
+                {entry.errorText && (
+                  <p className="mt-1.5 ml-6 break-words rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-1.5 text-xs text-red-600 dark:text-red-400">
+                    {entry.errorText}
+                  </p>
+                )}
+
+                {/* Interactive tool approval if awaiting confirmation */}
+                {approvalId &&
+                  (!activeApprovalId || activeApprovalId === approvalId) && (
+                    <div className="mt-2 pl-6">
+                      <ApprovalButtons
+                        approvalId={approvalId}
+                        onApprove={onApproveTool}
+                        onDeny={onDenyTool}
+                      />
+                    </div>
+                  )}
+              </div>
             );
           })}
         </div>
       )}
 
-      {/* Live Inter-Agent Comms & Handoff Stream */}
+      {/* Live Inter-Agent Comms, Debate & Handoff Stream */}
       {teamFeed.entries.length > 0 && (
-        <div className="border-t border-border/70 bg-muted/10 px-3 py-2.5 sm:px-4">
-          <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="border-t border-border/70 bg-muted/10">
+          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-1.5">
             <span className="text-[11px] font-medium text-foreground/85">
-              Live teammate comms &amp; handoffs
+              Teammate comms &amp; handoffs
             </span>
             <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
-              {teamFeed.entries.length} message
-              {teamFeed.entries.length === 1 ? "" : "s"}
+              {teamFeed.entries.length}
             </span>
           </div>
-          <div className="space-y-1.5">
-            {teamFeed.entries.slice(-5).map((entry) => (
-              <div
-                key={entry.id}
-                className={cn(
-                  "rounded-lg border px-2.5 py-2 text-xs",
-                  entry.kind === "contract"
-                    ? "border-amber-500/30 bg-amber-500/5"
-                    : "border-border/60 bg-background/85",
-                )}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-1.5">
+          <div className="divide-y divide-border/60">
+            {teamFeed.entries.slice(-6).map((entry) => {
+              const kindBadgeClass =
+                ENTRY_KIND_STYLE[entry.kind] ?? ENTRY_KIND_STYLE.finding;
+              const extraMentions = (entry.mentions ?? []).filter(
+                (mention) =>
+                  mention !== entry.authorRole && mention !== entry.targetRole,
+              );
+
+              return (
+                <div key={entry.id} className="space-y-1 px-3 py-2 text-xs">
                   <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => {
-                        window.dispatchEvent(
-                          new CustomEvent("entry:insert-composer-prompt", {
-                            detail: { text: `@${entry.authorRole} ` },
-                          }),
-                        );
-                      }}
+                      onClick={() => insertComposerMention(entry.authorRole)}
                       className="font-mono text-[11px] font-semibold text-foreground hover:underline cursor-pointer"
                     >
                       @{entry.authorRole}
                     </button>
                     {entry.targetRole && (
                       <>
-                        <ArrowRight className="size-3 text-muted-foreground" />
+                        <ArrowRight
+                          className="size-3 text-muted-foreground"
+                          strokeWidth={1.5}
+                        />
                         <button
                           type="button"
-                          onClick={() => {
-                            if (
-                              entry.targetRole &&
-                              entry.targetRole !== "all"
-                            ) {
-                              window.dispatchEvent(
-                                new CustomEvent(
-                                  "entry:insert-composer-prompt",
-                                  {
-                                    detail: { text: `@${entry.targetRole} ` },
-                                  },
-                                ),
-                              );
-                            }
-                          }}
-                          className="font-mono text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                          onClick={() =>
+                            entry.targetRole &&
+                            insertComposerMention(entry.targetRole)
+                          }
+                          className="font-mono text-[11px] font-semibold text-foreground/85 hover:underline cursor-pointer"
                         >
                           @{entry.targetRole}
                         </button>
@@ -566,10 +678,8 @@ export function InlineTeamTimeline({
                     )}
                     <span
                       className={cn(
-                        "rounded border px-1.5 py-0 text-[10px] font-medium capitalize",
-                        entry.kind === "contract"
-                          ? "border-amber-500/40 bg-background text-amber-700 dark:text-amber-300"
-                          : "border-border/70 bg-muted/50 text-muted-foreground",
+                        "rounded border px-1.5 py-0.5 text-[11px] font-medium capitalize",
+                        kindBadgeClass,
                       )}
                     >
                       {entry.kind}
@@ -578,24 +688,35 @@ export function InlineTeamTimeline({
                       {entry.title}
                     </span>
                   </div>
+                  <p className="line-clamp-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground">
+                    {entry.content}
+                  </p>
+                  {(extraMentions.length > 0 ||
+                    (entry.files && entry.files.length > 0)) && (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {extraMentions.map((mention) => (
+                        <button
+                          key={mention}
+                          type="button"
+                          onClick={() => insertComposerMention(mention)}
+                          className="rounded border border-border/60 bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground/80 hover:bg-muted cursor-pointer"
+                        >
+                          @{mention}
+                        </button>
+                      ))}
+                      {entry.files?.slice(0, 4).map((file) => (
+                        <span
+                          key={file}
+                          className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                        >
+                          {file}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground">
-                  {entry.content}
-                </p>
-                {entry.files && entry.files.length > 0 && (
-                  <div className="mt-1.5 flex flex-wrap gap-1">
-                    {entry.files.slice(0, 4).map((file) => (
-                      <span
-                        key={file}
-                        className="rounded border border-border/60 bg-muted/40 px-1.5 py-0 font-mono text-[10px] text-muted-foreground"
-                      >
-                        {file}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -606,13 +727,13 @@ export function InlineTeamTimeline({
           <button
             type="button"
             onClick={() => setBoardExpanded(!isBoardOpen)}
-            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted/30 hover:text-foreground sm:px-4 cursor-pointer"
+            className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/30 hover:text-foreground cursor-pointer"
           >
             <div className="flex items-center gap-1.5 font-medium">
               {isBoardOpen ? (
-                <ChevronDown className="size-3.5 shrink-0" />
+                <ChevronDown className="size-3.5 shrink-0" strokeWidth={1.5} />
               ) : (
-                <ChevronRight className="size-3.5 shrink-0" />
+                <ChevronRight className="size-3.5 shrink-0" strokeWidth={1.5} />
               )}
               <span>Shared task wave board</span>
             </div>
@@ -622,58 +743,73 @@ export function InlineTeamTimeline({
           </button>
 
           {isBoardOpen && (
-            <div className="space-y-3 border-t border-border/60 bg-muted/15 px-3 py-3 sm:px-4">
-              <div className="divide-y divide-border/50 rounded-lg border border-border/60 bg-background/80">
-                {teamFeed.tasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-start gap-2 px-2.5 py-2 text-xs"
-                  >
-                    <div className="pt-0.5">
-                      <TaskStatusGlyph status={task.status} />
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span
-                          className={cn(
-                            "font-medium text-foreground",
-                            task.status === "completed" &&
-                              "text-muted-foreground line-through",
-                          )}
-                        >
-                          {task.title}
-                        </span>
-                        <SubagentRoleBadge subagentType={task.assignedRole} />
-                        {task.dependsOn && task.dependsOn.length > 0 && (
-                          <span className="font-mono text-[10px] text-muted-foreground">
-                            after {task.dependsOn.join(", ")}
-                          </span>
-                        )}
-                      </div>
-                      {task.files && task.files.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {task.files.map((file) => (
-                            <span
-                              key={file}
-                              className="max-w-full truncate rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-                            >
-                              {file}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {task.verification && (
-                        <p className="font-mono text-[10px] text-emerald-700 dark:text-emerald-400 break-words">
-                          Verified: {task.verification}
-                        </p>
-                      )}
-                    </div>
-                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
-                      {task.id}
-                    </span>
+            <div className="divide-y divide-border/60 border-t border-border/60 bg-muted/10">
+              {teamFeed.tasks.map((task) => (
+                <div
+                  key={task.id}
+                  className="flex items-start gap-2 px-3 py-2 text-xs"
+                >
+                  <div className="pt-0.5">
+                    <TaskStatusGlyph status={task.status} />
                   </div>
-                ))}
-              </div>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span
+                        className={cn(
+                          "font-medium text-foreground",
+                          task.status === "completed" &&
+                            "text-muted-foreground line-through",
+                        )}
+                      >
+                        {task.title}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => insertComposerMention(task.assignedRole)}
+                        className="font-mono text-[11px] text-muted-foreground hover:text-foreground hover:underline cursor-pointer"
+                      >
+                        @{task.assignedRole}
+                      </button>
+                      {task.status === "parked" && (
+                        <span className="rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                          Parked
+                        </span>
+                      )}
+                      {task.dependsOn && task.dependsOn.length > 0 && (
+                        <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+                          after {task.dependsOn.join(", ")}
+                        </span>
+                      )}
+                      {task.worktreeBranch && (
+                        <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
+                          <GitBranch className="size-3" strokeWidth={1.5} />
+                          {task.worktreeBranch}
+                        </span>
+                      )}
+                    </div>
+                    {task.files && task.files.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {task.files.map((file) => (
+                          <span
+                            key={file}
+                            className="max-w-full truncate rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                          >
+                            {file}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {task.verification && (
+                      <p className="font-mono text-[11px] text-emerald-700 dark:text-emerald-400 break-words">
+                        Verified: {task.verification}
+                      </p>
+                    )}
+                  </div>
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+                    {task.id}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
         </div>

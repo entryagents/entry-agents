@@ -13,7 +13,11 @@ import {
   HelpCircle,
   Layers,
   Lightbulb,
+  MessageSquare,
+  PauseCircle,
   Share2,
+  ShieldAlert,
+  ShieldCheck,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import type {
@@ -28,7 +32,7 @@ const KIND_META: Record<
   TeamFeedEntry["kind"],
   {
     label: string;
-    icon: React.ComponentType<{ className?: string }>;
+    icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
     badge: string;
   }
 > = {
@@ -42,6 +46,23 @@ const KIND_META: Record<
     icon: FileCode2,
     badge:
       "border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  },
+  debate: {
+    label: "Debate",
+    icon: MessageSquare,
+    badge: "border-border/80 bg-muted/60 text-foreground",
+  },
+  challenge: {
+    label: "Challenge",
+    icon: ShieldAlert,
+    badge:
+      "border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  },
+  verification: {
+    label: "Verification",
+    icon: ShieldCheck,
+    badge:
+      "border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   },
   finding: {
     label: "Finding",
@@ -74,13 +95,37 @@ const KIND_META: Record<
 function TaskStatusIcon({ status }: { status: TeamFeedTask["status"] }) {
   switch (status) {
     case "completed":
-      return <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />;
+      return (
+        <CheckCircle2
+          className="size-3.5 shrink-0 text-emerald-500"
+          strokeWidth={1.5}
+        />
+      );
     case "in_progress":
-      return <Clock className="size-3.5 shrink-0 text-amber-500" />;
+      return (
+        <Clock className="size-3.5 shrink-0 text-amber-500" strokeWidth={1.5} />
+      );
     case "blocked":
-      return <AlertCircle className="size-3.5 shrink-0 text-red-500" />;
+      return (
+        <AlertCircle
+          className="size-3.5 shrink-0 text-red-500"
+          strokeWidth={1.5}
+        />
+      );
+    case "parked":
+      return (
+        <PauseCircle
+          className="size-3.5 shrink-0 text-muted-foreground"
+          strokeWidth={1.5}
+        />
+      );
     default:
-      return <Circle className="size-3.5 shrink-0 text-muted-foreground/60" />;
+      return (
+        <Circle
+          className="size-3.5 shrink-0 text-muted-foreground/60"
+          strokeWidth={1.5}
+        />
+      );
   }
 }
 
@@ -91,8 +136,11 @@ function formatBoardAsMarkdown(feed: TeamFeedState): string {
     for (const task of feed.tasks) {
       const box = task.status === "completed" ? "[x]" : "[ ]";
       lines.push(
-        `- ${box} **${task.id}** ${task.title} _(${task.assignedRole}, ${task.status})_`,
+        `- ${box} **${task.id}** ${task.title} (${task.assignedRole}, ${task.status})`,
       );
+      if (task.worktreeBranch) {
+        lines.push(`  - Branch: \`${task.worktreeBranch}\``);
+      }
       if (task.notes) {
         lines.push(`  - ${task.notes}`);
       }
@@ -101,7 +149,7 @@ function formatBoardAsMarkdown(feed: TeamFeedState): string {
   if (feed.entries.length > 0) {
     lines.push("", "## Decisions & Handoffs");
     for (const entry of feed.entries) {
-      const target = entry.targetRole ? ` → ${entry.targetRole}` : "";
+      const target = entry.targetRole ? ` -> ${entry.targetRole}` : "";
       lines.push(
         `### [${entry.kind}] ${entry.title} (${entry.authorRole}${target})`,
       );
@@ -140,7 +188,7 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center">
         <div className="rounded-full border border-border/70 bg-muted/30 p-3">
-          <Share2 className="size-5 text-muted-foreground" />
+          <Share2 className="size-5 text-muted-foreground" strokeWidth={1.5} />
         </div>
         <h3 className="mt-3 text-sm font-medium text-foreground">
           No shared team notes yet
@@ -178,8 +226,10 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
             [
               { id: "all", label: "All" },
               { id: "contract", label: "Contracts" },
+              { id: "challenge", label: "Challenges" },
+              { id: "debate", label: "Debates" },
               { id: "decision", label: "Decisions" },
-              { id: "finding", label: "Findings" },
+              { id: "verification", label: "Verified" },
               { id: "handoff", label: "Handoffs" },
               { id: "blocker", label: "Blockers" },
             ] as const
@@ -189,7 +239,7 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
               type="button"
               onClick={() => setKindFilter(tab.id)}
               className={cn(
-                "rounded-md px-2 py-1 text-xs font-medium transition-colors cursor-pointer",
+                "rounded-md px-2 py-1 text-xs font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
                 kindFilter === tab.id
                   ? "bg-muted text-foreground"
                   : "text-muted-foreground hover:text-foreground",
@@ -203,16 +253,16 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
         <button
           type="button"
           onClick={() => void handleCopyMarkdown()}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border/70 bg-card px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-foreground cursor-pointer"
         >
           {copied ? (
             <>
-              <Check className="size-3 text-emerald-500" />
+              <Check className="size-3 text-emerald-500" strokeWidth={1.5} />
               <span>Copied</span>
             </>
           ) : (
             <>
-              <Copy className="size-3" />
+              <Copy className="size-3" strokeWidth={1.5} />
               <span>Copy markdown</span>
             </>
           )}
@@ -227,7 +277,7 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
                 className="size-3.5 text-muted-foreground"
                 strokeWidth={1.5}
               />
-              <span>Execution wave DAG</span>
+              <span>Execution wave pipeline</span>
             </h3>
             <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
               {feed.waves.length} wave{feed.waves.length === 1 ? "" : "s"}
@@ -237,7 +287,10 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
             {feed.waves.map((wave, idx) => (
               <div key={wave.wave} className="inline-flex items-center gap-2">
                 {idx > 0 && (
-                  <ArrowRight className="size-3.5 text-muted-foreground/60" />
+                  <ArrowRight
+                    className="size-3.5 text-muted-foreground/60"
+                    strokeWidth={1.5}
+                  />
                 )}
                 <div
                   className={cn(
@@ -254,11 +307,11 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
                 >
                   <div className="flex items-center gap-1.5">
                     <span className="font-semibold">Wave {wave.wave}</span>
-                    <span className="text-[10px] capitalize opacity-80">
+                    <span className="text-[11px] capitalize opacity-80">
                       · {wave.status}
                     </span>
                   </div>
-                  <div className="mt-0.5 text-[10px] opacity-85">
+                  <div className="mt-0.5 text-[11px] opacity-85">
                     {wave.taskIds.join(", ")}
                   </div>
                 </div>
@@ -281,7 +334,7 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
               >
                 <div className="flex items-center justify-between gap-2">
                   <SubagentRoleBadge subagentType={role} />
-                  <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                  <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
                     {files.length} file{files.length === 1 ? "" : "s"}
                   </span>
                 </div>
@@ -289,7 +342,7 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
                   {files.map((file) => (
                     <span
                       key={file}
-                      className="max-w-full truncate rounded border border-border/60 bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                      className="max-w-full truncate rounded border border-border/60 bg-background px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
                     >
                       {file}
                     </span>
@@ -304,7 +357,7 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
       {feed.fileConflicts.length > 0 && (
         <section className="space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">
           <div className="flex items-center gap-1.5 font-medium">
-            <AlertCircle className="size-3.5 shrink-0" />
+            <AlertCircle className="size-3.5 shrink-0" strokeWidth={1.5} />
             <span>
               File ownership overlap detected ({feed.fileConflicts.length})
             </span>
@@ -350,13 +403,24 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
                       {task.title}
                     </span>
                     <SubagentRoleBadge subagentType={task.assignedRole} />
+                    {task.status === "parked" && (
+                      <span className="rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[11px] text-muted-foreground">
+                        Parked
+                      </span>
+                    )}
+                    {task.worktreeBranch && (
+                      <span className="inline-flex items-center gap-1 rounded border border-border/60 bg-background/70 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                        <GitBranch className="size-3" strokeWidth={1.5} />
+                        {task.worktreeBranch}
+                      </span>
+                    )}
                   </div>
                   {task.files && task.files.length > 0 && (
                     <div className="flex flex-wrap gap-1 pt-0.5">
                       {task.files.map((file) => (
                         <span
                           key={file}
-                          className="rounded border border-border/60 bg-background/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                          className="rounded border border-border/60 bg-background/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
                         >
                           {file}
                         </span>
@@ -369,12 +433,12 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
                     </p>
                   )}
                   {task.verification && (
-                    <p className="font-mono text-[10px] leading-relaxed text-emerald-700 dark:text-emerald-400">
+                    <p className="font-mono text-[11px] leading-relaxed text-emerald-700 dark:text-emerald-400">
                       Verified: {task.verification}
                     </p>
                   )}
                 </div>
-                <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+                <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">
                   {task.id}
                 </span>
               </div>
@@ -388,32 +452,44 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
           <h3 className="text-xs font-medium text-muted-foreground tabular-nums">
             Decisions &amp; handoffs ({filteredEntries.length})
           </h3>
-          <div className="space-y-2.5">
+          <div className="divide-y divide-border/70 rounded-lg border border-border/70 bg-card">
             {filteredEntries.map((entry) => {
               const meta = KIND_META[entry.kind] ?? KIND_META.finding;
               const KindIcon = meta.icon;
               return (
-                <article
-                  key={entry.id}
-                  className="space-y-2 rounded-lg border border-border/70 bg-card p-3.5"
-                >
+                <div key={entry.id} className="space-y-2 p-3.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span
                         className={cn(
-                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                          "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium",
                           meta.badge,
                         )}
                       >
-                        <KindIcon className="size-3" />
+                        <KindIcon className="size-3" strokeWidth={1.5} />
                         {meta.label}
                       </span>
                       <SubagentRoleBadge subagentType={entry.authorRole} />
                       {entry.targetRole && (
                         <>
-                          <ArrowRight className="size-3 text-muted-foreground" />
+                          <ArrowRight
+                            className="size-3 text-muted-foreground"
+                            strokeWidth={1.5}
+                          />
                           <SubagentRoleBadge subagentType={entry.targetRole} />
                         </>
+                      )}
+                      {entry.mentions && entry.mentions.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {entry.mentions.map((mention) => (
+                            <span
+                              key={mention}
+                              className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                            >
+                              @{mention}
+                            </span>
+                          ))}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -428,14 +504,14 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
                       {entry.files.map((file) => (
                         <span
                           key={file}
-                          className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] text-foreground/85"
+                          className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-foreground/85"
                         >
                           {file}
                         </span>
                       ))}
                     </div>
                   )}
-                </article>
+                </div>
               );
             })}
           </div>

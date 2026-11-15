@@ -3,6 +3,7 @@ import { SUBAGENT_REGISTRY } from "../../subagents/registry";
 import {
   TeamBoard,
   clearTeamBoard,
+  extractMentions,
   findFileOwnershipConflicts,
   formatTeamContextSummary,
   getOrCreateTeamBoard,
@@ -276,5 +277,138 @@ describe("TeamBoard & subagent coordination", () => {
         "design",
       ]),
     );
+  });
+
+  test("extractMentions parses unique lowercase handles while ignoring emails", () => {
+    const mentions = extractMentions(
+      "Escalate @Reviewer and @executor on team_board, ask @reviewer again, ignore dev@entry-agents.dev.",
+    );
+    expect(mentions).toEqual(["reviewer", "executor"]);
+  });
+
+  test("supports debate, challenge, and verification entries with normalized mentions", () => {
+    const board = new TeamBoard("team_debate");
+
+    const challenge = board.postEntry({
+      kind: "challenge",
+      authorRole: "reviewer",
+      targetRole: "executor",
+      title: "Race in session store",
+      content:
+        "Coordinate with @architect and @Executor before changing the lock key.",
+      files: ["apps/web/lib/team/role-models-store.ts"],
+    });
+    const debate = board.postEntry({
+      kind: "debate",
+      authorRole: "architect",
+      targetRole: "reviewer",
+      title: "Per-chat storage key",
+      content: "Store per-chat pins in sessionStorage keyed by chatId.",
+    });
+    const verification = board.postEntry({
+      kind: "verification",
+      authorRole: "reviewer",
+      targetRole: "all",
+      title: "Typecheck & isolated suite pass",
+      content: "Verified pnpm check and bun test pass on clean worktree.",
+    });
+
+    expect(challenge.mentions).toEqual(["executor", "architect"]);
+    expect(debate.kind).toBe("debate");
+    expect(verification.kind).toBe("verification");
+    expect(verification.mentions).toBeUndefined();
+
+    const summary = formatTeamContextSummary(board);
+    expect(summary).toContain("(challenge) **reviewer -> executor**");
+    expect(summary).toContain("(debate) **architect -> reviewer**");
+    expect(summary).toContain("(verification) **reviewer -> all**");
+  });
+
+  test("parked tasks settle execution waves and do not trigger file ownership conflicts", () => {
+    const board = new TeamBoard("team_parked");
+    board.upsertTasks(
+      [
+        {
+          id: "T1",
+          title: "Lock contracts",
+          assignedRole: "architect",
+          status: "completed",
+          files: ["packages/agent/team/team-board.ts"],
+        },
+        {
+          id: "T2",
+          title: "Deferred polish experiment",
+          assignedRole: "design",
+          status: "parked",
+          dependsOn: ["T1"],
+          files: ["apps/web/components/agent-hub/team-pane.tsx"],
+          notes: "Deferred out of scope to keep PR focused.",
+        },
+        {
+          id: "T3",
+          title: "Ship TeamPane",
+          assignedRole: "executor",
+          status: "in_progress",
+          dependsOn: ["T1", "T2"],
+          files: ["apps/web/components/agent-hub/team-pane.tsx"],
+          worktreeBranch: "team/executor-ab12cd34",
+        },
+      ],
+      "architect",
+    );
+
+    const snap = board.snapshot();
+    expect(snap.fileConflicts).toBeUndefined();
+    expect(snap.waves).toEqual([
+      { wave: 1, taskIds: ["T1"], status: "completed" },
+      { wave: 2, taskIds: ["T2"], status: "completed" },
+      { wave: 3, taskIds: ["T3"], status: "active" },
+    ]);
+    expect(snap.tasks[2]?.worktreeBranch).toBe("team/executor-ab12cd34");
+
+    const summary = formatTeamContextSummary(board);
+    expect(summary).toContain("[parked] `T2` (design)");
+    expect(summary).toContain("[branch: team/executor-ab12cd34]");
+  });
+
+  test("preserves worktreeBranch through updateTaskStatus and replay", () => {
+    const teamId = `team_wt_${Date.now()}`;
+    clearTeamBoard(teamId);
+    const board = new TeamBoard(teamId);
+    board.upsertTasks(
+      [
+        {
+          id: "W1",
+          title: "Build worktree isolator",
+          assignedRole: "executor",
+        },
+      ],
+      "architect",
+    );
+    const updated = board.updateTaskStatus("W1", "in_progress", "executor", {
+      worktreeBranch: "team/executor-99887766",
+    });
+    expect(updated?.worktreeBranch).toBe("team/executor-99887766");
+
+    const replayed = rebuildTeamBoardFromMessages(
+      [
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolName: "team_board",
+              output: { teamSnapshot: board.snapshot() },
+            },
+          ],
+        },
+      ],
+      `${teamId}_replay`,
+    );
+    expect(replayed.listTasks()[0]?.worktreeBranch).toBe(
+      "team/executor-99887766",
+    );
+    clearTeamBoard(teamId);
+    clearTeamBoard(`${teamId}_replay`);
   });
 });

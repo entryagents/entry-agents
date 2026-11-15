@@ -7,9 +7,17 @@ export type TeamBoardEntryKind =
   | "artifact"
   | "handoff"
   | "blocker"
-  | "question";
+  | "question"
+  | "debate"
+  | "challenge"
+  | "verification";
 
-export type TeamTaskStatus = "open" | "in_progress" | "completed" | "blocked";
+export type TeamTaskStatus =
+  | "open"
+  | "in_progress"
+  | "completed"
+  | "blocked"
+  | "parked";
 
 export interface TeamBoardEntry {
   id: string;
@@ -20,6 +28,7 @@ export interface TeamBoardEntry {
   title: string;
   content: string;
   files?: string[];
+  mentions?: string[];
   createdAt: number;
 }
 
@@ -32,6 +41,7 @@ export interface TeamWorkItem {
   files?: string[];
   notes?: string;
   verification?: string;
+  worktreeBranch?: string;
   updatedBy: string;
   updatedAt: number;
 }
@@ -59,6 +69,37 @@ export interface TeamBoardSnapshot {
 const MAX_BOARD_ENTRIES = 80;
 const MAX_TEAM_TASKS = 50;
 
+/**
+ * Extracts unique `@role` / `@handle` mentions from team board content so
+ * directed debates, challenges, and handoffs route cleanly.
+ */
+export function extractMentions(text: string): string[] {
+  const seen = new Set<string>();
+  const mentions: string[] = [];
+  const regex = /(?:^|[^a-zA-Z0-9_])@([a-z0-9][a-z0-9_-]*)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    const raw = match[1]?.toLowerCase();
+    if (!raw || seen.has(raw)) continue;
+    seen.add(raw);
+    mentions.push(raw);
+  }
+  return mentions;
+}
+
+function normalizeMentionList(mentions: string[] | undefined): string[] {
+  if (!mentions || mentions.length === 0) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of mentions) {
+    const cleaned = raw.trim().replace(/^@+/, "").toLowerCase();
+    if (!cleaned || seen.has(cleaned)) continue;
+    seen.add(cleaned);
+    out.push(cleaned);
+  }
+  return out;
+}
+
 function normalizeFileClaimList(files: string[] | undefined): string[] {
   if (!files || files.length === 0) return [];
   const seen = new Set<string>();
@@ -72,10 +113,15 @@ function normalizeFileClaimList(files: string[] | undefined): string[] {
   return normalized;
 }
 
+function isSettledTaskStatus(status: TeamTaskStatus | undefined): boolean {
+  return status === "completed" || status === "parked";
+}
+
 /**
  * Computes dependency-ordered execution waves from task `dependsOn` edges.
  * Independent tasks land in the same parallel wave; dependent tasks wait for
- * upstream prerequisites. Cycles fall back safely into subsequent waves.
+ * upstream prerequisites. Intentionally deferred `"parked"` tasks settle
+ * without burning tokens or stalling downstream waves.
  */
 export function computeExecutionWaves(
   tasks: TeamWorkItem[],
@@ -120,18 +166,22 @@ export function computeExecutionWaves(
   return [...buckets.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([wave, items]) => {
+      const nonParkedItems = items.filter((i) => i.status !== "parked");
       let status: TeamExecutionWave["status"] = "queued";
-      if (items.every((i) => i.status === "completed")) {
+      if (items.every((i) => isSettledTaskStatus(i.status))) {
         status = "completed";
       } else if (items.some((i) => i.status === "blocked")) {
         status = "blocked";
       } else if (
-        items.some((i) => i.status === "in_progress") ||
-        items.every(
-          (i) =>
-            !i.dependsOn?.length ||
-            i.dependsOn.every((dep) => byId.get(dep)?.status === "completed"),
-        )
+        nonParkedItems.some((i) => i.status === "in_progress") ||
+        (nonParkedItems.length > 0 &&
+          nonParkedItems.every(
+            (i) =>
+              !i.dependsOn?.length ||
+              i.dependsOn.every((dep) =>
+                isSettledTaskStatus(byId.get(dep)?.status),
+              ),
+          ))
       ) {
         status = "active";
       }
@@ -144,8 +194,8 @@ export function computeExecutionWaves(
 }
 
 /**
- * Detects active (non-completed) tasks claiming overlapping repository paths
- * so teammates avoid colliding edits on the same file.
+ * Detects active (non-completed, non-parked) tasks claiming overlapping
+ * repository paths so teammates avoid colliding edits on the same file.
  */
 export function findFileOwnershipConflicts(
   tasks: TeamWorkItem[],
@@ -156,7 +206,7 @@ export function findFileOwnershipConflicts(
   >();
 
   for (const task of tasks) {
-    if (task.status === "completed") continue;
+    if (task.status === "completed" || task.status === "parked") continue;
     const files = normalizeFileClaimList(task.files);
     for (const file of files) {
       let bucket = byFile.get(file);
@@ -197,6 +247,17 @@ export class TeamBoard {
       createdAt?: number;
     },
   ): TeamBoardEntry {
+    const title = input.title.trim();
+    const content = input.content.trim();
+    const extracted = extractMentions(`${title} ${content}`);
+    const mentions = normalizeMentionList([
+      ...(input.mentions ?? []),
+      ...(input.targetRole && input.targetRole !== "all"
+        ? [input.targetRole]
+        : []),
+      ...extracted,
+    ]);
+
     const entry: TeamBoardEntry = {
       id: input.id ?? `tb_${crypto.randomUUID().slice(0, 8)}`,
       kind: input.kind,
@@ -205,9 +266,10 @@ export class TeamBoard {
         ? { authorSessionId: input.authorSessionId }
         : {}),
       ...(input.targetRole ? { targetRole: input.targetRole } : {}),
-      title: input.title.trim(),
-      content: input.content.trim(),
+      title,
+      content,
       ...(input.files && input.files.length > 0 ? { files: input.files } : {}),
+      ...(mentions.length > 0 ? { mentions } : {}),
       createdAt: input.createdAt ?? Date.now(),
     };
 
@@ -233,6 +295,7 @@ export class TeamBoard {
       files?: string[];
       notes?: string;
       verification?: string;
+      worktreeBranch?: string;
     }>,
     updatedBy: string,
   ): TeamWorkItem[] {
@@ -250,6 +313,10 @@ export class TeamBoard {
         item.verification !== undefined
           ? item.verification.trim() || undefined
           : prev?.verification;
+      const nextWorktreeBranch =
+        item.worktreeBranch !== undefined
+          ? item.worktreeBranch.trim() || undefined
+          : prev?.worktreeBranch;
 
       this.tasks.set(item.id, {
         id: item.id,
@@ -264,6 +331,7 @@ export class TeamBoard {
             ? { notes: prev.notes }
             : {}),
         ...(nextVerification ? { verification: nextVerification } : {}),
+        ...(nextWorktreeBranch ? { worktreeBranch: nextWorktreeBranch } : {}),
         updatedBy,
         updatedAt: now,
       });
@@ -281,6 +349,7 @@ export class TeamBoard {
           notes?: string;
           files?: string[];
           verification?: string;
+          worktreeBranch?: string;
         },
   ): TeamWorkItem | null {
     const existing = this.tasks.get(taskId);
@@ -298,6 +367,10 @@ export class TeamBoard {
       opts.verification !== undefined
         ? opts.verification.trim() || undefined
         : existing.verification;
+    const nextWorktreeBranch =
+      opts.worktreeBranch !== undefined
+        ? opts.worktreeBranch.trim() || undefined
+        : existing.worktreeBranch;
 
     const updated: TeamWorkItem = {
       ...existing,
@@ -307,6 +380,7 @@ export class TeamBoard {
       ...(nextFiles && nextFiles.length > 0 ? { files: nextFiles } : {}),
       ...(opts.notes !== undefined ? { notes: opts.notes } : {}),
       ...(nextVerification ? { verification: nextVerification } : {}),
+      ...(nextWorktreeBranch ? { worktreeBranch: nextWorktreeBranch } : {}),
     };
     this.tasks.set(taskId, updated);
     return updated;
@@ -475,11 +549,14 @@ export function formatTeamContextSummary(board: TeamBoard): string {
       const deps = task.dependsOn?.length
         ? ` (after: ${task.dependsOn.join(", ")})`
         : "";
+      const branch = task.worktreeBranch
+        ? ` [branch: ${task.worktreeBranch}]`
+        : "";
       const verified = task.verification
         ? ` | verified: ${task.verification}`
         : "";
       lines.push(
-        `- [${task.status}] \`${task.id}\` (${task.assignedRole}): ${task.title}${deps}${files}${task.notes ? ` — ${task.notes}` : ""}${verified}`,
+        `- [${task.status}] \`${task.id}\` (${task.assignedRole}): ${task.title}${deps}${files}${branch}${task.notes ? ` — ${task.notes}` : ""}${verified}`,
       );
     }
   }
@@ -506,14 +583,17 @@ export function formatTeamContextSummary(board: TeamBoard): string {
 
   const notes = snap.entries.filter((e) => e.kind !== "contract");
   if (notes.length > 0) {
-    lines.push("", "### Recent Teammate Findings & Handoffs");
+    lines.push("", "### Recent Teammate Findings, Challenges & Handoffs");
     for (const entry of notes.slice(-12)) {
       const target = entry.targetRole ? ` -> ${entry.targetRole}` : "";
+      const mentions = entry.mentions?.length
+        ? ` [${entry.mentions.map((m) => `@${m}`).join(", ")}]`
+        : "";
       const files = entry.files?.length
         ? ` [files: ${entry.files.slice(0, 5).join(", ")}]`
         : "";
       lines.push(
-        `- (${entry.kind}) **${entry.authorRole}${target}** — ${entry.title}${files}: ${entry.content.slice(0, 240)}`,
+        `- (${entry.kind}) **${entry.authorRole}${target}** — ${entry.title}${mentions}${files}: ${entry.content.slice(0, 240)}`,
       );
     }
   }

@@ -21,8 +21,9 @@ import {
 const ARCHITECT_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
 - This is READ-ONLY architecture & planning - do NOT create, modify, or delete any repository files
-- Post concrete decisions, interface contracts, and parallel/sequential subtasks to \`team_board\` (\`plan_tasks\` and \`post\`) so \`executor\`, \`design\`, and \`reviewer\` teammates can execute cleanly
-- Your final message MUST contain both **Summary** and **Answer** with exact file paths, interface contracts, and execution order`;
+- Lock interface contracts (\`kind: "contract"\`) and schedule dependency-ordered waves via \`team_board\` (\`plan_tasks\` with \`dependsOn\`, non-overlapping \`files\`, and \`status: "parked"\` for deferred work) so \`executor\`, \`design\`, and \`reviewer\` operate without colliding edits
+- Use \`@role\` mentions in \`team_board\` entries when tagging \`@executor\`, \`@design\`, \`@explorer\`, or \`@reviewer\`
+- Your final message MUST contain both **Summary** and **Answer** with exact file paths, interface contracts, and wave execution order`;
 
 const ARCHITECT_SYSTEM_PROMPT = `You are an architect agent — a principal systems engineer subagent specialized in dependency mapping, interface design, and decomposing multi-file engineering tasks into coordinated teammate work.
 
@@ -38,9 +39,9 @@ ${SUBAGENT_NO_QUESTIONS_RULES}
 ${SUBAGENT_RESPONSE_FORMAT}
 
 ## TEAM COLLABORATION
-- Always call \`team_board\` (\`action: "read"\`) first to check existing teammate findings.
-- Post architecture decisions and interface contracts with \`team_board\` (\`action: "post"\`, \`kind: "decision"\` or \`kind: "handoff"\`, specifying \`files\` and \`targetRole\`).
-- Decompose non-trivial changes via \`team_board\` (\`action: "plan_tasks"\`) assigning work cleanly across \`explorer\`, \`executor\`, \`design\`, and \`reviewer\`.
+- Always call \`team_board\` (\`action: "read"\`) first to check existing teammate findings and active wave state.
+- Publish locked interface/type contracts (\`kind: "contract"\`), architectural decisions (\`kind: "decision"\`), and scoped debates (\`kind: "debate"\`) via \`team_board\` (\`action: "post"\`, using \`@role\` mentions and \`targetRole\`).
+- Decompose non-trivial changes via \`team_board\` (\`action: "plan_tasks"\`) with explicit \`dependsOn\` edges, strictly non-overlapping \`files\` claims across concurrent workers, and \`status: "parked"\` for optional/out-of-scope follow-ups.
 
 ## TOOLS & GUIDELINES
 You have access to: \`read\`, \`dir_list\`, \`grep\`, \`glob\`, \`bash\` (read-only commands only), \`team_board\`.

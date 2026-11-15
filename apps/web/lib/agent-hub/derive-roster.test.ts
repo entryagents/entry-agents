@@ -224,4 +224,112 @@ describe("deriveTeamFeed", () => {
       fileConflicts: [],
     });
   });
+
+  test("preserves debate/challenge/verification kinds, mentions, parked status, and worktreeBranch", () => {
+    const feed = deriveTeamFeed([
+      {
+        id: "msg_team_1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-task",
+            toolCallId: "tc_exec_1",
+            state: "output-available",
+            input: { subagentType: "executor", task: "Implement /team pane" },
+            output: {
+              worktreeBranch: "team/executor-tc_exec_",
+              teamSnapshot: {
+                teamId: "sess_wt",
+                entries: [
+                  {
+                    id: "e_ch",
+                    kind: "challenge",
+                    authorRole: "reviewer",
+                    targetRole: "executor",
+                    title: "Validate mobile drawer fallback",
+                    content:
+                      "Please coordinate with @design on <1024px layout.",
+                    mentions: ["executor", "design"],
+                    createdAt: 10,
+                  },
+                  {
+                    id: "e_db",
+                    kind: "debate",
+                    authorRole: "executor",
+                    targetRole: "reviewer",
+                    title: "Sheet vs docked rail boundary",
+                    content:
+                      "Keep 1024px boundary aligned with SessionLayoutShell.",
+                    mentions: ["reviewer"],
+                    createdAt: 20,
+                  },
+                  {
+                    id: "e_vr",
+                    kind: "verification",
+                    authorRole: "reviewer",
+                    targetRole: "all",
+                    title: "Verified clean render",
+                    content: "Checked 375px and 1440px widths.",
+                    createdAt: 30,
+                  },
+                ],
+                tasks: [
+                  {
+                    id: "T1",
+                    title: "Deferred animation polish",
+                    assignedRole: "design",
+                    status: "parked",
+                    files: ["apps/web/components/agent-hub/team-pane.tsx"],
+                    updatedBy: "architect",
+                    updatedAt: 10,
+                  },
+                  {
+                    id: "T2",
+                    title: "Implement docked /team pane",
+                    assignedRole: "executor",
+                    status: "in_progress",
+                    dependsOn: ["T1"],
+                    files: ["apps/web/components/agent-hub/team-pane.tsx"],
+                    worktreeBranch: "team/executor-tc_exec_",
+                    updatedBy: "executor",
+                    updatedAt: 20,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    ]);
+
+    expect(feed.entries.map((e) => e.kind)).toEqual([
+      "challenge",
+      "debate",
+      "verification",
+    ]);
+    expect(feed.entries[0]?.mentions).toEqual(["executor", "design"]);
+    expect(feed.fileConflicts).toEqual([]);
+    expect(feed.waves).toEqual([
+      { wave: 1, taskIds: ["T1"], status: "completed" },
+      { wave: 2, taskIds: ["T2"], status: "active" },
+    ]);
+    expect(feed.tasks[1]?.worktreeBranch).toBe("team/executor-tc_exec_");
+
+    const roster = deriveAgentHubRoster([
+      {
+        id: "msg_team_1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-task",
+            toolCallId: "tc_exec_1",
+            state: "output-available",
+            input: { subagentType: "executor", task: "Implement /team pane" },
+            output: { worktreeBranch: "team/executor-tc_exec_" },
+          },
+        ],
+      },
+    ]);
+    expect(roster[0]?.worktreeBranch).toBe("team/executor-tc_exec_");
+  });
 });

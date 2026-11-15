@@ -137,6 +137,31 @@ export async function POST(req: Request) {
     persistAssistantMessagesWithToolResults(chatId, messages),
   ]);
 
+  const rawRoleModels = parsedBody.body.teamRoleModels;
+  const sanitizedTeamRoleModels: Record<string, string> | undefined =
+    rawRoleModels && typeof rawRoleModels === "object"
+      ? (() => {
+          const allowedRoles = new Set([
+            "architect",
+            "explorer",
+            "executor",
+            "design",
+            "reviewer",
+          ]);
+          const out: Record<string, string> = {};
+          for (const [role, modelId] of Object.entries(rawRoleModels)) {
+            if (
+              allowedRoles.has(role) &&
+              typeof modelId === "string" &&
+              modelId.trim().length > 0
+            ) {
+              out[role] = modelId.trim();
+            }
+          }
+          return Object.keys(out).length > 0 ? out : undefined;
+        })()
+      : undefined;
+
   // Start the durable workflow
   const run = await start(
     runAgentWorkflow,
@@ -150,6 +175,9 @@ export async function POST(req: Request) {
         authSession: session ?? null,
         assistantId: generateId(),
         maxSteps: isHobbyResourceProfile() ? 50 : 500,
+        ...(sanitizedTeamRoleModels
+          ? { teamRoleModels: sanitizedTeamRoleModels }
+          : {}),
       },
     ],
     {

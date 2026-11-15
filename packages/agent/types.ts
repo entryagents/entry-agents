@@ -1,4 +1,4 @@
-import type { SandboxState } from "@entry-agents/sandbox";
+import type { Sandbox, SandboxState } from "@entry-agents/sandbox";
 import { isKnownSandboxType } from "@entry-agents/sandbox/registry.js";
 import type { LanguageModel, LanguageModelUsage } from "ai";
 import { z } from "zod";
@@ -7,6 +7,7 @@ import type {
   SecretCatalogEntry,
   SecretRedactor,
 } from "./lib/secret-redactor";
+import type { GatewayConfig } from "./models";
 import type { AgentSandboxContext } from "./open-agent";
 import type { ResolvedEntryPlugin } from "./plugins";
 import type { SkillMetadata } from "./skills/types";
@@ -339,6 +340,10 @@ export interface AgentContext {
   skills?: SkillMetadata[];
   model: LanguageModel;
   subagentModel?: LanguageModel;
+  /** Optional per-role model overrides for /team subagent specialization. */
+  teamRoleModels?: Record<string, string>;
+  /** Optional gateway config forwarded for dynamic per-role model creation. */
+  gatewayConfig?: GatewayConfig;
   github?: GithubToolContext;
   vercel?: VercelToolContext;
   sandboxLifecycleHooks?: SandboxLifecycleHooksContext;
@@ -369,7 +374,7 @@ export interface SandboxExecutionContext {
    * their own tool calls with a clear "workspace is starting" error
    * instead of taking the parent turn down with them.
    */
-  sandbox?: AgentSandboxContext;
+  sandbox?: AgentSandboxContext | Sandbox;
 }
 
 export function isSandboxState(value: unknown): value is SandboxState {

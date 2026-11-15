@@ -17,6 +17,9 @@ const teamBoardEntryKindSchema = z.enum([
   "handoff",
   "blocker",
   "question",
+  "debate",
+  "challenge",
+  "verification",
 ]);
 
 const teamTaskStatusSchema = z.enum([
@@ -24,18 +27,19 @@ const teamTaskStatusSchema = z.enum([
   "in_progress",
   "completed",
   "blocked",
+  "parked",
 ]);
 
 const teamBoardInputSchema = z.object({
   action: z
     .enum(["post", "read", "plan_tasks", "update_task"])
     .describe(
-      "Action to perform: post (share note), read (inspect board), plan_tasks (define team tasks), update_task (update task status)",
+      "Action to perform: post (share note/contract/challenge/verification), read (inspect board), plan_tasks (define dependency-ordered team tasks), update_task (claim, verify, park, or complete task)",
     ),
   kind: teamBoardEntryKindSchema
     .optional()
     .describe(
-      "For post/read: finding, decision, artifact, handoff, blocker, or question",
+      "For post/read: finding, decision, contract, artifact, handoff, blocker, question, debate, challenge, or verification",
     ),
   title: z
     .string()
@@ -43,7 +47,7 @@ const teamBoardInputSchema = z.object({
     .min(1)
     .max(160)
     .optional()
-    .describe("For post: short title of the note or handoff"),
+    .describe("For post: short title of the note, challenge, or handoff"),
   content: z
     .string()
     .trim()
@@ -51,7 +55,7 @@ const teamBoardInputSchema = z.object({
     .max(4000)
     .optional()
     .describe(
-      "For post: concrete findings, contract details, or handoff notes",
+      "For post: concrete findings, contract details, @role mentions, or verification evidence",
     ),
   authorRole: z
     .string()
@@ -74,6 +78,14 @@ const teamBoardInputSchema = z.object({
     .describe(
       "For post, plan_tasks, or update_task: claimed/modified repository-relative file paths",
     ),
+  worktreeBranch: z
+    .string()
+    .trim()
+    .max(120)
+    .optional()
+    .describe(
+      "For update_task: isolated git worktree branch (e.g. team/executor-ab12cd34) backing this task",
+    ),
   tasks: z
     .array(
       z.object({
@@ -94,6 +106,7 @@ const teamBoardInputSchema = z.object({
         files: z.array(z.string().trim().max(260)).max(20).optional(),
         notes: z.string().trim().max(400).optional(),
         verification: z.string().trim().max(500).optional(),
+        worktreeBranch: z.string().trim().max(120).optional(),
       }),
     )
     .max(20)
@@ -108,7 +121,9 @@ const teamBoardInputSchema = z.object({
     .describe("For update_task: target task ID"),
   status: teamTaskStatusSchema
     .optional()
-    .describe("For update_task: new task status"),
+    .describe(
+      "For update_task: new task status (open, in_progress, completed, blocked, parked)",
+    ),
   notes: z
     .string()
     .trim()
@@ -142,10 +157,10 @@ export const teamBoardTool = tool({
   description: `Collaborate with teammate agents via the shared team board.
 
 Actions:
-- \`post\`: Publish a codebase finding, architecture decision, handoff note, modified artifact list, or blocker for other teammates.
-- \`read\`: Inspect recent findings, handoffs, and active team tasks from other agents before exploring or editing.
-- \`plan_tasks\`: Break down multi-agent work into assigned team tasks (\`architect\`/\`main\`), including non-overlapping \`files\` ownership.
-- \`update_task\`: Claim (\`in_progress\`), complete (\`completed\` with \`verification\` evidence), or mark a team task \`blocked\`.`,
+- \`post\`: Publish a finding, decision, locked contract, handoff, blocker, debate, challenge, or verification record (use \`@role\` mentions to tag teammates).
+- \`read\`: Inspect recent findings, waves, challenges, and active team tasks before exploring or editing.
+- \`plan_tasks\`: Break down multi-agent work into dependency-ordered team tasks (\`architect\`/\`main\`) with non-overlapping \`files\` ownership.
+- \`update_task\`: Claim (\`in_progress\`), complete (\`completed\` with \`verification\` evidence), defer (\`parked\` with zero extra turns), or mark \`blocked\`.`,
   inputSchema: teamBoardInputSchema,
   execute: async (
     input,
@@ -258,6 +273,9 @@ Actions:
             ...(input.verification !== undefined
               ? { verification: input.verification }
               : {}),
+            ...(input.worktreeBranch !== undefined
+              ? { worktreeBranch: input.worktreeBranch }
+              : {}),
           },
         );
         return {
@@ -285,7 +303,7 @@ Actions:
     } else if (output.action === "update_task") {
       summaryParts.push(
         output.updatedTask
-          ? `Task \`${output.updatedTask.id}\` marked \`${output.updatedTask.status}\`${output.updatedTask.verification ? ` (verified: ${output.updatedTask.verification})` : ""}.`
+          ? `Task \`${output.updatedTask.id}\` marked \`${output.updatedTask.status}\`${output.updatedTask.worktreeBranch ? ` (branch: \`${output.updatedTask.worktreeBranch}\`)` : ""}${output.updatedTask.verification ? ` (verified: ${output.updatedTask.verification})` : ""}.`
           : "Task ID not found on team board.",
       );
     } else {
@@ -296,20 +314,26 @@ Actions:
         const files = task.files?.length
           ? ` [files: ${task.files.join(", ")}]`
           : "";
+        const branch = task.worktreeBranch
+          ? ` [branch: ${task.worktreeBranch}]`
+          : "";
         const verified = task.verification
           ? ` | verified: ${task.verification}`
           : "";
         summaryParts.push(
-          `- Task [${task.status}] \`${task.id}\` (${task.assignedRole}): ${task.title}${files}${task.notes ? ` — ${task.notes}` : ""}${verified}`,
+          `- Task [${task.status}] \`${task.id}\` (${task.assignedRole}): ${task.title}${files}${branch}${task.notes ? ` — ${task.notes}` : ""}${verified}`,
         );
       }
       for (const entry of entries.slice(-15)) {
         const target = entry.targetRole ? ` -> ${entry.targetRole}` : "";
+        const mentions = entry.mentions?.length
+          ? ` [${entry.mentions.map((m) => `@${m}`).join(", ")}]`
+          : "";
         const files = entry.files?.length
           ? ` [files: ${entry.files.join(", ")}]`
           : "";
         summaryParts.push(
-          `- (${entry.kind}) **${entry.authorRole}${target}**: **${entry.title}**${files}\n  ${entry.content}`,
+          `- (${entry.kind}) **${entry.authorRole}${target}**: **${entry.title}**${mentions}${files}\n  ${entry.content}`,
         );
       }
     }
