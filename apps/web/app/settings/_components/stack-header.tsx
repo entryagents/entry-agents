@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import useSWR from "swr";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { useUserSecrets } from "@/hooks/use-user-secrets";
-import type { ComposioToolkitsStatusResult } from "@/lib/mcp/composio";
+import type { IntegrationToolkitsResult } from "@/lib/integrations/registry-types";
 import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 
@@ -38,13 +38,15 @@ export function StackHeader({
   const pathname = usePathname();
   const { servers } = useMcpServers();
   const { secrets } = useUserSecrets();
-  const { data: toolkitsData } = useSWR<ComposioToolkitsStatusResult>(
-    "/api/composio/toolkits",
+  const { data: toolkitsData } = useSWR<IntegrationToolkitsResult>(
+    "/api/integrations",
     fetcher,
   );
 
   const connectedAppsCount =
-    toolkitsData?.toolkits?.filter((t) => t.isConnected).length ?? null;
+    toolkitsData?.connectedCount ??
+    toolkitsData?.items?.filter((t) => t.connected).length ??
+    null;
   const activeMcpCount = servers.filter((s) => s.enabled).length;
 
   const getTabCount = (href: string): string | null => {

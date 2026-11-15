@@ -85,6 +85,13 @@ export type WebAgentMessageMetadata = {
    * (MAX_WORKFLOW_TURN_DURATION_MS in app/workflows/chat.ts).
    */
   turnTimedOut?: boolean;
+  /**
+   * Friendly error notice when a turn produced partial assistant output
+   * (reasoning, tool calls, or prose) before failing mid-turn. Stored in
+   * metadata rather than injected as a middle text part so partial output
+   * and subsequent recovery steps are never split by an inline error string.
+   */
+  turnError?: string;
 };
 
 export type WebAgentGitDataStatus = "pending" | "success" | "error" | "skipped";

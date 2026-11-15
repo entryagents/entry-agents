@@ -356,6 +356,10 @@ export interface AgentContext {
   agentRole?: string;
   /** Enabled plugins resolved for the current turn. */
   plugins?: ResolvedEntryPlugin[];
+  /** Live gateway context window override for auto-compaction. */
+  contextWindow?: number;
+  /** Compaction threshold override (0.1 to 0.95). */
+  compactionThreshold?: number;
 }
 
 export interface SandboxExecutionContext {

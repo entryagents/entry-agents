@@ -122,10 +122,14 @@ export function SubagentChatView({
                   outputTokens: data.outputTokens ?? undefined,
                   totalTokens:
                     (data.inputTokens ?? 0) + (data.outputTokens ?? 0),
+                  cachedInputTokens: data.cachedInputTokens ?? undefined,
                   inputTokenDetails: {
-                    noCacheTokens: undefined,
-                    cacheReadTokens: undefined,
-                    cacheWriteTokens: undefined,
+                    noCacheTokens:
+                      data.cachedInputTokens !== null
+                        ? Math.max(0, data.inputTokens - data.cachedInputTokens)
+                        : undefined,
+                    cacheReadTokens: data.cachedInputTokens ?? undefined,
+                    cacheWriteTokens: data.cacheWriteTokens ?? undefined,
                   },
                   outputTokenDetails: {
                     textTokens: undefined,

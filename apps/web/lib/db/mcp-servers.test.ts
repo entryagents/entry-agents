@@ -34,6 +34,27 @@ describe("mcp server name validation", () => {
     ).rejects.toThrow(InvalidMcpServerNameError);
   });
 
+  test("createMcpServer rejects the reserved name 'executor'", async () => {
+    await expect(
+      createMcpServer({
+        userId: "user_1",
+        name: "executor",
+        transport: "http",
+        url: "https://mcp.executor.sh/mcp",
+      }),
+    ).rejects.toThrow(InvalidMcpServerNameError);
+  });
+
+  test("updateMcpServer rejects renaming a server to 'executor'", async () => {
+    await expect(
+      updateMcpServer({
+        userId: "user_1",
+        id: "server_1",
+        name: "executor",
+      }),
+    ).rejects.toThrow(InvalidMcpServerNameError);
+  });
+
   test("createMcpServer rejects invalid name patterns", async () => {
     await expect(
       createMcpServer({
