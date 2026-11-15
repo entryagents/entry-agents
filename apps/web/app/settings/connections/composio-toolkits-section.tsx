@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import useSWR from "swr";
+import useSWR, { useSWRConfig } from "swr";
 import {
+  AlertCircle,
   ArrowUpRight,
   Check,
   Loader2,
@@ -52,6 +53,7 @@ const CATEGORIES = [
 
 export function ComposioToolkitsSection() {
   const searchParams = useSearchParams();
+  const { mutate: globalMutate } = useSWRConfig();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedCategory, setSelectedCategory] =
@@ -78,23 +80,94 @@ export function ComposioToolkitsSection() {
 
   useEffect(() => {
     const composioStatus = searchParams.get("composio");
-    const toolkit = searchParams.get("toolkit");
+    const toolkit = searchParams.get("toolkit")?.trim().toLowerCase() ?? null;
+    const callbackStatus = searchParams.get("status")?.trim().toLowerCase();
+    const callbackError =
+      searchParams.get("error_description") ?? searchParams.get("error");
     if (!composioStatus) return;
 
     const url = new URL(window.location.href);
     url.searchParams.delete("composio");
     url.searchParams.delete("toolkit");
+    url.searchParams.delete("status");
+    url.searchParams.delete("error");
+    url.searchParams.delete("error_description");
+    url.searchParams.delete("connectedAccountId");
+    url.searchParams.delete("connected_account_id");
     window.history.replaceState({}, "", url.toString());
 
-    if (composioStatus === "connected") {
-      toast.success(
-        toolkit
-          ? `${toolkit.toUpperCase()} connected — agents can now use it`
-          : "App connected",
+    const label = toolkit ? toolkit.toUpperCase() : "App";
+
+    if (
+      composioStatus === "error" ||
+      callbackStatus === "failed" ||
+      callbackStatus === "error" ||
+      Boolean(callbackError)
+    ) {
+      toast.error(
+        callbackError
+          ? `${label} authorization failed: ${callbackError}`
+          : `${label} authorization was cancelled or failed`,
       );
       void mutate();
+      return;
     }
-  }, [mutate, searchParams]);
+
+    if (composioStatus === "connected") {
+      let cancelled = false;
+      const verifyConnection = async () => {
+        if (!toolkit) {
+          toast.success("App connected");
+          await mutate();
+          await globalMutate("/api/composio/toolkits");
+          return;
+        }
+        try {
+          const res = await fetch("/api/composio/connect", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "verify",
+              toolkitSlug: toolkit,
+            }),
+          });
+          const verified = (await res.json()) as {
+            ok?: boolean;
+            isConnected?: boolean;
+            status?: string;
+            error?: string;
+          };
+          if (cancelled) return;
+          if (res.ok && verified.isConnected) {
+            toast.success(`${label} connected — agents can now use it`);
+          } else if (res.ok && verified.status === "INITIATED") {
+            toast.message(
+              `${label} authorization is still finalizing with Composio. Click refresh in a moment if it does not appear connected.`,
+            );
+          } else {
+            toast.error(
+              verified.error ??
+                `${label} authorization did not complete. Try connecting again.`,
+            );
+          }
+        } catch {
+          if (!cancelled) {
+            toast.success(`${label} connected — refreshing status`);
+          }
+        } finally {
+          if (!cancelled) {
+            await mutate();
+            await globalMutate("/api/composio/toolkits");
+          }
+        }
+      };
+
+      void verifyConnection();
+      return () => {
+        cancelled = true;
+      };
+    }
+  }, [globalMutate, mutate, searchParams]);
 
   const toolkits = useMemo<ComposioToolkitCatalogItem[]>(
     () => data?.toolkits ?? [],
@@ -129,6 +202,7 @@ export function ComposioToolkitsSection() {
   }, [search, selectedCategory, toolkits]);
 
   const isConfigured = Boolean(data?.configured);
+  const serviceError = data?.error?.trim() || null;
 
   const handleConnectToolkit = async (slug: string) => {
     if (!isConfigured) {
@@ -189,6 +263,7 @@ export function ComposioToolkitsSection() {
       }
       toast.success(`${toolkit.name} disconnected`);
       await mutate();
+      await globalMutate("/api/composio/toolkits");
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -251,6 +326,32 @@ export function ComposioToolkitsSection() {
               COMPOSIO_API_KEY
             </code>{" "}
             is set in the server environment.
+          </div>
+        )}
+
+        {isConfigured && serviceError && (
+          <div
+            role="alert"
+            className="mt-3 flex flex-col gap-2 rounded-lg border border-destructive/30 bg-destructive/[0.04] px-3 py-2.5 text-xs text-foreground sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex items-start gap-2">
+              <AlertCircle
+                className="mt-0.5 size-4 shrink-0 text-destructive"
+                strokeWidth={1.5}
+              />
+              <span className="leading-relaxed text-muted-foreground">
+                {serviceError}
+              </span>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => void mutate()}
+              className="h-7 shrink-0 self-start px-2.5 text-xs sm:self-center"
+            >
+              Retry
+            </Button>
           </div>
         )}
       </div>

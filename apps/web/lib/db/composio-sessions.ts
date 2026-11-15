@@ -38,3 +38,11 @@ export async function setComposioSessionId(
       set: { sessionId, updatedAt: new Date() },
     });
 }
+
+/**
+ * Deletes the stored Composio session ID for a user when it becomes stale,
+ * invalidated across API key rotations, or unresumable on the remote server.
+ */
+export async function deleteComposioSessionId(userId: string): Promise<void> {
+  await db.delete(composioSessions).where(eq(composioSessions.userId, userId));
+}

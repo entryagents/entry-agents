@@ -29,12 +29,35 @@ type FakeSession = {
 const useCalls: string[] = [];
 const createCalls: string[] = [];
 const deleteCalls: string[] = [];
+const deletedSessionUserIds: string[] = [];
+const authConfigCreateCalls: string[] = [];
+const authConfigEnableCalls: string[] = [];
+const linkCalls: Array<{
+  userId: string;
+  authConfigId: string;
+  callbackUrl?: string;
+}> = [];
 let useShouldThrow = false;
 let createShouldThrow = false;
 let fakeToolkitsHandler: NonNullable<FakeSession["toolkits"]> = async () => ({
   items: [],
 });
-let fakeConnectedAccounts: Array<{ id: string }> = [{ id: "ca_owned_1" }];
+let fakeAuthorizeHandler: NonNullable<FakeSession["authorize"]> = async (
+  slug,
+  opts,
+) => ({
+  id: `conn_${slug}`,
+  redirectUrl: `https://connect.composio.dev/${slug}?cb=${encodeURIComponent(opts?.callbackUrl ?? "")}`,
+});
+let fakeConnectedAccounts: Array<{ id: string; status?: string }> = [
+  { id: "ca_owned_1", status: "ACTIVE" },
+];
+let fakeAuthConfigs: Array<{
+  id: string;
+  status?: string;
+  isComposioManaged?: boolean;
+  isEnabledForToolRouter?: boolean;
+}> = [];
 
 let useResult: FakeSession | undefined;
 let createResult: FakeSession = {
@@ -44,15 +67,45 @@ let createResult: FakeSession = {
     headers: { "x-api-key": "ak_test" },
   },
   toolkits: (opts) => fakeToolkitsHandler(opts),
+  authorize: (slug, opts) => fakeAuthorizeHandler(slug, opts),
 };
 
 mock.module("@composio/core", () => ({
   Composio: class FakeComposio {
+    authConfigs = {
+      list: async () => ({
+        items: fakeAuthConfigs,
+        nextCursor: null,
+      }),
+      enable: async (nanoid: string) => {
+        authConfigEnableCalls.push(nanoid);
+        return { id: nanoid, status: "ENABLED" };
+      },
+      create: async (toolkit: string) => {
+        authConfigCreateCalls.push(toolkit);
+        return { id: `ac_created_${toolkit}`, toolkit };
+      },
+    };
     connectedAccounts = {
       list: async () => ({
         items: fakeConnectedAccounts,
         nextCursor: null,
       }),
+      link: async (
+        userId: string,
+        authConfigId: string,
+        options?: { callbackUrl?: string },
+      ) => {
+        linkCalls.push({
+          userId,
+          authConfigId,
+          callbackUrl: options?.callbackUrl,
+        });
+        return {
+          id: `ca_linked_${authConfigId}`,
+          redirectUrl: `https://connect.composio.dev/linked/${authConfigId}`,
+        };
+      },
       delete: async (id: string) => {
         deleteCalls.push(id);
         return { success: true };
@@ -83,14 +136,22 @@ mock.module("@/lib/db/composio-sessions", () => ({
   setComposioSessionId: async (userId: string, sessionId: string) => {
     storedSessionIds.set(userId, sessionId);
   },
+  deleteComposioSessionId: async (userId: string) => {
+    deletedSessionUserIds.push(userId);
+    storedSessionIds.delete(userId);
+  },
 }));
 
 const {
+  authorizeComposioToolkitForUser,
   ComposioAccountNotFoundError,
+  ComposioApiError,
   disconnectComposioAccountForUser,
   getComposioMcpServerConfig,
   getConnectedComposioToolkitsForUser,
   listComposioToolkitsForUser,
+  resolveComposioRuntimeContext,
+  verifyComposioToolkitConnectionForUser,
 } = await import("./composio");
 
 describe("getComposioMcpServerConfig", () => {
@@ -100,10 +161,19 @@ describe("getComposioMcpServerConfig", () => {
     useCalls.length = 0;
     createCalls.length = 0;
     deleteCalls.length = 0;
+    deletedSessionUserIds.length = 0;
+    authConfigCreateCalls.length = 0;
+    authConfigEnableCalls.length = 0;
+    linkCalls.length = 0;
     useShouldThrow = false;
     createShouldThrow = false;
-    fakeConnectedAccounts = [{ id: "ca_owned_1" }];
+    fakeConnectedAccounts = [{ id: "ca_owned_1", status: "ACTIVE" }];
+    fakeAuthConfigs = [];
     fakeToolkitsHandler = async () => ({ items: [] });
+    fakeAuthorizeHandler = async (slug, opts) => ({
+      id: `conn_${slug}`,
+      redirectUrl: `https://connect.composio.dev/${slug}?cb=${encodeURIComponent(opts?.callbackUrl ?? "")}`,
+    });
 
     useResult = {
       sessionId: "session_existing",
@@ -112,6 +182,7 @@ describe("getComposioMcpServerConfig", () => {
         headers: { "x-api-key": "ak_test" },
       },
       toolkits: (opts) => fakeToolkitsHandler(opts),
+      authorize: (slug, opts) => fakeAuthorizeHandler(slug, opts),
     };
     createResult = {
       sessionId: "session_new",
@@ -120,6 +191,7 @@ describe("getComposioMcpServerConfig", () => {
         headers: { "x-api-key": "ak_test" },
       },
       toolkits: (opts) => fakeToolkitsHandler(opts),
+      authorize: (slug, opts) => fakeAuthorizeHandler(slug, opts),
     };
     storedSessionIds.clear();
     process.env.COMPOSIO_API_KEY = "ak_test";
@@ -173,6 +245,7 @@ describe("getComposioMcpServerConfig", () => {
     const config = await getComposioMcpServerConfig("user_1");
     expect(useCalls).toEqual(["session_stale"]);
     expect(createCalls).toEqual(["user_1"]);
+    expect(deletedSessionUserIds).toContain("user_1");
     expect(config).toMatchObject({
       transport: "http",
       url: "https://mcp.composio.dev/session_new",
@@ -185,6 +258,144 @@ describe("getComposioMcpServerConfig", () => {
     const config = await getComposioMcpServerConfig("user_1");
     expect(config).toBeNull();
     expect(createCalls).toEqual(["user_1"]);
+  });
+
+  test("coalesces concurrent session creations for the same user into a single create call", async () => {
+    const [ctxA, ctxB] = await Promise.all([
+      resolveComposioRuntimeContext("user_concurrent"),
+      resolveComposioRuntimeContext("user_concurrent"),
+    ]);
+    expect(createCalls).toEqual(["user_concurrent"]);
+    expect(ctxA.mcpServer).toMatchObject({
+      transport: "http",
+      url: "https://mcp.composio.dev/session_new",
+    });
+    expect(ctxB.mcpServer).toMatchObject({
+      transport: "http",
+      url: "https://mcp.composio.dev/session_new",
+    });
+  });
+
+  test("recreates a stale stored session when session.authorize fails with 404 session not found", async () => {
+    storedSessionIds.set("user_1", "session_from_old_key");
+    let attempts = 0;
+    fakeAuthorizeHandler = async (slug) => {
+      attempts += 1;
+      if (attempts === 1) {
+        const err = new Error("Tool router session not found") as Error & {
+          status?: number;
+        };
+        err.status = 404;
+        throw err;
+      }
+      return {
+        id: "conn_fresh_gmail",
+        redirectUrl: `https://connect.composio.dev/${slug}/fresh`,
+      };
+    };
+
+    const authorized = await authorizeComposioToolkitForUser({
+      userId: "user_1",
+      toolkitSlug: "gmail",
+      callbackUrl:
+        "https://entry.dev/settings/connections?composio=connected&toolkit=gmail",
+    });
+
+    expect(useCalls).toEqual(["session_from_old_key"]);
+    expect(createCalls).toEqual(["user_1"]);
+    expect(deletedSessionUserIds).toContain("user_1");
+    expect(storedSessionIds.get("user_1")).toBe("session_new");
+    expect(authorized).toEqual({
+      ok: true,
+      redirectUrl: "https://connect.composio.dev/gmail/fresh",
+      connectionId: "conn_fresh_gmail",
+    });
+  });
+
+  test("auto-provisions Composio-managed auth config and falls back to connectedAccounts.link when session.authorize fails with missing auth config", async () => {
+    fakeAuthorizeHandler = async () => {
+      const err = new Error(
+        "No auth config enabled for tool router for toolkit gmail",
+      ) as Error & { status?: number };
+      err.status = 400;
+      throw err;
+    };
+
+    const authorized = await authorizeComposioToolkitForUser({
+      userId: "user_1",
+      toolkitSlug: "gmail",
+      callbackUrl:
+        "https://entry.dev/settings/connections?composio=connected&toolkit=gmail",
+    });
+
+    expect(authConfigCreateCalls).toEqual(["gmail"]);
+    expect(linkCalls).toEqual([
+      {
+        userId: "user_1",
+        authConfigId: "ac_created_gmail",
+        callbackUrl:
+          "https://entry.dev/settings/connections?composio=connected&toolkit=gmail",
+      },
+    ]);
+    expect(authorized).toEqual({
+      ok: true,
+      redirectUrl: "https://connect.composio.dev/linked/ac_created_gmail",
+      connectionId: "ca_linked_ac_created_gmail",
+    });
+  });
+
+  test("surfaces 401 ComposioApiError and scrubs API key from error text", async () => {
+    fakeAuthorizeHandler = async () => {
+      const err = new Error("Unauthorized key ak_test rejected") as Error & {
+        status?: number;
+      };
+      err.status = 401;
+      throw err;
+    };
+
+    let caught: unknown;
+    try {
+      await authorizeComposioToolkitForUser({
+        userId: "user_1",
+        toolkitSlug: "gmail",
+        callbackUrl: "https://entry.dev/settings/connections",
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(ComposioApiError);
+    expect((caught as InstanceType<typeof ComposioApiError>).statusCode).toBe(
+      401,
+    );
+    expect((caught as Error).message).not.toContain("ak_test");
+  });
+
+  test("verifies toolkit connection status via session.toolkits and connectedAccounts fallback", async () => {
+    fakeToolkitsHandler = async () => ({
+      items: [
+        {
+          slug: "gmail",
+          name: "Gmail",
+          connection: {
+            isActive: true,
+            connectedAccount: { id: "ca_gmail_live", status: "ACTIVE" },
+          },
+        },
+      ],
+    });
+
+    const verified = await verifyComposioToolkitConnectionForUser({
+      userId: "user_1",
+      toolkitSlug: "gmail",
+    });
+    expect(verified).toEqual({
+      ok: true,
+      toolkitSlug: "gmail",
+      isConnected: true,
+      status: "ACTIVE",
+      connectedAccountId: "ca_gmail_live",
+    });
   });
 
   test("lists popular toolkits plus connected non-preset integrations and searches 500+ catalog", async () => {
