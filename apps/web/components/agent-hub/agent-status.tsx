@@ -8,8 +8,8 @@ import {
   Hammer,
   Layers,
   Paintbrush,
+  PenTool,
   ShieldCheck,
-  Sparkles,
   Telescope,
   XCircle,
 } from "lucide-react";
@@ -62,7 +62,7 @@ export const SUBAGENT_TYPE_META: Record<
   design: {
     label: "Design",
     description: "Frontend design, styling & micro-interactions",
-    icon: Sparkles,
+    icon: PenTool,
     colorClass: "text-foreground/85",
     badgeClass: "bg-muted/60 text-foreground border-border/80",
     borderClass: "border-border",
@@ -79,18 +79,22 @@ export function SubagentIcon({
   const meta = SUBAGENT_TYPE_META[type];
   if (meta) {
     const Icon = meta.icon;
-    return <Icon className={cn("shrink-0", className)} />;
+    return <Icon className={cn("shrink-0", className)} strokeWidth={1.5} />;
   }
 
   switch (type) {
     case "hammer":
-      return <Hammer className={cn("shrink-0", className)} />;
+      return <Hammer className={cn("shrink-0", className)} strokeWidth={1.5} />;
     case "telescope":
-      return <Telescope className={cn("shrink-0", className)} />;
+      return (
+        <Telescope className={cn("shrink-0", className)} strokeWidth={1.5} />
+      );
     case "paintbrush":
-      return <Paintbrush className={cn("shrink-0", className)} />;
+      return (
+        <Paintbrush className={cn("shrink-0", className)} strokeWidth={1.5} />
+      );
     default:
-      return <Bot className={cn("shrink-0", className)} />;
+      return <Bot className={cn("shrink-0", className)} strokeWidth={1.5} />;
   }
 }
 

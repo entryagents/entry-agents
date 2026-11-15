@@ -82,7 +82,7 @@ export function StackHeader({
               key={tab.href}
               href={tab.href}
               className={cn(
-                "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors duration-150",
+                "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-[background-color,color,border-color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98]",
                 active
                   ? "border-foreground/20 bg-foreground text-background"
                   : "border-border/70 bg-card text-muted-foreground hover:border-border hover:text-foreground",

@@ -508,14 +508,17 @@ export function PluginsSection() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Plugins</h1>
-          <p className="text-sm text-muted-foreground">
-            Compose runtime lifecycle hooks, slash commands, tool policies, and
-            compaction hints across every agent turn and subagent.
-          </p>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-3">
+        <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
+          <span>
+            {builtins.filter((b) => b.enabled).length}/{builtins.length}{" "}
+            built-in active
+          </span>
+          <span className="text-border">·</span>
+          <span>
+            {custom.length} custom {custom.length === 1 ? "plugin" : "plugins"}
+          </span>
         </div>
         <Button
           type="button"
@@ -527,13 +530,13 @@ export function PluginsSection() {
           }}
           className="cursor-pointer"
         >
-          <Plus className="mr-1.5 size-3.5" />
+          <Plus className="mr-1.5 size-3.5" strokeWidth={1.5} />
           {showBuilder ? "Close manifest editor" : "Install custom plugin"}
         </Button>
       </div>
 
       {(error || actionError) && (
-        <div className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
           {actionError ?? error}
         </div>
       )}

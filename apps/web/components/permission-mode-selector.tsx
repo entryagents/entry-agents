@@ -23,8 +23,8 @@ interface PermissionModeSelectorProps {
 
 const LABELS: Record<PermissionMode, string> = {
   ask: "Ask",
-  autoAccept: "Auto Accept",
-  fullAccess: "Full Access",
+  autoAccept: "Auto-accept",
+  fullAccess: "Full access",
 };
 
 const DESCRIPTIONS: Record<PermissionMode, string> = {
@@ -70,12 +70,13 @@ export function PermissionModeSelector({
             <button
               type="button"
               disabled={disabled}
+              aria-label={`Permission mode: ${LABELS[value]}`}
               className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:pointer-events-none disabled:opacity-60",
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background/60 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60",
                 ICON_COLOR[value],
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="size-4" strokeWidth={1.5} />
             </button>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -92,16 +93,20 @@ export function PermissionModeSelector({
               type="button"
               onClick={() => onChange(mode)}
               className={cn(
-                "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted",
+                "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted",
               )}
             >
               <CheckIcon
                 className={cn(
-                  "mt-0.5 size-3.5 shrink-0",
+                  "mt-0.5 size-3.5 shrink-0 transition-opacity",
                   value === mode ? "opacity-100" : "opacity-0",
                 )}
+                strokeWidth={1.5}
               />
-              <ModeIcon className="mt-0.5 size-3.5 shrink-0" />
+              <ModeIcon
+                className="mt-0.5 size-3.5 shrink-0"
+                strokeWidth={1.5}
+              />
               <span className="flex flex-col">
                 <span className="font-medium">{LABELS[mode]}</span>
                 <span className="text-xs text-muted-foreground">

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Plus, Search, Sparkles, X } from "lucide-react";
+import { ArrowUpRight, Plus, Search, Terminal, X } from "lucide-react";
 import { type ThemePreference, useTheme } from "@/app/providers";
 import {
   DEFAULT_SANDBOX_TYPE,
@@ -801,16 +801,19 @@ export function PreferencesSection() {
 
       {/* ── Skills ── */}
       <div className="space-y-3">
-        <SectionHeader>Agent Skills</SectionHeader>
+        <SectionHeader>Agent skills</SectionHeader>
         <div className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-emerald-500" />
+              <Terminal
+                className="h-4 w-4 text-muted-foreground"
+                strokeWidth={1.5}
+              />
               <span className="text-sm font-medium">
-                17 Built-in Skills &amp; GitHub Skill Packs
+                Built-in skills &amp; GitHub skill packs
               </span>
               {(preferences?.globalSkillRefs ?? []).length > 0 && (
-                <span className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                <span className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
                   {(preferences?.globalSkillRefs ?? []).length} GitHub{" "}
                   {(preferences?.globalSkillRefs ?? []).length === 1
                     ? "pack"
@@ -821,14 +824,14 @@ export function PreferencesSection() {
             <p className="text-xs text-muted-foreground">
               Browse built-in skills (<code>/unslop</code>,{" "}
               <code>/frontend-design</code>, <code>/code-review</code>,{" "}
-              <code>/composio</code>), inspect <code>SKILL.md</code>{" "}
-              instructions, or 1-click install GitHub skill repositories.
+              <code>/team</code>), inspect <code>SKILL.md</code> instructions,
+              or install GitHub skill repositories.
             </p>
           </div>
           <Button asChild variant="outline" size="sm" className="shrink-0">
             <Link href="/settings/skills">
-              Manage Skills
-              <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+              Manage skills
+              <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" strokeWidth={1.5} />
             </Link>
           </Button>
         </div>
@@ -863,11 +866,11 @@ export function ModelPreferencesSection() {
   return (
     <div className="space-y-6">
       <div className="space-y-4">
-        <SectionHeader>Model Preferences</SectionHeader>
+        <SectionHeader>Model preferences</SectionHeader>
 
         <div className="grid gap-6 sm:grid-cols-2">
           <div className="grid gap-2">
-            <Label htmlFor="model">Default Model</Label>
+            <Label htmlFor="model">Default model</Label>
             <ModelCombobox
               value={selectedDefaultModelId}
               items={defaultModelOptions.map((option) => ({
@@ -877,19 +880,17 @@ export function ModelPreferencesSection() {
               }))}
               placeholder="Select a model"
               searchPlaceholder="Search models..."
-              emptyText={
-                modelOptionsLoading ? "Loading..." : "No models found."
-              }
+              emptyText={modelOptionsLoading ? "Loading..." : "No models found"}
               disabled={isSaving || modelOptionsLoading}
               onChange={handleModelChange}
             />
             <p className="text-xs text-muted-foreground">
-              The AI model used for new chats.
+              The model used for new chats.
             </p>
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="subagent-model">Subagent Model</Label>
+            <Label htmlFor="subagent-model">Subagent model</Label>
             <ModelCombobox
               value={selectedSubagentModelId}
               items={[
@@ -902,9 +903,7 @@ export function ModelPreferencesSection() {
               ]}
               placeholder="Select a model"
               searchPlaceholder="Search models..."
-              emptyText={
-                modelOptionsLoading ? "Loading..." : "No models found."
-              }
+              emptyText={modelOptionsLoading ? "Loading..." : "No models found"}
               disabled={isSaving || modelOptionsLoading}
               onChange={handleSubagentModelChange}
             />
@@ -930,9 +929,12 @@ export function ModelPreferencesSection() {
         <div className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-emerald-500" />
+              <Terminal
+                className="h-4 w-4 text-muted-foreground"
+                strokeWidth={1.5}
+              />
               <span className="text-sm font-medium">
-                Agent Skills &amp; Slash Commands
+                Agent skills &amp; slash commands
               </span>
             </div>
             <p className="text-xs text-muted-foreground">
@@ -944,8 +946,8 @@ export function ModelPreferencesSection() {
           </div>
           <Button asChild variant="outline" size="sm" className="shrink-0">
             <Link href="/settings/skills">
-              Open Skills Catalog
-              <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" />
+              Open skills catalog
+              <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" strokeWidth={1.5} />
             </Link>
           </Button>
         </div>
