@@ -71,11 +71,11 @@ export function PermissionModeSelector({
               type="button"
               disabled={disabled}
               className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:pointer-events-none disabled:opacity-60",
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors disabled:pointer-events-none disabled:opacity-60",
                 ICON_COLOR[value],
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="size-4" strokeWidth={1.5} />
             </button>
           </PopoverTrigger>
         </TooltipTrigger>

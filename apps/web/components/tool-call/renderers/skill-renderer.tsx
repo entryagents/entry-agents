@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { Terminal } from "lucide-react";
 import type { ToolRendererProps } from "@/app/lib/render-tool";
 import { ToolLayout } from "../tool-layout";
 
@@ -45,7 +45,7 @@ export function SkillRenderer({
     <div className="space-y-2 rounded-lg border border-border/70 bg-muted/40 p-3 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+          <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/80 px-2 py-0.5 font-mono text-[11px] font-medium text-foreground">
             /{skillName ?? "skill"}
           </span>
           {output?.success && (
@@ -62,7 +62,7 @@ export function SkillRenderer({
       )}
       {rawArgs && (
         <div>
-          <p className="mb-1 font-mono text-[10px] uppercase text-muted-foreground">
+          <p className="mb-1 text-xs font-medium text-muted-foreground">
             Arguments
           </p>
           <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-border bg-background/80 p-2 font-mono text-[11px] leading-relaxed text-foreground">
@@ -72,8 +72,8 @@ export function SkillRenderer({
       )}
       {loadedContent && (
         <div>
-          <p className="mb-1 font-mono text-[10px] uppercase text-muted-foreground">
-            Skill Instructions Preview
+          <p className="mb-1 text-xs font-medium text-muted-foreground">
+            Skill instructions preview
           </p>
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-border bg-background/80 p-2.5 font-mono text-[11px] leading-relaxed text-muted-foreground">
             {loadedContent.slice(0, 1400)}
@@ -86,14 +86,19 @@ export function SkillRenderer({
 
   return (
     <ToolLayout
-      name="Invoked Skill"
-      icon={<Sparkles className="h-3.5 w-3.5 text-emerald-500" />}
+      name="Skill"
+      icon={
+        <Terminal
+          className="size-3.5 text-muted-foreground"
+          strokeWidth={1.5}
+        />
+      }
       summary={
         skillName
           ? `/${skillName}${rawArgs ? ` · ${rawArgs}` : ""}`
           : "Loading skill..."
       }
-      summaryClassName="font-mono text-emerald-600 dark:text-emerald-400"
+      summaryClassName="font-mono text-muted-foreground"
       state={mergedState}
       nameClassName={mergedState.error ? "text-red-500" : undefined}
       expandedContent={expandedContent}

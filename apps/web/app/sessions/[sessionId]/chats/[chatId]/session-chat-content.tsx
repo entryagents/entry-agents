@@ -418,7 +418,7 @@ function ContextUsageIndicator({
         <button
           type="button"
           aria-label="View context usage breakdown"
-          className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground/70 transition-colors hover:bg-muted/60 hover:text-muted-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs tabular-nums text-muted-foreground/80 transition-colors hover:bg-muted/60 hover:text-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {percentage !== null ? (
             <>

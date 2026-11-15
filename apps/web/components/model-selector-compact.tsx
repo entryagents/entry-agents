@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CheckIcon, ChevronDown, Cpu, Lock, Sparkles } from "lucide-react";
+import { CheckIcon, ChevronDown, Cpu, Lock } from "lucide-react";
 import { type ModelOption, groupByProvider } from "@/lib/model-options";
 import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import type { ReasoningEffortLevel } from "@/lib/model-reasoning";
@@ -161,7 +161,7 @@ export function ModelSelectorCompact({
                 ? "Change model for next prompt (⌘⌥/)"
                 : "Change model (⌘⌥/)"
             }
-            className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm text-neutral-500 transition-colors hover:bg-white/5 hover:text-neutral-300 disabled:pointer-events-none disabled:opacity-60"
+            className="flex h-8 min-w-0 max-w-full shrink items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-60 sm:text-sm"
           >
             {selectedOption && (
               <ProviderIcon
@@ -169,8 +169,8 @@ export function ModelSelectorCompact({
                 className="size-3.5 shrink-0"
               />
             )}
-            <span className="max-w-[140px] truncate">{displayText}</span>
-            <ChevronDown className="h-3 w-3" />
+            <span className="max-w-[160px] truncate">{displayText}</span>
+            <ChevronDown className="size-3 shrink-0" strokeWidth={1.5} />
           </button>
         </PopoverTrigger>
         <PopoverContent
@@ -272,7 +272,7 @@ export function ModelSelectorCompact({
                             onReasoningEffortChange(level.value);
                           }}
                           className={cn(
-                            "rounded px-2 py-0.5 text-[11px] font-medium transition-all",
+                            "rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
                             active
                               ? "bg-primary text-primary-foreground shadow-xs"
                               : "bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground",
@@ -305,8 +305,11 @@ export function ModelSelectorCompact({
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <div className="mb-1 flex size-9 items-center justify-center rounded-full bg-primary/10">
-              <Sparkles className="size-4.5 text-primary" />
+            <div className="mb-1 flex size-9 items-center justify-center rounded-full border border-border/70 bg-muted/60">
+              <Lock
+                className="size-4 text-muted-foreground"
+                strokeWidth={1.5}
+              />
             </div>
             <DialogTitle>
               {lockedModel?.shortLabel ?? "This model"} is a paid model

@@ -19,8 +19,8 @@ import {
   Loader2,
   Mic,
   Paperclip,
-  Sparkles,
   Square,
+  Terminal,
   WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -690,8 +690,8 @@ export const ChatComposer = memo(
                 />
               </div>
 
-              <div className="flex items-center justify-between gap-2 px-3 pb-2">
-                <div className="flex min-w-0 items-center gap-1.5 sm:gap-2 overflow-hidden">
+              <div className="flex flex-wrap items-center gap-1 px-3 pb-2 sm:flex-nowrap sm:gap-2">
+                <div className="order-2 flex shrink-0 items-center gap-1 sm:order-1 sm:gap-2">
                   <Button
                     type="button"
                     variant="ghost"
@@ -700,7 +700,7 @@ export const ChatComposer = memo(
                     disabled={isArchived}
                     className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
                   >
-                    <Paperclip className="h-4 w-4" />
+                    <Paperclip className="size-4" strokeWidth={1.5} />
                   </Button>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -724,13 +724,14 @@ export const ChatComposer = memo(
                             }
                           }, 0);
                         }}
-                        className="h-7 shrink-0 gap-1 rounded-full border border-border/70 bg-background/60 px-2 text-xs font-medium text-muted-foreground hover:bg-background hover:text-foreground"
+                        className="h-8 shrink-0 gap-1 rounded-full border border-border/70 bg-background/60 px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
                       >
-                        <Sparkles className="h-3 w-3 text-emerald-500" />
-                        <span className="font-mono text-[11px]">/</span>
-                        <span className="hidden md:inline text-[11px]">
-                          Invoke
-                        </span>
+                        <Terminal
+                          className="size-3.5 text-muted-foreground"
+                          strokeWidth={1.5}
+                        />
+                        <span className="font-mono text-xs">/</span>
+                        <span className="hidden md:inline text-xs">Invoke</span>
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent side="top">
@@ -738,7 +739,10 @@ export const ChatComposer = memo(
                       subagent (/architect, /reviewer)
                     </TooltipContent>
                   </Tooltip>
-                  {modelId && (
+                </div>
+
+                {modelId && (
+                  <div className="order-1 flex min-w-0 basis-full items-center gap-1 pb-0.5 sm:order-2 sm:basis-auto sm:shrink sm:gap-2 sm:pb-0">
                     <ModelSelectorCompact
                       value={modelId}
                       modelOptions={modelOptions}
@@ -771,17 +775,20 @@ export const ChatComposer = memo(
                       freeTierUnlockedModelIds={freeTierAllowedModelIds}
                       onUpgradeRequired={onUpgradeRequired}
                     />
-                  )}
-                  {modelId && selectedModelLevels.length > 0 && (
-                    <ReasoningEffortSelector
-                      value={sanitizedReasoningEffort}
-                      defaultEffort={defaultReasoningEffort}
-                      levels={selectedModelLevels}
-                      disabled={isArchived || modelOptionsLoading}
-                      appliesToNextPrompt={isBusy}
-                      onChange={onReasoningEffortChange}
-                    />
-                  )}
+                    {selectedModelLevels.length > 0 && (
+                      <ReasoningEffortSelector
+                        value={sanitizedReasoningEffort}
+                        defaultEffort={defaultReasoningEffort}
+                        levels={selectedModelLevels}
+                        disabled={isArchived || modelOptionsLoading}
+                        appliesToNextPrompt={isBusy}
+                        onChange={onReasoningEffortChange}
+                      />
+                    )}
+                  </div>
+                )}
+
+                <div className="order-3 flex shrink-0 items-center gap-1 sm:gap-2">
                   <PermissionModeSelector
                     value={permissionMode}
                     onChange={onPermissionModeChange}
@@ -790,14 +797,14 @@ export const ChatComposer = memo(
                   {contextUsageSlot}
                 </div>
 
-                <div className="flex shrink-0 items-center gap-1">
+                <div className="order-4 ml-auto flex shrink-0 items-center gap-1">
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     onClick={handleMicClick}
                     disabled={isArchived || recordingState === "processing"}
-                    className={`relative h-8 w-8 rounded-full ${
+                    className={`relative h-8 w-8 shrink-0 rounded-full ${
                       recordingState === "recording"
                         ? "text-red-500"
                         : "text-muted-foreground hover:text-foreground"
@@ -807,9 +814,12 @@ export const ChatComposer = memo(
                       <span className="absolute inset-0 animate-pulse rounded-full bg-red-500/30" />
                     )}
                     {recordingState === "processing" ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <Loader2
+                        className="size-4 animate-spin"
+                        strokeWidth={1.5}
+                      />
                     ) : (
-                      <Mic className="h-5 w-5" />
+                      <Mic className="size-4" strokeWidth={1.5} />
                     )}
                   </Button>
 
@@ -822,9 +832,9 @@ export const ChatComposer = memo(
                         inlineQuestion.handleNext();
                       }}
                       disabled={!inlineQuestion.hasCurrentAnswer}
-                      className="h-8 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
+                      className="h-8 shrink-0 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
                     >
-                      <Check className="h-3 w-3" />
+                      <Check className="size-3.5" strokeWidth={1.5} />
                       <span className="sm:hidden">
                         {inlineQuestion.compactButtonLabel}
                       </span>
@@ -837,15 +847,15 @@ export const ChatComposer = memo(
                       type="button"
                       size="icon"
                       onClick={onStopStream}
-                      className="h-8 w-8 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      className="h-8 w-8 shrink-0 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       style={{ touchAction: "manipulation" }}
                     >
-                      <Square className="h-3 w-3 fill-current" />
+                      <Square className="size-3 fill-current" />
                     </Button>
                   ) : (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="relative inline-flex">
+                        <span className="relative inline-flex shrink-0">
                           <Button
                             type="submit"
                             size="icon"
@@ -859,11 +869,11 @@ export const ChatComposer = memo(
                             }
                             className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
                           >
-                            <ArrowUp className="h-4 w-4" />
+                            <ArrowUp className="size-4" strokeWidth={1.5} />
                           </Button>
                           {isBusy && (
                             <span
-                              className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-background"
+                              className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none tabular-nums text-white ring-2 ring-background"
                               aria-hidden="true"
                             >
                               {queuedCount + 1}
@@ -881,7 +891,7 @@ export const ChatComposer = memo(
                   {isBusy && input.trim().length > 0 && (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <span className="relative inline-flex">
+                        <span className="relative inline-flex shrink-0">
                           <Button
                             type="button"
                             size="icon"
@@ -901,11 +911,11 @@ export const ChatComposer = memo(
                             className="h-8 w-8 rounded-full border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
                             aria-label="Send to agent inbox"
                           >
-                            <Inbox className="h-4 w-4" />
+                            <Inbox className="size-4" strokeWidth={1.5} />
                           </Button>
                           {inboxUnreadCount > 0 && (
                             <span
-                              className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground ring-2 ring-background"
+                              className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none tabular-nums text-primary-foreground ring-2 ring-background"
                               aria-hidden="true"
                             >
                               {inboxUnreadCount}
