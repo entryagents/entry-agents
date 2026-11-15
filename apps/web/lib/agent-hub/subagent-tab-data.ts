@@ -1,5 +1,9 @@
 import type { LanguageModelUsage, ModelMessage } from "ai";
-import type { TaskPendingToolCall } from "@entry-agents/agent";
+import {
+  extractCachedInputTokens,
+  extractCacheWriteTokens,
+  type TaskPendingToolCall,
+} from "@entry-agents/agent";
 import type { WebAgentUIToolPart } from "@/app/types";
 
 export type SubagentStatus =
@@ -21,6 +25,8 @@ export interface SubagentTabData {
   toolCallCount: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  cachedInputTokens: number | null;
+  cacheWriteTokens: number | null;
   pending: TaskPendingToolCall | null;
   completedParts: WebAgentUIToolPart[];
   finalText: string | null;
@@ -245,6 +251,13 @@ export function deriveSubagentTabData(
           ? output.streamedText
           : null);
 
+      const cacheRead = extractCachedInputTokens(
+        usage as LanguageModelUsage | undefined,
+      );
+      const cacheWrite = extractCacheWriteTokens(
+        usage as LanguageModelUsage | undefined,
+      );
+
       return {
         id: subagentId,
         subagentType:
@@ -266,6 +279,8 @@ export function deriveSubagentTabData(
           numberOrNull(output?.toolCallCount) ?? completedParts.length,
         inputTokens: numberOrNull(usage?.inputTokens),
         outputTokens: numberOrNull(usage?.outputTokens),
+        cachedInputTokens: cacheRead > 0 ? cacheRead : null,
+        cacheWriteTokens: cacheWrite > 0 ? cacheWrite : null,
         pending,
         completedParts,
         finalText,

@@ -1,4 +1,8 @@
 import type { LanguageModelUsage } from "ai";
+import {
+  extractCachedInputTokens,
+  extractCacheWriteTokens,
+} from "@entry-agents/agent";
 
 // Pure derivation of the Agent Hub roster from persisted chat messages.
 //
@@ -36,6 +40,8 @@ export interface AgentHubEntry {
   toolCallCount: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  cachedInputTokens: number | null;
+  cacheWriteTokens: number | null;
   pending: AgentHubPendingCall | null;
   streamedText: string | null;
   /** Subagent session id (resumable follow-ups), when reported. */
@@ -123,6 +129,12 @@ export function deriveAgentHubRoster(messages: unknown): AgentHubEntry[] {
       ) as Partial<LanguageModelUsage> | null;
       const pending = asRecord(output?.pending);
       const depth = numberOrNull(output?.depth) ?? 0;
+      const cacheRead = extractCachedInputTokens(
+        usage as LanguageModelUsage | undefined,
+      );
+      const cacheWrite = extractCacheWriteTokens(
+        usage as LanguageModelUsage | undefined,
+      );
 
       entries.push({
         id: part.toolCallId as string,
@@ -146,6 +158,8 @@ export function deriveAgentHubRoster(messages: unknown): AgentHubEntry[] {
         toolCallCount: numberOrNull(output?.toolCallCount),
         inputTokens: numberOrNull(usage?.inputTokens),
         outputTokens: numberOrNull(usage?.outputTokens),
+        cachedInputTokens: cacheRead > 0 ? cacheRead : null,
+        cacheWriteTokens: cacheWrite > 0 ? cacheWrite : null,
         pending:
           pending && typeof pending.name === "string"
             ? { name: pending.name, input: pending.input }
@@ -185,6 +199,8 @@ export interface AgentHubTotals {
   live: number;
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
 }
 
 export function summarizeAgentHub(entries: AgentHubEntry[]): AgentHubTotals {
@@ -194,8 +210,17 @@ export function summarizeAgentHub(entries: AgentHubEntry[]): AgentHubTotals {
       live: acc.live + (isLiveStatus(entry.status) ? 1 : 0),
       inputTokens: acc.inputTokens + (entry.inputTokens ?? 0),
       outputTokens: acc.outputTokens + (entry.outputTokens ?? 0),
+      cachedInputTokens: acc.cachedInputTokens + (entry.cachedInputTokens ?? 0),
+      cacheWriteTokens: acc.cacheWriteTokens + (entry.cacheWriteTokens ?? 0),
     }),
-    { total: 0, live: 0, inputTokens: 0, outputTokens: 0 },
+    {
+      total: 0,
+      live: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedInputTokens: 0,
+      cacheWriteTokens: 0,
+    },
   );
 }
 

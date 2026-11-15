@@ -21,7 +21,7 @@ import {
   getOrCreateTeamBoard,
   type TeamBoardSnapshot,
 } from "../team";
-import { sumLanguageModelUsage } from "../usage";
+import { enrichUsageWithProviderCache, sumLanguageModelUsage } from "../usage";
 import { getSandboxContext, getSubagentModel } from "./utils";
 import type { AgentContext, SubagentBudgetGuard } from "../types";
 
@@ -232,11 +232,32 @@ IMPORTANT:
     const teamId = parentContext?.teamId ?? "default-team";
     const teamBoard = getOrCreateTeamBoard(teamId);
     const teamContext = formatTeamContextSummary(teamBoard);
+    const contextWindow = parentContext?.contextWindow;
+    const compactionThreshold = parentContext?.compactionThreshold;
 
     let streamError: string | undefined;
     let result: Awaited<ReturnType<typeof subagent.stream>> | undefined;
 
     try {
+      const sharedCallOptions = {
+        task,
+        instructions,
+        sandbox: sandboxContext.sandbox,
+        model,
+        teamId,
+        ...(teamContext ? { teamContext } : {}),
+        ...(contextWindow ? { contextWindow } : {}),
+        ...(compactionThreshold ? { compactionThreshold } : {}),
+        ...(billingGuard
+          ? (() => {
+              const plan = billingGuard.planSubagent(subagentModelId);
+              return plan.maxOutputTokens
+                ? { maxOutputTokens: plan.maxOutputTokens }
+                : {};
+            })()
+          : {}),
+      };
+
       const streamCallParams =
         isFollowUp && existingSession
           ? {
@@ -244,42 +265,12 @@ IMPORTANT:
                 ...existingSession.messages,
                 { role: "user", content: userPrompt } as ModelMessage,
               ],
-              options: {
-                task,
-                instructions,
-                sandbox: sandboxContext.sandbox,
-                model,
-                teamId,
-                ...(teamContext ? { teamContext } : {}),
-                ...(billingGuard
-                  ? (() => {
-                      const plan = billingGuard.planSubagent(subagentModelId);
-                      return plan.maxOutputTokens
-                        ? { maxOutputTokens: plan.maxOutputTokens }
-                        : {};
-                    })()
-                  : {}),
-              },
+              options: sharedCallOptions,
               abortSignal: localAbort.signal,
             }
           : {
               prompt: userPrompt,
-              options: {
-                task,
-                instructions,
-                sandbox: sandboxContext.sandbox,
-                model,
-                teamId,
-                ...(teamContext ? { teamContext } : {}),
-                ...(billingGuard
-                  ? (() => {
-                      const plan = billingGuard.planSubagent(subagentModelId);
-                      return plan.maxOutputTokens
-                        ? { maxOutputTokens: plan.maxOutputTokens }
-                        : {};
-                    })()
-                  : {}),
-              },
+              options: sharedCallOptions,
               abortSignal: localAbort.signal,
             };
 
@@ -454,7 +445,12 @@ IMPORTANT:
         }
 
         if (part.type === "finish-step") {
-          usage = sumLanguageModelUsage(usage, part.usage);
+          const stepUsage =
+            enrichUsageWithProviderCache(
+              part.usage,
+              (part as { providerMetadata?: unknown }).providerMetadata,
+            ) ?? part.usage;
+          usage = sumLanguageModelUsage(usage, stepUsage);
           if (billingGuard) {
             // Billing identity for THIS subagent model step: this task
             // call's own toolCallId (unique per subagent launch, stable
@@ -465,7 +461,7 @@ IMPORTANT:
             subagentStepIndex += 1;
             const plan = billingGuard.noteSubagentStepUsage(
               subagentModelId,
-              part.usage,
+              stepUsage,
               `${toolCallId}:${subagentStepIndex}`,
             );
             if (plan.stop) {
@@ -507,7 +503,13 @@ IMPORTANT:
     let finalUsage = usage;
     if (!finalUsage && result) {
       try {
-        finalUsage = await result.usage;
+        const resolvedUsage = await result.usage;
+        const resolvedMetadata = await Promise.resolve(
+          (result as { providerMetadata?: unknown }).providerMetadata,
+        ).catch(() => undefined);
+        finalUsage =
+          enrichUsageWithProviderCache(resolvedUsage, resolvedMetadata) ??
+          resolvedUsage;
       } catch {
         finalUsage = undefined;
       }

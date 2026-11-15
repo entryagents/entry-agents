@@ -84,9 +84,20 @@ const callOptionsSchema = z.object({
   // applies call settings to every internal step, so one value caps
   // each step's output. Undefined = no cap.
   maxOutputTokens: z.number().int().positive().optional(),
+  contextWindow: z.number().int().positive().optional(),
+  compactionThreshold: z.number().positive().optional(),
 });
 
 export type ExplorerCallOptions = z.infer<typeof callOptionsSchema>;
+
+const explorerTools = {
+  read: readFileTool(),
+  dir_list: dirListTool(),
+  grep: grepTool(),
+  glob: globTool(),
+  bash: bashTool(),
+  team_board: teamBoardTool,
+};
 
 export const explorerSubagent = new ToolLoopAgent({
   // Inert placeholder -- see createInertPlaceholderModel for why this
@@ -95,31 +106,21 @@ export const explorerSubagent = new ToolLoopAgent({
   // doesn't pass one explicitly.
   model: createInertPlaceholderModel(defaultModelLabel),
   instructions: EXPLORER_SYSTEM_PROMPT,
-  tools: {
-    read: readFileTool(),
-    dir_list: dirListTool(),
-    grep: grepTool(),
-    glob: globTool(),
-    bash: bashTool(),
-    team_board: teamBoardTool,
-  },
+  tools: explorerTools,
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
   prepareStep: ({ messages, model, experimental_context }) => {
     const context = (experimental_context ?? {}) as {
       contextWindow?: number;
+      compactionThreshold?: number;
     };
     return {
       messages: addCacheControl({
         messages: maybeCompactMessages({
           messages,
           model,
-          contextWindowOverride: (
-            context as { contextWindow?: number; compactionThreshold?: number }
-          ).contextWindow,
-          compactionThresholdOverride: (
-            context as { contextWindow?: number; compactionThreshold?: number }
-          ).compactionThreshold,
+          contextWindowOverride: context.contextWindow,
+          compactionThresholdOverride: context.compactionThreshold,
         }),
         model,
       }),
@@ -133,33 +134,22 @@ export const explorerSubagent = new ToolLoopAgent({
 
     const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider(defaultModelLabel);
-    const teamBlock = options.teamContext ? `\n\n${options.teamContext}` : "";
+    const teamBlock = options.teamContext ? `${options.teamContext}\n\n` : "";
     return {
       ...settings,
       model,
+      tools: addCacheControl({
+        tools: settings.tools ?? explorerTools,
+        model,
+      }),
       ...(options.maxOutputTokens
         ? { maxOutputTokens: options.maxOutputTokens }
         : {}),
-      // Wrapped in addCacheControl() (2026-08-18): this whole block used to
-      // be a bare string with no cache_control breakpoint at all, so
-      // Anthropic reprocessed it from scratch on every single step of a
-      // subagent's own tool loop (up to SUBAGENT_STEP_LIMIT steps for ONE
-      // task), even though it's byte-identical across every step of that
-      // task. Doesn't help caching ACROSS different subagent tasks (the
-      // task/instructions text legitimately differs each time), but the
-      // within-task multi-step savings are real and free.
       instructions: addCacheControl({
-        instructions: `${EXPLORER_SYSTEM_PROMPT}
-
-${SUBAGENT_WORKING_DIR}${teamBlock}
-
-## Your Task
-${options.task}
-
-## Detailed Instructions
-${options.instructions}
-
-${EXPLORER_REMINDER}`,
+        instructions: [
+          `${EXPLORER_SYSTEM_PROMPT}\n\n${SUBAGENT_WORKING_DIR}`,
+          `${teamBlock}## Your Task\n${options.task}\n\n## Detailed Instructions\n${options.instructions}\n\n${EXPLORER_REMINDER}`,
+        ],
         model,
       }),
       experimental_context: {
@@ -167,6 +157,8 @@ ${EXPLORER_REMINDER}`,
         model,
         teamId: options.teamId ?? "default-team",
         agentRole: "explorer",
+        contextWindow: options.contextWindow,
+        compactionThreshold: options.compactionThreshold,
       },
     };
   },
