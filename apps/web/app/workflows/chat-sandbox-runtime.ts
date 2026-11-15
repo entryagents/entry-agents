@@ -1,15 +1,9 @@
-import { createHash } from "node:crypto";
 import type { discoverSkills } from "@entry-agents/agent";
-import { connectSandbox, type SandboxState } from "@entry-agents/sandbox";
-import { getSessionById } from "@/lib/db/sessions";
-import {
-  ensureUploadsGitignored,
-  IMAGE_UPLOADS_DIR,
-} from "@/lib/sandbox/uploads-gitignore";
-import { kickSandboxProvisioningWorkflow } from "@/lib/sandbox/provisioning-kick";
+import type { SandboxState } from "@entry-agents/sandbox";
+import type { getSessionById } from "@/lib/db/sessions";
+import { IMAGE_UPLOADS_DIR } from "@/lib/sandbox/uploads-gitignore";
 import { withoutUndefined } from "@/app/workflows/serialization";
 import { isSandboxActive } from "@/lib/sandbox/utils";
-import { getCachedSkills } from "@/lib/skills-cache";
 
 type SessionRecord = NonNullable<Awaited<ReturnType<typeof getSessionById>>>;
 type DiscoveredSkills = Awaited<ReturnType<typeof discoverSkills>>;
@@ -36,6 +30,7 @@ async function cachedSessionSkills(params: {
   sessionId: string;
   sandboxState: SandboxState;
 }): Promise<DiscoveredSkills> {
+  const { getCachedSkills } = await import("@/lib/skills-cache");
   const cached = await getCachedSkills(params.sessionId, params.sandboxState);
   if (cached !== null && cached.length > 0) {
     return cached;
@@ -67,6 +62,7 @@ async function getReadySessionSandbox(params: {
   sessionId: string;
   userId: string;
 }): Promise<ReadySessionSandbox> {
+  const { getSessionById } = await import("@/lib/db/sessions");
   const session = await getSessionById(params.sessionId);
   if (!session) {
     throw new Error("Session not found");
@@ -92,6 +88,8 @@ async function getReadySessionSandbox(params: {
 
   // Fire-and-forget: kick returns once the workflow run is claimed, without
   // waiting for the VM to finish provisioning.
+  const { kickSandboxProvisioningWorkflow } =
+    await import("@/lib/sandbox/provisioning-kick");
   await kickSandboxProvisioningWorkflow(params.sessionId).catch((err) => {
     console.warn(
       `[chat-sandbox-runtime] Failed to kick provisioning workflow:`,
@@ -205,15 +203,6 @@ function decodeImageDataUrl(dataUrl: string): Buffer {
   return Buffer.from(base64Payload, "base64");
 }
 
-function buildImagePath(image: PendingImageAttachment, buffer: Buffer): string {
-  // Content-addressed path: identical bytes always resolve to the same
-  // path, so re-sending the same image across turns is a no-op (we check
-  // existence before writing) instead of piling up duplicate files.
-  const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 16);
-  const extension = extensionForMediaType(image.mediaType);
-  return `${IMAGE_UPLOADS_DIR}/${hash}.${extension}`;
-}
-
 /**
  * Writes each attached image into the sandbox (skipping any that are
  * already there) and returns the workspace-relative path for each, in the
@@ -229,6 +218,13 @@ export async function persistImageAttachmentsToSandbox(params: {
     return [];
   }
 
+  const [{ createHash }, { connectSandbox }, { ensureUploadsGitignored }] =
+    await Promise.all([
+      import("node:crypto"),
+      import("@entry-agents/sandbox"),
+      import("@/lib/sandbox/uploads-gitignore"),
+    ]);
+
   const sandbox = await connectSandbox(params.sandboxState);
 
   // Belt-and-suspenders: make sure this directory is gitignored *before*
@@ -240,7 +236,9 @@ export async function persistImageAttachmentsToSandbox(params: {
 
   for (const image of params.images) {
     const buffer = decodeImageDataUrl(image.dataUrl);
-    const path = buildImagePath(image, buffer);
+    const hash = createHash("sha256").update(buffer).digest("hex").slice(0, 16);
+    const extension = extensionForMediaType(image.mediaType);
+    const path = `${IMAGE_UPLOADS_DIR}/${hash}.${extension}`;
 
     const alreadyExists = await sandbox
       .access(path)
