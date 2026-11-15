@@ -191,3 +191,54 @@ describe("closures never cross the workflow -> step boundary", () => {
     expect(source).toContain("controlContext.sessionId");
   });
 });
+
+describe("durable execution workflow hygiene", () => {
+  test("non-workflow modules (DB client and sandbox adapters) never declare top-level 'use step'", async () => {
+    const nonWorkflowFiles = [
+      "../../lib/db/client-impl.ts",
+      "../../../../packages/sandbox/boxd/connect.ts",
+      "../../../../packages/sandbox/local/sandbox.ts",
+      "../../../../packages/sandbox/modal/client.ts",
+    ];
+    for (const relPath of nonWorkflowFiles) {
+      const text = await Bun.file(new URL(relPath, import.meta.url)).text();
+      expect(text).not.toMatch(/^\s*["']use step["']/m);
+    }
+  });
+
+  test("workflow modules use dynamic imports inside steps for Node/DB/sandbox dependencies", async () => {
+    const workflowFiles = [
+      "archive-sandbox-stop.ts",
+      "sandbox-provisioning.ts",
+      "chat-sandbox-runtime.ts",
+      "chat-post-finish.ts",
+    ];
+    for (const file of workflowFiles) {
+      const text = await Bun.file(new URL(file, import.meta.url)).text();
+      expect(text).not.toMatch(
+        /^import\s+(?!type\b).*from\s+["'](?:@\/lib\/db\/|@entry-agents\/sandbox|node:)/m,
+      );
+    }
+  });
+
+  test("dequeueNextQueuedUserMessageStep calls persistUserMessageInternal rather than a nested step", async () => {
+    const postFinish = await Bun.file(
+      new URL("chat-post-finish.ts", import.meta.url),
+    ).text();
+    expect(postFinish).toContain(
+      "await persistUserMessageInternal(chatId, popped.message);",
+    );
+  });
+
+  test("vercel.json enables supportsCancellation on the workflow v1 webhook route", async () => {
+    const vercelConfig = (await Bun.file(
+      new URL("../../vercel.json", import.meta.url),
+    ).json()) as {
+      functions?: Record<string, { supportsCancellation?: boolean }>;
+    };
+    expect(
+      vercelConfig.functions?.["app/.well-known/workflow/v1/**"]
+        ?.supportsCancellation,
+    ).toBe(true);
+  });
+});

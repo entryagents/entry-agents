@@ -902,8 +902,6 @@ async function persistInputMessages(
   chatId: string,
   messages: WebAgentUIMessage[],
 ): Promise<void> {
-  "use step";
-
   const latestMessage = messages[messages.length - 1];
   if (!latestMessage) {
     return;
@@ -1611,7 +1609,7 @@ async function getSandboxStatusStep(
   }
 
   const state = session.sandboxState;
-  return {
+  return withoutUndefined({
     status: !state
       ? "missing"
       : canOperateOnSandbox(state)
@@ -1630,7 +1628,7 @@ async function getSandboxStatusStep(
     sandboxExpiresAt: session.sandboxExpiresAt?.toISOString() ?? null,
     hasRepo: Boolean(session.repoOwner && session.repoName),
     isArchived: session.status === "archived",
-  };
+  });
 }
 
 async function provisionSandboxStep(
@@ -1644,7 +1642,10 @@ async function provisionSandboxStep(
   // Reuses the session's own provisioning claim-lock, so a concurrent UI
   // click or lifecycle run can't double-provision.
   const kick = await kickSandboxProvisioningWorkflow(sessionId);
-  return { kickStatus: kick.status, started: Boolean(kick.runId) };
+  return withoutUndefined({
+    kickStatus: kick.status,
+    started: Boolean(kick.runId),
+  });
 }
 
 async function reconnectSandboxStep(
@@ -1726,7 +1727,7 @@ async function snapshotSandboxStep(
       : "provisioning",
   });
 
-  return { snapshotted: true, snapshotId: result.snapshotId };
+  return withoutUndefined({ snapshotted: true, snapshotId: result.snapshotId });
 }
 
 async function deleteSandboxStep(
@@ -1844,17 +1845,17 @@ async function performAgentGithubApiRequest(params: {
       `${params.method} ${fullPath}`,
       params.params ?? {},
     );
-    return {
+    return withoutUndefined({
       success: true,
       status: response.status,
       ...(response.data !== undefined ? { data: response.data } : {}),
-    };
+    });
   } catch (error) {
     const status =
       typeof error === "object" && error !== null && "status" in error
         ? (error as { status?: number }).status
         : undefined;
-    return {
+    return withoutUndefined({
       success: false,
       // Omit (never assign) an undefined status: the Workflow SDK cannot
       // serialise `undefined`, so an explicit `status: undefined` is a
@@ -1863,7 +1864,7 @@ async function performAgentGithubApiRequest(params: {
       ...(status !== undefined ? { status } : {}),
       error:
         error instanceof Error ? error.message : "GitHub API request failed",
-    };
+    });
   }
 }
 
@@ -2041,12 +2042,12 @@ async function performAgentVercelCli(params: {
       }
     }
 
-    return {
+    return withoutUndefined({
       success: result.success,
       exitCode: result.exitCode,
       stdout: redact(result.stdout),
       stderr: redact(result.stderr),
-    };
+    });
   } catch (error) {
     return {
       success: false,
@@ -2178,12 +2179,12 @@ async function performAgentGithubCli(params: {
             .join("[REDACTED]")
         : text;
 
-    return {
+    return withoutUndefined({
       success: result.success,
       exitCode: result.exitCode,
       stdout: redact(result.stdout),
       stderr: redact(result.stderr),
-    };
+    });
   } finally {
     await revokeInstallationToken(scoped.token).catch((error) =>
       console.warn(
@@ -2276,7 +2277,11 @@ async function performAgentVercelApiRequest(params: {
       }
     }
 
-    return { success: response.ok, status: response.status, data };
+    return withoutUndefined({
+      success: response.ok,
+      status: response.status,
+      data,
+    });
   } catch (error) {
     return {
       success: false,

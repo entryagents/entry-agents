@@ -1,33 +1,19 @@
 import { isToolUIPart, type LanguageModelUsage, type UIMessageChunk } from "ai";
 import type { SandboxState, Sandbox } from "@entry-agents/sandbox";
+import { withoutUndefined } from "@/app/workflows/serialization";
 import type { WebAgentUIMessage } from "@/app/types";
 import type { AutoCommitResult } from "@/lib/chat/auto-commit-direct";
 import type { AutoCreatePrResult } from "@/lib/chat/auto-pr-direct";
-import {
-  claimChatActiveStreamId,
-  compareAndSetChatActiveStreamId,
-  createChatMessageIfNotExists,
-  touchChat,
-  updateChat,
-  updateSession,
-  isFirstChatMessage,
-  upsertChatMessageScoped,
-  upsertChatMessageAndClearActiveStream,
-  updateChatAssistantActivity,
-} from "@/lib/db/sessions";
 import {
   buildActiveLifecycleUpdate,
   buildLifecycleActivityUpdate,
 } from "@/lib/sandbox/lifecycle";
 import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
 import { sanitizeMessageForDatabase } from "@/lib/chat/sanitize-db-message";
-import {
-  recordWorkflowRun,
-  type WorkflowRunStatus,
-  type WorkflowRunStepTiming,
+import type {
+  WorkflowRunStatus,
+  WorkflowRunStepTiming,
 } from "@/lib/db/workflow-runs";
-import { recordUsage } from "@/lib/db/usage";
-import { releaseUserBillingTurn } from "@/lib/billing/credit-ledger";
 
 const cachedInputTokensFor = (usage: LanguageModelUsage) =>
   usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
@@ -86,17 +72,27 @@ function filterNewTaskUsageEvents<T extends { toolCallId?: string }>(
   return deltaEvents;
 }
 
-export async function persistUserMessage(
+/**
+ * Shared Node-side implementation called directly inside `"use step"` functions
+ * (`persistUserMessage`, `persistInputMessages`, `dequeueNextQueuedUserMessageStep`)
+ * so a step never invokes another `"use step"` function (avoiding nested step
+ * overhead in the Workflow DevKit runtime).
+ */
+export async function persistUserMessageInternal(
   chatId: string,
   message: WebAgentUIMessage,
 ): Promise<void> {
-  "use step";
-
   if (message.role !== "user") {
     return;
   }
 
   try {
+    const {
+      createChatMessageIfNotExists,
+      isFirstChatMessage,
+      touchChat,
+      updateChat,
+    } = await import("@/lib/db/sessions");
     const sanitized = sanitizeMessageForDatabase(message);
     const created = await createChatMessageIfNotExists({
       id: message.id,
@@ -136,12 +132,19 @@ export async function persistUserMessage(
   }
 }
 
-export async function persistAssistantMessageWithToolResults(
+export async function persistUserMessage(
   chatId: string,
   message: WebAgentUIMessage,
 ): Promise<void> {
   "use step";
 
+  await persistUserMessageInternal(chatId, message);
+}
+
+export async function persistAssistantMessageWithToolResultsInternal(
+  chatId: string,
+  message: WebAgentUIMessage,
+): Promise<void> {
   if (message.role !== "assistant") {
     return;
   }
@@ -159,6 +162,7 @@ export async function persistAssistantMessageWithToolResults(
   }
 
   try {
+    const { upsertChatMessageScoped } = await import("@/lib/db/sessions");
     const dedupedMessage = dedupeMessageReasoning(message);
     const sanitized = sanitizeMessageForDatabase(dedupedMessage);
     const result = await upsertChatMessageScoped({
@@ -166,7 +170,9 @@ export async function persistAssistantMessageWithToolResults(
       chatId,
       role: "assistant",
       parts: sanitized,
-      metadata: dedupedMessage.metadata,
+      metadata: dedupedMessage.metadata
+        ? withoutUndefined(dedupedMessage.metadata)
+        : undefined,
     });
 
     if (result.status === "conflict") {
@@ -182,6 +188,15 @@ export async function persistAssistantMessageWithToolResults(
   }
 }
 
+export async function persistAssistantMessageWithToolResults(
+  chatId: string,
+  message: WebAgentUIMessage,
+): Promise<void> {
+  "use step";
+
+  await persistAssistantMessageWithToolResultsInternal(chatId, message);
+}
+
 export async function persistAssistantMessage(
   chatId: string,
   message: WebAgentUIMessage,
@@ -189,6 +204,8 @@ export async function persistAssistantMessage(
   "use step";
 
   try {
+    const { updateChatAssistantActivity, upsertChatMessageScoped } =
+      await import("@/lib/db/sessions");
     const dedupedMessage = dedupeMessageReasoning(message);
     const sanitized = sanitizeMessageForDatabase(dedupedMessage);
     const result = await upsertChatMessageScoped({
@@ -196,7 +213,9 @@ export async function persistAssistantMessage(
       chatId,
       role: "assistant",
       parts: sanitized,
-      metadata: dedupedMessage.metadata,
+      metadata: dedupedMessage.metadata
+        ? withoutUndefined(dedupedMessage.metadata)
+        : undefined,
     });
 
     if (result.status === "conflict") {
@@ -228,6 +247,10 @@ export async function persistFinalAssistantMessage(
   "use step";
 
   try {
+    const {
+      updateChatAssistantActivity,
+      upsertChatMessageAndClearActiveStream,
+    } = await import("@/lib/db/sessions");
     const dedupedMessage = dedupeMessageReasoning(message);
     const sanitized = sanitizeMessageForDatabase(dedupedMessage);
     const result = await upsertChatMessageAndClearActiveStream(
@@ -236,7 +259,9 @@ export async function persistFinalAssistantMessage(
         chatId,
         role: "assistant",
         parts: sanitized,
-        metadata: dedupedMessage.metadata,
+        metadata: dedupedMessage.metadata
+          ? withoutUndefined(dedupedMessage.metadata)
+          : undefined,
       },
       workflowRunId,
       { finalizeStatus: "completed" },
@@ -274,6 +299,7 @@ export async function refreshLifecycleActivity(
   "use step";
 
   try {
+    const { updateSession } = await import("@/lib/db/sessions");
     await updateSession(sessionId, buildLifecycleActivityUpdate(new Date()));
   } catch (error) {
     console.error("[workflow] Failed to refresh lifecycle activity:", error);
@@ -287,6 +313,7 @@ export async function persistSandboxState(
   "use step";
   try {
     const { connectSandbox } = await import("@entry-agents/sandbox");
+    const { updateSession } = await import("@/lib/db/sessions");
     const sandbox = await connectSandbox(sandboxState);
     const currentState = sandbox.getState?.() as SandboxState | undefined;
     if (currentState) {
@@ -317,6 +344,8 @@ export async function clearActiveStream(
     attempt++
   ) {
     try {
+      const { compareAndSetChatActiveStreamId, failActiveChatRun } =
+        await import("@/lib/db/sessions");
       // Only clear if this workflow's run ID is still the active one.
       // Prevents a late-finishing workflow from clearing a newer workflow's ID.
       const owned = await compareAndSetChatActiveStreamId(
@@ -334,7 +363,6 @@ export async function clearActiveStream(
       // retries). failActiveChatRun also guards on status so it cannot stomp
       // a success that already landed.
       if (owned) {
-        const { failActiveChatRun } = await import("@/lib/db/sessions");
         await failActiveChatRun(chatId).catch(() => {});
       }
       return;
@@ -384,6 +412,8 @@ export async function releaseUserBillingTurnStep(
     attempt++
   ) {
     try {
+      const { releaseUserBillingTurn } =
+        await import("@/lib/billing/credit-ledger");
       await releaseUserBillingTurn(userId, workflowRunId);
       return;
     } catch (error) {
@@ -435,12 +465,13 @@ export async function claimActiveStream(
     attempt++
   ) {
     try {
+      const { claimChatActiveStreamId, setChatRunStatus } =
+        await import("@/lib/db/sessions");
       const ok = await claimChatActiveStreamId(chatId, workflowRunId);
       if (ok) {
         // The run owns this chat from here on. Committing "running"
         // alongside activeStreamId means a viewer never sees a claimed
         // stream with no lifecycle state.
-        const { setChatRunStatus } = await import("@/lib/db/sessions");
         await setChatRunStatus(chatId, "running").catch(() => {});
       }
       if (!ok) {
@@ -510,9 +541,11 @@ export async function recordWorkflowUsage(
   try {
     const { collectTaskToolUsageEvents, sumLanguageModelUsage } =
       await import("@entry-agents/agent");
+    const { recordUsage } = await import("@/lib/db/usage");
 
     if (workflowRun) {
       try {
+        const { recordWorkflowRun } = await import("@/lib/db/workflow-runs");
         await recordWorkflowRun({
           id: workflowRun.workflowRunId,
           chatId: workflowRun.chatId,
@@ -535,16 +568,6 @@ export async function recordWorkflowUsage(
     // price SUBAGENT usage (debitForModelUsage). Main-turn usage is now
     // billed in real time, per model step, inside runAgentStep (see that
     // function's messageMetadata "finish-step" handler in chat.ts) --
-    // debiting it again here would double-charge, so that call was
-    // removed on 2026-08-17. recordUsage below is unrelated to the
-    // credit ledger (it's the separate usage_events analytics table) and
-    // still runs for both main and subagent usage as before.
-    // PRICING FIX 2026-09-15: was fetchAvailableLanguageModels() (the
-    // admin-filtered picker catalog). Per the 2026-08-17 pricing lesson,
-    // billing/cost lookup must use the UNFILTERED catalog -- an admin
-    // disabling a model must never stop that model's already-happening
-    // usage from being priced and debited. Also saves the per-turn
-    // kill-switch DB query.
     // debiting it again here would double-charge, so that call was
     // removed on 2026-08-17. recordUsage below is unrelated to the
     // credit ledger (it's the separate usage_events analytics table) and
@@ -724,7 +747,7 @@ export async function runAutoCommitStep(params: {
     const { connectSandbox } = await import("@entry-agents/sandbox");
     const { performAutoCommit } = await import("@/lib/chat/auto-commit-direct");
     const sandbox = await connectSandbox(params.sandboxState);
-    return await performAutoCommit({
+    const result = await performAutoCommit({
       sandbox,
       userId: params.userId,
       sessionId: params.sessionId,
@@ -732,6 +755,7 @@ export async function runAutoCommitStep(params: {
       repoOwner: params.repoOwner,
       repoName: params.repoName,
     });
+    return withoutUndefined(result);
   } catch (error) {
     console.error("[workflow] Auto-commit failed:", error);
     return {
@@ -768,7 +792,7 @@ export async function runAutoCreatePrStep(params: {
       console.warn("[workflow] Auto-PR failed:", result.error);
     }
 
-    return result;
+    return withoutUndefined(result);
   } catch (error) {
     console.error("[workflow] Auto-PR failed:", error);
     return {
@@ -900,8 +924,8 @@ export async function dequeueNextQueuedUserMessageStep(
       return null;
     }
 
-    await persistUserMessage(chatId, popped.message);
-    return popped;
+    await persistUserMessageInternal(chatId, popped.message);
+    return withoutUndefined(popped);
   } catch (error) {
     console.error("[workflow] Failed to dequeue next queued prompt:", error);
     return null;
