@@ -20,7 +20,6 @@ import {
   Mic,
   Paperclip,
   Square,
-  Terminal,
   WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -34,6 +33,7 @@ import { useInlineQuestion } from "@/components/inline-question-input";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { PermissionModeSelector } from "@/components/permission-mode-selector";
 import { ReasoningEffortSelector } from "@/components/reasoning-effort-selector";
+import { SelectedSkillsPreview } from "@/components/selected-skills-preview";
 import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
 import { TextAttachmentsPreview } from "@/components/text-attachments-preview";
 import { Button } from "@/components/ui/button";
@@ -207,6 +207,16 @@ export const ChatComposer = memo(
       clearTextAttachments,
     } = useTextAttachments();
 
+    const [selectedSkills, setSelectedSkills] = useState<SkillSuggestion[]>([]);
+
+    const removeSelectedSkill = useCallback((name: string) => {
+      setSelectedSkills((prev) => prev.filter((s) => s.name !== name));
+    }, []);
+
+    const clearSelectedSkills = useCallback(() => {
+      setSelectedSkills([]);
+    }, []);
+
     const {
       state: recordingState,
       error: recordingError,
@@ -312,6 +322,29 @@ export const ChatComposer = memo(
 
     const handleSlashCommandSelect = useCallback(
       (skillName: string, slashStart: number, cursorPos: number) => {
+        const matched = skills?.find((s) => s.name === skillName);
+        if (matched) {
+          setSelectedSkills((prev) =>
+            prev.some((s) => s.name === matched.name)
+              ? prev
+              : [...prev, matched],
+          );
+          setInput((prev) => {
+            const before = prev.slice(0, slashStart);
+            const after = prev.slice(cursorPos).replace(/^\s+/, "");
+            const newInput = `${before}${after}`;
+            const newCursorPos = slashStart;
+            setCursorPosition(newCursorPos);
+            setTimeout(() => {
+              if (inputRef.current && inputRef.current.value === newInput) {
+                inputRef.current.focus();
+                inputRef.current.setSelectionRange(newCursorPos, newCursorPos);
+              }
+            }, 0);
+            return newInput;
+          });
+          return;
+        }
         setInput((prev) => {
           const before = prev.slice(0, slashStart);
           const after = prev.slice(cursorPos);
@@ -327,7 +360,7 @@ export const ChatComposer = memo(
           return newInput;
         });
       },
-      [],
+      [skills],
     );
 
     const {
@@ -360,16 +393,25 @@ export const ChatComposer = memo(
     const hasComposerContent =
       input.trim().length > 0 ||
       images.length > 0 ||
-      textAttachments.length > 0;
+      textAttachments.length > 0 ||
+      selectedSkills.length > 0;
 
     const buildPayload = useCallback((): BuiltComposerMessage | null => {
       const hasContent =
-        input.trim() || images.length > 0 || textAttachments.length > 0;
+        input.trim() ||
+        images.length > 0 ||
+        textAttachments.length > 0 ||
+        selectedSkills.length > 0;
       if (!hasContent) {
         return null;
       }
 
-      const messageText = input;
+      const skillPrefix = selectedSkills.map((s) => `/${s.name}`).join(" ");
+      const messageText = skillPrefix
+        ? input.trim()
+          ? `${skillPrefix} ${input}`
+          : skillPrefix
+        : input;
       const fileParts = getFileParts();
       const hasSnippets = textAttachments.length > 0;
       let payload: ComposerMessagePayload;
@@ -400,7 +442,7 @@ export const ChatComposer = memo(
       }
 
       return { payload, displayText: messageText };
-    }, [getFileParts, images.length, input, textAttachments]);
+    }, [getFileParts, images.length, input, selectedSkills, textAttachments]);
 
     const handleMicClick = async () => {
       clearRecordingError();
@@ -517,7 +559,7 @@ export const ChatComposer = memo(
           )}
           {topPanelsSlot}
           <div
-            className={`relative overflow-hidden rounded-2xl border border-border/80 bg-muted/75 transition-[border-color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] ${isDragging ? "border-foreground/30 ring-2 ring-ring" : ""}`}
+            className={`relative overflow-hidden rounded-2xl bg-muted transition-colors ${isDragging ? "ring-2 ring-blue-500/50" : ""}`}
           >
             <form
               onSubmit={async (e) => {
@@ -533,6 +575,7 @@ export const ChatComposer = memo(
                 setInput("");
                 clearImages();
                 clearTextAttachments();
+                clearSelectedSkills();
 
                 if (isBusy) {
                   if (/^\/inbox\s+/i.test(rawText)) {
@@ -583,7 +626,9 @@ export const ChatComposer = memo(
               }}
             >
               {overlaySlot}
-              {(images.length > 0 || textAttachments.length > 0) && (
+              {(images.length > 0 ||
+                textAttachments.length > 0 ||
+                selectedSkills.length > 0) && (
                 <div className="flex flex-wrap items-start gap-2 px-4 pt-3">
                   {images.length > 0 && (
                     <ImageAttachmentsPreview
@@ -596,6 +641,13 @@ export const ChatComposer = memo(
                     <TextAttachmentsPreview
                       attachments={textAttachments}
                       onRemove={removeTextAttachment}
+                      className="p-0"
+                    />
+                  )}
+                  {selectedSkills.length > 0 && (
+                    <SelectedSkillsPreview
+                      skills={selectedSkills}
+                      onRemove={removeSelectedSkill}
                       className="p-0"
                     />
                   )}
@@ -614,7 +666,7 @@ export const ChatComposer = memo(
                         "Free tier ended — upgrade your account to use Entry"
                       : showInlineQuestion
                         ? inlineQuestion.placeholder
-                        : "Request changes, type / for commands or skills, or @ to reference files..."
+                        : "Request changes, type / to invoke a skill or subagent, or @ to reference files..."
                   }
                   rows={1}
                   onFocus={handleTextareaFocus}
@@ -690,256 +742,198 @@ export const ChatComposer = memo(
                 />
               </div>
 
-              <div className="@container px-3 pb-2">
-                <div className="flex flex-wrap items-center gap-1.5 @[560px]:flex-nowrap @[560px]:gap-2">
-                  <div className="order-2 flex shrink-0 items-center gap-1 @[560px]:order-1 @[560px]:gap-1.5">
+              <div className="flex items-center justify-between gap-2 px-3 pb-2">
+                <div className="flex min-w-0 items-center gap-1.5 sm:gap-2 overflow-hidden">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={openFilePicker}
+                    disabled={isArchived}
+                    className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground"
+                  >
+                    <Paperclip className="h-4 w-4" />
+                  </Button>
+                  {modelId && (
+                    <ModelSelectorCompact
+                      value={modelId}
+                      modelOptions={modelOptions}
+                      disabled={isArchived || modelOptionsLoading}
+                      appliesToNextPrompt={isBusy}
+                      reasoningEffort={sanitizedReasoningEffort}
+                      defaultReasoningEffort={defaultReasoningEffort}
+                      reasoningLevels={selectedModelLevels}
+                      onReasoningEffortChange={onReasoningEffortChange}
+                      onCloseAutoFocus={() => {
+                        window.requestAnimationFrame(() => {
+                          const textarea = inputRef.current;
+                          if (!textarea) {
+                            return;
+                          }
+                          textarea.focus();
+                          const nextCursorPosition = Math.min(
+                            cursorPosition,
+                            textarea.value.length,
+                          );
+                          textarea.setSelectionRange(
+                            nextCursorPosition,
+                            nextCursorPosition,
+                          );
+                        });
+                      }}
+                      onChange={onModelChange}
+                      isFreeTierLocked={isFreeTierLocked}
+                      freePlanModelId={freePlanModelId}
+                      freeTierUnlockedModelIds={freeTierAllowedModelIds}
+                      onUpgradeRequired={onUpgradeRequired}
+                    />
+                  )}
+                  {modelId && selectedModelLevels.length > 0 && (
+                    <ReasoningEffortSelector
+                      value={sanitizedReasoningEffort}
+                      defaultEffort={defaultReasoningEffort}
+                      levels={selectedModelLevels}
+                      disabled={isArchived || modelOptionsLoading}
+                      appliesToNextPrompt={isBusy}
+                      onChange={onReasoningEffortChange}
+                    />
+                  )}
+                  <PermissionModeSelector
+                    value={permissionMode}
+                    onChange={onPermissionModeChange}
+                    disabled={isArchived || isTogglingPermissionMode}
+                  />
+                  {contextUsageSlot}
+                </div>
+
+                <div className="flex shrink-0 items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleMicClick}
+                    disabled={isArchived || recordingState === "processing"}
+                    className={`relative h-8 w-8 rounded-full ${
+                      recordingState === "recording"
+                        ? "text-red-500"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {recordingState === "recording" && (
+                      <span className="absolute inset-0 animate-pulse rounded-full bg-red-500/30" />
+                    )}
+                    {recordingState === "processing" ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <Mic className="h-5 w-5" />
+                    )}
+                  </Button>
+
+                  {showInlineQuestion ? (
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={openFilePicker}
-                      disabled={isArchived}
-                      aria-label="Attach files"
-                      className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background/60 hover:text-foreground active:scale-[0.97]"
+                      size="sm"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        inlineQuestion.handleNext();
+                      }}
+                      disabled={!inlineQuestion.hasCurrentAnswer}
+                      className="h-8 rounded-full bg-primary px-3 text-xs text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
                     >
-                      <Paperclip className="size-4" strokeWidth={1.5} />
+                      <Check className="h-3 w-3" />
+                      <span className="sm:hidden">
+                        {inlineQuestion.compactButtonLabel}
+                      </span>
+                      <span className="hidden sm:inline">
+                        {inlineQuestion.buttonLabel}
+                      </span>
                     </Button>
+                  ) : isBusy && !hasComposerContent ? (
+                    <Button
+                      type="button"
+                      size="icon"
+                      onClick={onStopStream}
+                      className="h-8 w-8 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      style={{ touchAction: "manipulation" }}
+                    >
+                      <Square className="h-3 w-3 fill-current" />
+                    </Button>
+                  ) : (
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={isArchived || Boolean(composerGate)}
-                          aria-label="Open slash commands"
-                          onClick={() => {
-                            const nextVal = input.startsWith("/")
-                              ? input
-                              : input.trim().length > 0
-                                ? `/${input}`
-                                : "/";
-                            setInput(nextVal);
-                            setCursorPosition(1);
-                            setTimeout(() => {
-                              if (inputRef.current) {
-                                inputRef.current.focus();
-                                inputRef.current.setSelectionRange(1, 1);
-                              }
-                            }, 0);
-                          }}
-                          className="h-8 shrink-0 gap-1 rounded-lg border border-border/80 bg-background/70 px-2 text-xs font-medium text-muted-foreground transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background hover:text-foreground active:scale-[0.97]"
-                        >
-                          <Terminal
-                            className="size-3.5 text-muted-foreground"
-                            strokeWidth={1.5}
-                          />
-                          <span className="font-mono text-xs">/</span>
-                          <span className="hidden @[560px]:inline text-xs">
-                            Invoke
-                          </span>
-                        </Button>
+                        <span className="relative inline-flex">
+                          <Button
+                            type="submit"
+                            size="icon"
+                            onTouchEnd={() => {
+                              inputRef.current?.blur();
+                            }}
+                            disabled={
+                              isArchived ||
+                              Boolean(composerGate) ||
+                              (!isBusy && !hasComposerContent)
+                            }
+                            className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
+                          >
+                            <ArrowUp className="h-4 w-4" />
+                          </Button>
+                          {isBusy && (
+                            <span
+                              className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-background"
+                              aria-hidden="true"
+                            >
+                              {queuedCount + 1}
+                            </span>
+                          )}
+                        </span>
                       </TooltipTrigger>
                       <TooltipContent side="top">
-                        Invoke a command (/team, /unslop) or specialist
-                        (/architect, /reviewer)
+                        {isBusy
+                          ? `Queue message (position ${queuedCount + 1})`
+                          : "Send message"}
                       </TooltipContent>
                     </Tooltip>
-                  </div>
-
-                  {modelId && (
-                    <div className="order-1 flex min-w-0 basis-full items-center gap-1 pb-0.5 @[560px]:order-2 @[560px]:basis-auto @[560px]:shrink @[560px]:gap-1.5 @[560px]:pb-0">
-                      <ModelSelectorCompact
-                        value={modelId}
-                        modelOptions={modelOptions}
-                        disabled={isArchived || modelOptionsLoading}
-                        appliesToNextPrompt={isBusy}
-                        reasoningEffort={sanitizedReasoningEffort}
-                        defaultReasoningEffort={defaultReasoningEffort}
-                        reasoningLevels={selectedModelLevels}
-                        onReasoningEffortChange={onReasoningEffortChange}
-                        onCloseAutoFocus={() => {
-                          window.requestAnimationFrame(() => {
-                            const textarea = inputRef.current;
-                            if (!textarea) {
-                              return;
-                            }
-                            textarea.focus();
-                            const nextCursorPosition = Math.min(
-                              cursorPosition,
-                              textarea.value.length,
-                            );
-                            textarea.setSelectionRange(
-                              nextCursorPosition,
-                              nextCursorPosition,
-                            );
-                          });
-                        }}
-                        onChange={onModelChange}
-                        isFreeTierLocked={isFreeTierLocked}
-                        freePlanModelId={freePlanModelId}
-                        freeTierUnlockedModelIds={freeTierAllowedModelIds}
-                        onUpgradeRequired={onUpgradeRequired}
-                      />
-                      {selectedModelLevels.length > 0 && (
-                        <ReasoningEffortSelector
-                          value={sanitizedReasoningEffort}
-                          defaultEffort={defaultReasoningEffort}
-                          levels={selectedModelLevels}
-                          disabled={isArchived || modelOptionsLoading}
-                          appliesToNextPrompt={isBusy}
-                          onChange={onReasoningEffortChange}
-                        />
-                      )}
-                    </div>
                   )}
-
-                  <div className="order-3 flex shrink-0 items-center gap-1 @[560px]:gap-1.5">
-                    <PermissionModeSelector
-                      value={permissionMode}
-                      onChange={onPermissionModeChange}
-                      disabled={isArchived || isTogglingPermissionMode}
-                    />
-                    {contextUsageSlot}
-                  </div>
-
-                  <div className="order-4 ml-auto flex shrink-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={handleMicClick}
-                      disabled={isArchived || recordingState === "processing"}
-                      aria-label={
-                        recordingState === "recording"
-                          ? "Stop voice recording"
-                          : "Start voice input"
-                      }
-                      className={`relative h-8 w-8 shrink-0 rounded-lg transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.97] ${
-                        recordingState === "recording"
-                          ? "bg-red-500/15 text-red-500 ring-1 ring-red-500/40"
-                          : "text-muted-foreground hover:bg-background/60 hover:text-foreground"
-                      }`}
-                    >
-                      {recordingState === "processing" ? (
-                        <Loader2
-                          className="size-4 animate-spin"
-                          strokeWidth={1.5}
-                        />
-                      ) : (
-                        <Mic className="size-4" strokeWidth={1.5} />
-                      )}
-                    </Button>
-
-                    {showInlineQuestion ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          inlineQuestion.handleNext();
-                        }}
-                        disabled={!inlineQuestion.hasCurrentAnswer}
-                        className="h-8 shrink-0 rounded-full bg-primary px-3 text-xs text-primary-foreground transition-[transform,background-color,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/90 active:scale-[0.97] disabled:opacity-30"
-                      >
-                        <Check className="size-3.5" strokeWidth={1.5} />
-                        <span className="sm:hidden">
-                          {inlineQuestion.compactButtonLabel}
-                        </span>
-                        <span className="hidden sm:inline">
-                          {inlineQuestion.buttonLabel}
-                        </span>
-                      </Button>
-                    ) : isBusy && !hasComposerContent ? (
-                      <Button
-                        type="button"
-                        size="icon"
-                        onClick={onStopStream}
-                        aria-label="Stop generation"
-                        className="h-8 w-8 shrink-0 rounded-full bg-destructive text-destructive-foreground transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-destructive/90 active:scale-[0.97]"
-                        style={{ touchAction: "manipulation" }}
-                      >
-                        <Square className="size-3 fill-current" />
-                      </Button>
-                    ) : (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="relative inline-flex shrink-0">
-                            <Button
-                              type="submit"
-                              size="icon"
-                              onTouchEnd={() => {
-                                inputRef.current?.blur();
-                              }}
-                              disabled={
-                                isArchived ||
-                                Boolean(composerGate) ||
-                                (!isBusy && !hasComposerContent)
-                              }
-                              aria-label={
-                                isBusy ? "Queue message" : "Send message"
-                              }
-                              className="h-8 w-8 rounded-full bg-primary text-primary-foreground transition-[transform,background-color,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/90 active:scale-[0.97] disabled:opacity-30"
+                  {isBusy && input.trim().length > 0 && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span className="relative inline-flex">
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="secondary"
+                            disabled={
+                              isArchived ||
+                              Boolean(composerGate) ||
+                              isSendingInbox
+                            }
+                            onClick={async () => {
+                              const text = input.trim();
+                              if (!text) return;
+                              setInput("");
+                              await onSendInboxMessage(text);
+                              inputRef.current?.blur();
+                            }}
+                            className="h-8 w-8 rounded-full border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20"
+                            aria-label="Send to agent inbox"
+                          >
+                            <Inbox className="h-4 w-4" />
+                          </Button>
+                          {inboxUnreadCount > 0 && (
+                            <span
+                              className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground ring-2 ring-background"
+                              aria-hidden="true"
                             >
-                              <ArrowUp className="size-4" strokeWidth={1.5} />
-                            </Button>
-                            {isBusy && (
-                              <span
-                                className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none tabular-nums text-white ring-2 ring-background"
-                                aria-hidden="true"
-                              >
-                                {queuedCount + 1}
-                              </span>
-                            )}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">
-                          {isBusy
-                            ? `Queue message (position ${queuedCount + 1})`
-                            : "Send message"}
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                    {isBusy && input.trim().length > 0 && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="relative inline-flex shrink-0">
-                            <Button
-                              type="button"
-                              size="icon"
-                              variant="secondary"
-                              disabled={
-                                isArchived ||
-                                Boolean(composerGate) ||
-                                isSendingInbox
-                              }
-                              onClick={async () => {
-                                const text = input.trim();
-                                if (!text) return;
-                                setInput("");
-                                await onSendInboxMessage(text);
-                                inputRef.current?.blur();
-                              }}
-                              className="h-8 w-8 rounded-lg border border-primary/30 bg-primary/10 text-primary transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-primary/20 active:scale-[0.97]"
-                              aria-label="Send to agent inbox"
-                            >
-                              <Inbox className="size-4" strokeWidth={1.5} />
-                            </Button>
-                            {inboxUnreadCount > 0 && (
-                              <span
-                                className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none tabular-nums text-primary-foreground ring-2 ring-background"
-                                aria-hidden="true"
-                              >
-                                {inboxUnreadCount}
-                              </span>
-                            )}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top">
-                          Send to agent inbox (agent reads on next step)
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
+                              {inboxUnreadCount}
+                            </span>
+                          )}
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        Send to agent inbox (agent reads on next step)
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
                 </div>
               </div>
             </form>
