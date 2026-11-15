@@ -69,6 +69,9 @@ describe("admin-telemetry", () => {
       "billingWebhookEvents",
       "mcpServers",
       "composioSessions",
+      "composioConnectedAccounts",
+      "composioOAuthAttempts",
+      "composioSharedAccountGrants",
       "userSecrets",
       "userPlugins",
       "compactionEvents",
@@ -82,7 +85,7 @@ describe("admin-telemetry", () => {
     for (const tableName of expectedTables) {
       expect(schema[tableName]).toBeDefined();
     }
-    expect(expectedTables.length).toBe(30);
+    expect(expectedTables.length).toBe(33);
     expect(BUILTIN_PLUGIN_CATALOG.length).toBeGreaterThanOrEqual(5);
   });
 });

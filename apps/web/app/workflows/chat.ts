@@ -4342,8 +4342,40 @@ const runAgentStep = async (
         );
       }
     }
-    if (mcpToolSet?.tools && Object.keys(mcpToolSet.tools).length > 0) {
-      fullAgentOptions.extraTools = mcpToolSet.tools;
+    let composioMetaTools: import("ai").ToolSet = {};
+    try {
+      const { createComposioAgentMetaTools } =
+        await import("@/lib/composio/client");
+      const composioRuntime = await createComposioAgentMetaTools({
+        userId,
+        chatId,
+        sessionId,
+      });
+      composioMetaTools = composioRuntime.tools;
+      if (composioRuntime.connectedToolkits.length > 0) {
+        const prevConnected =
+          fullAgentOptions.mcpMetadata?.composioConnectedToolkits ?? [];
+        const mergedConnected = Array.from(
+          new Set([...prevConnected, ...composioRuntime.connectedToolkits]),
+        );
+        fullAgentOptions.mcpMetadata = {
+          composioConnectedToolkits: mergedConnected,
+          connectedIntegrations: mergedConnected,
+        };
+      }
+    } catch (composioErr) {
+      console.warn(
+        `[workflow] Failed to initialize Composio session meta tools for user ${userId}:`,
+        composioErr,
+      );
+    }
+
+    const mergedExtraTools: import("ai").ToolSet = {
+      ...mcpToolSet?.tools,
+      ...composioMetaTools,
+    };
+    if (Object.keys(mergedExtraTools).length > 0) {
+      fullAgentOptions.extraTools = mergedExtraTools;
     }
 
     const latestUserMsgForCommand = [...originalMessages]

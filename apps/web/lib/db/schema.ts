@@ -1024,3 +1024,141 @@ export const userPlugins = pgTable(
 
 export type UserPluginRow = typeof userPlugins.$inferSelect;
 export type NewUserPluginRow = typeof userPlugins.$inferInsert;
+
+export type ComposioConnectedAccountStatus =
+  | "INITIALIZING"
+  | "INITIATED"
+  | "ACTIVE"
+  | "FAILED"
+  | "EXPIRED"
+  | "INACTIVE";
+
+export type ComposioAccountType = "PRIVATE" | "SHARED";
+
+// Tracks Composio connected account metadata per Entry user.
+// Never stores OAuth access/refresh tokens — Composio manages all credentials.
+export const composioConnectedAccounts = pgTable(
+  "composio_connected_accounts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    composioUserId: text("composio_user_id").notNull(),
+    connectedAccountId: text("connected_account_id").notNull(),
+    toolkitSlug: text("toolkit_slug").notNull(),
+    authConfigId: text("auth_config_id"),
+    alias: text("alias"),
+    accountType: text("account_type", { enum: ["PRIVATE", "SHARED"] })
+      .notNull()
+      .default("PRIVATE"),
+    status: text("status", {
+      enum: [
+        "INITIALIZING",
+        "INITIATED",
+        "ACTIVE",
+        "FAILED",
+        "EXPIRED",
+        "INACTIVE",
+      ],
+    })
+      .notNull()
+      .default("INITIATED"),
+    isDefault: boolean("is_default").notNull().default(false),
+    isDisabled: boolean("is_disabled").notNull().default(false),
+    lastError: text("last_error"),
+    lastVerifiedAt: timestamp("last_verified_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("composio_connected_accounts_user_toolkit_idx").on(
+      table.userId,
+      table.toolkitSlug,
+    ),
+    uniqueIndex("composio_connected_accounts_account_id_idx").on(
+      table.connectedAccountId,
+    ),
+  ],
+);
+
+export type ComposioConnectedAccountRow =
+  typeof composioConnectedAccounts.$inferSelect;
+export type NewComposioConnectedAccountRow =
+  typeof composioConnectedAccounts.$inferInsert;
+
+// Short-lived OAuth initiation attempts bound to an authenticated Entry user
+// to prevent OAuth session fixation and verify callback ownership.
+export const composioOAuthAttempts = pgTable(
+  "composio_oauth_attempts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    stateNonce: text("state_nonce").notNull(),
+    toolkitSlug: text("toolkit_slug").notNull(),
+    connectedAccountId: text("connected_account_id"),
+    alias: text("alias"),
+    accountType: text("account_type", { enum: ["PRIVATE", "SHARED"] })
+      .notNull()
+      .default("PRIVATE"),
+    chatId: text("chat_id"),
+    sessionId: text("session_id"),
+    returnPath: text("return_path"),
+    status: text("status", {
+      enum: ["PENDING", "COMPLETED", "FAILED", "EXPIRED"],
+    })
+      .notNull()
+      .default("PENDING"),
+    expiresAt: timestamp("expires_at").notNull(),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("composio_oauth_attempts_state_nonce_idx").on(table.stateNonce),
+    index("composio_oauth_attempts_user_id_idx").on(table.userId),
+  ],
+);
+
+export type ComposioOAuthAttemptRow = typeof composioOAuthAttempts.$inferSelect;
+export type NewComposioOAuthAttemptRow =
+  typeof composioOAuthAttempts.$inferInsert;
+
+// Explicit access grants for SHARED Composio connections.
+// Private connections cannot be granted; only authorized Entry users can use a shared connection.
+export const composioSharedAccountGrants = pgTable(
+  "composio_shared_account_grants",
+  {
+    id: text("id").primaryKey(),
+    connectedAccountId: text("connected_account_id")
+      .notNull()
+      .references(() => composioConnectedAccounts.connectedAccountId, {
+        onDelete: "cascade",
+      }),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    granteeUserId: text("grantee_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    toolkitSlug: text("toolkit_slug").notNull(),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("composio_shared_grants_account_grantee_idx").on(
+      table.connectedAccountId,
+      table.granteeUserId,
+    ),
+    index("composio_shared_grants_grantee_toolkit_idx").on(
+      table.granteeUserId,
+      table.toolkitSlug,
+    ),
+  ],
+);
+
+export type ComposioSharedAccountGrantRow =
+  typeof composioSharedAccountGrants.$inferSelect;
+export type NewComposioSharedAccountGrantRow =
+  typeof composioSharedAccountGrants.$inferInsert;

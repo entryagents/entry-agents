@@ -526,6 +526,13 @@
       "when": 1794664696621,
       "tag": "0074_regular_scourge",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1794781181125,
+      "tag": "0075_dazzling_secret_warriors",
+      "breakpoints": true
     }
   ]
 }
