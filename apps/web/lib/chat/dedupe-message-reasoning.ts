@@ -1,5 +1,6 @@
 import { isToolUIPart } from "ai";
 import type { WebAgentUIMessage, WebAgentUIToolPart } from "@/app/types";
+import { isFriendlyChatErrorText } from "./friendly-error";
 
 /**
  * Returns a reasoning item ID from a part's provider metadata, if present.
@@ -119,20 +120,62 @@ export function dedupeMessageReasoning<T extends WebAgentUIMessage>(
 }
 
 /**
- * Full message parts deduplication (reasoning, tool calls, dynamic tools).
+ * Extract a secondary signature (toolName + canonical input) for matching
+ * an orphaned `input-available` / `input-streaming` tool call from an
+ * interrupted step attempt against a subsequent completed retry of the
+ * exact same tool call (which receives a new toolCallId).
+ */
+function getToolCallSignature(
+  part: WebAgentUIMessage["parts"][number],
+): string | undefined {
+  if (!isToolUIPart(part)) return undefined;
+  const anyPart = part as unknown as Record<string, unknown>;
+  const toolName =
+    typeof anyPart.toolName === "string" ? anyPart.toolName : part.type;
+  const rawInput =
+    typeof anyPart.input === "string"
+      ? anyPart.input
+      : JSON.stringify(anyPart.input ?? "");
+  return `${toolName}:${rawInput}`;
+}
+
+/**
+ * Full message parts deduplication (reasoning, tool calls, dynamic tools,
+ * and mid-message setup-error text splits).
  * Used when rendering and on stream updates so replayed stream chunks never
- * stack duplicate subagents or thoughts.
+ * stack duplicate subagents, duplicate thoughts, or split a turn in half
+ * with a friendly error banner.
  */
 export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
-  if (!message.parts || message.parts.length <= 1) {
+  if (!message.parts || message.parts.length === 0) {
     return message;
   }
 
   // First deduplicate reasoning
   const withDedupedReasoning = dedupeMessageReasoning(message);
 
+  // Check whether this assistant message has real work (reasoning, tool call,
+  // or non-error prose). If it does, any inline friendly setup-error text part
+  // that got injected mid-turn should be moved to metadata.turnError rather
+  // than splitting the assistant message in two.
+  const hasNonErrorAssistantWork =
+    message.role === "assistant" &&
+    withDedupedReasoning.parts.some((part) => {
+      if (part.type === "reasoning" || isToolUIPart(part)) {
+        return true;
+      }
+      if (part.type === "text") {
+        const trimmed = (part.text ?? "").trim();
+        return trimmed.length > 0 && !isFriendlyChatErrorText(trimmed);
+      }
+      return false;
+    });
+
   const seenToolCalls = new Map<string, number>();
+  const seenIncompleteToolBySignature = new Map<string, number>();
+  const seenCompletedToolSignatures = new Set<string>();
   let hasToolDuplicates = false;
+  let extractedTurnError: string | undefined;
   const filteredParts: WebAgentUIMessage["parts"] = [];
 
   let lastTextIndex = -1;
@@ -140,11 +183,19 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
   for (const part of withDedupedReasoning.parts) {
     const toolIdentity = getToolCallIdentity(part);
     if (toolIdentity) {
+      const newPart = part as WebAgentUIToolPart;
+      const toolSig = getToolCallSignature(part);
+      const isNewComplete =
+        newPart.state === "output-available" ||
+        newPart.state === "output-error";
+      const isNewIncomplete =
+        newPart.state === "input-available" ||
+        newPart.state === "input-streaming";
+
       if (seenToolCalls.has(toolIdentity)) {
         hasToolDuplicates = true;
         const existingIndex = seenToolCalls.get(toolIdentity)!;
         const existingPart = filteredParts[existingIndex] as WebAgentUIToolPart;
-        const newPart = part as WebAgentUIToolPart;
         const existingPre = Boolean(
           (existingPart as unknown as { preliminary?: boolean }).preliminary,
         );
@@ -157,11 +208,54 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
           (!newPre && existingPre);
         if (isNewMoreComplete) {
           filteredParts[existingIndex] = part;
+          if (toolSig && isNewComplete) {
+            seenIncompleteToolBySignature.delete(toolSig);
+            seenCompletedToolSignatures.add(toolSig);
+          }
         }
         continue;
       }
 
-      seenToolCalls.set(toolIdentity, filteredParts.length);
+      // If an earlier step attempt left an orphaned `input-available` tool call
+      // with the exact same toolName + input and a later retry succeeded with
+      // `output-available` (under a new toolCallId), replace the orphaned call
+      // in place so the UI does not show duplicate gray + completed tool rows.
+      if (
+        toolSig &&
+        isNewComplete &&
+        seenIncompleteToolBySignature.has(toolSig)
+      ) {
+        hasToolDuplicates = true;
+        const orphanIndex = seenIncompleteToolBySignature.get(toolSig)!;
+        filteredParts[orphanIndex] = part;
+        seenIncompleteToolBySignature.delete(toolSig);
+        seenCompletedToolSignatures.add(toolSig);
+        seenToolCalls.set(toolIdentity, orphanIndex);
+        lastTextIndex = -1;
+        continue;
+      }
+
+      // Conversely, if a completed tool call with this exact signature is
+      // already present and a stale local snapshot appends an incomplete
+      // orphan for the same command, skip the incomplete orphan.
+      if (
+        toolSig &&
+        isNewIncomplete &&
+        seenCompletedToolSignatures.has(toolSig)
+      ) {
+        hasToolDuplicates = true;
+        continue;
+      }
+
+      const insertIndex = filteredParts.length;
+      seenToolCalls.set(toolIdentity, insertIndex);
+      if (toolSig) {
+        if (isNewIncomplete && !seenIncompleteToolBySignature.has(toolSig)) {
+          seenIncompleteToolBySignature.set(toolSig, insertIndex);
+        } else if (isNewComplete) {
+          seenCompletedToolSignatures.add(toolSig);
+        }
+      }
       filteredParts.push(part);
       lastTextIndex = -1;
       continue;
@@ -170,6 +264,11 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
     if (part.type === "text") {
       const newText = (part.text ?? "").trim();
       if (!newText) {
+        continue;
+      }
+      if (hasNonErrorAssistantWork && isFriendlyChatErrorText(newText)) {
+        hasToolDuplicates = true;
+        extractedTurnError = extractedTurnError ?? newText;
         continue;
       }
       if (lastTextIndex >= 0) {
@@ -200,11 +299,27 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
     filteredParts.push(part);
   }
 
-  if (!hasToolDuplicates && withDedupedReasoning === message) {
+  if (
+    !hasToolDuplicates &&
+    extractedTurnError === undefined &&
+    withDedupedReasoning === message
+  ) {
     return message;
   }
 
-  return { ...message, parts: filteredParts };
+  const nextMetadata =
+    extractedTurnError && !message.metadata?.turnError
+      ? {
+          ...message.metadata,
+          turnError: extractedTurnError,
+        }
+      : message.metadata;
+
+  return {
+    ...message,
+    ...(nextMetadata !== undefined ? { metadata: nextMetadata } : {}),
+    parts: filteredParts,
+  };
 }
 
 /**

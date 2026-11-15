@@ -135,6 +135,8 @@ export function BashRenderer({
     <span className="rounded bg-blue-500/15 px-1.5 py-0.5 text-[11px] font-medium text-blue-500">
       detached
     </span>
+  ) : part.state === "output-available" && !isError ? (
+    "Done"
   ) : undefined;
 
   const errorMetaContent =
