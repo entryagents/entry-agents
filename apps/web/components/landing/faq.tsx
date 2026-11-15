@@ -12,9 +12,9 @@ const faqs: readonly { question: string; answer: string }[] = [
       "By default, Entry executes directly in a fast single-agent loop so focused fixes finish immediately. For broad multi-file builds, Team Mode coordinates dependency waves visibly inside your main chat: Wave 0 locks interface contracts, parallel builders edit disjoint files, and reviewers verify tests and diffs.",
   },
   {
-    question: "How does the Free $1 plan and $5 → $10 AI credit pricing work",
+    question: "What do plans cost and how does 99% prompt caching work",
     answer:
-      "Every account starts on the Free plan with $1 of real execution credit included. If you need more, try our $5/mo Plus plan and get $10 of AI credit (2x value), or scale up to Entry (Goat) ($13/mo → $50 credit), Pro ($20/mo → $100 credit), and Max ($40/mo → $180 credit) with zero per-token markup and up to 99% prompt caching across main chat and subagents.",
+      "Paid plans start at $5/mo (Plus, $10 credit) and go up to $13/mo Goat ($50 credit, 3.8x value), $20/mo Pro ($100 credit), and $40/mo Max ($180 credit) with zero per-token markup. Prompt caching reuses repository context and workspace history across turns, cutting repeat token costs by up to 99%.",
   },
   {
     question: "What happens if I lose internet or close my browser mid-turn",
