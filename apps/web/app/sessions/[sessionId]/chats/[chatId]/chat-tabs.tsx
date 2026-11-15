@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { SubagentIcon } from "@/components/agent-hub/agent-status";
+import { SubagentIcon } from "@/components/team/subagent-helpers";
 import { FileTypeIcon } from "@/components/file-type-icons";
 import { useGitPanel } from "./git-panel-context";
 

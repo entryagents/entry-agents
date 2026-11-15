@@ -183,6 +183,7 @@ const callOptionsSchema = z.object({
       composioConnectedToolkits: z.array(z.string()).optional(),
     })
     .optional(),
+  subagentMessageHistory: z.record(z.string(), z.array(z.unknown())).optional(),
 });
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -531,6 +532,9 @@ export const openAgent = new ToolLoopAgent({
         plugins: options.plugins,
         pluginRunner,
         pluginCompactionHints: contextHooks.compactionHints,
+        ...(options.subagentMessageHistory
+          ? { subagentMessageHistory: options.subagentMessageHistory }
+          : {}),
       },
     };
   },

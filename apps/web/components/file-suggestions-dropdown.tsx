@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getFileIcon, FolderIcon } from "@/components/file-type-icons";
-import { SubagentIcon } from "@/components/agent-hub/agent-status";
+import { SubagentIcon } from "@/components/team/subagent-helpers";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 
 interface FileSuggestionsDropdownProps {

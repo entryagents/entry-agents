@@ -160,10 +160,15 @@ IMPORTANT:
 
     const subagent = SUBAGENT_REGISTRY[subagentType].agent;
 
-    // Resumable subagent session handling: look up existing session or create fresh.
+    // Resumable subagent session handling: look up existing session, hydrate from
+    // durable persisted history if the worker restarted, or create fresh.
     const activeSessionId = sessionId?.trim() || crypto.randomUUID();
     let existingSession = sessionId
       ? subagentSessionStore.get(sessionId.trim())
+      : undefined;
+    const durableHistory = sessionId
+      ? (experimental_context as AgentContext | undefined)
+          ?.subagentMessageHistory?.[activeSessionId]
       : undefined;
     if (sessionId && !existingSession) {
       existingSession = subagentSessionStore.create({
@@ -171,6 +176,16 @@ IMPORTANT:
         subagentType,
         depth: currentDepth + 1,
       });
+    }
+    if (
+      existingSession &&
+      existingSession.messages.length === 0 &&
+      Array.isArray(durableHistory) &&
+      durableHistory.length > 0
+    ) {
+      existingSession.messages.push(
+        ...(durableHistory as typeof existingSession.messages),
+      );
     }
     const isFollowUp = Boolean(
       existingSession && existingSession.messages.length > 0,
