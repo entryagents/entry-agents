@@ -4062,11 +4062,11 @@ const runAgentStep = async (
     try {
       const [
         { getEnabledMcpServersForRequest, recordMcpServerConnectionResult },
-        { getComposioMcpServerConfig, getConnectedComposioToolkitsForUser },
+        { getIntegrationProvider },
         { prepareMcpServersForExecution },
       ] = await Promise.all([
         import("@/lib/db/mcp-servers"),
-        import("@/lib/mcp/composio"),
+        import("@/lib/integrations/registry"),
         import("@/lib/mcp/resolve-server-config"),
       ]);
       const rawEnabledServers = await getEnabledMcpServersForRequest(userId);
@@ -4098,9 +4098,24 @@ const runAgentStep = async (
       // same combined server list -- createMcpToolSet() doesn't care
       // which source a server config came from. Never throws: absent
       // COMPOSIO_API_KEY or any SDK failure resolves to null.
+      const integrationProvider = getIntegrationProvider();
+      const integrationMcp = integrationProvider.getMcpConfig(userId);
       const [composioServer, composioConnectedToolkits] = await Promise.all([
-        getComposioMcpServerConfig(userId),
-        getConnectedComposioToolkitsForUser(userId),
+        Promise.resolve(
+          integrationMcp
+            ? {
+                id: integrationProvider.id,
+                name: integrationProvider.name,
+                url: integrationMcp.url,
+                headers: integrationMcp.headers,
+                transport: "http" as const,
+              }
+            : null,
+        ),
+        integrationProvider
+          .listToolkits(userId)
+          .then((res) => res.items.map((item) => item.slug))
+          .catch(() => [] as string[]),
       ]);
       if (composioServer) {
         fullAgentOptions.mcpMetadata = {
