@@ -394,6 +394,7 @@ export interface McpPromptSummary {
   bridged: boolean;
   servers: Array<{ name: string; toolCount: number }>;
   directToolNames: string[];
+  connectedIntegrations?: string[];
   composioConnectedToolkits?: string[];
 }
 
@@ -503,23 +504,31 @@ function buildMcpPrompt(summary: McpPromptSummary): string {
         `- \`${server.name}\` (${server.toolCount} tool${server.toolCount === 1 ? "" : "s"})`,
     );
 
-  const hasComposio = summary.servers.some(
-    (s) => s.name.toLowerCase() === "composio",
+  const hasExecutor = summary.servers.some(
+    (s) => s.name.toLowerCase() === "executor",
   );
-  const connectedToolkits = (summary.composioConnectedToolkits ?? [])
+  const connectedApps = (
+    summary.connectedIntegrations ??
+    summary.composioConnectedToolkits ??
+    []
+  )
     .map((slug) => slug.trim().toLowerCase())
     .filter((slug) => slug.length > 0)
     .toSorted();
-  const connectedToolkitsLine =
-    connectedToolkits.length > 0
-      ? `\n- Connected user apps right now: ${connectedToolkits.map((slug) => `\`${slug}\``).join(", ")}.`
-      : "\n- No user apps are connected yet — if a requested integration isn't connected, generate an OAuth link via `COMPOSIO_MANAGE_CONNECTIONS` or ask them to connect it in **Settings -> Connections**.";
-  const composioGuidance = hasComposio
-    ? `\n\n### Composio App Integrations (Gmail, Slack, Notion, Linear, Calendar, Drive, Jira, Figma, etc.)
-- The \`composio\` server gives you access to 500+ app integrations via Composio Tool Router.${connectedToolkitsLine}
-- When the user asks to read/send Gmail, post to Slack, query Notion, create Linear/Jira issues, check Google Calendar/Drive, or use any connected SaaS app:
-  1. Discover the exact action tools via \`tool_search({ query })\` (or call \`mcp__composio__COMPOSIO_SEARCH_TOOLS\` directly if exposed).
-  2. Execute actions on any connected app right away; if an app is not yet authorized, use \`COMPOSIO_MANAGE_CONNECTIONS\` to generate an OAuth Connect Link and present it clearly, or point the user to **Settings -> Connections**.`
+
+  const connectedAppsLine =
+    connectedApps.length > 0
+      ? `\n- Connected apps detected right now: ${connectedApps.map((slug) => `\`${slug}\``).join(", ")}.`
+      : "\n- No user apps are linked yet — call `mcp__executor__search` to check live tools or help the user connect apps in **Settings -> Connections**.";
+
+  const executorGuidance = hasExecutor
+    ? `\n\n### Executor App Gateway (Gmail, GitHub, Linear, Slack, Notion, Calendar, Drive, Vercel, etc.)
+- The \`executor\` MCP server provides access to connected workplace apps via one unified gateway.${connectedAppsLine}
+- How to use Executor tools effectively:
+  1. Call \`mcp__executor__skills({})\` to see installed app instructions, or \`mcp__executor__search({ query })\` to find callable tool paths like \`tools.gmail.searchMessages\`.
+  2. Call \`mcp__executor__describe({ paths })\` to inspect exact input/output types before invoking an unfamiliar tool.
+  3. Use \`mcp__executor__call({ calls: [{ path, input }] })\` for direct calls, or \`mcp__executor__execute({ code })\` (JavaScript codemode) to filter or chain multiple app calls cleanly without bloating context.
+  4. If an account is required for an app, never ask the user to paste credentials in chat — point them to **Settings -> Connections** or start an Executor connection flow.`
     : "";
 
   if (summary.bridged) {
@@ -529,10 +538,10 @@ These external MCP servers are connected for this session:
 ${serverLines.join("\n")}
 
 To keep context fast, their schemas are indexed on-demand behind three bridge tools:
-1. Call \`tool_search({ query })\` with keywords or a server name (e.g., \`"${summary.servers[0]?.name ?? "github"}"\`) to find matching tool names.
+1. Call \`tool_search({ query })\` with keywords or a server name (e.g., \`"${summary.servers[0]?.name ?? "executor"}"\`) to find matching tool names.
 2. Call \`tool_describe({ tools })\` to load the exact parameter schema for the selected tool(s).
 3. Call \`tool_call({ tool, arguments })\` to run the tool.
-Use these MCP tools whenever the user's request involves an external service listed above.${composioGuidance}`;
+Use these MCP tools whenever the user's request involves an external service listed above.${executorGuidance}`;
   }
 
   const sortedDirect = [...summary.directToolNames].sort((a, b) =>
@@ -547,7 +556,7 @@ Use these MCP tools whenever the user's request involves an external service lis
 ## Connected MCP Servers
 These external MCP servers are connected and ready to call directly:
 ${serverLines.join("\n")}${directPreview}
-Call the \`mcp__<server>__<tool>\` tools directly whenever the user's request matches an external service listed above.${composioGuidance}`;
+Call the \`mcp__<server>__<tool>\` tools directly whenever the user's request matches an external service listed above.${executorGuidance}`;
 }
 
 /**

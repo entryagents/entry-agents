@@ -10,9 +10,19 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q") ?? undefined;
+  const category = searchParams.get("category") ?? undefined;
+  const offsetRaw = searchParams.get("offset");
+  const limitRaw = searchParams.get("limit");
   const providerId = searchParams.get("provider") ?? undefined;
 
+  const offset = offsetRaw !== null ? Number.parseInt(offsetRaw, 10) : 0;
+  const limit = limitRaw !== null ? Number.parseInt(limitRaw, 10) : 48;
+
   const provider = getIntegrationProvider(providerId);
-  const result = await provider.listToolkits(session.user.id, query);
+  const result = await provider.listToolkits(session.user.id, query, {
+    category,
+    offset: Number.isFinite(offset) ? offset : 0,
+    limit: Number.isFinite(limit) ? limit : 48,
+  });
   return NextResponse.json(result);
 }

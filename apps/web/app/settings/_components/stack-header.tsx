@@ -44,7 +44,9 @@ export function StackHeader({
   );
 
   const connectedAppsCount =
-    toolkitsData?.items?.filter((t) => t.connected).length ?? null;
+    toolkitsData?.connectedCount ??
+    toolkitsData?.items?.filter((t) => t.connected).length ??
+    null;
   const activeMcpCount = servers.filter((s) => s.enabled).length;
 
   const getTabCount = (href: string): string | null => {

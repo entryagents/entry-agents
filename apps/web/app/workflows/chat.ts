@@ -4098,19 +4098,16 @@ const runAgentStep = async (
         );
       }
 
-      // Composio (see lib/mcp/composio.ts) is a built-in MCP server,
-      // resolved the same way as a self-serve one and merged into the
-      // same combined server list -- createMcpToolSet() doesn't care
-      // which source a server config came from. Never throws: absent
-      // COMPOSIO_API_KEY or any SDK failure resolves to null.
+      // Built-in integration gateway (Executor by default via registry plugin)
+      // resolved per user with OAuth auto-refresh or encrypted PAT fallback.
       const integrationProvider = getIntegrationProvider();
-      const integrationMcp = integrationProvider.getMcpConfig(userId);
-      const [composioServer, composioConnectedToolkits] = await Promise.all([
+      const integrationMcp = await integrationProvider.getMcpConfig(userId);
+      const [integrationServer, connectedToolkits] = await Promise.all([
         Promise.resolve(
           integrationMcp
             ? {
                 id: integrationProvider.id,
-                name: integrationProvider.name,
+                name: integrationProvider.id,
                 url: integrationMcp.url,
                 headers: integrationMcp.headers,
                 transport: "http" as const,
@@ -4118,17 +4115,23 @@ const runAgentStep = async (
             : null,
         ),
         integrationProvider
-          .listToolkits(userId)
-          .then((res) => res.items.map((item) => item.slug))
+          .listToolkits(userId, undefined, {
+            category: "connected",
+            limit: 120,
+          })
+          .then((res) =>
+            res.items.filter((item) => item.connected).map((item) => item.slug),
+          )
           .catch(() => [] as string[]),
       ]);
-      if (composioServer) {
+      if (integrationServer) {
         fullAgentOptions.mcpMetadata = {
-          composioConnectedToolkits,
+          composioConnectedToolkits: connectedToolkits,
+          connectedIntegrations: connectedToolkits,
         };
       }
-      const combinedServers = composioServer
-        ? [...enabledServers, composioServer]
+      const combinedServers = integrationServer
+        ? [...enabledServers, integrationServer]
         : enabledServers;
       if (combinedServers.length > 0) {
         let stepMcpSandbox:
