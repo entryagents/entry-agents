@@ -45,9 +45,9 @@ import {
 } from "@/components/assistant-file-link";
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
-import { SubagentChatView } from "@/components/subagent-chat/subagent-chat-view";
-import { AgentHubButton } from "@/components/agent-hub/agent-hub-button";
-import { TeamPane } from "@/components/agent-hub/team-pane";
+import { SubagentThreadView } from "@/components/team/subagent-thread-view";
+import { TeamStatusButton } from "@/components/team/team-status-button";
+import { TeamWorkspace } from "@/components/team/team-workspace";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
 import {
   PinnedTodoPanel,
@@ -3229,7 +3229,7 @@ export function SessionChatContent({
       {/* Agent Team Hub portaled into SessionHeader actions slot */}
       {headerActionsNode &&
         createPortal(
-          <AgentHubButton
+          <TeamStatusButton
             messages={messages}
             onStopRun={handleStopStream}
             isDesktopTeamPaneOpen={teamPaneOpen}
@@ -3241,7 +3241,7 @@ export function SessionChatContent({
             isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
             freePlanModelId={freePlanModelId}
             freeTierAllowedModelIds={freeTierAllowedModelIds}
-            onOpenSubagentTab={(subagentId, title, subagentType) =>
+            onSelectSubagent={(subagentId, title, subagentType) =>
               openSubagentTab(subagentId, title, subagentType)
             }
           />,
@@ -3317,11 +3317,14 @@ export function SessionChatContent({
             ) : activeView === "file" && focusedFilePath ? (
               <FileTabView />
             ) : activeView === "subagent" && activeSubagentId ? (
-              <SubagentChatView
+              <SubagentThreadView
                 subagentId={activeSubagentId}
                 messages={messages}
+                streamdownComponents={streamdownComponents}
                 onClose={closeSubagentTab}
                 onStopRun={() => void stopChatStream()}
+                onApproveTool={handleApproveTool}
+                onDenyTool={handleDenyTool}
               />
             ) : null}
 
@@ -3531,7 +3534,7 @@ export function SessionChatContent({
 
         {teamPaneOpen && (
           <div className="hidden h-full w-[360px] shrink-0 overflow-hidden border-l border-border/80 bg-background lg:flex xl:w-[380px]">
-            <TeamPane
+            <TeamWorkspace
               className="w-full"
               messages={messages}
               defaultModelId={chatInfo.modelId}
@@ -3541,7 +3544,7 @@ export function SessionChatContent({
               isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
               freePlanModelId={freePlanModelId}
               freeTierAllowedModelIds={freeTierAllowedModelIds}
-              onSelectMember={(subagentId, title, subagentType) =>
+              onSelectSubagent={(subagentId, title, subagentType) =>
                 openSubagentTab(subagentId, title, subagentType)
               }
               onStopRun={handleStopStream}

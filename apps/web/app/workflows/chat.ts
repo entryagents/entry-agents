@@ -2642,9 +2642,38 @@ export async function runAgentWorkflow(options: Options) {
       ...modelRuntime.agentOptions.teamRoleModels,
       ...options.agentOptions?.teamRoleModels,
     };
+    const subagentMessageHistory: Record<string, unknown[]> = {};
+    for (const msg of options.messages) {
+      if (msg.role !== "assistant" || !Array.isArray(msg.parts)) continue;
+      for (const part of msg.parts) {
+        if (!isToolUIPart(part)) continue;
+        const toolName = part.type.startsWith("tool-")
+          ? part.type.slice(5)
+          : undefined;
+        if (toolName !== "task" || part.state !== "output-available") continue;
+        const out = part.output as
+          | { sessionId?: unknown; final?: unknown }
+          | undefined;
+        if (
+          out &&
+          typeof out.sessionId === "string" &&
+          out.sessionId.length > 0 &&
+          Array.isArray(out.final) &&
+          out.final.length > 0
+        ) {
+          subagentMessageHistory[out.sessionId] = withoutUndefined(
+            out.final,
+          ) as unknown[];
+        }
+      }
+    }
+
     const agentOptions: WorkflowAgentOptions = {
       ...modelRuntime.agentOptions,
       ...options.agentOptions,
+      ...(Object.keys(subagentMessageHistory).length > 0
+        ? { subagentMessageHistory }
+        : {}),
       // The gateway's live catalog is the single runtime source of truth
       // for model context windows. Pass it into the agent selection so
       // prepareStep/auto-compaction never falls back to a stale hardcoded

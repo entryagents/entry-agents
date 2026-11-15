@@ -363,6 +363,8 @@ export interface AgentContext {
   plugins?: ResolvedEntryPlugin[];
   /** Live gateway context window override for auto-compaction. */
   contextWindow?: number;
+  /** Durable persisted subagent histories keyed by subagent sessionId. */
+  subagentMessageHistory?: Record<string, unknown[]>;
   /** Compaction threshold override (0.1 to 0.95). */
   compactionThreshold?: number;
 }

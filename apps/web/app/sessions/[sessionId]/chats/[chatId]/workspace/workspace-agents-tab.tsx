@@ -9,7 +9,7 @@ import {
   Terminal,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { StatusBadge, SubagentIcon } from "@/components/agent-hub/agent-status";
+import { StatusBadge, SubagentIcon } from "@/components/team/subagent-helpers";
 import { Button } from "@/components/ui/button";
 import {
   deriveAgentHubRoster,
