@@ -14,11 +14,11 @@ import { Button } from "@/components/ui/button";
 import {
   Bug,
   Heart,
+  Lightbulb,
   Loader2,
   MessageSquare,
   Minus,
   Send,
-  Sparkles,
   ThumbsDown,
   ThumbsUp,
 } from "lucide-react";
@@ -30,7 +30,7 @@ interface FeedbackDialogProps {
 
 const CATEGORIES = [
   { id: "bug", label: "Bug report", icon: Bug },
-  { id: "feature", label: "Feature request", icon: Sparkles },
+  { id: "feature", label: "Feature request", icon: Lightbulb },
   { id: "general", label: "General", icon: MessageSquare },
 ] as const;
 

@@ -10,7 +10,7 @@ import {
   GitBranch,
   Plus,
   Search,
-  Sparkles,
+  Terminal,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -262,18 +262,21 @@ export function SkillsSection() {
   return (
     <div className="space-y-6">
       {/* Top summary bar & tab switcher */}
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs font-medium text-emerald-600 dark:text-emerald-400">
-              <Sparkles className="h-3 w-3" />
-              {builtinSkills.length} Built-in Skills Ready
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-muted/60 px-2 py-0.5 font-mono text-xs font-medium tabular-nums text-foreground">
+              <Terminal
+                className="h-3 w-3 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+              {builtinSkills.length} built-in skills
             </span>
             {globalSkillRefs.length > 0 && (
-              <span className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/60 px-2 py-0.5 font-mono text-xs text-muted-foreground">
-                <GitBranch className="h-3 w-3" />
-                {globalSkillRefs.length} GitHub Repo{" "}
-                {globalSkillRefs.length === 1 ? "Skill" : "Skills"}
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-muted/60 px-2 py-0.5 font-mono text-xs tabular-nums text-muted-foreground">
+                <GitBranch className="h-3 w-3" strokeWidth={1.5} />
+                {globalSkillRefs.length} GitHub{" "}
+                {globalSkillRefs.length === 1 ? "pack" : "packs"}
               </span>
             )}
           </div>
@@ -294,30 +297,30 @@ export function SkillsSection() {
           </p>
         </div>
 
-        <div className="inline-flex shrink-0 rounded-lg border border-border bg-muted/50 p-1">
+        <div className="inline-flex shrink-0 rounded-lg border border-border/80 bg-muted/50 p-1">
           <button
             type="button"
             onClick={() => setActiveTab("builtin")}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              "rounded-md px-3 py-1.5 text-xs font-medium tabular-nums transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98]",
               activeTab === "builtin"
                 ? "bg-background text-foreground shadow-2xs"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            Built-in Catalog ({builtinSkills.length})
+            Built-in catalog ({builtinSkills.length})
           </button>
           <button
             type="button"
             onClick={() => setActiveTab("github")}
             className={cn(
-              "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+              "rounded-md px-3 py-1.5 text-xs font-medium tabular-nums transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98]",
               activeTab === "github"
                 ? "bg-background text-foreground shadow-2xs"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            GitHub Skill Packs ({globalSkillRefs.length})
+            GitHub skill packs ({globalSkillRefs.length})
           </button>
         </div>
       </div>
@@ -333,10 +336,10 @@ export function SkillsSection() {
                   type="button"
                   onClick={() => setCategoryFilter(cat.id)}
                   className={cn(
-                    "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+                    "rounded-lg border px-2.5 py-1 text-xs font-medium transition-[background-color,color,border-color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98]",
                     categoryFilter === cat.id
                       ? "border-foreground/20 bg-foreground text-background"
-                      : "border-border bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                      : "border-border/80 bg-background text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                   )}
                 >
                   {cat.label}
@@ -345,7 +348,10 @@ export function SkillsSection() {
             </div>
 
             <div className="relative w-full sm:w-64">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                strokeWidth={1.5}
+              />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -359,28 +365,18 @@ export function SkillsSection() {
           <div className="grid gap-3 sm:grid-cols-2">
             {filteredBuiltinSkills.map((skill) => {
               const isCopied = copiedSkill === skill.name;
-              const isFeatured =
-                skill.name === "unslop" ||
-                skill.name === "frontend-design" ||
-                skill.name === "code-review" ||
-                skill.name === "composio";
               return (
                 <div
                   key={skill.name}
-                  className={cn(
-                    "flex flex-col justify-between gap-3 rounded-xl border bg-card p-4 transition-colors",
-                    isFeatured
-                      ? "border-emerald-500/30"
-                      : "border-border hover:border-border/90",
-                  )}
+                  className="flex flex-col justify-between gap-3 rounded-xl border border-border/80 bg-card p-4 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border"
                 >
                   <div className="space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        <span className="rounded-md border border-border/80 bg-muted/70 px-2 py-0.5 font-mono text-xs font-medium text-foreground">
                           /{skill.name}
                         </span>
-                        <span className="rounded border border-border/70 bg-muted/50 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        <span className="rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                           {skill.categoryLabel}
                         </span>
                       </div>
@@ -396,8 +392,11 @@ export function SkillsSection() {
                   </div>
 
                   <div className="flex items-center justify-between gap-2 border-t border-border/60 pt-3">
-                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                      <Check className="h-3 w-3" />
+                    <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                      <Check
+                        className="h-3 w-3 text-emerald-600 dark:text-emerald-400"
+                        strokeWidth={1.5}
+                      />
                       Active in all sessions
                     </span>
                     <div className="flex items-center gap-1.5">
@@ -408,7 +407,7 @@ export function SkillsSection() {
                         onClick={() => setInspectedSkill(skill)}
                         className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
                       >
-                        <Eye className="h-3.5 w-3.5" />
+                        <Eye className="h-3.5 w-3.5" strokeWidth={1.5} />
                         SKILL.md
                       </Button>
                       <Button
@@ -420,12 +419,16 @@ export function SkillsSection() {
                       >
                         {isCopied ? (
                           <>
-                            <Check className="h-3 w-3 text-emerald-500" />
+                            <Check
+                              className="h-3 w-3 text-emerald-600 dark:text-emerald-400"
+                              strokeWidth={1.5}
+                            />
                             Copied
                           </>
                         ) : (
                           <>
-                            <Copy className="h-3 w-3" />/{skill.name}
+                            <Copy className="h-3 w-3" strokeWidth={1.5} />/
+                            {skill.name}
                           </>
                         )}
                       </Button>
@@ -442,7 +445,7 @@ export function SkillsSection() {
           <div className="space-y-3">
             <div>
               <h3 className="text-sm font-medium">
-                1-Click GitHub Skill Repositories
+                Curated GitHub skill packs
               </h3>
               <p className="text-xs text-muted-foreground">
                 Install community and official skill repositories into every new
@@ -489,12 +492,12 @@ export function SkillsSection() {
                       >
                         {installed ? (
                           <>
-                            <Check className="mr-1 h-3 w-3" />
+                            <Check className="mr-1 h-3 w-3" strokeWidth={1.5} />
                             Installed
                           </>
                         ) : (
                           <>
-                            <Plus className="mr-1 h-3 w-3" />
+                            <Plus className="mr-1 h-3 w-3" strokeWidth={1.5} />
                             Install
                           </>
                         )}
@@ -507,10 +510,10 @@ export function SkillsSection() {
           </div>
 
           {/* Custom GitHub Skill Installer */}
-          <div className="rounded-xl border border-border bg-card p-4 space-y-4">
+          <div className="space-y-4 rounded-xl border border-border bg-card p-4">
             <div className="space-y-1">
               <h3 className="text-sm font-medium">
-                Install Any GitHub Skill Repository
+                Install a GitHub skill repository
               </h3>
               <p className="text-xs text-muted-foreground">
                 Paste a GitHub <code className="font-mono">owner/repo</code> (or{" "}
@@ -525,7 +528,7 @@ export function SkillsSection() {
             >
               <div className="grid gap-1.5">
                 <Label htmlFor="skill-repo-source" className="text-xs">
-                  GitHub Repository (or owner/repo/skill)
+                  GitHub repository (or owner/repo/skill)
                 </Label>
                 <Input
                   id="skill-repo-source"
@@ -538,7 +541,7 @@ export function SkillsSection() {
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="skill-repo-name" className="text-xs">
-                  Skill Name
+                  Skill name
                 </Label>
                 <Input
                   id="skill-repo-name"
@@ -550,8 +553,8 @@ export function SkillsSection() {
                 />
               </div>
               <Button type="submit" disabled={isMutating}>
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                Add Skill
+                <Plus className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.5} />
+                Add skill
               </Button>
             </form>
 
@@ -561,8 +564,8 @@ export function SkillsSection() {
 
             {globalSkillRefs.length > 0 && (
               <div className="space-y-2 pt-2">
-                <Label className="text-xs text-muted-foreground">
-                  Installed GitHub Skills ({globalSkillRefs.length})
+                <Label className="text-xs text-muted-foreground tabular-nums">
+                  Installed GitHub skills ({globalSkillRefs.length})
                 </Label>
                 <div className="divide-y divide-border/60 rounded-lg border border-border/70">
                   {globalSkillRefs.map((ref, idx) => (
@@ -589,7 +592,7 @@ export function SkillsSection() {
                         className="text-muted-foreground hover:text-destructive"
                         aria-label={`Remove ${ref.skillName}`}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
                       </Button>
                     </div>
                   ))}
@@ -610,8 +613,11 @@ export function SkillsSection() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 font-mono text-base">
-              <FileCode2 className="h-4 w-4 text-emerald-500" />/
-              {inspectedSkill?.name}
+              <FileCode2
+                className="h-4 w-4 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+              /{inspectedSkill?.name}
             </DialogTitle>
             <DialogDescription className="text-xs leading-relaxed">
               {inspectedSkill?.description}
@@ -646,7 +652,7 @@ export function SkillsSection() {
                   size="sm"
                   onClick={() => handleCopyCommand(inspectedSkill.name)}
                 >
-                  <Copy className="mr-1.5 h-3.5 w-3.5" />
+                  <Copy className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.5} />
                   Copy /{inspectedSkill.name}
                 </Button>
               </div>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ExtensionsHeader } from "../_components/extensions-header";
 import { SkillsSection } from "./skills-section";
 
 export const metadata: Metadata = {
@@ -10,18 +11,10 @@ export const metadata: Metadata = {
 export default function SkillsPage() {
   return (
     <div className="space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Agent Skills</h1>
-        <p className="text-sm text-muted-foreground">
-          Built-in domain skills and GitHub skill packs that Entry Agent can
-          invoke automatically or via{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground">
-            /skill-name
-          </code>{" "}
-          in any chat.
-        </p>
-      </div>
-
+      <ExtensionsHeader
+        title="Agent skills"
+        description="Built-in domain skills and GitHub skill packs invoked automatically or via /skill-name in any chat."
+      />
       <SkillsSection />
     </div>
   );

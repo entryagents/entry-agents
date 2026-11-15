@@ -6,7 +6,7 @@ import {
   ChevronDown,
   GitMerge,
   Loader2,
-  Sparkles,
+  Wrench,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { mergePr, type MergePullRequestResult } from "@/lib/github/actions/pr";
@@ -363,7 +363,7 @@ export function MergePrDialog({
                         void onFixConflicts(baseBranchRef);
                       }}
                     >
-                      <Sparkles className="mr-2 h-3.5 w-3.5" />
+                      <Wrench className="mr-2 h-3.5 w-3.5" strokeWidth={1.5} />
                       Fix conflicts
                     </Button>
                   </div>

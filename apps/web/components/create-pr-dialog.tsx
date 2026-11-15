@@ -5,7 +5,7 @@ import {
   ChevronDown,
   ExternalLink,
   Loader2,
-  Sparkles,
+  PenLine,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
@@ -549,7 +549,7 @@ export function CreatePRDialog({
                       </>
                     ) : (
                       <>
-                        <Sparkles className="mr-2 h-4 w-4" />
+                        <PenLine className="mr-2 h-4 w-4" strokeWidth={1.5} />
                         Auto-generate with AI
                       </>
                     )}

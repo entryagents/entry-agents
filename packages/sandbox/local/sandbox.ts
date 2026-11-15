@@ -1,5 +1,3 @@
-"use step";
-
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";

@@ -89,6 +89,9 @@ export {
   addLanguageModelUsage,
   collectTaskToolUsage,
   collectTaskToolUsageEvents,
+  enrichUsageWithProviderCache,
+  extractCachedInputTokens,
+  extractCacheWriteTokens,
   sumLanguageModelUsage,
 } from "./usage";
 export {

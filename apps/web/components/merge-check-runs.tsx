@@ -8,7 +8,7 @@ import {
   CircleDotDashed,
   Loader2,
   RefreshCw,
-  Sparkles,
+  Wrench,
   X,
 } from "lucide-react";
 import type { CheckRun, CheckState } from "@/lib/github/pulls";
@@ -285,9 +285,9 @@ function FixErrorsButton({
       onClick={() => void handleClick()}
     >
       {isFixing ? (
-        <Loader2 className="h-3 w-3 animate-spin" />
+        <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.5} />
       ) : (
-        <Sparkles className="h-3 w-3" />
+        <Wrench className="h-3 w-3" strokeWidth={1.5} />
       )}
       {isFixing ? "Analyzing logs…" : "Fix errors"}
     </button>

@@ -1,5 +1,3 @@
-import { connectSandbox } from "@entry-agents/sandbox";
-import { getSessionById, updateSession } from "@/lib/db/sessions";
 import {
   canOperateOnSandbox,
   clearSandboxState,
@@ -30,6 +28,9 @@ async function finalizeArchivedSandboxStep(
   reason?: string;
 }> {
   "use step";
+
+  const { connectSandbox } = await import("@entry-agents/sandbox");
+  const { getSessionById, updateSession } = await import("@/lib/db/sessions");
 
   const session = await getSessionById(sessionId);
   if (!session || session.status !== "archived") {

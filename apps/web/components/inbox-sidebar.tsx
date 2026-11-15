@@ -125,35 +125,61 @@ function getSessionStatusIcon(session: SessionWithUnread) {
   // Actively streaming / waiting for LLM
   if (session.hasStreaming) {
     return (
-      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+      <Loader2
+        className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground"
+        strokeWidth={1.5}
+      />
     );
   }
 
-  // PR merged → purple merge icon
+  // PR merged
   if (session.prNumber && session.prStatus === "merged") {
-    return <GitMerge className="h-3.5 w-3.5 shrink-0 text-purple-500" />;
+    return (
+      <GitMerge
+        className="h-3.5 w-3.5 shrink-0 text-indigo-500"
+        strokeWidth={1.5}
+      />
+    );
   }
 
-  // PR open → yellow-orange PR icon (awaiting review)
+  // PR open
   if (session.prNumber && session.prStatus === "open") {
-    return <GitPullRequest className="h-3.5 w-3.5 shrink-0 text-green-500" />;
+    return (
+      <GitPullRequest
+        className="h-3.5 w-3.5 shrink-0 text-green-500"
+        strokeWidth={1.5}
+      />
+    );
   }
 
   // PR closed (not merged)
   if (session.prNumber && session.prStatus === "closed") {
-    return <GitPullRequest className="h-3.5 w-3.5 shrink-0 text-red-500" />;
+    return (
+      <GitPullRequest
+        className="h-3.5 w-3.5 shrink-0 text-red-500"
+        strokeWidth={1.5}
+      />
+    );
   }
 
   // Has a branch with code changes → needs human follow-up
   const hasDiff = session.linesAdded || session.linesRemoved;
   if (session.branch && hasDiff) {
-    return <GitBranch className="h-3.5 w-3.5 shrink-0 text-amber-500" />;
+    return (
+      <GitBranch
+        className="h-3.5 w-3.5 shrink-0 text-amber-500"
+        strokeWidth={1.5}
+      />
+    );
   }
 
   // Has a branch but no changes yet → new session, still getting started
   if (session.branch) {
     return (
-      <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+      <GitBranch
+        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70"
+        strokeWidth={1.5}
+      />
     );
   }
 
@@ -161,19 +187,30 @@ function getSessionStatusIcon(session: SessionWithUnread) {
   const isChat = !session.repoName?.trim();
   if (isChat) {
     return (
-      <CircleDashed className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+      <CircleDashed
+        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60"
+        strokeWidth={1.5}
+      />
     );
   }
 
   // Creating / instantiating sandbox (no branch yet)
   if (session.status === "running") {
     return (
-      <Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+      <Monitor
+        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70"
+        strokeWidth={1.5}
+      />
     );
   }
 
   // Default: sandbox icon
-  return <Monitor className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />;
+  return (
+    <Monitor
+      className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50"
+      strokeWidth={1.5}
+    />
+  );
 }
 
 function getSessionStatusLabel(session: SessionWithUnread): {
@@ -442,7 +479,7 @@ const SessionRow = memo(function SessionRow({
                 onOpenBranchPicker(repoOwner, repoName);
               }}
             >
-              <GitBranch className="h-3.5 w-3.5" />
+              <GitBranch className="h-3.5 w-3.5" strokeWidth={1.5} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" sideOffset={4}>
@@ -455,7 +492,7 @@ const SessionRow = memo(function SessionRow({
           <TooltipTrigger asChild>
             <button
               type="button"
-              className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+              className="rounded p-0.5 text-muted-foreground/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-muted-foreground"
               aria-label="Rename session"
               onClick={(event) => {
                 event.stopPropagation();
@@ -468,7 +505,7 @@ const SessionRow = memo(function SessionRow({
                 setIsRenaming(true);
               }}
             >
-              <Pencil className="h-3.5 w-3.5" />
+              <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" sideOffset={4}>
@@ -480,7 +517,7 @@ const SessionRow = memo(function SessionRow({
         <TooltipTrigger asChild>
           <button
             type="button"
-            className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+            className="rounded p-0.5 text-muted-foreground/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-muted-foreground"
             aria-label={
               session.status === "archived"
                 ? "Unarchive session"
@@ -495,7 +532,7 @@ const SessionRow = memo(function SessionRow({
               onArchiveSession(session);
             }}
           >
-            <Archive className="h-3.5 w-3.5" />
+            <Archive className="h-3.5 w-3.5" strokeWidth={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={4}>
@@ -520,7 +557,7 @@ const SessionRow = memo(function SessionRow({
   const sessionButton = (
     <button
       type="button"
-      className={`group relative flex w-full items-start gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,opacity] cursor-pointer ${
+      className={`group relative flex w-full items-start gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
         isActive ? "bg-sidebar-active text-foreground" : "hover:bg-muted/50"
       } ${isPending ? "opacity-80" : "opacity-100"} ${actionButtons ? "pr-14" : ""}`}
       onClick={() => {
@@ -552,9 +589,9 @@ const SessionRow = memo(function SessionRow({
             ) : null}
             {session.prNumber ? (
               <span
-                className={`shrink-0 font-mono text-[10px] font-medium ${
+                className={`shrink-0 font-mono text-[10px] font-medium tabular-nums ${
                   session.prStatus === "merged"
-                    ? "text-purple-400"
+                    ? "text-indigo-400"
                     : session.prStatus === "open"
                       ? "text-emerald-400"
                       : "text-red-400"
@@ -565,7 +602,10 @@ const SessionRow = memo(function SessionRow({
             ) : null}
             {session.branch ? (
               <span className="inline-flex min-w-0 items-center gap-0.5 truncate font-mono text-[10px] text-muted-foreground/70">
-                <GitBranch className="h-2.5 w-2.5 shrink-0 opacity-70" />
+                <GitBranch
+                  className="h-2.5 w-2.5 shrink-0 opacity-70"
+                  strokeWidth={1.5}
+                />
                 <span className="truncate">{session.branch}</span>
               </span>
             ) : null}
@@ -971,13 +1011,13 @@ export function InboxSidebar({
               <button
                 type="button"
                 onClick={() => setShowArchived(true)}
-                className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
+                className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
                   showArchived
                     ? "bg-sidebar-active text-foreground shadow-2xs"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <Archive className="h-3 w-3" />
+                <Archive className="h-3 w-3" strokeWidth={1.5} />
                 <span>Archive</span>
                 {archivedCount > 0 ? (
                   <span className="ml-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
@@ -999,13 +1039,16 @@ export function InboxSidebar({
             className="h-7 w-7 text-muted-foreground hover:text-foreground"
             aria-label="New session"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4" strokeWidth={1.5} />
           </Button>
         </div>
 
         {/* Borderless Filter Input */}
-        <div className="mb-1.5 flex items-center rounded-lg px-2 py-1 transition-colors hover:bg-muted/40 focus-within:bg-muted/50">
-          <Search className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/75" />
+        <div className="mb-1.5 flex items-center rounded-lg px-2 py-1 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/40 focus-within:bg-muted/50">
+          <Search
+            className="mr-1.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/75"
+            strokeWidth={1.5}
+          />
           <input
             type="text"
             value={desktopSearchQuery}
@@ -1020,7 +1063,7 @@ export function InboxSidebar({
               className="ml-1 rounded p-0.5 text-muted-foreground hover:text-foreground"
               aria-label="Clear filter"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3 w-3" strokeWidth={1.5} />
             </button>
           ) : (
             <button
@@ -1030,7 +1073,7 @@ export function InboxSidebar({
                   new CustomEvent("entry:open-command-palette"),
                 );
               }}
-              className="ml-1 shrink-0 rounded border border-border/60 bg-background/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors hover:border-border hover:text-foreground cursor-pointer"
+              className="ml-1 shrink-0 rounded border border-border/60 bg-background/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border hover:text-foreground cursor-pointer"
               title="Open command palette (⌘K)"
               aria-label="Open command palette"
             >
@@ -1045,8 +1088,8 @@ export function InboxSidebar({
             <div className="space-y-1 p-1">
               {Array.from({ length: 5 }).map((_, index) => (
                 <div key={index} className="space-y-1.5 rounded-lg px-2 py-2">
-                  <div className="h-3.5 w-3/4 animate-pulse rounded bg-muted" />
-                  <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+                  <div className="h-3.5 w-3/4 rounded bg-muted/60" />
+                  <div className="h-3 w-1/2 rounded bg-muted/45" />
                 </div>
               ))}
             </div>
@@ -1125,7 +1168,7 @@ export function InboxSidebar({
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 text-left transition-colors cursor-pointer ${
+                    className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 text-left transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
                       profileMenuOpen
                         ? "bg-muted text-foreground"
                         : "hover:bg-muted/60 text-foreground"
@@ -1197,9 +1240,9 @@ export function InboxSidebar({
                         if (isMobile) setOpenMobile(false);
                         router.push("/settings/usage");
                       }}
-                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 cursor-pointer"
                     >
-                      <span>Usage &amp; Balance</span>
+                      <span>Usage &amp; balance</span>
                       <span className="font-mono text-xs tabular-nums text-muted-foreground">
                         {creditDisplay}
                       </span>
@@ -1212,10 +1255,13 @@ export function InboxSidebar({
                         if (isMobile) setOpenMobile(false);
                         router.push("/settings");
                       }}
-                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 cursor-pointer"
                     >
                       <span>Settings</span>
-                      <Settings className="h-4 w-4 text-muted-foreground" />
+                      <Settings
+                        className="h-4 w-4 text-muted-foreground"
+                        strokeWidth={1.5}
+                      />
                     </button>
                   </div>
 
@@ -1227,10 +1273,13 @@ export function InboxSidebar({
                         if (isMobile) setOpenMobile(false);
                         setFeedbackOpen(true);
                       }}
-                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 cursor-pointer"
                     >
                       <span>Feedback</span>
-                      <SmilePlus className="h-4 w-4 text-muted-foreground" />
+                      <SmilePlus
+                        className="h-4 w-4 text-muted-foreground"
+                        strokeWidth={1.5}
+                      />
                     </button>
 
                     <div className="flex items-center justify-between px-3.5 py-1.5 text-[13px] text-foreground">
@@ -1241,39 +1290,39 @@ export function InboxSidebar({
                           onClick={() => setTheme("system")}
                           aria-label="System theme"
                           title="System theme"
-                          className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
+                          className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
                             theme === "system"
                               ? "border border-border bg-muted text-foreground shadow-2xs"
                               : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
-                          <Monitor className="h-3.5 w-3.5" />
+                          <Monitor className="h-3.5 w-3.5" strokeWidth={1.5} />
                         </button>
                         <button
                           type="button"
                           onClick={() => setTheme("light")}
                           aria-label="Light theme"
                           title="Light theme"
-                          className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
+                          className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
                             theme === "light"
                               ? "border border-border bg-muted text-foreground shadow-2xs"
                               : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
-                          <Sun className="h-3.5 w-3.5" />
+                          <Sun className="h-3.5 w-3.5" strokeWidth={1.5} />
                         </button>
                         <button
                           type="button"
                           onClick={() => setTheme("dark")}
                           aria-label="Dark theme"
                           title="Dark theme"
-                          className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors cursor-pointer ${
+                          className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
                             theme === "dark"
                               ? "border border-border bg-muted text-foreground shadow-2xs"
                               : "text-muted-foreground hover:text-foreground"
                           }`}
                         >
-                          <Moon className="h-3.5 w-3.5" />
+                          <Moon className="h-3.5 w-3.5" strokeWidth={1.5} />
                         </button>
                       </div>
                     </div>
@@ -1287,10 +1336,13 @@ export function InboxSidebar({
                         if (isMobile) setOpenMobile(false);
                         void signOut();
                       }}
-                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors hover:bg-muted/60 cursor-pointer"
+                      className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 cursor-pointer"
                     >
-                      <span>Sign Out</span>
-                      <LogOut className="h-4 w-4 text-muted-foreground" />
+                      <span>Sign out</span>
+                      <LogOut
+                        className="h-4 w-4 text-muted-foreground"
+                        strokeWidth={1.5}
+                      />
                     </button>
                   </div>
                 </PopoverContent>

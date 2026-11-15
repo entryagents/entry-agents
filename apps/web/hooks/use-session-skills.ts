@@ -68,7 +68,7 @@ const FEATURED_SKILL_ORDER = [
   "plan-mode",
   "baseline-ui",
   "web-animation-design",
-  "composio",
+  "executor",
   "workflow",
 ];
 
