@@ -363,6 +363,28 @@ describe("/api/sessions/[sessionId]/chats/[chatId]", () => {
     expect(deleteChatCalls).toHaveLength(0);
   });
 
+  test("PATCH persists and returns reasoningEffort for a gateway-advertised reasoning model", async () => {
+    updatedChat = {
+      id: "chat-1",
+      sessionId: "session-1",
+      title: "Updated",
+      modelId: "deepseek-v4-pro",
+      reasoningEffort: "high",
+    } as ChatRecord & { reasoningEffort: string };
+    const { PATCH } = await routeModulePromise;
+
+    const response = await PATCH(
+      createPatchRequest({ reasoningEffort: "high" }),
+      createContext(),
+    );
+    const body = (await response.json()) as {
+      chat: ChatRecord & { reasoningEffort: string | null };
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.chat.reasoningEffort).toBe("high");
+  });
+
   test("DELETE removes chat when more than one chat exists", async () => {
     const { DELETE } = await routeModulePromise;
 

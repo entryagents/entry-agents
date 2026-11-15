@@ -1227,7 +1227,10 @@ export function SessionChatProvider({
       }
 
       if (latestChatSettingsVersionRef.current === version) {
-        setChatInfo(data.chat);
+        setChatInfo({
+          ...data.chat,
+          reasoningEffort: data.chat.reasoningEffort ?? reasoningEffort,
+        });
       }
     },
     [sessionRecord.id, chatInfo.id],

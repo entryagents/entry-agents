@@ -64,7 +64,15 @@ export async function resolveChatModelSelection({
     );
   }
 
-  const effort = sanitizeReasoningEffort(resolvedModelId, reasoningEffort);
+  const { fetchAvailableLanguageModels } =
+    await import("@/lib/models-with-context");
+  const liveModels = await fetchAvailableLanguageModels().catch(() => []);
+
+  const effort = sanitizeReasoningEffort(
+    resolvedModelId,
+    reasoningEffort,
+    liveModels,
+  );
   const providerOptionsOverrides = toReasoningProviderOptions(
     effort,
     resolvedModelId,

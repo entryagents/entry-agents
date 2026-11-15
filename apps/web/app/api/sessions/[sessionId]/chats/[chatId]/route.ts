@@ -142,12 +142,20 @@ export async function GET(req: Request, context: RouteContext) {
     chatContext.chat.modelId ??
     null;
 
+  const { fetchAvailableLanguageModels } =
+    await import("@/lib/models-with-context");
+  const liveModels = await fetchAvailableLanguageModels().catch(() => []);
+
   return Response.json({
     chat: {
       id: chatContext.chat.id,
       modelId,
       reasoningEffort: modelId
-        ? sanitizeReasoningEffort(modelId, chatContext.chat.reasoningEffort)
+        ? sanitizeReasoningEffort(
+            modelId,
+            chatContext.chat.reasoningEffort,
+            liveModels,
+          )
         : null,
       activeStreamId,
     },
@@ -233,12 +241,20 @@ export async function PATCH(req: Request, context: RouteContext) {
     sanitizeSelectedModelIdForSession(updatedChat.modelId, session, req.url) ??
     updatedChat.modelId;
 
+  const { fetchAvailableLanguageModels } =
+    await import("@/lib/models-with-context");
+  const liveModels = await fetchAvailableLanguageModels().catch(() => []);
+
   return Response.json({
     chat: {
       ...updatedChat,
       modelId: resolvedModelId,
       reasoningEffort: resolvedModelId
-        ? sanitizeReasoningEffort(resolvedModelId, updatedChat.reasoningEffort)
+        ? sanitizeReasoningEffort(
+            resolvedModelId,
+            updatedChat.reasoningEffort,
+            liveModels,
+          )
         : null,
     },
   });
