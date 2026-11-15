@@ -380,40 +380,65 @@ export function rebuildTeamBoardFromMessages(
   const board = getOrCreateTeamBoard(teamId);
   if (!Array.isArray(messages)) return board;
 
-  for (const msg of messages as Array<Partial<ModelMessage>>) {
-    if (!msg || !Array.isArray(msg.content)) continue;
-    for (const part of msg.content as Array<Record<string, unknown>>) {
-      if (part?.type !== "tool-result") continue;
-      if (part.toolName !== "team_board" && part.toolName !== "task") continue;
+  const absorbSnapshotCandidate = (rawValue: unknown) => {
+    const unwrapped =
+      rawValue &&
+      typeof rawValue === "object" &&
+      "value" in rawValue &&
+      (rawValue as { type?: string }).type === "json"
+        ? (rawValue as { value: unknown }).value
+        : rawValue;
 
-      const rawOutput = part.output as
-        | { type?: string; value?: unknown }
-        | unknown;
-      const value =
-        rawOutput &&
-        typeof rawOutput === "object" &&
-        "value" in rawOutput &&
-        (rawOutput as { type?: string }).type === "json"
-          ? (rawOutput as { value: unknown }).value
-          : rawOutput;
+    if (!unwrapped || typeof unwrapped !== "object") return;
+    const snapshot = (
+      "teamSnapshot" in unwrapped
+        ? (unwrapped as { teamSnapshot?: TeamBoardSnapshot }).teamSnapshot
+        : unwrapped
+    ) as Partial<TeamBoardSnapshot> | undefined;
 
-      if (!value || typeof value !== "object") continue;
-      const snapshot = (
-        "teamSnapshot" in value
-          ? (value as { teamSnapshot?: TeamBoardSnapshot }).teamSnapshot
-          : value
-      ) as Partial<TeamBoardSnapshot> | undefined;
-
-      if (!snapshot) continue;
-      if (Array.isArray(snapshot.entries)) {
-        for (const entry of snapshot.entries) {
-          if (entry && typeof entry.title === "string") {
-            board.postEntry(entry);
-          }
+    if (!snapshot) return;
+    if (Array.isArray(snapshot.entries)) {
+      for (const entry of snapshot.entries) {
+        if (entry && typeof entry.title === "string") {
+          board.postEntry(entry);
         }
       }
-      if (Array.isArray(snapshot.tasks)) {
-        board.upsertTasks(snapshot.tasks, "replay");
+    }
+    if (Array.isArray(snapshot.tasks)) {
+      board.upsertTasks(snapshot.tasks, "replay");
+    }
+  };
+
+  for (const msg of messages as Array<
+    Partial<ModelMessage> & { parts?: unknown[] }
+  >) {
+    if (!msg) continue;
+
+    // 1. ModelMessage[] format (`content` array of `tool-result` parts)
+    if (Array.isArray(msg.content)) {
+      for (const part of msg.content as Array<Record<string, unknown>>) {
+        if (part?.type !== "tool-result") continue;
+        if (part.toolName !== "team_board" && part.toolName !== "task") {
+          continue;
+        }
+        absorbSnapshotCandidate(part.output ?? part.result);
+      }
+    }
+
+    // 2. UIMessage[] format (`parts` array of `tool-team_board` / `tool-task` parts)
+    if (Array.isArray(msg.parts)) {
+      for (const part of msg.parts as Array<Record<string, unknown>>) {
+        if (!part || typeof part !== "object") continue;
+        const isTeamOrTaskPart =
+          part.type === "tool-team_board" ||
+          part.type === "tool-task" ||
+          ((part.type === "dynamic-tool" || part.type === "tool-call") &&
+            (part.toolName === "team_board" ||
+              part.name === "team_board" ||
+              part.toolName === "task" ||
+              part.name === "task"));
+        if (!isTeamOrTaskPart) continue;
+        absorbSnapshotCandidate(part.output ?? part.result);
       }
     }
   }

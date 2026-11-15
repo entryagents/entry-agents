@@ -209,6 +209,63 @@ describe("TeamBoard & subagent coordination", () => {
     clearTeamBoard(teamId);
   });
 
+  test("rebuildTeamBoardFromMessages also rehydrates from UIMessage parts format", () => {
+    const teamId = `team_ui_replay_${Date.now()}`;
+    clearTeamBoard(teamId);
+
+    const uiMessages = [
+      {
+        id: "msg_1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-team_board",
+            toolCallId: "call_tb_1",
+            state: "output-available",
+            output: {
+              teamSnapshot: {
+                teamId,
+                entries: [
+                  {
+                    id: "tb_contract_1",
+                    kind: "contract",
+                    authorRole: "architect",
+                    targetRole: "executor",
+                    title: "Team API Contract",
+                    content:
+                      "Export TeamBoardSnapshot with waves and fileConflicts.",
+                    createdAt: 500,
+                  },
+                ],
+                tasks: [
+                  {
+                    id: "W1",
+                    title: "Wire /team command",
+                    assignedRole: "executor",
+                    status: "completed",
+                    files: ["apps/web/hooks/use-session-skills.ts"],
+                    verification: "pnpm typecheck",
+                    updatedBy: "executor",
+                    updatedAt: 600,
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+    ];
+
+    const rebuilt = rebuildTeamBoardFromMessages(uiMessages, teamId);
+    const snap = rebuilt.snapshot();
+    expect(snap.entries).toHaveLength(1);
+    expect(snap.entries[0]?.kind).toBe("contract");
+    expect(snap.entries[0]?.targetRole).toBe("executor");
+    expect(snap.tasks[0]?.id).toBe("W1");
+    expect(snap.tasks[0]?.status).toBe("completed");
+    clearTeamBoard(teamId);
+  });
+
   test("SUBAGENT_REGISTRY registers architect alongside specialist teammates", () => {
     expect(Object.keys(SUBAGENT_REGISTRY)).toEqual(
       expect.arrayContaining([

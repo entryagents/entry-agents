@@ -32,13 +32,20 @@ export const BUILTIN_PLUGIN_CATALOG: readonly PluginManifest[] = [
   {
     slug: "team-orchestrator",
     name: "Multi-Agent Team Protocol",
-    version: "1.0.0",
+    version: "1.1.0",
     description:
-      "Coordinates architect, explorer, executor, design, and reviewer teammates via the shared team_board and unlocks /team-plan.",
+      "Coordinates architect, explorer, executor, design, and reviewer teammates via the shared team_board and unlocks /team and /team-plan.",
     category: "agents",
     source: "builtin",
     hooks: ["session.context", "tool.execute.after"],
     slashCommands: [
+      {
+        name: "team",
+        description:
+          "Launch wave-coordinated multi-agent team execution in the main chat with @role handoffs",
+        promptTemplate:
+          "Execute this request as a wave-coordinated Multi-Agent Team streaming live in the main chat: first plan dependency waves and file locks on `team_board` (`plan_tasks` + `contract` entries), then dispatch specialist teammates (`architect`, `explorer`, `executor`, `design`, `reviewer`) via `task` with `@authorRole -> @targetRole` handoffs on `team_board`, and close with a `reviewer` verification pass.",
+      },
       {
         name: "team-plan",
         description:
@@ -49,7 +56,7 @@ export const BUILTIN_PLUGIN_CATALOG: readonly PluginManifest[] = [
     ],
     rules: {
       appendSystemPrompt:
-        "[Plugin: Multi-Agent Team Protocol] For multi-file or cross-subsystem work, post architecture decisions on `team_board`, instruct subagents to read `team_board` first and record handoffs, and always close with a `reviewer` verification pass.",
+        "[Plugin: Multi-Agent Team Protocol] For multi-file or cross-subsystem work, post architecture decisions on `team_board`, instruct subagents to read `team_board` first and record `@authorRole -> @targetRole` handoffs, and always close with a `reviewer` verification pass.",
     },
     configFields: [],
   },

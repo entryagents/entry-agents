@@ -11,10 +11,11 @@ import {
   FileCode2,
   GitBranch,
   HelpCircle,
+  Layers,
   Lightbulb,
   Share2,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type {
   TeamFeedEntry,
   TeamFeedState,
@@ -120,6 +121,21 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
   );
   const [copied, setCopied] = useState(false);
 
+  const fileOwnershipByRole = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const task of feed.tasks) {
+      if (!task.files || task.files.length === 0) continue;
+      const list = map.get(task.assignedRole) ?? [];
+      for (const file of task.files) {
+        if (!list.includes(file)) {
+          list.push(file);
+        }
+      }
+      map.set(task.assignedRole, list);
+    }
+    return [...map.entries()];
+  }, [feed.tasks]);
+
   if (feed.entries.length === 0 && feed.tasks.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-6 text-center">
@@ -130,9 +146,10 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
           No shared team notes yet
         </h3>
         <p className="mt-1 max-w-xs text-xs leading-relaxed text-muted-foreground">
-          When the main agent or subagents post findings, contracts, or handoffs
-          via <code className="font-mono text-foreground">team_board</code>,
-          they stream here in real time.
+          Invoke <code className="font-mono text-foreground">/team</code> or tag{" "}
+          <code className="font-mono text-foreground">@team</code> in chat to
+          launch wave-coordinated multi-agent execution with live contracts and
+          handoffs.
         </p>
       </div>
     );
@@ -160,6 +177,7 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
           {(
             [
               { id: "all", label: "All" },
+              { id: "contract", label: "Contracts" },
               { id: "decision", label: "Decisions" },
               { id: "finding", label: "Findings" },
               { id: "handoff", label: "Handoffs" },
@@ -200,6 +218,88 @@ export function TeamBoardView({ feed }: { feed: TeamFeedState }) {
           )}
         </button>
       </div>
+
+      {feed.waves.length > 0 && (
+        <section className="space-y-2 rounded-lg border border-border/70 bg-muted/15 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+              <Layers
+                className="size-3.5 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+              <span>Execution wave DAG</span>
+            </h3>
+            <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+              {feed.waves.length} wave{feed.waves.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {feed.waves.map((wave, idx) => (
+              <div key={wave.wave} className="inline-flex items-center gap-2">
+                {idx > 0 && (
+                  <ArrowRight className="size-3.5 text-muted-foreground/60" />
+                )}
+                <div
+                  className={cn(
+                    "rounded-md border px-2.5 py-1.5 font-mono text-xs tabular-nums",
+                    wave.status === "completed" &&
+                      "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+                    wave.status === "active" &&
+                      "border-amber-500/35 bg-amber-500/10 text-foreground",
+                    wave.status === "blocked" &&
+                      "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+                    wave.status === "queued" &&
+                      "border-border/70 bg-background text-muted-foreground",
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-semibold">Wave {wave.wave}</span>
+                    <span className="text-[10px] capitalize opacity-80">
+                      · {wave.status}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 text-[10px] opacity-85">
+                    {wave.taskIds.join(", ")}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {fileOwnershipByRole.length > 0 && (
+        <section className="space-y-2 rounded-lg border border-border/70 bg-card p-3">
+          <h3 className="text-xs font-medium text-muted-foreground">
+            File ownership locks by specialist
+          </h3>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {fileOwnershipByRole.map(([role, files]) => (
+              <div
+                key={role}
+                className="space-y-1.5 rounded-md border border-border/60 bg-muted/15 p-2.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <SubagentRoleBadge subagentType={role} />
+                  <span className="font-mono text-[10px] text-muted-foreground tabular-nums">
+                    {files.length} file{files.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {files.map((file) => (
+                    <span
+                      key={file}
+                      className="max-w-full truncate rounded border border-border/60 bg-background px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                    >
+                      {file}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {feed.fileConflicts.length > 0 && (
         <section className="space-y-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300">

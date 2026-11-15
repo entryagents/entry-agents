@@ -3644,6 +3644,7 @@ const runAgentStep = async (
     const controlContext = agentOptions.sandboxControl;
     const fullAgentOptions: OpenAgentCallOptions = {
       ...agentOptions,
+      teamId: chatId,
       billingGuard: subagentBudgetGuard,
       github: githubContext
         ? {
@@ -4180,6 +4181,71 @@ const runAgentStep = async (
       fullAgentOptions.extraTools = mcpToolSet.tools;
     }
 
+    const latestUserMsgForCommand = [...originalMessages]
+      .toReversed()
+      .find((m) => m.role === "user");
+    const latestUserText = latestUserMsgForCommand
+      ? extractPlainText(latestUserMsgForCommand.parts).trim()
+      : "";
+
+    // Built-in /team, /team-plan, @team, and specialist (/architect, @architect, etc.)
+    // command routing — works out of the box regardless of user plugin toggles.
+    const teamOrSpecialistMatch = latestUserText.match(
+      /^[/|@](team|team-plan|architect|explorer|executor|design|reviewer)\b(?:\s+([\s\S]*))?$/i,
+    );
+    const inlineSpecialistTags = [
+      ...new Set(
+        Array.from(
+          latestUserText.matchAll(
+            /(?:^|\s)@(team|architect|explorer|executor|design|reviewer)\b/gi,
+          ),
+          (m) => m[1]?.toLowerCase(),
+        ).filter((role): role is string => typeof role === "string"),
+      ),
+    ];
+
+    if (teamOrSpecialistMatch?.[1]) {
+      const target = teamOrSpecialistMatch[1].toLowerCase();
+      const args = teamOrSpecialistMatch[2]?.trim();
+      const builtInDirective =
+        target === "team" || target === "team-plan"
+          ? [
+              `## Active Multi-Agent Team Mode (/${target})`,
+              "Execute this request as a wave-coordinated Multi-Agent Team streaming live in the main chat:",
+              '1. **Wave 0 (Plan & Contracts)**: Call `team_board` (`action: "plan_tasks"`) with dependency-ordered `tasks` (`id`, `title`, `assignedRole`, `dependsOn`, and non-overlapping `files` claims) and post interface contracts (`action: "post"`, `kind: "contract"`, `targetRole`).',
+              "2. **Wave 1..N (Tagged Specialist Execution)**: Dispatch the specialist teammates (`architect`, `explorer`, `executor`, `design`, `reviewer`) via `task` in parallel waves when their `dependsOn` tasks are complete. Instruct each teammate to read `team_board` first and post `@authorRole -> @targetRole` handoffs/findings (`targetRole`) back to `team_board` before finishing.",
+              "3. **Final Verification Wave**: Close multi-file changes with a `reviewer` audit and update all `team_board` task statuses to `completed` with `verification` proof.",
+              args ? `User request:\n${args}` : undefined,
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : [
+              `## Direct Specialist Invocation (@${target})`,
+              `Immediately dispatch the \`${target}\` subagent via \`task\` as your FIRST tool call to handle this request, and record key findings or handoffs on \`team_board\`.`,
+              args ? `User request:\n${args}` : undefined,
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+      fullAgentOptions.customInstructions = [
+        fullAgentOptions.customInstructions,
+        builtInDirective,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+    } else if (inlineSpecialistTags.length > 0) {
+      const tagDirective = inlineSpecialistTags.includes("team")
+        ? "## Tagged Multi-Agent Team (@team)\nThe user tagged `@team` in their message. Coordinate the relevant specialist subagents (`architect`, `explorer`, `executor`, `design`, `reviewer`) using `team_board` (`plan_tasks` + `post` with `targetRole` handoffs) and `task`."
+        : `## Tagged Specialist Subagents (${inlineSpecialistTags.map((r) => `@${r}`).join(", ")})\nThe user explicitly tagged ${inlineSpecialistTags.map((r) => `\`@${r}\``).join(", ")}. Dispatch ${inlineSpecialistTags.length === 1 ? "that specialist subagent" : "those specialist subagents"} via \`task\` and coordinate their handoffs on \`team_board\`.`;
+
+      fullAgentOptions.customInstructions = [
+        fullAgentOptions.customInstructions,
+        tagDirective,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+    }
+
     // Enabled Entry plugins (built-in toggles + custom JSON manifest plugins).
     // Loaded inside runAgentStep ("use step") via dynamic import so database/crypto
     // modules never enter the Workflow SDK's restricted "use workflow" bundle.
@@ -4190,16 +4256,10 @@ const runAgentStep = async (
       if (enabledPlugins.length > 0) {
         fullAgentOptions.plugins = enabledPlugins;
 
-        const latestUserMsg = [...originalMessages]
-          .toReversed()
-          .find((m) => m.role === "user");
-        const latestUserText = latestUserMsg
-          ? extractPlainText(latestUserMsg.parts).trim()
-          : "";
         const slashMatch = latestUserText.match(
           /^\/([a-z0-9][a-z0-9_-]*)(?:\s+([\s\S]*))?$/i,
         );
-        if (slashMatch?.[1]) {
+        if (slashMatch?.[1] && !teamOrSpecialistMatch) {
           const cmdName = slashMatch[1].toLowerCase();
           const cmdArgs = slashMatch[2]?.trim();
           for (const plugin of enabledPlugins) {

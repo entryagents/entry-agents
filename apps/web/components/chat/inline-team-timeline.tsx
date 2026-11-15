@@ -461,22 +461,38 @@ export function InlineTeamTimeline({
                   <span className="truncate font-mono text-[11px] text-muted-foreground">
                     {entry.modelId ?? "Default model"}
                   </span>
-                  {onOpenSubagentTab && (
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() =>
-                        onOpenSubagentTab(
-                          entry.id,
-                          entry.title,
-                          entry.subagentType,
-                        )
-                      }
-                      className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                      onClick={() => {
+                        window.dispatchEvent(
+                          new CustomEvent("entry:insert-composer-prompt", {
+                            detail: { text: `@${entry.subagentType} ` },
+                          }),
+                        );
+                      }}
+                      className="inline-flex shrink-0 items-center gap-1 rounded border border-border/60 bg-muted/30 px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                      title={`Tag @${entry.subagentType} in composer`}
                     >
-                      <span>Open thread</span>
-                      <ExternalLink className="size-3" strokeWidth={1.5} />
+                      <span>@{entry.subagentType}</span>
                     </button>
-                  )}
+                    {onOpenSubagentTab && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onOpenSubagentTab(
+                            entry.id,
+                            entry.title,
+                            entry.subagentType,
+                          )
+                        }
+                        className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-foreground/80 transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                      >
+                        <span>Inspect trace</span>
+                        <ExternalLink className="size-3" strokeWidth={1.5} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               </article>
             );
@@ -484,8 +500,108 @@ export function InlineTeamTimeline({
         </div>
       )}
 
-      {/* Inline shared checklist, contracts & handoffs */}
-      {hasBoardData && (
+      {/* Live Inter-Agent Comms & Handoff Stream */}
+      {teamFeed.entries.length > 0 && (
+        <div className="border-t border-border/70 bg-muted/10 px-3 py-2.5 sm:px-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-[11px] font-medium text-foreground/85">
+              Live teammate comms &amp; handoffs
+            </span>
+            <span className="font-mono text-[11px] text-muted-foreground tabular-nums">
+              {teamFeed.entries.length} message
+              {teamFeed.entries.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {teamFeed.entries.slice(-5).map((entry) => (
+              <div
+                key={entry.id}
+                className={cn(
+                  "rounded-lg border px-2.5 py-2 text-xs",
+                  entry.kind === "contract"
+                    ? "border-amber-500/30 bg-amber-500/5"
+                    : "border-border/60 bg-background/85",
+                )}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        window.dispatchEvent(
+                          new CustomEvent("entry:insert-composer-prompt", {
+                            detail: { text: `@${entry.authorRole} ` },
+                          }),
+                        );
+                      }}
+                      className="font-mono text-[11px] font-semibold text-foreground hover:underline cursor-pointer"
+                    >
+                      @{entry.authorRole}
+                    </button>
+                    {entry.targetRole && (
+                      <>
+                        <ArrowRight className="size-3 text-muted-foreground" />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (
+                              entry.targetRole &&
+                              entry.targetRole !== "all"
+                            ) {
+                              window.dispatchEvent(
+                                new CustomEvent(
+                                  "entry:insert-composer-prompt",
+                                  {
+                                    detail: { text: `@${entry.targetRole} ` },
+                                  },
+                                ),
+                              );
+                            }
+                          }}
+                          className="font-mono text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:underline cursor-pointer"
+                        >
+                          @{entry.targetRole}
+                        </button>
+                      </>
+                    )}
+                    <span
+                      className={cn(
+                        "rounded border px-1.5 py-0 text-[10px] font-medium capitalize",
+                        entry.kind === "contract"
+                          ? "border-amber-500/40 bg-background text-amber-700 dark:text-amber-300"
+                          : "border-border/70 bg-muted/50 text-muted-foreground",
+                      )}
+                    >
+                      {entry.kind}
+                    </span>
+                    <span className="min-w-0 truncate font-medium text-foreground/90">
+                      {entry.title}
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-1 line-clamp-2 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground">
+                  {entry.content}
+                </p>
+                {entry.files && entry.files.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {entry.files.slice(0, 4).map((file) => (
+                      <span
+                        key={file}
+                        className="rounded border border-border/60 bg-muted/40 px-1.5 py-0 font-mono text-[10px] text-muted-foreground"
+                      >
+                        {file}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Inline shared task checklist */}
+      {hasBoardData && teamFeed.tasks.length > 0 && (
         <div className="border-t border-border/70">
           <button
             type="button"
@@ -498,117 +614,66 @@ export function InlineTeamTimeline({
               ) : (
                 <ChevronRight className="size-3.5 shrink-0" />
               )}
-              <span>Shared team board</span>
+              <span>Shared task wave board</span>
             </div>
             <span className="font-mono text-[11px] tabular-nums">
-              {teamFeed.tasks.length} task
-              {teamFeed.tasks.length === 1 ? "" : "s"} ·{" "}
-              {teamFeed.entries.length} note
-              {teamFeed.entries.length === 1 ? "" : "s"}
+              {completedTasks}/{teamFeed.tasks.length} completed
             </span>
           </button>
 
           {isBoardOpen && (
             <div className="space-y-3 border-t border-border/60 bg-muted/15 px-3 py-3 sm:px-4">
-              {teamFeed.tasks.length > 0 && (
-                <div className="divide-y divide-border/50 rounded-lg border border-border/60 bg-background/80">
-                  {teamFeed.tasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className="flex items-start gap-2 px-2.5 py-2 text-xs"
-                    >
-                      <div className="pt-0.5">
-                        <TaskStatusGlyph status={task.status} />
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span
-                            className={cn(
-                              "font-medium text-foreground",
-                              task.status === "completed" &&
-                                "text-muted-foreground line-through",
-                            )}
-                          >
-                            {task.title}
-                          </span>
-                          <SubagentRoleBadge subagentType={task.assignedRole} />
-                          {task.dependsOn && task.dependsOn.length > 0 && (
-                            <span className="font-mono text-[10px] text-muted-foreground">
-                              after {task.dependsOn.join(", ")}
-                            </span>
-                          )}
-                        </div>
-                        {task.files && task.files.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {task.files.map((file) => (
-                              <span
-                                key={file}
-                                className="max-w-full truncate rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-                              >
-                                {file}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                        {task.verification && (
-                          <p className="font-mono text-[10px] text-emerald-700 dark:text-emerald-400 break-words">
-                            Verified: {task.verification}
-                          </p>
-                        )}
-                      </div>
-                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
-                        {task.id}
-                      </span>
+              <div className="divide-y divide-border/50 rounded-lg border border-border/60 bg-background/80">
+                {teamFeed.tasks.map((task) => (
+                  <div
+                    key={task.id}
+                    className="flex items-start gap-2 px-2.5 py-2 text-xs"
+                  >
+                    <div className="pt-0.5">
+                      <TaskStatusGlyph status={task.status} />
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {teamFeed.entries.length > 0 && (
-                <div className="space-y-1.5">
-                  {teamFeed.entries.slice(-6).map((entry) => (
-                    <div
-                      key={entry.id}
-                      className={cn(
-                        "rounded-lg border px-2.5 py-2 text-xs",
-                        entry.kind === "contract"
-                          ? "border-amber-500/30 bg-amber-500/5"
-                          : "border-border/60 bg-background/80",
-                      )}
-                    >
+                    <div className="min-w-0 flex-1 space-y-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span
                           className={cn(
-                            "rounded border px-1.5 py-0.5 text-[10px] font-medium capitalize",
-                            entry.kind === "contract"
-                              ? "border-amber-500/40 bg-background text-amber-700 dark:text-amber-300"
-                              : "border-border/70 bg-muted/50 text-muted-foreground",
+                            "font-medium text-foreground",
+                            task.status === "completed" &&
+                              "text-muted-foreground line-through",
                           )}
                         >
-                          {entry.kind}
+                          {task.title}
                         </span>
-                        <span className="font-medium text-foreground">
-                          {entry.authorRole}
-                        </span>
-                        {entry.targetRole && (
-                          <>
-                            <ArrowRight className="size-3 text-muted-foreground" />
-                            <span className="font-medium text-foreground">
-                              {entry.targetRole}
-                            </span>
-                          </>
+                        <SubagentRoleBadge subagentType={task.assignedRole} />
+                        {task.dependsOn && task.dependsOn.length > 0 && (
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            after {task.dependsOn.join(", ")}
+                          </span>
                         )}
-                        <span className="min-w-0 truncate text-muted-foreground">
-                          · {entry.title}
-                        </span>
                       </div>
-                      <p className="mt-1 line-clamp-3 whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted-foreground">
-                        {entry.content}
-                      </p>
+                      {task.files && task.files.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {task.files.map((file) => (
+                            <span
+                              key={file}
+                              className="max-w-full truncate rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                            >
+                              {file}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {task.verification && (
+                        <p className="font-mono text-[10px] text-emerald-700 dark:text-emerald-400 break-words">
+                          Verified: {task.verification}
+                        </p>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
+                      {task.id}
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

@@ -33,10 +33,10 @@ export function useFileSuggestions({
     return extractMention(inputValue, cursorPosition);
   }, [inputValue, cursorPosition, dismissed]);
 
-  // Filter suggestions based on partial path
+  // Filter suggestions based on partial path (agent mentions work even before files load)
   const suggestions = useMemo(() => {
-    if (!mentionInfo || !files) return [];
-    return filterFileSuggestions(files, mentionInfo.partialPath);
+    if (!mentionInfo) return [];
+    return filterFileSuggestions(files ?? [], mentionInfo.partialPath);
   }, [mentionInfo, files]);
 
   // Reset selected index when suggestions change

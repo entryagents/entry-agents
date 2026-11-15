@@ -15,6 +15,8 @@ export type FileSuggestion = {
   value: string;
   display: string;
   isDirectory: boolean;
+  kind?: "file" | "agent" | "team";
+  description?: string;
 };
 
 export type FilesResponse = {
