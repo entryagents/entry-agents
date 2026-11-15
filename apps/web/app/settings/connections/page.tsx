@@ -5,6 +5,10 @@ import { AccountsSection, AccountsSectionSkeleton } from "../accounts-section";
 import { VercelSection, VercelSectionSkeleton } from "../vercel-section";
 import { ProviderConnectionsSection } from "../provider-connections-section";
 import {
+  ComposioToolkitsSection,
+  ComposioToolkitsSectionSkeleton,
+} from "./composio-toolkits-section";
+import {
   IntegrationProvidersSection,
   IntegrationProvidersSectionSkeleton,
 } from "./integration-providers-section";
@@ -20,7 +24,7 @@ export default function ConnectionsPage() {
     <div className="space-y-6">
       <StackHeader
         title="Apps & accounts"
-        description="Connect GitHub, Vercel, Gmail, Slack, Linear, Notion, and 1,840+ official apps via Executor so agents use tools directly from chat."
+        description="Connect GitHub, Vercel, Gmail, Slack, Linear, Notion, and workspace tools via Composio so agents discover and run tools directly from chat."
       />
       <div className="grid gap-4 md:grid-cols-2">
         <Suspense fallback={<VercelSectionSkeleton />}>
@@ -30,6 +34,9 @@ export default function ConnectionsPage() {
       </div>
       <Suspense fallback={<AccountsSectionSkeleton />}>
         <AccountsSection />
+      </Suspense>
+      <Suspense fallback={<ComposioToolkitsSectionSkeleton />}>
+        <ComposioToolkitsSection />
       </Suspense>
       <Suspense fallback={<IntegrationProvidersSectionSkeleton />}>
         <IntegrationProvidersSection />

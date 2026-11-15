@@ -1,3 +1,4 @@
+import { composioIntegrationProvider } from "./providers/composio";
 import { executorIntegrationProvider } from "./providers/executor";
 import type {
   IntegrationProviderAdapter,
@@ -12,10 +13,18 @@ export function registerIntegrationProvider(
   registry.set(adapter.id, adapter);
 }
 
+registerIntegrationProvider(composioIntegrationProvider);
 registerIntegrationProvider(executorIntegrationProvider);
 
 export function getActiveIntegrationProviderId(): IntegrationProviderId {
-  return process.env.INTEGRATION_PROVIDER?.trim() || "executor";
+  const configured = process.env.INTEGRATION_PROVIDER?.trim();
+  if (configured) {
+    return configured;
+  }
+  if (composioIntegrationProvider.isConfigured()) {
+    return "composio";
+  }
+  return "executor";
 }
 
 export function getIntegrationProvider(
@@ -24,7 +33,9 @@ export function getIntegrationProvider(
   const targetId = id ?? getActiveIntegrationProviderId();
   const provider = registry.get(targetId);
   if (!provider) {
-    return executorIntegrationProvider;
+    return composioIntegrationProvider.isConfigured()
+      ? composioIntegrationProvider
+      : executorIntegrationProvider;
   }
   return provider;
 }
