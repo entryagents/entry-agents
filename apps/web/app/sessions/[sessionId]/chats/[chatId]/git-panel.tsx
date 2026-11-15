@@ -13,13 +13,13 @@ import {
   GitPullRequestClosed,
   Globe,
   Loader2,
+  PenLine,
   RefreshCw,
-  Sparkles,
   SquareDot,
   SquareMinus,
   SquarePlus,
   Trash2,
-  WandSparkles,
+  Wrench,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiffFile } from "@/app/api/sessions/[sessionId]/diff/route";
@@ -604,16 +604,16 @@ function InlineCommitPanel({
             disabled={isGeneratingMessage || !hasPendingGitWork}
           >
             {isGeneratingMessage ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.5} />
             ) : (
-              <WandSparkles className="h-3 w-3" />
+              <PenLine className="h-3 w-3" strokeWidth={1.5} />
             )}
           </button>
         </div>
       )}
       {commitSuccess ? (
         <div className="flex h-8 items-center justify-center gap-1.5 rounded-md border border-green-500/30 bg-green-500/10 text-xs font-medium text-green-700 dark:text-green-300">
-          <Check className="h-3.5 w-3.5" />
+          <Check className="h-3.5 w-3.5" strokeWidth={1.5} />
           Committed
         </div>
       ) : (
@@ -626,15 +626,18 @@ function InlineCommitPanel({
           >
             {isCommitting ? (
               <>
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                <Loader2
+                  className="mr-1.5 h-3.5 w-3.5 animate-spin"
+                  strokeWidth={1.5}
+                />
                 Committing...
               </>
             ) : (
               <>
                 {commitMessage.trim() ? (
-                  <GitCommit className="mr-1.5 h-3.5 w-3.5" />
+                  <GitCommit className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.5} />
                 ) : (
-                  <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                  <PenLine className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.5} />
                 )}
                 Commit & Push
               </>
@@ -1059,9 +1062,9 @@ function InlinePrCreatePanel({
               disabled={isGenerating}
             >
               {isGenerating ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.5} />
               ) : (
-                <WandSparkles className="h-3 w-3" />
+                <PenLine className="h-3 w-3" strokeWidth={1.5} />
               )}
             </button>
           </div>
@@ -1097,15 +1100,24 @@ function InlinePrCreatePanel({
         >
           {isCreatingPr ? (
             <>
-              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              <Loader2
+                className="mr-1.5 h-3.5 w-3.5 animate-spin"
+                strokeWidth={1.5}
+              />
               {isGenerating ? "Generating..." : "Creating..."}
             </>
           ) : (
             <>
               {prTitle.trim() ? (
-                <GitPullRequest className="mr-1.5 h-3.5 w-3.5" />
+                <GitPullRequest
+                  className="mr-1.5 h-3.5 w-3.5"
+                  strokeWidth={1.5}
+                />
               ) : (
-                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                <GitPullRequest
+                  className="mr-1.5 h-3.5 w-3.5"
+                  strokeWidth={1.5}
+                />
               )}
               Create Pull Request
             </>
@@ -1514,7 +1526,7 @@ function InlineMergePanel({
                     void onFixConflicts(baseBranchRef);
                   }}
                 >
-                  <Sparkles className="mr-1.5 h-3 w-3" />
+                  <Wrench className="mr-1.5 h-3 w-3" strokeWidth={1.5} />
                   Fix conflicts
                 </Button>
               </div>

@@ -157,7 +157,7 @@ const PLAN_ECONOMICS = [
     featured: true,
   },
   {
-    name: "Goat",
+    name: "Entry (Goat)",
     price: "$13/mo",
     credit: "$50 AI credit",
     ratio: "3.8x",
@@ -168,7 +168,14 @@ const PLAN_ECONOMICS = [
     price: "$20/mo",
     credit: "$100 AI credit",
     ratio: "5.0x",
-    note: "Sustained multi-repo builds & team wave runs",
+    note: "Sustained multi-repo builds",
+  },
+  {
+    name: "Max",
+    price: "$40/mo",
+    credit: "$180 AI credit",
+    ratio: "4.5x",
+    note: "High-volume /team wave runs",
   },
 ] as const;
 
@@ -191,19 +198,19 @@ export function ConnectedStackShowcase() {
               transition={{ duration: 0.36, ease: EASE_OUT }}
               className="min-w-0 rounded-2xl border border-(--l-border) bg-(--l-surface) p-5 sm:p-7 lg:col-span-7"
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                <div className="min-w-0 max-w-lg">
                   <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
                     One workspace connected to your entire stack
                   </h2>
-                  <p className="mt-2 max-w-[56ch] text-sm leading-relaxed text-(--l-fg-2)">
+                  <p className="mt-2 max-w-[54ch] text-sm leading-relaxed text-(--l-fg-2)">
                     Pick an app to inspect how Entry reads context, invokes
                     tools in your sandbox, and writes verified changes back
                   </p>
                 </div>
                 <Link
                   href="/settings/connections"
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-(--l-border) bg-(--l-surface-2) px-3 py-1.5 text-xs font-medium text-(--l-fg-2) transition-[border-color,color,transform] duration-150 hover:border-(--l-fg-4) hover:text-(--l-fg) active:scale-[0.97]"
+                  className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-lg border border-(--l-border) bg-(--l-surface-2) px-3 py-1.5 text-xs font-medium text-(--l-fg-2) transition-[border-color,color,transform] duration-150 hover:border-(--l-fg-4) hover:text-(--l-fg) active:scale-[0.97]"
                 >
                   <span>Explore connections</span>
                   <ArrowRight className="size-3.5" strokeWidth={1.5} />
@@ -234,10 +241,13 @@ export function ConnectedStackShowcase() {
                           : "border-(--l-border) bg-(--l-surface) text-(--l-fg-2) hover:border-(--l-fg-4) hover:text-(--l-fg)"
                       }`}
                     >
-                      <span className="flex size-5 shrink-0 items-center justify-center">
-                        <ToolkitPresetIcon slug={app.slug} className="size-4" />
+                      <span className="flex size-4 shrink-0 items-center justify-center sm:size-5">
+                        <ToolkitPresetIcon
+                          slug={app.slug}
+                          className="size-3.5 sm:size-4"
+                        />
                       </span>
-                      <span className="truncate text-xs font-medium">
+                      <span className="truncate text-[11px] font-medium sm:text-xs">
                         {tabLabel}
                       </span>
                     </button>
@@ -319,8 +329,8 @@ export function ConnectedStackShowcase() {
             <motion.div
               initial={{ opacity: 0, transform: "translateY(12px)" }}
               whileInView={{ opacity: 1, transform: "translateY(0px)" }}
-              viewport={{ once: true, amount: 0.2 }}
-              transition={{ duration: 0.38, delay: 0.06, ease: EASE_OUT }}
+              viewport={{ once: true, amount: 0.08 }}
+              transition={{ duration: 0.36, delay: 0.05, ease: EASE_OUT }}
               className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-5 sm:p-7 lg:col-span-5"
             >
               <div>
@@ -359,18 +369,21 @@ export function ConnectedStackShowcase() {
                     </span>
                   </div>
                   <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-(--l-fg-6)">
-                    <div
-                      className="h-full rounded-full bg-(--l-accent)"
-                      style={{ width: "99%" }}
+                    <motion.div
+                      initial={{ transform: "scaleX(0.15)" }}
+                      whileInView={{ transform: "scaleX(0.99)" }}
+                      viewport={{ once: true, amount: 0.5 }}
+                      transition={{ duration: 0.55, ease: EASE_OUT }}
+                      className="h-full w-full origin-left rounded-full bg-(--l-accent)"
                     />
                   </div>
                   <p className="mt-2.5 text-xs text-(--l-fg-3)">
                     Free plan grants $1 execution credit · $5 plan grants $10 AI
-                    credit.
+                    credit
                   </p>
                 </div>
 
-                {/* Compact Tabular Plan Grid */}
+                {/* Compact Tabular 5-Tier Plan Grid */}
                 <div className="mt-4 divide-y divide-(--l-border-subtle) rounded-xl border border-(--l-border)">
                   {PLAN_ECONOMICS.map((plan) => (
                     <div
@@ -385,7 +398,7 @@ export function ConnectedStackShowcase() {
                         <div className="flex items-center gap-2 font-medium text-(--l-fg)">
                           <span>{plan.name}</span>
                           {"featured" in plan && plan.featured && (
-                            <span className="rounded border border-(--l-accent)/40 px-1.5 py-0.5 font-mono text-[11px] font-medium text-(--l-accent) tabular-nums">
+                            <span className="rounded border border-amber-600/35 bg-amber-500/10 px-1.5 py-0.5 font-mono text-[11px] font-medium text-amber-800 tabular-nums dark:border-amber-400/35 dark:text-amber-300">
                               2x AI credit
                             </span>
                           )}
@@ -408,7 +421,7 @@ export function ConnectedStackShowcase() {
               <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-(--l-border) pt-4">
                 <Link
                   href="/pricing"
-                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-opacity duration-150 hover:opacity-90"
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.97]"
                 >
                   <span>Compare all plans</span>
                   <ArrowRight className="size-3.5" strokeWidth={1.5} />

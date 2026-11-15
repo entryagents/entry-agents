@@ -19,10 +19,13 @@ import { subagentSessionStore } from "../subagents/session-store";
 import {
   formatTeamContextSummary,
   getOrCreateTeamBoard,
+  isWorktreeEligibleRole,
+  prepareSubagentWorktree,
+  type SubagentWorktree,
   type TeamBoardSnapshot,
 } from "../team";
-import { sumLanguageModelUsage } from "../usage";
-import { getSandboxContext, getSubagentModel } from "./utils";
+import { enrichUsageWithProviderCache, sumLanguageModelUsage } from "../usage";
+import { getSandbox, getSandboxContext, getSubagentModel } from "./utils";
 import type { AgentContext, SubagentBudgetGuard } from "../types";
 
 const subagentTypeSchema = z.enum(SUBAGENT_TYPES);
@@ -49,6 +52,12 @@ const taskInputSchema = z.object({
     .describe(
       "Optional session ID of an active subagent to continue or follow up with. When provided, the subagent retains its conversational memory and tool context from previous turns.",
     ),
+  worktree: z
+    .boolean()
+    .optional()
+    .describe(
+      "Run write-capable teammates ('executor' or 'design') in an isolated git worktree branch (team/<role>-<id>). Defaults to true when inside a git repo; pass false to edit the main checkout directly.",
+    ),
 });
 
 const taskPendingToolCallSchema = z.object({
@@ -72,6 +81,7 @@ export const taskOutputSchema = z.object({
   pending: taskPendingToolCallSchema.optional(),
   toolCallCount: z.number().int().nonnegative().optional(),
   startedAt: z.number().int().nonnegative().optional(),
+  completedAt: z.number().int().nonnegative().optional(),
   modelId: z.string().optional(),
   final: z.custom<ModelMessage[]>().optional(),
   streamedText: z.string().optional(),
@@ -83,6 +93,8 @@ export const taskOutputSchema = z.object({
   usage: z.custom<LanguageModelUsage>().optional(),
   sessionId: z.string().optional(),
   depth: z.number().int().nonnegative().optional(),
+  worktreeBranch: z.string().optional(),
+  worktreeSummary: z.string().optional(),
 });
 
 export type TaskToolOutput = z.infer<typeof taskOutputSchema>;
@@ -121,7 +133,7 @@ IMPORTANT:
   inputSchema: taskInputSchema,
   outputSchema: taskOutputSchema,
   execute: async function* (
-    { subagentType, task, instructions, sessionId },
+    { subagentType, task, instructions, sessionId, worktree },
     { experimental_context, abortSignal, toolCallId },
   ) {
     const currentDepth =
@@ -143,7 +155,7 @@ IMPORTANT:
     }
 
     const sandboxContext = getSandboxContext(experimental_context, "task");
-    const model = getSubagentModel(experimental_context, "task");
+    const model = getSubagentModel(experimental_context, "task", subagentType);
     const subagentModelId = typeof model === "string" ? model : model.modelId;
 
     const subagent = SUBAGENT_REGISTRY[subagentType].agent;
@@ -204,6 +216,37 @@ IMPORTANT:
       }
     }
 
+    let activeWorktree: SubagentWorktree | null = null;
+    if (worktree !== false && isWorktreeEligibleRole(subagentType)) {
+      const liveSandbox = await getSandbox(experimental_context, "task").catch(
+        () => null,
+      );
+      activeWorktree = await prepareSubagentWorktree(liveSandbox, {
+        role: subagentType,
+        taskCallId: toolCallId || activeSessionId,
+        enabled: worktree,
+        sandboxState: sandboxContext.sandbox?.state,
+      }).catch(() => null);
+    }
+
+    const effectiveSandbox =
+      activeWorktree?.scopedSandbox ?? sandboxContext.sandbox;
+    const worktreeBranch = activeWorktree?.branchName;
+
+    const finalizeWorktree = async (): Promise<string | undefined> => {
+      if (!activeWorktree) return undefined;
+      try {
+        const diffSummary = await activeWorktree.collectDiffSummary();
+        const cleanupResult = await activeWorktree.cleanup();
+        if (cleanupResult.preservedBranch) {
+          return `\n\n**Worktree Isolation**: ${diffSummary.summaryLine}${cleanupResult.commitSha ? ` (checkpoint \`${cleanupResult.commitSha}\`)` : ""}`;
+        }
+        return `\n\n**Worktree Isolation**: Ran in isolated worktree (${activeWorktree.branchName}); no file changes recorded so the empty branch was pruned.`;
+      } catch {
+        return `\n\n**Worktree Isolation**: Isolated worktree branch \`${activeWorktree.branchName}\` used.`;
+      }
+    };
+
     // The subagent gets its own abort controller so the BUDGET guard
     // can stop just the subagent without killing the parent turn --
     // the parent's signal is forwarded so user-initiated stops still
@@ -216,425 +259,429 @@ IMPORTANT:
       abortSignal?.addEventListener("abort", forwardParentAbort);
     }
 
-    let budgetStopped = false;
-    let budgetStopReason: "window" | "credit" | undefined;
+    try {
+      let budgetStopped = false;
+      let budgetStopReason: "window" | "credit" | undefined;
 
-    const verificationDirective =
-      subagentType === "executor" || subagentType === "design"
-        ? "\n\nVerification & Team Discipline:\n- If working on a shared team task, check `team_board` (`read`) and update your task (`update_task`) with the exact `files` you claim and concrete `verification` command evidence.\n- Before finishing, run relevant typecheck/lint/test/build checks for your changes and report the exact verification command + result (or explain why unavailable) in **Summary**."
+      const worktreeNotice = worktreeBranch
+        ? `\n- You are isolated in git worktree branch \`${worktreeBranch}\`. Work exclusively within your claimed \`files\`; uncommitted edits are checkpointed onto \`${worktreeBranch}\` automatically on completion.`
         : "";
 
-    const userPrompt = isFollowUp
-      ? `Follow-up Task: ${task}\n\nInstructions:\n${instructions}${verificationDirective}\n\nPlease proceed with this follow-up using your previous findings and context. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`
-      : `Task: ${task}\n\nInstructions:\n${instructions}${verificationDirective}\n\nPlease complete this task thoroughly. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`;
+      const verificationDirective =
+        subagentType === "executor" || subagentType === "design"
+          ? `\n\nVerification & Team Discipline:\n- If working on a shared team task, read \`team_board\` first and update your task (\`update_task\`) with your claimed \`files\`,${worktreeBranch ? ` \`worktreeBranch: "${worktreeBranch}"\`,` : ""} and concrete \`verification\` command evidence.${worktreeNotice}\n- Before finishing, run relevant typecheck/lint/test/build checks for your changes and report the exact verification command + result (or explain why unavailable) in **Summary**.`
+          : subagentType === "reviewer"
+            ? `\n\nAdversarial Verification Discipline:\n- Read \`team_board\` to inspect teammate task claims, locked \`contract\` entries, and isolated \`team/*\` branches.\n- Challenge missing or unverified claims using \`team_board\` (\`post\`, \`kind: "challenge"\`, \`targetRole\`, tagging \`@role\`) and publish audited command/diff verification using \`kind: "verification"\`.`
+            : "";
 
-    const parentContext = experimental_context as AgentContext | undefined;
-    const teamId = parentContext?.teamId ?? "default-team";
-    const teamBoard = getOrCreateTeamBoard(teamId);
-    const teamContext = formatTeamContextSummary(teamBoard);
+      const userPrompt = isFollowUp
+        ? `Follow-up Task: ${task}\n\nInstructions:\n${instructions}${verificationDirective}\n\nPlease proceed with this follow-up using your previous findings and context. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`
+        : `Task: ${task}\n\nInstructions:\n${instructions}${verificationDirective}\n\nPlease complete this task thoroughly. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`;
 
-    let streamError: string | undefined;
-    let result: Awaited<ReturnType<typeof subagent.stream>> | undefined;
+      const parentContext = experimental_context as AgentContext | undefined;
+      const teamId = parentContext?.teamId ?? "default-team";
+      const teamBoard = getOrCreateTeamBoard(teamId);
+      const teamContext = formatTeamContextSummary(teamBoard);
+      const contextWindow = parentContext?.contextWindow;
+      const compactionThreshold = parentContext?.compactionThreshold;
 
-    try {
-      const streamCallParams =
-        isFollowUp && existingSession
-          ? {
-              messages: [
-                ...existingSession.messages,
-                { role: "user", content: userPrompt } as ModelMessage,
-              ],
-              options: {
-                task,
-                instructions,
-                sandbox: sandboxContext.sandbox,
-                model,
-                teamId,
-                ...(teamContext ? { teamContext } : {}),
-                ...(billingGuard
-                  ? (() => {
-                      const plan = billingGuard.planSubagent(subagentModelId);
-                      return plan.maxOutputTokens
-                        ? { maxOutputTokens: plan.maxOutputTokens }
-                        : {};
-                    })()
-                  : {}),
-              },
-              abortSignal: localAbort.signal,
-            }
-          : {
-              prompt: userPrompt,
-              options: {
-                task,
-                instructions,
-                sandbox: sandboxContext.sandbox,
-                model,
-                teamId,
-                ...(teamContext ? { teamContext } : {}),
-                ...(billingGuard
-                  ? (() => {
-                      const plan = billingGuard.planSubagent(subagentModelId);
-                      return plan.maxOutputTokens
-                        ? { maxOutputTokens: plan.maxOutputTokens }
-                        : {};
-                    })()
-                  : {}),
-              },
-              abortSignal: localAbort.signal,
-            };
+      let streamError: string | undefined;
+      let result: Awaited<ReturnType<typeof subagent.stream>> | undefined;
 
-      result = await subagent.stream(streamCallParams as never);
-    } catch (err) {
-      streamError = err instanceof Error ? err.message : String(err);
-    }
+      try {
+        const sharedCallOptions = {
+          task,
+          instructions,
+          sandbox: effectiveSandbox,
+          model,
+          teamId,
+          ...(teamContext ? { teamContext } : {}),
+          ...(contextWindow ? { contextWindow } : {}),
+          ...(compactionThreshold ? { compactionThreshold } : {}),
+          ...(billingGuard
+            ? (() => {
+                const plan = billingGuard.planSubagent(subagentModelId);
+                return plan.maxOutputTokens
+                  ? { maxOutputTokens: plan.maxOutputTokens }
+                  : {};
+              })()
+            : {}),
+        };
 
-    let pending: TaskPendingToolCall | undefined;
-    let usage: LanguageModelUsage | undefined;
-    let consecutiveRepeatedCalls = 0;
-    let lastCallSignature = "";
-    // Streamed assistant text, accumulated as a fallback for the final
-    // output. `result.response.messages` is the primary source, but it can
-    // resolve empty when the subagent is cut off (step-limit exhaustion,
-    // abort, or a provider that returns no assembled messages). Before this
-    // fallback existed, that path returned the useless
-    // "Subagent completed without producing messages." string and silently
-    // discarded everything the subagent had actually produced in-stream --
-    // observed in practice as every delegated task returning no content.
-    // Text parts from the fullStream are captured here so the final
-    // assembly can reconstruct at least the last text the subagent emitted.
-    const streamedTextChunks: string[] = [];
-    // Ordered record of executed tool calls (name + target), captured from
-    // the stream so the fallback can still report what the subagent did.
-    const streamedToolCalls: { name: string; input: unknown }[] = [];
-    const executedTools: TaskExecutedTool[] = [];
-    let lastTextYieldTime = 0;
-
-    // Emit an initial state so UIs can show elapsed time from a stable timestamp.
-    yield {
-      toolCallCount,
-      startedAt,
-      modelId: subagentModelId,
-      sessionId: activeSessionId,
-      teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-      status: "starting",
-      depth: currentDepth + 1,
-    };
-
-    if (streamError || !result) {
-      const cleanError = (
-        streamError ?? "Failed to initialize subagent stream"
-      ).replace(/^Error:\s*/, "");
-      const errorMsg: ModelMessage[] = [
-        {
-          role: "assistant",
-          content: `**Subagent execution halted**: ${cleanError}`,
-        },
-      ];
-      yield {
-        final: errorMsg,
-        toolCallCount,
-        startedAt,
-        modelId: subagentModelId,
-        sessionId: activeSessionId,
-        teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-        status: "failed",
-        depth: currentDepth + 1,
-      };
-      return;
-    }
-
-    try {
-      for await (const part of result.fullStream) {
-        if (part.type === "error") {
-          streamError =
-            part.error instanceof Error
-              ? part.error.message
-              : String(part.error);
-        }
-
-        if (part.type === "text-delta") {
-          if (typeof part.text === "string" && part.text.length > 0) {
-            streamedTextChunks.push(part.text);
-            const now = Date.now();
-            // Emit throttled live updates so the frontend inspector and subagent tab stream in real-time
-            if (now - lastTextYieldTime > 120 || part.text.includes("\n")) {
-              lastTextYieldTime = now;
-              yield {
-                pending,
-                toolCallCount,
-                streamedText: streamedTextChunks.join(""),
-                executedTools: [...executedTools],
-                teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-                status: "running",
-                usage,
-                startedAt,
-                modelId: subagentModelId,
-                sessionId: activeSessionId,
-                depth: currentDepth + 1,
-              };
-            }
-          }
-        }
-
-        if (part.type === "tool-call") {
-          toolCallCount += 1;
-          const callId =
-            (part as { toolCallId?: string }).toolCallId || crypto.randomUUID();
-          pending = { name: part.toolName, input: part.input };
-          streamedToolCalls.push({ name: part.toolName, input: part.input });
-          executedTools.push({
-            toolCallId: callId,
-            name: part.toolName,
-            input: part.input,
-            state: "running",
-          });
-
-          try {
-            const signature = `${part.toolName}:${JSON.stringify(part.input)}`;
-            if (signature === lastCallSignature) {
-              consecutiveRepeatedCalls += 1;
-              if (consecutiveRepeatedCalls >= 3) {
-                streamError = `Repetitive tool call loop detected: \`${part.toolName}\` was invoked 3 consecutive times with identical input without progress.`;
-                localAbort.abort();
+        const streamCallParams =
+          isFollowUp && existingSession
+            ? {
+                messages: [
+                  ...existingSession.messages,
+                  { role: "user", content: userPrompt } as ModelMessage,
+                ],
+                options: sharedCallOptions,
+                abortSignal: localAbort.signal,
               }
-            } else {
-              consecutiveRepeatedCalls = 1;
-              lastCallSignature = signature;
-            }
-          } catch {
-            // Ignore serialization errors
-          }
+            : {
+                prompt: userPrompt,
+                options: sharedCallOptions,
+                abortSignal: localAbort.signal,
+              };
 
-          yield {
-            pending,
-            toolCallCount,
-            streamedText: streamedTextChunks.join(""),
-            executedTools: [...executedTools],
-            teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-            status: "running",
-            usage,
-            startedAt,
-            modelId: subagentModelId,
-            sessionId: activeSessionId,
-            depth: currentDepth + 1,
-          };
-        }
-
-        if (part.type === "tool-result") {
-          const res = part as {
-            toolCallId?: string;
-            toolName?: string;
-            result?: unknown;
-          };
-          const match =
-            executedTools.find((t) => t.toolCallId === res.toolCallId) ??
-            executedTools
-              .slice()
-              .toReversed()
-              .find((t) => t.name === res.toolName && t.state === "running");
-          if (match) {
-            match.output = res.result;
-            match.state = "completed";
-          }
-          pending = undefined;
-
-          yield {
-            pending,
-            toolCallCount,
-            streamedText: streamedTextChunks.join(""),
-            executedTools: [...executedTools],
-            teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-            status: "running",
-            usage,
-            startedAt,
-            modelId: subagentModelId,
-            sessionId: activeSessionId,
-            depth: currentDepth + 1,
-          };
-        }
-
-        if (part.type === "finish-step") {
-          usage = sumLanguageModelUsage(usage, part.usage);
-          if (billingGuard) {
-            // Billing identity for THIS subagent model step: this task
-            // call's own toolCallId (unique per subagent launch, stable
-            // no matter how concurrent subagents interleave) plus the
-            // subagent's Nth model step. Hosts key idempotent ledger
-            // references on it -- a shared execution-wide counter would
-            // remap rows to the wrong subagent across replays.
-            subagentStepIndex += 1;
-            const plan = billingGuard.noteSubagentStepUsage(
-              subagentModelId,
-              part.usage,
-              `${toolCallId}:${subagentStepIndex}`,
-            );
-            if (plan.stop) {
-              budgetStopped = true;
-              budgetStopReason = plan.reason;
-              localAbort.abort();
-            }
-          }
-          yield {
-            pending,
-            toolCallCount,
-            streamedText: streamedTextChunks.join(""),
-            executedTools: [...executedTools],
-            teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-            status: "running",
-            usage,
-            startedAt,
-            modelId: subagentModelId,
-            sessionId: activeSessionId,
-            depth: currentDepth + 1,
-          };
-        }
-      }
-    } catch (err) {
-      streamError = err instanceof Error ? err.message : String(err);
-    }
-
-    abortSignal?.removeEventListener("abort", forwardParentAbort);
-
-    let response: Awaited<typeof result.response> | undefined;
-    try {
-      response = await result.response;
-    } catch (err) {
-      if (!streamError) {
+        result = await subagent.stream(streamCallParams as never);
+      } catch (err) {
         streamError = err instanceof Error ? err.message : String(err);
       }
-    }
 
-    let finalUsage = usage;
-    if (!finalUsage && result) {
+      let pending: TaskPendingToolCall | undefined;
+      let usage: LanguageModelUsage | undefined;
+      let consecutiveRepeatedCalls = 0;
+      let lastCallSignature = "";
+      const streamedTextChunks: string[] = [];
+      const streamedToolCalls: { name: string; input: unknown }[] = [];
+      const executedTools: TaskExecutedTool[] = [];
+      let lastTextYieldTime = 0;
+
+      // Emit an initial state so UIs can show elapsed time from a stable timestamp.
+      yield {
+        toolCallCount,
+        startedAt,
+        modelId: subagentModelId,
+        sessionId: activeSessionId,
+        teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+        status: "starting",
+        depth: currentDepth + 1,
+        ...(worktreeBranch ? { worktreeBranch } : {}),
+      };
+
+      if (streamError || !result) {
+        const worktreeSummary = await finalizeWorktree();
+        const cleanError = (
+          streamError ?? "Failed to initialize subagent stream"
+        ).replace(/^Error:\s*/, "");
+        const errorMsg: ModelMessage[] = [
+          {
+            role: "assistant",
+            content: `**Subagent execution halted**: ${cleanError}`,
+          },
+        ];
+        yield {
+          final: errorMsg,
+          toolCallCount,
+          startedAt,
+          modelId: subagentModelId,
+          sessionId: activeSessionId,
+          teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+          status: "failed",
+          depth: currentDepth + 1,
+          ...(worktreeBranch ? { worktreeBranch } : {}),
+          ...(worktreeSummary ? { worktreeSummary } : {}),
+        };
+        return;
+      }
+
       try {
-        finalUsage = await result.usage;
-      } catch {
-        finalUsage = undefined;
-      }
-    }
-    // Primary source: the assembled response messages. Fallback: when the
-    // response resolved with no messages (step-limit cut-off, abort, or a
-    // provider that returned no assembled messages), rebuild a final
-    // assistant message from the text this subagent streamed. Without this,
-    // every such run degraded to "Subagent completed without producing
-    // messages." and discarded the subagent's actual output.
-    let baseMessages: ModelMessage[] = response?.messages ?? [];
-    if (baseMessages.length === 0) {
-      const streamedText = streamedTextChunks.join("").trim();
-      if (streamedText.length > 0) {
-        baseMessages = [
-          {
-            role: "assistant",
-            content: streamedText,
-          } as ModelMessage,
-        ];
-      } else if (streamedToolCalls.length > 0) {
-        // No assembled messages and no streamed text, but the subagent did
-        // run tools. Emit a synthetic assistant message carrying the tool
-        // calls so toModelOutput's action-reconstruction path (which reads
-        // `final`) can still report what happened, instead of the generic
-        // "completed without producing messages" string.
-        baseMessages = [
-          {
-            role: "assistant",
-            content: streamedToolCalls.map((call) => ({
-              type: "tool-call" as const,
-              toolCallId: "",
-              toolName: call.name,
-              input: call.input,
-            })),
-          } as unknown as ModelMessage,
-        ];
-      }
-    }
+        for await (const part of result.fullStream) {
+          if (part.type === "error") {
+            streamError =
+              part.error instanceof Error
+                ? part.error.message
+                : String(part.error);
+          }
 
-    // Save subagent session history for future follow-up turns
-    if (activeSessionId) {
-      subagentSessionStore.recordTaskCompletion({
-        id: activeSessionId,
-        task,
-        newMessages: [
-          { role: "user", content: userPrompt } as ModelMessage,
+          if (part.type === "text-delta") {
+            if (typeof part.text === "string" && part.text.length > 0) {
+              streamedTextChunks.push(part.text);
+              const now = Date.now();
+              if (now - lastTextYieldTime > 120 || part.text.includes("\n")) {
+                lastTextYieldTime = now;
+                yield {
+                  pending,
+                  toolCallCount,
+                  streamedText: streamedTextChunks.join(""),
+                  executedTools: [...executedTools],
+                  teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+                  status: "running",
+                  usage,
+                  startedAt,
+                  modelId: subagentModelId,
+                  sessionId: activeSessionId,
+                  depth: currentDepth + 1,
+                  ...(worktreeBranch ? { worktreeBranch } : {}),
+                };
+              }
+            }
+          }
+
+          if (part.type === "tool-call") {
+            toolCallCount += 1;
+            const callId =
+              (part as { toolCallId?: string }).toolCallId ||
+              crypto.randomUUID();
+            pending = { name: part.toolName, input: part.input };
+            streamedToolCalls.push({ name: part.toolName, input: part.input });
+            executedTools.push({
+              toolCallId: callId,
+              name: part.toolName,
+              input: part.input,
+              state: "running",
+            });
+
+            try {
+              const signature = `${part.toolName}:${JSON.stringify(part.input)}`;
+              if (signature === lastCallSignature) {
+                consecutiveRepeatedCalls += 1;
+                if (consecutiveRepeatedCalls >= 3) {
+                  streamError = `Repetitive tool call loop detected: \`${part.toolName}\` was invoked 3 consecutive times with identical input without progress.`;
+                  localAbort.abort();
+                }
+              } else {
+                consecutiveRepeatedCalls = 1;
+                lastCallSignature = signature;
+              }
+            } catch {
+              // Ignore serialization errors
+            }
+
+            yield {
+              pending,
+              toolCallCount,
+              streamedText: streamedTextChunks.join(""),
+              executedTools: [...executedTools],
+              teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+              status: "running",
+              usage,
+              startedAt,
+              modelId: subagentModelId,
+              sessionId: activeSessionId,
+              depth: currentDepth + 1,
+              ...(worktreeBranch ? { worktreeBranch } : {}),
+            };
+          }
+
+          if (part.type === "tool-result") {
+            const res = part as {
+              toolCallId?: string;
+              toolName?: string;
+              result?: unknown;
+            };
+            const match =
+              executedTools.find((t) => t.toolCallId === res.toolCallId) ??
+              executedTools
+                .slice()
+                .toReversed()
+                .find((t) => t.name === res.toolName && t.state === "running");
+            if (match) {
+              match.output = res.result;
+              match.state = "completed";
+            }
+            pending = undefined;
+
+            yield {
+              pending,
+              toolCallCount,
+              streamedText: streamedTextChunks.join(""),
+              executedTools: [...executedTools],
+              teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+              status: "running",
+              usage,
+              startedAt,
+              modelId: subagentModelId,
+              sessionId: activeSessionId,
+              depth: currentDepth + 1,
+              ...(worktreeBranch ? { worktreeBranch } : {}),
+            };
+          }
+
+          if (part.type === "finish-step") {
+            const stepUsage =
+              enrichUsageWithProviderCache(
+                part.usage,
+                (part as { providerMetadata?: unknown }).providerMetadata,
+              ) ?? part.usage;
+            usage = sumLanguageModelUsage(usage, stepUsage);
+            if (billingGuard) {
+              subagentStepIndex += 1;
+              const plan = billingGuard.noteSubagentStepUsage(
+                subagentModelId,
+                stepUsage,
+                `${toolCallId}:${subagentStepIndex}`,
+              );
+              if (plan.stop) {
+                budgetStopped = true;
+                budgetStopReason = plan.reason;
+                localAbort.abort();
+              }
+            }
+            yield {
+              pending,
+              toolCallCount,
+              streamedText: streamedTextChunks.join(""),
+              executedTools: [...executedTools],
+              teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+              status: "running",
+              usage,
+              startedAt,
+              modelId: subagentModelId,
+              sessionId: activeSessionId,
+              depth: currentDepth + 1,
+              ...(worktreeBranch ? { worktreeBranch } : {}),
+            };
+          }
+        }
+      } catch (err) {
+        streamError = err instanceof Error ? err.message : String(err);
+      }
+
+      let response: Awaited<typeof result.response> | undefined;
+      try {
+        response = await result.response;
+      } catch (err) {
+        if (!streamError) {
+          streamError = err instanceof Error ? err.message : String(err);
+        }
+      }
+
+      let finalUsage = usage;
+      if (!finalUsage && result) {
+        try {
+          const resolvedUsage = await result.usage;
+          const resolvedMetadata = await Promise.resolve(
+            (result as { providerMetadata?: unknown }).providerMetadata,
+          ).catch(() => undefined);
+          finalUsage =
+            enrichUsageWithProviderCache(resolvedUsage, resolvedMetadata) ??
+            resolvedUsage;
+        } catch {
+          finalUsage = undefined;
+        }
+      }
+
+      let baseMessages: ModelMessage[] = response?.messages ?? [];
+      if (baseMessages.length === 0) {
+        const streamedText = streamedTextChunks.join("").trim();
+        if (streamedText.length > 0) {
+          baseMessages = [
+            {
+              role: "assistant",
+              content: streamedText,
+            } as ModelMessage,
+          ];
+        } else if (streamedToolCalls.length > 0) {
+          baseMessages = [
+            {
+              role: "assistant",
+              content: streamedToolCalls.map((call) => ({
+                type: "tool-call" as const,
+                toolCallId: "",
+                toolName: call.name,
+                input: call.input,
+              })),
+            } as unknown as ModelMessage,
+          ];
+        }
+      }
+
+      if (activeSessionId) {
+        subagentSessionStore.recordTaskCompletion({
+          id: activeSessionId,
+          task,
+          newMessages: [
+            { role: "user", content: userPrompt } as ModelMessage,
+            ...baseMessages,
+          ],
+          toolCallCount,
+          usage: finalUsage,
+          outcome: streamError
+            ? `error: ${streamError}`
+            : budgetStopped
+              ? "budget_stopped"
+              : "completed",
+        });
+      }
+
+      const worktreeSummary = await finalizeWorktree();
+      const completedAt = Date.now();
+
+      if (streamError) {
+        const cleanError = streamError.replace(/^Error:\s*/, "");
+        const messagesWithError: ModelMessage[] = [
           ...baseMessages,
-        ],
-        toolCallCount,
-        usage: finalUsage,
-        outcome: streamError
-          ? `error: ${streamError}`
-          : budgetStopped
-            ? "budget_stopped"
-            : "completed",
-      });
-    }
+          {
+            role: "assistant",
+            content: `**Subagent execution halted**: ${cleanError}`,
+          },
+        ];
+        yield {
+          final: messagesWithError,
+          streamedText: streamedTextChunks.join(""),
+          executedTools: [...executedTools],
+          teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+          status: "failed",
+          toolCallCount,
+          usage: finalUsage,
+          startedAt,
+          completedAt,
+          modelId: subagentModelId,
+          sessionId: activeSessionId,
+          depth: currentDepth + 1,
+          ...(worktreeBranch ? { worktreeBranch } : {}),
+          ...(worktreeSummary ? { worktreeSummary } : {}),
+        };
+        return;
+      }
 
-    if (streamError) {
-      const cleanError = streamError.replace(/^Error:\s*/, "");
-      const messagesWithError: ModelMessage[] = [
-        ...baseMessages,
-        {
-          role: "assistant",
-          content: `**Subagent execution halted**: ${cleanError}`,
-        },
-      ];
+      if (budgetStopped) {
+        const reasonText =
+          budgetStopReason === "window"
+            ? "usage window"
+            : budgetStopReason === "credit"
+              ? "credit balance"
+              : "usage limit";
+        const truncated: ModelMessage[] = [
+          ...baseMessages,
+          {
+            role: "assistant",
+            content: `**Subagent limit reached**: Stopped by ${reasonText}. Partial progress preserved across ${toolCallCount} steps.`,
+          },
+        ];
+        yield {
+          final: truncated,
+          streamedText: streamedTextChunks.join(""),
+          executedTools: [...executedTools],
+          teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+          status: "denied",
+          toolCallCount,
+          usage: finalUsage,
+          startedAt,
+          completedAt,
+          modelId: subagentModelId,
+          sessionId: activeSessionId,
+          depth: currentDepth + 1,
+          ...(worktreeBranch ? { worktreeBranch } : {}),
+          ...(worktreeSummary ? { worktreeSummary } : {}),
+        };
+        return;
+      }
+
       yield {
-        final: messagesWithError,
+        final: baseMessages,
         streamedText: streamedTextChunks.join(""),
         executedTools: [...executedTools],
         teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-        status: "failed",
+        status: "completed",
         toolCallCount,
         usage: finalUsage,
         startedAt,
+        completedAt,
         modelId: subagentModelId,
         sessionId: activeSessionId,
         depth: currentDepth + 1,
+        ...(worktreeBranch ? { worktreeBranch } : {}),
+        ...(worktreeSummary ? { worktreeSummary } : {}),
       };
-      return;
+    } finally {
+      abortSignal?.removeEventListener("abort", forwardParentAbort);
+      if (activeWorktree) {
+        await activeWorktree.cleanup().catch(() => {});
+      }
     }
-
-    if (budgetStopped) {
-      const reasonText =
-        budgetStopReason === "window"
-          ? "usage window"
-          : budgetStopReason === "credit"
-            ? "credit balance"
-            : "usage limit";
-      const truncated: ModelMessage[] = [
-        ...baseMessages,
-        {
-          role: "assistant",
-          content: `**Subagent limit reached**: Stopped by ${reasonText}. Partial progress preserved across ${toolCallCount} steps.`,
-        },
-      ];
-      yield {
-        final: truncated,
-        streamedText: streamedTextChunks.join(""),
-        executedTools: [...executedTools],
-        teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-        status: "denied",
-        toolCallCount,
-        usage: finalUsage,
-        startedAt,
-        modelId: subagentModelId,
-        sessionId: activeSessionId,
-        depth: currentDepth + 1,
-      };
-      return;
-    }
-
-    yield {
-      final: baseMessages,
-      streamedText: streamedTextChunks.join(""),
-      executedTools: [...executedTools],
-      teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-      status: "completed",
-      toolCallCount,
-      usage: finalUsage,
-      startedAt,
-      modelId: subagentModelId,
-      sessionId: activeSessionId,
-      depth: currentDepth + 1,
-    };
   },
   toModelOutput: ({
     output,
@@ -644,14 +691,17 @@ IMPORTANT:
       sessionId?: string;
       toolCallCount?: number;
       startedAt?: number;
+      worktreeBranch?: string;
+      worktreeSummary?: string;
     };
   }) => {
     const messages = output?.final;
     const sessionId = output?.sessionId;
+    const worktreeNote = output?.worktreeSummary ?? "";
     if (!messages || messages.length === 0) {
       return {
         type: "text",
-        value: "Subagent completed without producing messages.",
+        value: `Subagent completed without producing messages.${worktreeNote}`,
       };
     }
 
@@ -702,7 +752,10 @@ IMPORTANT:
         executedActions.length > 0
           ? `\n\nPartial actions completed before failure (${executedActions.length}):\n${executedActions.slice(-10).join("\n")}`
           : "";
-      return { type: "text", value: `${errorNotice.content}${executed}` };
+      return {
+        type: "text",
+        value: `${errorNotice.content}${executed}${worktreeNote}`,
+      };
     }
 
     // 2. Search assistant messages backwards for substantive text content
@@ -770,7 +823,10 @@ IMPORTANT:
         ? `\n\n*(Subagent session \`${sessionId}\` is active. Pass this sessionId in a subsequent task call to follow up or refine.)*`
         : "";
 
-      return { type: "text", value: `${formattedText}${sessionNotice}` };
+      return {
+        type: "text",
+        value: `${formattedText}${worktreeNote}${sessionNotice}`,
+      };
     }
 
     // 3. If no text was produced, return reconstructed actions and clear diagnostics
@@ -784,7 +840,7 @@ IMPORTANT:
 
     return {
       type: "text",
-      value: `Subagent completed without emitting a final text summary (${executedActions.length} tool call${executedActions.length === 1 ? "" : "s"} executed).${actionDetails}${sessionNotice}\n\nCheck the affected files directly to verify the outcome.`,
+      value: `Subagent completed without emitting a final text summary (${executedActions.length} tool call${executedActions.length === 1 ? "" : "s"} executed).${actionDetails}${worktreeNote}${sessionNotice}\n\nCheck the affected files directly to verify the outcome.`,
     };
   },
 });

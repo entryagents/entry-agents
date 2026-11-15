@@ -6,14 +6,11 @@ import {
   Blocks,
   Cable,
   CreditCard,
-  KeyRound,
   LogOut,
   Menu,
-  Plug,
   Settings as SettingsIcon,
   ShieldAlert,
   SlidersHorizontal,
-  Sparkles,
   User,
 } from "lucide-react";
 import Link from "next/link";
@@ -71,75 +68,102 @@ function ConnectionsPageSkeleton() {
   return <AccountsSectionSkeleton />;
 }
 
-const baseSidebarItems = [
+interface SidebarNavItem {
+  id: string;
+  label: string;
+  href: string;
+  matchPrefixes: readonly string[];
+  icon: typeof User;
+}
+
+const baseSidebarItems: readonly SidebarNavItem[] = [
   {
     id: "profile",
     label: "Profile",
     href: "/settings/profile",
+    matchPrefixes: ["/settings/profile"],
     icon: User,
   },
   {
     id: "usage",
-    label: "Usage & Balance",
+    label: "Usage & balance",
     href: "/settings/usage",
+    matchPrefixes: ["/settings/usage"],
     icon: Activity,
   },
   {
     id: "pricing",
-    label: "Pricing & Plans",
+    label: "Pricing & plans",
     href: "/pricing",
+    matchPrefixes: ["/pricing"],
     icon: CreditCard,
   },
   {
     id: "preferences",
     label: "Preferences",
     href: "/settings/preferences",
+    matchPrefixes: ["/settings/preferences"],
     icon: SettingsIcon,
-  },
-  {
-    id: "connections",
-    label: "Connections",
-    href: "/settings/connections",
-    icon: Cable,
-  },
-  {
-    id: "secrets",
-    label: "API Keys & Secrets",
-    href: "/settings/secrets",
-    icon: KeyRound,
   },
   {
     id: "models",
     label: "Models",
     href: "/settings/models",
+    matchPrefixes: ["/settings/models"],
     icon: SlidersHorizontal,
   },
   {
-    id: "skills",
-    label: "Skills",
-    href: "/settings/skills",
-    icon: Sparkles,
+    id: "integrations",
+    label: "Integrations",
+    href: "/settings/connections",
+    matchPrefixes: [
+      "/settings/connections",
+      "/settings/mcp-servers",
+      "/settings/secrets",
+    ],
+    icon: Cable,
   },
   {
-    id: "mcp-servers",
-    label: "MCP Servers",
-    href: "/settings/mcp-servers",
-    icon: Plug,
-  },
-  {
-    id: "plugins",
-    label: "Plugins",
+    id: "extensions",
+    label: "Extensions",
     href: "/settings/plugins",
+    matchPrefixes: ["/settings/plugins", "/settings/skills"],
     icon: Blocks,
   },
 ];
 
-const adminSidebarItem = {
+const adminSidebarItem: SidebarNavItem = {
   id: "admin",
   label: "Admin",
   href: "/settings/admin",
+  matchPrefixes: ["/settings/admin"],
   icon: ShieldAlert,
 };
+
+function matchesPrefix(pathname: string, prefixes: readonly string[]): boolean {
+  return prefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+function resolvePageTitle(
+  pathname: string,
+  activeItem?: SidebarNavItem,
+): string {
+  if (matchesPrefix(pathname, ["/settings/mcp-servers"])) {
+    return "Custom MCP tools";
+  }
+  if (matchesPrefix(pathname, ["/settings/secrets"])) {
+    return "API keys";
+  }
+  if (matchesPrefix(pathname, ["/settings/skills"])) {
+    return "Agent skills";
+  }
+  if (matchesPrefix(pathname, ["/settings/plugins"])) {
+    return "Plugins";
+  }
+  return activeItem?.label ?? "Settings";
+}
 
 function SettingsLayout({
   children,
@@ -156,32 +180,28 @@ function SettingsLayout({
     : baseSidebarItems;
   const isAdminRoute = pathname.startsWith("/settings/admin");
   const activeItem = sidebarItems.find((item) =>
-    item.href === "/settings/admin"
-      ? isAdminRoute
-      : pathname === item.href || pathname.startsWith(`${item.href}/`),
+    matchesPrefix(pathname, item.matchPrefixes),
   );
+  const mobileTitle = resolvePageTitle(pathname, activeItem);
 
   const navItems = (
-    <ul className="space-y-1">
+    <ul className="space-y-0.5">
       {sidebarItems.map((item) => {
-        const isActive =
-          item.href === "/settings/admin"
-            ? isAdminRoute
-            : pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const isActive = matchesPrefix(pathname, item.matchPrefixes);
         return (
           <li key={item.id}>
             <Link
               href={item.href}
               onClick={() => setMobileSidebarOpen(false)}
               className={cn(
-                "flex w-full items-center gap-3 rounded-md px-4 py-2 text-left text-sm transition-colors",
+                "flex h-8 w-full items-center gap-2.5 rounded-lg px-3 text-left text-[13px] font-medium transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98]",
                 isActive
                   ? "bg-muted text-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
               )}
             >
               <item.icon className="size-4 shrink-0" strokeWidth={1.5} />
-              {item.label}
+              <span className="truncate">{item.label}</span>
             </Link>
           </li>
         );
@@ -193,29 +213,29 @@ function SettingsLayout({
     <div className="flex h-dvh bg-background text-foreground">
       <aside className="hidden w-60 shrink-0 border-r border-border md:flex lg:w-64">
         <div className="flex h-full w-full flex-col overflow-y-auto">
-          <div className="flex items-center gap-4 px-6 py-4">
+          <div className="flex items-center gap-4 px-5 py-4">
             <Link
               href="/sessions"
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+              className="flex h-8 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground"
             >
               <ArrowLeft className="size-4 shrink-0" strokeWidth={1.5} />
-              Back
+              <span>Back</span>
             </Link>
           </div>
-          <nav className="flex-1 px-2 py-2">
-            <div className="mb-2 px-4 text-xs font-medium text-muted-foreground">
+          <nav aria-label="Settings navigation" className="flex-1 px-3 py-1">
+            <div className="mb-2 px-3 text-xs font-medium text-muted-foreground">
               Settings
             </div>
             {navItems}
           </nav>
-          <div className="border-t border-border px-2 py-3">
+          <div className="border-t border-border px-3 py-3">
             <button
               type="button"
               onClick={signOut}
-              className="flex w-full items-center gap-3 rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex h-8 w-full items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium text-muted-foreground transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground active:scale-[0.98]"
             >
               <LogOut className="size-4 shrink-0" strokeWidth={1.5} />
-              Sign out
+              <span>Sign out</span>
             </button>
           </div>
         </div>
@@ -226,30 +246,30 @@ function SettingsLayout({
           <SheetHeader className="sr-only">
             <SheetTitle>Settings navigation</SheetTitle>
           </SheetHeader>
-          <div className="flex items-center gap-4 px-6 py-4">
+          <div className="flex items-center gap-4 px-5 py-4">
             <Link
               href="/sessions"
               onClick={() => setMobileSidebarOpen(false)}
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+              className="flex h-8 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground"
             >
               <ArrowLeft className="size-4 shrink-0" strokeWidth={1.5} />
-              Back
+              <span>Back</span>
             </Link>
           </div>
-          <nav className="flex-1 px-2 py-2">
-            <div className="mb-2 px-4 text-xs font-medium text-muted-foreground">
+          <nav aria-label="Settings navigation" className="flex-1 px-3 py-1">
+            <div className="mb-2 px-3 text-xs font-medium text-muted-foreground">
               Settings
             </div>
             {navItems}
           </nav>
-          <div className="border-t border-border px-2 py-3">
+          <div className="border-t border-border px-3 py-3">
             <button
               type="button"
               onClick={signOut}
-              className="flex w-full items-center gap-3 rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="flex h-8 w-full items-center gap-2.5 rounded-lg px-3 text-[13px] font-medium text-muted-foreground transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground active:scale-[0.98]"
             >
               <LogOut className="size-4 shrink-0" strokeWidth={1.5} />
-              Sign out
+              <span>Sign out</span>
             </button>
           </div>
         </SheetContent>
@@ -261,16 +281,16 @@ function SettingsLayout({
             type="button"
             aria-label="Open settings navigation"
             onClick={() => setMobileSidebarOpen(true)}
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
             <Menu className="size-4" strokeWidth={1.5} />
           </button>
           <span className="flex-1 truncate text-sm font-medium">
-            {activeItem?.label ?? "Settings"}
+            {mobileTitle}
           </span>
           <Link
             href="/sessions"
-            className="text-xs text-muted-foreground hover:text-foreground"
+            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
             Sessions
           </Link>
@@ -291,32 +311,33 @@ function SettingsLayout({
 export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { isAdmin } = useSession();
-  const activeItem = baseSidebarItems.find((item) => item.href === pathname);
-  const fallbackTitle = activeItem?.label ?? "Profile";
-  const fallbackContent =
-    activeItem?.id === "connections" ? (
-      <ConnectionsPageSkeleton />
-    ) : activeItem?.id === "preferences" ? (
-      <PreferencesSectionSkeleton />
-    ) : activeItem?.id === "models" ? (
-      <PreferencesSectionSkeleton />
-    ) : activeItem?.id === "skills" ? (
-      <SkillsSectionSkeleton />
-    ) : activeItem?.id === "mcp-servers" ? (
-      <McpServersSectionSkeleton />
-    ) : activeItem?.id === "plugins" ? (
-      <PluginsSectionSkeleton />
-    ) : activeItem?.id === "secrets" ? (
-      <SecretsSectionSkeleton />
-    ) : (
-      <ProfilePageSkeleton />
-    );
+  const activeItem = baseSidebarItems.find((item) =>
+    matchesPrefix(pathname, item.matchPrefixes),
+  );
+  const fallbackTitle = resolvePageTitle(pathname, activeItem);
+  const fallbackContent = matchesPrefix(pathname, ["/settings/connections"]) ? (
+    <ConnectionsPageSkeleton />
+  ) : matchesPrefix(pathname, ["/settings/mcp-servers"]) ? (
+    <McpServersSectionSkeleton />
+  ) : matchesPrefix(pathname, ["/settings/secrets"]) ? (
+    <SecretsSectionSkeleton />
+  ) : matchesPrefix(pathname, ["/settings/skills"]) ? (
+    <SkillsSectionSkeleton />
+  ) : matchesPrefix(pathname, ["/settings/plugins"]) ? (
+    <PluginsSectionSkeleton />
+  ) : matchesPrefix(pathname, ["/settings/preferences", "/settings/models"]) ? (
+    <PreferencesSectionSkeleton />
+  ) : (
+    <ProfilePageSkeleton />
+  );
 
   return (
     <AuthGuard
       loadingFallback={
         <SettingsLayout pathname={pathname} isAdmin={false}>
-          <h1 className="text-2xl font-semibold">{fallbackTitle}</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {fallbackTitle}
+          </h1>
           {fallbackContent}
         </SettingsLayout>
       }

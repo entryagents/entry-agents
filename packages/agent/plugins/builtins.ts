@@ -32,24 +32,31 @@ export const BUILTIN_PLUGIN_CATALOG: readonly PluginManifest[] = [
   {
     slug: "team-orchestrator",
     name: "Multi-Agent Team Protocol",
-    version: "1.0.0",
+    version: "1.2.0",
     description:
-      "Coordinates architect, explorer, executor, design, and reviewer teammates via the shared team_board and unlocks /team-plan.",
+      "Coordinates architect, explorer, executor, design, and reviewer teammates in DAG waves and isolated worktrees via team_board (/team, /team-plan).",
     category: "agents",
     source: "builtin",
     hooks: ["session.context", "tool.execute.after"],
     slashCommands: [
       {
+        name: "team",
+        description:
+          "Launch wave-coordinated multi-agent team execution with @role handoffs and adversarial verification",
+        promptTemplate:
+          'Operate as the Carbon Coordinator for this request inside the main chat (/team): (1) Lock contracts (`kind: "contract"`) and plan DAG waves (`plan_tasks` with `dependsOn`, non-overlapping `files`, and `parked` for deferred optional tasks) on `team_board`. (2) Dispatch `explorer`, `executor`, and `design` teammates in dependency waves (`executor`/`design` run in isolated `team/<role>-<id>` git worktrees when available) and require `@role` handoff/debate posts on `team_board`. (3) Close with `reviewer` as the Adversarial Verifier posting `challenge` or `verification` evidence before integrating cleanly.',
+      },
+      {
         name: "team-plan",
         description:
           "Coordinate Architect + Explorer discovery before dispatching teammates",
         promptTemplate:
-          "Execute this request as a coordinated Multi-Agent Team: first use the `architect` and `explorer` subagents to map the codebase and post contracts/decisions to `team_board`, then dispatch `executor` (and `design` if UI changes) in parallel where safe, and finish with a `reviewer` audit before reporting back.",
+          "Execute this request as a coordinated Multi-Agent Team: first use the `architect` and `explorer` subagents to map the codebase, post locked `contract` / `decision` entries, and build DAG waves on `team_board` (`plan_tasks` with `dependsOn` and non-overlapping `files`), then dispatch worktree-isolated `executor` / `design` waves, and finish with a `reviewer` adversarial verification pass.",
       },
     ],
     rules: {
       appendSystemPrompt:
-        "[Plugin: Multi-Agent Team Protocol] For multi-file or cross-subsystem work, post architecture decisions on `team_board`, instruct subagents to read `team_board` first and record handoffs, and always close with a `reviewer` verification pass.",
+        '[Plugin: Multi-Agent Team Protocol] For multi-file or cross-subsystem work, lock interface contracts and dependency waves on `team_board` (`plan_tasks` + `kind: "contract"`), park deferred optional tasks (`status: "parked"`), instruct teammates to post `@role` handoffs/debates, and always close with `reviewer` posting adversarial `challenge` or `verification` evidence.',
     },
     configFields: [],
   },

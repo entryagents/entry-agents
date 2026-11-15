@@ -1,7 +1,7 @@
 "use client";
 
 import { formatTokens } from "@entry-agents/shared";
-import { Network, Share2, Users } from "lucide-react";
+import { Network, Share2, Users, Workflow } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +10,6 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
 } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -18,28 +17,53 @@ import {
   deriveTeamFeed,
   summarizeAgentHub,
 } from "@/lib/agent-hub/derive-roster";
+import type { ModelOption } from "@/lib/model-options";
 import { cn } from "@/lib/utils";
 import { AgentInspector } from "./agent-inspector";
 import { AgentRoster } from "./agent-roster";
 import { TeamBoardView } from "./team-board-view";
+import { TeamPane } from "./team-pane";
 
-type HubTab = "inspector" | "board";
+type HubTab = "team" | "inspector" | "board";
 
 /**
- * Agent Team Hub: live roster + inspector + shared Team Board for this chat.
- *
- * Read-only view over persisted messages so it reconstructs cleanly after refresh
- * or reconnect. Desktop renders a roster | inspector/board split; mobile uses a
- * bottom sheet with Back navigation.
- * Shortcut: Alt+A or Ctrl+Shift+A toggles the hub; custom event
- * `entry:toggle-agent-hub` opens it from the Command Palette.
+ * Agent Team Hub trigger + responsive drawer:
+ * - On desktop (>= 1024px) when `onToggleDesktopTeamPane` is wired, toggles
+ *   the docked right-hand `/team` pane alongside the chat.
+ * - On tablet/mobile (< 1024px), opens a `<Sheet>` with `/team` (including
+ *   per-role model pins), live Agents Inspector, and Team Board.
+ * Shortcut: Alt+A or Ctrl+Shift+A, or `entry:toggle-agent-hub`.
  */
 export function AgentHubButton({
   messages,
   onStopRun,
+  isDesktopTeamPaneOpen = false,
+  onToggleDesktopTeamPane,
+  defaultModelId = null,
+  teamRoleModels = {},
+  onUpdateRoleModel,
+  modelOptions = [],
+  isFreeTierLocked = false,
+  freePlanModelId = null,
+  freeTierAllowedModelIds = [],
+  onOpenSubagentTab,
 }: {
   messages: unknown;
   onStopRun?: () => void;
+  isDesktopTeamPaneOpen?: boolean;
+  onToggleDesktopTeamPane?: () => void;
+  defaultModelId?: string | null;
+  teamRoleModels?: Record<string, string>;
+  onUpdateRoleModel?: (role: string, modelId: string | null) => void;
+  modelOptions?: ModelOption[];
+  isFreeTierLocked?: boolean;
+  freePlanModelId?: string | null;
+  freeTierAllowedModelIds?: string[];
+  onOpenSubagentTab?: (
+    subagentId: string,
+    title?: string,
+    subagentType?: string,
+  ) => void;
 }) {
   const isMobile = useIsMobile();
   const roster = useMemo(() => deriveAgentHubRoster(messages), [messages]);
@@ -50,29 +74,39 @@ export function AgentHubButton({
     roster.length > 0 ||
     teamFeed.entries.length > 0 ||
     teamFeed.tasks.length > 0;
+  const pinnedCount = Object.keys(teamRoleModels).length;
 
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<HubTab>("inspector");
+  const [activeTab, setActiveTab] = useState<HubTab>("team");
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
 
   useEffect(() => {
+    const isDesktopViewport = () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 1024px)").matches;
+
+    const triggerToggle = () => {
+      if (isDesktopViewport() && onToggleDesktopTeamPane) {
+        setOpen(false);
+        onToggleDesktopTeamPane();
+        return;
+      }
+      setOpen((prev) => !prev);
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         (e.altKey && e.code === "KeyA") ||
         (e.ctrlKey && e.shiftKey && e.code === "KeyA")
       ) {
-        if (hasContent) {
-          e.preventDefault();
-          setOpen((prev) => !prev);
-        }
+        e.preventDefault();
+        triggerToggle();
       }
     };
 
     const handleCustomOpen = () => {
-      if (hasContent) {
-        setOpen((prev) => !prev);
-      }
+      triggerToggle();
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -81,9 +115,7 @@ export function AgentHubButton({
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("entry:toggle-agent-hub", handleCustomOpen);
     };
-  }, [hasContent]);
-
-  if (!hasContent) return null;
+  }, [onToggleDesktopTeamPane]);
 
   const selected =
     roster.find((entry) => entry.id === selectedId) ??
@@ -98,10 +130,11 @@ export function AgentHubButton({
     : [];
 
   const effectiveTab: HubTab =
-    roster.length === 0 &&
-    (teamFeed.entries.length > 0 || teamFeed.tasks.length > 0)
-      ? "board"
-      : activeTab;
+    activeTab === "inspector" && roster.length === 0
+      ? "team"
+      : activeTab === "board" && !hasContent
+        ? "team"
+        : activeTab;
 
   const select = (id: string) => {
     setSelectedId(id);
@@ -111,29 +144,61 @@ export function AgentHubButton({
     }
   };
 
+  const handleTriggerClick = () => {
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 1024px)").matches &&
+      onToggleDesktopTeamPane
+    ) {
+      setOpen(false);
+      onToggleDesktopTeamPane();
+      return;
+    }
+    setOpen((prev) => !prev);
+  };
+
+  const badgeCount =
+    totals.live > 0
+      ? `${totals.live}/${totals.total}`
+      : totals.total > 0
+        ? String(totals.total)
+        : teamFeed.entries.length > 0
+          ? String(teamFeed.entries.length)
+          : pinnedCount > 0
+            ? String(pinnedCount)
+            : null;
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <SheetTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1.5 rounded-md border-border/70 px-2 text-xs active:scale-[0.97] transition-transform"
-          aria-label={`Team hub, ${totals.live} running of ${totals.total} subagents`}
-        >
-          <Network className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="hidden sm:inline font-medium">Team</span>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={handleTriggerClick}
+        aria-pressed={isDesktopTeamPaneOpen || open}
+        aria-label={
+          hasContent
+            ? `Team workspace, ${totals.live} active of ${totals.total} subagents`
+            : "Open team workspace"
+        }
+        className={cn(
+          "h-7 gap-1.5 rounded-md border-border/70 px-2 text-xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
+          (isDesktopTeamPaneOpen || open) &&
+            "border-border bg-muted text-foreground",
+        )}
+      >
+        <Network className="size-3.5 text-muted-foreground" strokeWidth={1.5} />
+        <span className="hidden font-medium sm:inline">Team</span>
+        {badgeCount !== null && (
           <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-            {totals.live > 0
-              ? `${totals.live}/${totals.total}`
-              : totals.total > 0
-                ? totals.total
-                : teamFeed.entries.length}
+            {badgeCount}
           </span>
-          {totals.live > 0 && (
-            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/25" />
-          )}
-        </Button>
-      </SheetTrigger>
+        )}
+        {totals.live > 0 && (
+          <span className="size-1.5 rounded-full bg-emerald-500 ring-2 ring-emerald-500/25" />
+        )}
+      </Button>
+
       <SheetContent
         side={isMobile ? "bottom" : "right"}
         className={
@@ -151,9 +216,12 @@ export function AgentHubButton({
         <SheetHeader className="shrink-0 border-b border-border/80 bg-muted/10 p-4 pr-12">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <SheetTitle className="flex items-center gap-2 text-base font-semibold">
-              <Network className="h-4 w-4 text-primary" />
-              <span>Agent Team Hub</span>
-              <kbd className="hidden rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-block">
+              <Network className="size-4 text-primary" strokeWidth={1.5} />
+              <span>Team workspace</span>
+              <span className="font-mono text-xs font-normal text-muted-foreground">
+                /team
+              </span>
+              <kbd className="hidden rounded border border-border bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground sm:inline-block">
                 Alt+A
               </kbd>
             </SheetTitle>
@@ -161,16 +229,32 @@ export function AgentHubButton({
             <div className="inline-flex rounded-md border border-border/70 bg-muted/40 p-0.5 text-xs">
               <button
                 type="button"
+                onClick={() => {
+                  setActiveTab("team");
+                  setMobileShowDetail(false);
+                }}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded px-2.5 py-1 font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
+                  effectiveTab === "team"
+                    ? "bg-background text-foreground shadow-2xs"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Workflow className="size-3.5" strokeWidth={1.5} />
+                <span>Team</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setActiveTab("inspector")}
                 disabled={roster.length === 0}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded px-2.5 py-1 font-medium transition-colors disabled:opacity-40",
+                  "inline-flex items-center gap-1.5 rounded px-2.5 py-1 font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] disabled:opacity-40 cursor-pointer",
                   effectiveTab === "inspector"
                     ? "bg-background text-foreground shadow-2xs"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                <Users className="size-3.5" />
+                <Users className="size-3.5" strokeWidth={1.5} />
                 <span>Agents ({totals.total})</span>
               </button>
               <button
@@ -179,26 +263,30 @@ export function AgentHubButton({
                   setActiveTab("board");
                   if (isMobile) setMobileShowDetail(true);
                 }}
+                disabled={!hasContent}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded px-2.5 py-1 font-medium transition-colors",
+                  "inline-flex items-center gap-1.5 rounded px-2.5 py-1 font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] disabled:opacity-40 cursor-pointer",
                   effectiveTab === "board"
                     ? "bg-background text-foreground shadow-2xs"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                <Share2 className="size-3.5" />
+                <Share2 className="size-3.5" strokeWidth={1.5} />
                 <span>
-                  Team Board ({teamFeed.entries.length + teamFeed.tasks.length})
+                  Board ({teamFeed.entries.length + teamFeed.tasks.length})
                 </span>
               </button>
             </div>
           </div>
           <SheetDescription className="mt-1 font-mono text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">
+            <span className="font-medium text-foreground tabular-nums">
               {totals.live} active
             </span>{" "}
-            · <span>{totals.total} subagents</span> ·{" "}
-            <span>{teamFeed.tasks.length} team tasks</span> ·{" "}
+            · <span className="tabular-nums">{totals.total} subagents</span> ·{" "}
+            <span className="tabular-nums">
+              {teamFeed.tasks.length} team tasks
+            </span>{" "}
+            ·{" "}
             <span className="tabular-nums">
               {formatTokens(totals.inputTokens)} in
             </span>{" "}
@@ -210,7 +298,24 @@ export function AgentHubButton({
         </SheetHeader>
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
-          {effectiveTab === "board" ? (
+          {effectiveTab === "team" ? (
+            <TeamPane
+              className="w-full"
+              messages={messages}
+              defaultModelId={defaultModelId}
+              teamRoleModels={teamRoleModels}
+              onUpdateRoleModel={onUpdateRoleModel ?? (() => {})}
+              modelOptions={modelOptions}
+              isFreeTierLocked={isFreeTierLocked}
+              freePlanModelId={freePlanModelId}
+              freeTierAllowedModelIds={freeTierAllowedModelIds}
+              onSelectMember={(subagentId, title, subagentType) => {
+                setOpen(false);
+                onOpenSubagentTab?.(subagentId, title, subagentType);
+              }}
+              onStopRun={onStopRun}
+            />
+          ) : effectiveTab === "board" ? (
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
               <TeamBoardView feed={teamFeed} />
             </div>

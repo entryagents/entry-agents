@@ -1,4 +1,8 @@
 import type { LanguageModelUsage } from "ai";
+import {
+  extractCachedInputTokens,
+  extractCacheWriteTokens,
+} from "@/lib/chat/usage-extract";
 
 // Pure derivation of the Agent Hub roster from persisted chat messages.
 //
@@ -36,10 +40,14 @@ export interface AgentHubEntry {
   toolCallCount: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
+  cachedInputTokens: number | null;
+  cacheWriteTokens: number | null;
   pending: AgentHubPendingCall | null;
   streamedText: string | null;
   /** Subagent session id (resumable follow-ups), when reported. */
   sessionId: string | null;
+  /** Isolated git worktree branch (e.g. team/executor-ab12cd34), when active. */
+  worktreeBranch: string | null;
   /** Lineage depth: 0 = spawned by the main agent. */
   depth: number;
   /** id of the parent entry, null when spawned by the main agent. */
@@ -123,6 +131,12 @@ export function deriveAgentHubRoster(messages: unknown): AgentHubEntry[] {
       ) as Partial<LanguageModelUsage> | null;
       const pending = asRecord(output?.pending);
       const depth = numberOrNull(output?.depth) ?? 0;
+      const cacheRead = extractCachedInputTokens(
+        usage as LanguageModelUsage | undefined,
+      );
+      const cacheWrite = extractCacheWriteTokens(
+        usage as LanguageModelUsage | undefined,
+      );
 
       entries.push({
         id: part.toolCallId as string,
@@ -146,6 +160,8 @@ export function deriveAgentHubRoster(messages: unknown): AgentHubEntry[] {
         toolCallCount: numberOrNull(output?.toolCallCount),
         inputTokens: numberOrNull(usage?.inputTokens),
         outputTokens: numberOrNull(usage?.outputTokens),
+        cachedInputTokens: cacheRead > 0 ? cacheRead : null,
+        cacheWriteTokens: cacheWrite > 0 ? cacheWrite : null,
         pending:
           pending && typeof pending.name === "string"
             ? { name: pending.name, input: pending.input }
@@ -154,6 +170,10 @@ export function deriveAgentHubRoster(messages: unknown): AgentHubEntry[] {
           typeof output?.streamedText === "string" ? output.streamedText : null,
         sessionId:
           typeof output?.sessionId === "string" ? output.sessionId : null,
+        worktreeBranch:
+          typeof output?.worktreeBranch === "string"
+            ? output.worktreeBranch
+            : null,
         depth,
         parentId: null,
         errorText: typeof part.errorText === "string" ? part.errorText : null,
@@ -185,6 +205,8 @@ export interface AgentHubTotals {
   live: number;
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
 }
 
 export function summarizeAgentHub(entries: AgentHubEntry[]): AgentHubTotals {
@@ -194,8 +216,17 @@ export function summarizeAgentHub(entries: AgentHubEntry[]): AgentHubTotals {
       live: acc.live + (isLiveStatus(entry.status) ? 1 : 0),
       inputTokens: acc.inputTokens + (entry.inputTokens ?? 0),
       outputTokens: acc.outputTokens + (entry.outputTokens ?? 0),
+      cachedInputTokens: acc.cachedInputTokens + (entry.cachedInputTokens ?? 0),
+      cacheWriteTokens: acc.cacheWriteTokens + (entry.cacheWriteTokens ?? 0),
     }),
-    { total: 0, live: 0, inputTokens: 0, outputTokens: 0 },
+    {
+      total: 0,
+      live: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedInputTokens: 0,
+      cacheWriteTokens: 0,
+    },
   );
 }
 
@@ -208,12 +239,16 @@ export interface TeamFeedEntry {
     | "artifact"
     | "handoff"
     | "blocker"
-    | "question";
+    | "question"
+    | "debate"
+    | "challenge"
+    | "verification";
   authorRole: string;
   targetRole?: string;
   title: string;
   content: string;
   files?: string[];
+  mentions?: string[];
   createdAt: number;
 }
 
@@ -221,11 +256,12 @@ export interface TeamFeedTask {
   id: string;
   title: string;
   assignedRole: string;
-  status: "open" | "in_progress" | "completed" | "blocked";
+  status: "open" | "in_progress" | "completed" | "blocked" | "parked";
   dependsOn?: string[];
   files?: string[];
   notes?: string;
   verification?: string;
+  worktreeBranch?: string;
   updatedBy: string;
   updatedAt: number;
 }
@@ -261,6 +297,12 @@ function isTeamBoardPart(part: unknown): part is RawToolPart {
     ((p.type === "dynamic-tool" || p.type === "tool-call") &&
       (p.toolName === "team_board" || p.name === "team_board"))
   );
+}
+
+function isSettledFeedStatus(
+  status: TeamFeedTask["status"] | undefined,
+): boolean {
+  return status === "completed" || status === "parked";
 }
 
 function computeFeedWaves(tasks: TeamFeedTask[]): TeamFeedWave[] {
@@ -300,18 +342,22 @@ function computeFeedWaves(tasks: TeamFeedTask[]): TeamFeedWave[] {
   return [...buckets.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([wave, items]) => {
+      const nonParkedItems = items.filter((i) => i.status !== "parked");
       let status: TeamFeedWave["status"] = "queued";
-      if (items.every((i) => i.status === "completed")) {
+      if (items.every((i) => isSettledFeedStatus(i.status))) {
         status = "completed";
       } else if (items.some((i) => i.status === "blocked")) {
         status = "blocked";
       } else if (
-        items.some((i) => i.status === "in_progress") ||
-        items.every(
-          (i) =>
-            !i.dependsOn?.length ||
-            i.dependsOn.every((dep) => byId.get(dep)?.status === "completed"),
-        )
+        nonParkedItems.some((i) => i.status === "in_progress") ||
+        (nonParkedItems.length > 0 &&
+          nonParkedItems.every(
+            (i) =>
+              !i.dependsOn?.length ||
+              i.dependsOn.every((dep) =>
+                isSettledFeedStatus(byId.get(dep)?.status),
+              ),
+          ))
       ) {
         status = "active";
       }
@@ -331,7 +377,13 @@ function computeTaskFileConflicts(
     { roles: Set<string>; taskIds: Set<string> }
   >();
   for (const task of tasks) {
-    if (task.status === "completed" || !task.files) continue;
+    if (
+      task.status === "completed" ||
+      task.status === "parked" ||
+      !task.files
+    ) {
+      continue;
+    }
     for (const rawFile of task.files) {
       const cleaned = rawFile.trim().replace(/^\.\//, "");
       if (!cleaned) continue;
@@ -383,6 +435,9 @@ export function deriveTeamFeed(messages: unknown): TeamFeedState {
             "handoff",
             "blocker",
             "question",
+            "debate",
+            "challenge",
+            "verification",
           ].includes(kindRaw)
             ? kindRaw
             : "finding"
@@ -403,6 +458,13 @@ export function deriveTeamFeed(messages: unknown): TeamFeedState {
                 ),
               }
             : {}),
+          ...(Array.isArray(e.mentions)
+            ? {
+                mentions: e.mentions.filter(
+                  (m): m is string => typeof m === "string",
+                ),
+              }
+            : {}),
           createdAt: numberOrNull(e.createdAt) ?? 0,
         });
       }
@@ -416,7 +478,9 @@ export function deriveTeamFeed(messages: unknown): TeamFeedState {
         }
         const statusRaw = typeof t.status === "string" ? t.status : "open";
         const status = (
-          ["open", "in_progress", "completed", "blocked"].includes(statusRaw)
+          ["open", "in_progress", "completed", "blocked", "parked"].includes(
+            statusRaw,
+          )
             ? statusRaw
             : "open"
         ) as TeamFeedTask["status"];
@@ -428,6 +492,11 @@ export function deriveTeamFeed(messages: unknown): TeamFeedState {
           typeof t.verification === "string" && t.verification.trim().length > 0
             ? t.verification.trim()
             : prevTask?.verification;
+        const worktreeBranch =
+          typeof t.worktreeBranch === "string" &&
+          t.worktreeBranch.trim().length > 0
+            ? t.worktreeBranch.trim()
+            : prevTask?.worktreeBranch;
 
         taskMap.set(t.id, {
           id: t.id,
@@ -451,6 +520,7 @@ export function deriveTeamFeed(messages: unknown): TeamFeedState {
               ? { notes: prevTask.notes }
               : {}),
           ...(verification ? { verification } : {}),
+          ...(worktreeBranch ? { worktreeBranch } : {}),
           updatedBy: typeof t.updatedBy === "string" ? t.updatedBy : "main",
           updatedAt: numberOrNull(t.updatedAt) ?? 0,
         });

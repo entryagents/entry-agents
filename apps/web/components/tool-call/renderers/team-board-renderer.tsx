@@ -14,11 +14,24 @@ export function TeamBoardRenderer({
   const output = part.state === "output-available" ? part.output : undefined;
 
   const action = output?.action ?? input?.action ?? "sync";
+  const postedKind = output?.postedEntry?.kind ?? input?.kind;
+  const postedTarget = output?.postedEntry?.targetRole ?? input?.targetRole;
+  const postPrefix = postedKind ? `[${postedKind}] ` : "";
+  const postTargetSuffix = postedTarget ? ` -> @${postedTarget}` : "";
+
+  const updatedStatus = output?.updatedTask?.status ?? input?.status;
+  const updatedWorktree =
+    output?.updatedTask?.worktreeBranch ?? input?.worktreeBranch;
+
   const labelMap: Record<string, string> = {
-    post: input?.title ? `Posted "${input.title}"` : "Posted note",
+    post: input?.title
+      ? `${postPrefix}"${input.title}"${postTargetSuffix}`
+      : `${postPrefix}Posted note${postTargetSuffix}`,
     read: "Read team board",
-    plan_tasks: "Planned team tasks",
-    update_task: input?.taskId ? `Updated ${input.taskId}` : "Updated task",
+    plan_tasks: "Planned team waves",
+    update_task: input?.taskId
+      ? `${input.taskId}${updatedStatus ? ` (${updatedStatus})` : ""}${updatedWorktree ? ` · ${updatedWorktree}` : ""}`
+      : "Updated task",
   };
 
   const summary = labelMap[action] ?? action;
@@ -28,7 +41,7 @@ export function TeamBoardRenderer({
 
   return (
     <ToolLayout
-      icon={<Share2 className="h-3.5 w-3.5" />}
+      icon={<Share2 className="h-3.5 w-3.5" strokeWidth={1.5} />}
       name="Team Board"
       summary={summary}
       meta={meta}

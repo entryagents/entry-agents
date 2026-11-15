@@ -47,6 +47,7 @@ import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
 import { SubagentChatView } from "@/components/subagent-chat/subagent-chat-view";
 import { AgentHubButton } from "@/components/agent-hub/agent-hub-button";
+import { TeamPane } from "@/components/agent-hub/team-pane";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
 import {
   PinnedTodoPanel,
@@ -418,7 +419,7 @@ function ContextUsageIndicator({
         <button
           type="button"
           aria-label="View context usage breakdown"
-          className="flex cursor-pointer items-center gap-1.5 rounded px-1.5 py-0.5 text-xs text-muted-foreground/70 transition-colors hover:bg-muted/60 hover:text-muted-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-1.5 text-xs tabular-nums text-muted-foreground/85 transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background/60 hover:text-foreground active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:px-2"
         >
           {percentage !== null ? (
             <>
@@ -863,6 +864,7 @@ export function SessionChatContent({
   >(null);
   const [mobileArchiveDialogOpen, setMobileArchiveDialogOpen] = useState(false);
   const [mobileShareOpen, setMobileShareOpen] = useState(false);
+  const [teamPaneOpen, setTeamPaneOpen] = useState(false);
   const [copiedAssistantMessageId, setCopiedAssistantMessageId] = useState<
     string | null
   >(null);
@@ -999,6 +1001,8 @@ export function SessionChatContent({
     unarchiveSession: _unarchiveSession,
     updateChatModel,
     updateChatReasoningEffort,
+    teamRoleModels,
+    updateTeamRoleModel,
     updateSessionTitle,
     updatePermissionMode,
     updateAutoCommitPush,
@@ -3225,7 +3229,22 @@ export function SessionChatContent({
       {/* Agent Team Hub portaled into SessionHeader actions slot */}
       {headerActionsNode &&
         createPortal(
-          <AgentHubButton messages={messages} onStopRun={handleStopStream} />,
+          <AgentHubButton
+            messages={messages}
+            onStopRun={handleStopStream}
+            isDesktopTeamPaneOpen={teamPaneOpen}
+            onToggleDesktopTeamPane={() => setTeamPaneOpen((prev) => !prev)}
+            defaultModelId={chatInfo.modelId}
+            teamRoleModels={teamRoleModels}
+            onUpdateRoleModel={updateTeamRoleModel}
+            modelOptions={modelOptions}
+            isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
+            freePlanModelId={freePlanModelId}
+            freeTierAllowedModelIds={freeTierAllowedModelIds}
+            onOpenSubagentTab={(subagentId, title, subagentType) =>
+              openSubagentTab(subagentId, title, subagentType)
+            }
+          />,
           headerActionsNode,
         )}
 
@@ -3244,267 +3263,292 @@ export function SessionChatContent({
           </span>
         </div>
       )}
-      <div className="flex h-full flex-col overflow-hidden">
-        {/* Share dialog (triggered from header) */}
-        <ShareDialog
-          sessionId={session.id}
-          chatId={chatInfo.id}
-          initialShareId={null}
-          externalOpen={mobileShareOpen || shareRequested}
-          onExternalOpenChange={(open) => {
-            setMobileShareOpen(open);
-            if (!open) setShareRequested(false);
-          }}
-        />
-
-        {/* Archive confirmation dialog */}
-        <Dialog
-          open={mobileArchiveDialogOpen}
-          onOpenChange={setMobileArchiveDialogOpen}
-        >
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>Archive session?</DialogTitle>
-              <DialogDescription>
-                This will stop the sandbox and archive the session. You can
-                still view it in the archive tab.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
-              </DialogClose>
-              <DialogClose asChild>
-                <Button
-                  onClick={() => {
-                    void archiveSession().catch((error: unknown) => {
-                      console.error("Failed to archive session:", error);
-                    });
-                    router.push("/sessions");
-                  }}
-                >
-                  Archive
-                </Button>
-              </DialogClose>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Main content: chat messages, file preview, diff, or subagent */}
+      <div className="flex h-full min-w-0 overflow-hidden">
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {activeView === "diff" ? (
-            <DiffTabView />
-          ) : activeView === "file" && focusedFilePath ? (
-            <FileTabView />
-          ) : activeView === "subagent" && activeSubagentId ? (
-            <SubagentChatView
-              subagentId={activeSubagentId}
-              messages={messages}
-              onClose={closeSubagentTab}
-              onStopRun={() => void stopChatStream()}
-            />
-          ) : null}
+          {/* Share dialog (triggered from header) */}
+          <ShareDialog
+            sessionId={session.id}
+            chatId={chatInfo.id}
+            initialShareId={null}
+            externalOpen={mobileShareOpen || shareRequested}
+            onExternalOpenChange={(open) => {
+              setMobileShareOpen(open);
+              if (!open) setShareRequested(false);
+            }}
+          />
 
-          <div
-            className={
-              activeView === "chat"
-                ? "flex min-w-0 flex-1 flex-col overflow-hidden"
-                : "hidden"
-            }
+          {/* Archive confirmation dialog */}
+          <Dialog
+            open={mobileArchiveDialogOpen}
+            onOpenChange={setMobileArchiveDialogOpen}
           >
-            {/* Messages */}
-            <div className="relative flex-1 overflow-hidden">
-              <div ref={containerRef} className="h-full overflow-y-auto">
-                <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
-                  <OpenFileProvider onOpenFile={handleOpenFileTab}>
-                    <div className="space-y-6">
-                      <ChatMessageFeed
-                        messages={renderMessages}
-                        isStreaming={isChatInFlight}
-                        streamdownComponents={streamdownComponents}
-                        onApproveTool={handleApproveTool}
-                        onDenyTool={handleDenyTool}
-                        onOpenSubagentTab={openSubagentTab}
-                        onCopyAssistantMessage={handleCopyAssistantMessage}
-                        copiedAssistantMessageId={copiedAssistantMessageId}
-                        onForkAssistantMessage={handleForkAssistantMessage}
-                        forkingAssistantMessageId={forkingAssistantMessageId}
-                        onCopyUserMessage={handleCopyUserMessage}
-                        copiedUserMessageId={copiedUserMessageId}
-                        onResendUserMessage={handleResendUserMessage}
-                        resendingMessageId={resendingMessageId}
-                        onDeleteMessage={handleDeleteUserMessage}
-                        deletingMessageId={deletingMessageId}
-                        hasMessageActionInFlight={hasMessageActionInFlight}
-                        modelOptions={modelOptions}
-                        messageDurationMap={messageDurationMap}
-                        messageStartedAtMap={messageStartedAtMap}
-                        lastSendTimestamp={lastSendTimestampRef.current}
-                        lastUserMessageSentAt={lastUserMessageSentAt}
-                        readOnly={false}
-                        agentName="Entry"
-                        emptyStateMessage="Send a message to get started"
-                        showThinkingIndicator={showThinkingIndicator}
-                        workspaceStatusMessage={
-                          workspaceStatus?.message ?? "Thinking…"
-                        }
-                      />
-                      {error &&
-                        (!isOnline ? (
-                          <div
-                            role="status"
-                            className="flex w-fit max-w-[85%] items-center gap-2.5 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
-                          >
-                            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                            <span>
-                              Offline — waiting for your connection to resume
-                              automatically.
-                            </span>
-                          </div>
-                        ) : (
-                          // Inline, chat-bubble-style error card that lands
-                          // right where the failed response would've been —
-                          // not a full-width banner shouting from the top of
-                          // the page. Same "Last line of defense" note as
-                          // before: never render error.message directly,
-                          // transport-level failures can still carry raw
-                          // gateway/provider text that skipped the backend
-                          // sanitizer in app/workflows/chat.ts.
-                          <div className="flex w-fit max-w-[80%] flex-col gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                            <p className="break-words">
-                              {toFriendlyChatErrorText(error)}
-                            </p>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="w-fit shrink-0 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
-                              onClick={() => retryChatStream()}
-                            >
-                              <RefreshCw className="h-3 w-3" />
-                              Retry
-                            </Button>
-                          </div>
-                        ))}
-                    </div>
-                  </OpenFileProvider>
-                </div>
-              </div>
-              {!isAtBottom && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-secondary text-secondary-foreground hover:bg-accent"
-                  onClick={scrollToBottom}
-                >
-                  <ArrowDown className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+            <DialogContent showCloseButton={false}>
+              <DialogHeader>
+                <DialogTitle>Archive session?</DialogTitle>
+                <DialogDescription>
+                  This will stop the sandbox and archive the session. You can
+                  still view it in the archive tab.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Cancel</Button>
+                </DialogClose>
+                <DialogClose asChild>
+                  <Button
+                    onClick={() => {
+                      void archiveSession().catch((error: unknown) => {
+                        console.error("Failed to archive session:", error);
+                      });
+                      router.push("/sessions");
+                    }}
+                  >
+                    Archive
+                  </Button>
+                </DialogClose>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
-            {/* Input */}
-            <div className="p-4 pb-2 sm:pb-8">
-              <div className="mx-auto max-w-4xl space-y-2">
-                {sandboxCreateError && (
-                  <SandboxCreateErrorBanner
-                    error={sandboxCreateError}
-                    onDismiss={() => setSandboxCreateError(null)}
-                  />
-                )}
-                {restoreError && (
-                  <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    <span>{restoreError}</span>
-                    <button
-                      type="button"
-                      onClick={() => setRestoreError(null)}
-                      className="ml-2 rounded p-0.5 hover:bg-destructive/20"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+          {/* Main content: chat messages, file preview, diff, or subagent */}
+          <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+            {activeView === "diff" ? (
+              <DiffTabView />
+            ) : activeView === "file" && focusedFilePath ? (
+              <FileTabView />
+            ) : activeView === "subagent" && activeSubagentId ? (
+              <SubagentChatView
+                subagentId={activeSubagentId}
+                messages={messages}
+                onClose={closeSubagentTab}
+                onStopRun={() => void stopChatStream()}
+              />
+            ) : null}
+
+            <div
+              className={
+                activeView === "chat"
+                  ? "flex min-w-0 flex-1 flex-col overflow-hidden"
+                  : "hidden"
+              }
+            >
+              {/* Messages */}
+              <div className="relative flex-1 overflow-hidden">
+                <div ref={containerRef} className="h-full overflow-y-auto">
+                  <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
+                    <OpenFileProvider onOpenFile={handleOpenFileTab}>
+                      <div className="space-y-6">
+                        <ChatMessageFeed
+                          messages={renderMessages}
+                          isStreaming={isChatInFlight}
+                          streamdownComponents={streamdownComponents}
+                          onApproveTool={handleApproveTool}
+                          onDenyTool={handleDenyTool}
+                          onOpenSubagentTab={openSubagentTab}
+                          onCopyAssistantMessage={handleCopyAssistantMessage}
+                          copiedAssistantMessageId={copiedAssistantMessageId}
+                          onForkAssistantMessage={handleForkAssistantMessage}
+                          forkingAssistantMessageId={forkingAssistantMessageId}
+                          onCopyUserMessage={handleCopyUserMessage}
+                          copiedUserMessageId={copiedUserMessageId}
+                          onResendUserMessage={handleResendUserMessage}
+                          resendingMessageId={resendingMessageId}
+                          onDeleteMessage={handleDeleteUserMessage}
+                          deletingMessageId={deletingMessageId}
+                          hasMessageActionInFlight={hasMessageActionInFlight}
+                          modelOptions={modelOptions}
+                          messageDurationMap={messageDurationMap}
+                          messageStartedAtMap={messageStartedAtMap}
+                          lastSendTimestamp={lastSendTimestampRef.current}
+                          lastUserMessageSentAt={lastUserMessageSentAt}
+                          readOnly={false}
+                          agentName="Entry"
+                          emptyStateMessage="Send a message to get started"
+                          showThinkingIndicator={showThinkingIndicator}
+                          workspaceStatusMessage={
+                            workspaceStatus?.message ?? "Thinking…"
+                          }
+                        />
+                        {error &&
+                          (!isOnline ? (
+                            <div
+                              role="status"
+                              className="flex w-fit max-w-[85%] items-center gap-2.5 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+                            >
+                              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                              <span>
+                                Offline — waiting for your connection to resume
+                                automatically.
+                              </span>
+                            </div>
+                          ) : (
+                            // Inline, chat-bubble-style error card that lands
+                            // right where the failed response would've been —
+                            // not a full-width banner shouting from the top of
+                            // the page. Same "Last line of defense" note as
+                            // before: never render error.message directly,
+                            // transport-level failures can still carry raw
+                            // gateway/provider text that skipped the backend
+                            // sanitizer in app/workflows/chat.ts.
+                            <div className="flex w-fit max-w-[80%] flex-col gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                              <p className="break-words">
+                                {toFriendlyChatErrorText(error)}
+                              </p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="w-fit shrink-0 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                                onClick={() => retryChatStream()}
+                              >
+                                <RefreshCw className="h-3 w-3" />
+                                Retry
+                              </Button>
+                            </div>
+                          ))}
+                      </div>
+                    </OpenFileProvider>
                   </div>
+                </div>
+                {!isAtBottom && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-secondary text-secondary-foreground hover:bg-accent"
+                    onClick={scrollToBottom}
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </Button>
                 )}
-                {deleteMessageError && (
-                  <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    <span>{deleteMessageError}</span>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteMessageError(null)}
-                      className="ml-2 rounded p-0.5 hover:bg-destructive/20"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                )}
-                <ChatComposer
-                  ref={composerRef}
-                  isArchived={isArchived}
-                  isChatInFlight={isChatInFlight}
-                  hasPendingResponse={hasPendingResponse}
-                  composerGate={composerGate}
-                  modelId={chatInfo.modelId}
-                  reasoningEffort={chatInfo.reasoningEffort}
-                  modelOptions={modelOptions}
-                  modelOptionsLoading={modelOptionsLoading}
-                  isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
-                  freePlanModelId={freePlanModelId}
-                  freeTierAllowedModelIds={freeTierAllowedModelIds}
-                  onModelChange={handleModelChange}
-                  onReasoningEffortChange={handleReasoningEffortChange}
-                  onUpgradeRequired={handleUpgradeRequired}
-                  permissionMode={permissionMode}
-                  isTogglingPermissionMode={isTogglingPermissionMode}
-                  onPermissionModeChange={handlePermissionModeChange}
-                  files={files}
-                  filesLoading={filesLoading}
-                  skills={skills}
-                  skillsLoading={skillsLoading}
-                  pendingQuestions={pendingQuestions}
-                  hasPendingQuestion={hasPendingQuestion}
-                  onSubmitQuestionAnswers={handleQuestionSubmit}
-                  onCancelQuestion={handleQuestionCancel}
-                  queuedCount={queuedMessages.length}
-                  inboxUnreadCount={inboxUnreadCount}
-                  isSendingInbox={isSendingInbox}
-                  onSubmitMessage={submitBuiltMessage}
-                  onEnqueueMessage={enqueueComposerMessage}
-                  onSendInboxMessage={sendInboxMessage}
-                  onStopStream={handleStopStream}
-                  overlaySlot={
-                    <SandboxInputOverlay
-                      isArchived={isArchived}
-                      snapshotPending={isArchiveSnapshotPending}
-                      router={router}
-                      freeTierBlocked={Boolean(composerGate)}
-                      freeTierBlockedReason={composerGate?.reason ?? null}
+              </div>
+
+              {/* Input */}
+              <div className="p-4 pb-2 sm:pb-8">
+                <div className="mx-auto max-w-4xl space-y-2">
+                  {sandboxCreateError && (
+                    <SandboxCreateErrorBanner
+                      error={sandboxCreateError}
+                      onDismiss={() => setSandboxCreateError(null)}
                     />
-                  }
-                  topPanelsSlot={
-                    <>
-                      <QueuedPromptsPanel
-                        prompts={queuedMessages}
-                        onRemove={removeQueuedMessage}
-                        onEdit={updateQueuedMessageText}
-                        onReorder={reorderQueuedMessages}
+                  )}
+                  {restoreError && (
+                    <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      <span>{restoreError}</span>
+                      <button
+                        type="button"
+                        onClick={() => setRestoreError(null)}
+                        className="ml-2 rounded p-0.5 hover:bg-destructive/20"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  {deleteMessageError && (
+                    <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      <span>{deleteMessageError}</span>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteMessageError(null)}
+                        className="ml-2 rounded p-0.5 hover:bg-destructive/20"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
+                  <ChatComposer
+                    ref={composerRef}
+                    isArchived={isArchived}
+                    isChatInFlight={isChatInFlight}
+                    hasPendingResponse={hasPendingResponse}
+                    composerGate={composerGate}
+                    modelId={chatInfo.modelId}
+                    reasoningEffort={chatInfo.reasoningEffort}
+                    modelOptions={modelOptions}
+                    modelOptionsLoading={modelOptionsLoading}
+                    isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
+                    freePlanModelId={freePlanModelId}
+                    freeTierAllowedModelIds={freeTierAllowedModelIds}
+                    onModelChange={handleModelChange}
+                    onReasoningEffortChange={handleReasoningEffortChange}
+                    onUpgradeRequired={handleUpgradeRequired}
+                    permissionMode={permissionMode}
+                    isTogglingPermissionMode={isTogglingPermissionMode}
+                    onPermissionModeChange={handlePermissionModeChange}
+                    files={files}
+                    filesLoading={filesLoading}
+                    skills={skills}
+                    skillsLoading={skillsLoading}
+                    pendingQuestions={pendingQuestions}
+                    hasPendingQuestion={hasPendingQuestion}
+                    onSubmitQuestionAnswers={handleQuestionSubmit}
+                    onCancelQuestion={handleQuestionCancel}
+                    queuedCount={queuedMessages.length}
+                    inboxUnreadCount={inboxUnreadCount}
+                    isSendingInbox={isSendingInbox}
+                    onSubmitMessage={submitBuiltMessage}
+                    onEnqueueMessage={enqueueComposerMessage}
+                    onSendInboxMessage={sendInboxMessage}
+                    onStopStream={handleStopStream}
+                    overlaySlot={
+                      <SandboxInputOverlay
+                        isArchived={isArchived}
+                        snapshotPending={isArchiveSnapshotPending}
+                        router={router}
+                        freeTierBlocked={Boolean(composerGate)}
+                        freeTierBlockedReason={composerGate?.reason ?? null}
                       />
-                      <PinnedTodoPanel todos={latestTodos} />
-                    </>
-                  }
-                  contextUsageSlot={
-                    <ContextUsageIndicator
-                      inputTokens={tokenUsage.inputTokens}
-                      conversationInputTokens={conversationUsage.inputTokens}
-                      conversationCachedInputTokens={
-                        conversationUsage.cachedInputTokens
-                      }
-                      conversationOutputTokens={conversationUsage.outputTokens}
-                      conversationCost={conversationCost}
-                      contextLimit={contextLimit ?? DEFAULT_CONTEXT_LIMIT}
-                    />
-                  }
-                />
+                    }
+                    topPanelsSlot={
+                      <>
+                        <QueuedPromptsPanel
+                          prompts={queuedMessages}
+                          onRemove={removeQueuedMessage}
+                          onEdit={updateQueuedMessageText}
+                          onReorder={reorderQueuedMessages}
+                        />
+                        <PinnedTodoPanel todos={latestTodos} />
+                      </>
+                    }
+                    contextUsageSlot={
+                      <ContextUsageIndicator
+                        inputTokens={tokenUsage.inputTokens}
+                        conversationInputTokens={conversationUsage.inputTokens}
+                        conversationCachedInputTokens={
+                          conversationUsage.cachedInputTokens
+                        }
+                        conversationOutputTokens={
+                          conversationUsage.outputTokens
+                        }
+                        conversationCost={conversationCost}
+                        contextLimit={contextLimit ?? DEFAULT_CONTEXT_LIMIT}
+                      />
+                    }
+                  />
+                </div>
               </div>
             </div>
           </div>
         </div>
+
+        {teamPaneOpen && (
+          <div className="hidden h-full w-[360px] shrink-0 overflow-hidden border-l border-border/80 bg-background lg:flex xl:w-[380px]">
+            <TeamPane
+              className="w-full"
+              messages={messages}
+              defaultModelId={chatInfo.modelId}
+              teamRoleModels={teamRoleModels}
+              onUpdateRoleModel={updateTeamRoleModel}
+              modelOptions={modelOptions}
+              isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
+              freePlanModelId={freePlanModelId}
+              freeTierAllowedModelIds={freeTierAllowedModelIds}
+              onSelectMember={(subagentId, title, subagentType) =>
+                openSubagentTab(subagentId, title, subagentType)
+              }
+              onStopRun={handleStopStream}
+              onClose={() => setTeamPaneOpen(false)}
+            />
+          </div>
+        )}
       </div>
 
       {/* Merge PR Dialog */}

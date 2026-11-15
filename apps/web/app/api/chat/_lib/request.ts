@@ -4,6 +4,7 @@ export interface ChatRequestBody {
   messages: WebAgentUIMessage[];
   sessionId?: string;
   chatId?: string;
+  teamRoleModels?: Record<string, string>;
 }
 
 type ParseChatRequestResult =

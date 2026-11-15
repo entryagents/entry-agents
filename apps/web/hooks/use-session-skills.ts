@@ -18,6 +18,12 @@ export interface UseSessionSkillsReturn {
 
 const TEAM_SPECIALIST_COMMANDS: SkillSuggestion[] = [
   {
+    name: "team",
+    description:
+      "Launch wave-coordinated multi-agent team execution in the main chat with live @role handoffs",
+    source: "team",
+  },
+  {
     name: "architect",
     description:
       "Dispatch the Architect subagent to decompose system design, contracts, and file boundaries",
@@ -50,7 +56,7 @@ const TEAM_SPECIALIST_COMMANDS: SkillSuggestion[] = [
   {
     name: "team-plan",
     description:
-      "Coordinate the multi-agent specialist team via the shared team board for complex features",
+      "Coordinate Architect + Explorer discovery before dispatching parallel teammates",
     source: "team",
   },
 ];
@@ -62,7 +68,7 @@ const FEATURED_SKILL_ORDER = [
   "plan-mode",
   "baseline-ui",
   "web-animation-design",
-  "composio",
+  "executor",
   "workflow",
 ];
 
@@ -103,6 +109,13 @@ export function useSessionSkills(
     const seen = new Set<string>();
     const combined: SkillSuggestion[] = [];
 
+    for (const teamCmd of TEAM_SPECIALIST_COMMANDS) {
+      const key = teamCmd.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push(teamCmd);
+    }
+
     for (const skill of skillList) {
       const key = skill.name.toLowerCase();
       if (seen.has(key)) continue;
@@ -111,13 +124,6 @@ export function useSessionSkills(
         ...skill,
         source: "skill",
       });
-    }
-
-    for (const teamCmd of TEAM_SPECIALIST_COMMANDS) {
-      const key = teamCmd.name.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      combined.push(teamCmd);
     }
 
     for (const cmd of pluginCmds) {

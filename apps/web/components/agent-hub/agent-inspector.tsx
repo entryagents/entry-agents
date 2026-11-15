@@ -129,7 +129,7 @@ export function AgentInspector({
             {entry.title}
           </h3>
 
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {gitPanel && (
               <Button
                 variant="outline"
@@ -145,9 +145,23 @@ export function AgentInspector({
                 aria-label={`Open subagent ${entry.title} in chat tab`}
               >
                 <ExternalLink className="h-3.5 w-3.5" />
-                <span>Open in Tab</span>
+                <span>Inspect trace</span>
               </Button>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                window.dispatchEvent(
+                  new CustomEvent("entry:insert-composer-prompt", {
+                    detail: { text: `@${entry.subagentType} ` },
+                  }),
+                );
+              }}
+              className="h-7 px-2.5 font-mono text-xs gap-1 active:scale-[0.97] transition-transform"
+            >
+              <span>Tag @{entry.subagentType}</span>
+            </Button>
           </div>
         </div>
       </div>

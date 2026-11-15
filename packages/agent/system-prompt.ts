@@ -103,11 +103,10 @@ ${buildSubagentSummaryLines()}
 # Execution Mode: Fast Single-Agent Default & Wave-Coordinated Teams
 
 - **Default to direct execution**: For everyday questions, single-file edits, targeted bug fixes, and standard features, execute directly in your main loop without spawning subagents. Do NOT spawn all 5 subagents on routine turns.
-- **On-demand specialist invocation**: When the user starts a message with \`/architect\`, \`/explorer\`, \`/executor\`, \`/reviewer\`, \`/design\`, or \`@architect\`/\`@explorer\`/\`@executor\`/\`@reviewer\`/\`@design\`, immediately dispatch that specialist subagent via \`task\` as your FIRST tool call. When the user invokes \`/team-plan\`, coordinate the relevant specialists via \`team_board\`.
-- **Wave-coordinated team scaling**: For large multi-file features, cross-cutting architectural changes, or parallelizable investigations, organize execution into dependency waves inside the live chat:
-  1. **Wave 0 (Scout & Contract)**: Dispatch \`explorer\` or \`architect\` first, then publish interface/schema contracts via \`team_board\` (\`post\` with \`kind: "contract"\`) and dependency-ordered work via \`plan_tasks\` (\`dependsOn\` + non-overlapping \`files\` paths).
-  2. **Wave 1..N (Parallel Build)**: Dispatch independent \`executor\` and \`design\` teammates in parallel ONLY when their \`dependsOn\` prerequisites are completed and their claimed \`files\` do not overlap.
-  3. **Final Wave (Verify & Review)**: Finish multi-file changes with a \`reviewer\` pass checking diffs, contracts, and test/typecheck verification before reporting completion.
+- **On-demand specialist & team invocation**: When the user starts a message with \`/architect\`, \`/explorer\`, \`/executor\`, \`/reviewer\`, \`/design\`, or tags \`@architect\`/\`@explorer\`/\`@executor\`/\`@reviewer\`/\`@design\`, immediately dispatch that specialist subagent via \`task\` as your FIRST tool call. When the user invokes \`/team\`, \`/team-plan\`, or tags \`@team\`, operate as the Carbon Team Coordinator in the main chat:
+  1. **Wave 0 (Scout & Contract)**: Dispatch \`explorer\` or \`architect\` first, lock shared interfaces via \`team_board\` (\`post\` with \`kind: "contract"\`), and schedule dependency-ordered tasks via \`plan_tasks\` (\`dependsOn\` + non-overlapping \`files\` paths; defer optional/blocked follow-ups as \`status: "parked"\` so waves stay tight without burning tokens).
+  2. **Wave 1..N (Worktree-Isolated Parallel Build)**: Dispatch independent \`executor\` and \`design\` teammates in parallel ONLY when their \`dependsOn\` prerequisites are satisfied and their claimed \`files\` do not overlap. Write-capable teammates automatically run inside isolated git worktree branches (\`team/<role>-<id>\`) when in a git repository, checkpointing changes safely for review/cherry-pick. Teammates collaborate via \`team_board\` using \`@role\` mentions, \`debate\`, and \`handoff\` posts.
+  3. **Final Wave (Adversarial Verifier & Merge)**: Dispatch \`reviewer\` as the Adversarial Verifier to audit teammate diffs/worktree branches, run read-only verification checks, post \`challenge\` entries targeting specific \`@role\` teammates when gaps or failing tests appear, or post \`verification\` evidence once proven clean before integrating changes and summarizing.
 
 # Verification Loop
 
@@ -394,6 +393,7 @@ export interface McpPromptSummary {
   bridged: boolean;
   servers: Array<{ name: string; toolCount: number }>;
   directToolNames: string[];
+  connectedIntegrations?: string[];
   composioConnectedToolkits?: string[];
 }
 
@@ -503,23 +503,31 @@ function buildMcpPrompt(summary: McpPromptSummary): string {
         `- \`${server.name}\` (${server.toolCount} tool${server.toolCount === 1 ? "" : "s"})`,
     );
 
-  const hasComposio = summary.servers.some(
-    (s) => s.name.toLowerCase() === "composio",
+  const hasExecutor = summary.servers.some(
+    (s) => s.name.toLowerCase() === "executor",
   );
-  const connectedToolkits = (summary.composioConnectedToolkits ?? [])
+  const connectedApps = (
+    summary.connectedIntegrations ??
+    summary.composioConnectedToolkits ??
+    []
+  )
     .map((slug) => slug.trim().toLowerCase())
     .filter((slug) => slug.length > 0)
     .toSorted();
-  const connectedToolkitsLine =
-    connectedToolkits.length > 0
-      ? `\n- Connected user apps right now: ${connectedToolkits.map((slug) => `\`${slug}\``).join(", ")}.`
-      : "\n- No user apps are connected yet — if a requested integration isn't connected, generate an OAuth link via `COMPOSIO_MANAGE_CONNECTIONS` or ask them to connect it in **Settings -> Connections**.";
-  const composioGuidance = hasComposio
-    ? `\n\n### Composio App Integrations (Gmail, Slack, Notion, Linear, Calendar, Drive, Jira, Figma, etc.)
-- The \`composio\` server gives you access to 500+ app integrations via Composio Tool Router.${connectedToolkitsLine}
-- When the user asks to read/send Gmail, post to Slack, query Notion, create Linear/Jira issues, check Google Calendar/Drive, or use any connected SaaS app:
-  1. Discover the exact action tools via \`tool_search({ query })\` (or call \`mcp__composio__COMPOSIO_SEARCH_TOOLS\` directly if exposed).
-  2. Execute actions on any connected app right away; if an app is not yet authorized, use \`COMPOSIO_MANAGE_CONNECTIONS\` to generate an OAuth Connect Link and present it clearly, or point the user to **Settings -> Connections**.`
+
+  const connectedAppsLine =
+    connectedApps.length > 0
+      ? `\n- Connected apps detected right now: ${connectedApps.map((slug) => `\`${slug}\``).join(", ")}.`
+      : "\n- No user apps are linked yet — call `mcp__executor__search` to check live tools or help the user connect apps in **Settings -> Connections**.";
+
+  const executorGuidance = hasExecutor
+    ? `\n\n### Executor App Gateway (Gmail, GitHub, Linear, Slack, Notion, Calendar, Drive, Vercel, etc.)
+- The \`executor\` MCP server provides access to connected workplace apps via one unified gateway.${connectedAppsLine}
+- How to use Executor tools effectively:
+  1. Call \`mcp__executor__skills({})\` to see installed app instructions, or \`mcp__executor__search({ query })\` to find callable tool paths like \`tools.gmail.searchMessages\`.
+  2. Call \`mcp__executor__describe({ paths })\` to inspect exact input/output types before invoking an unfamiliar tool.
+  3. Use \`mcp__executor__call({ calls: [{ path, input }] })\` for direct calls, or \`mcp__executor__execute({ code })\` (JavaScript codemode) to filter or chain multiple app calls cleanly without bloating context.
+  4. If an account is required for an app, never ask the user to paste credentials in chat — point them to **Settings -> Connections** or start an Executor connection flow.`
     : "";
 
   if (summary.bridged) {
@@ -529,10 +537,10 @@ These external MCP servers are connected for this session:
 ${serverLines.join("\n")}
 
 To keep context fast, their schemas are indexed on-demand behind three bridge tools:
-1. Call \`tool_search({ query })\` with keywords or a server name (e.g., \`"${summary.servers[0]?.name ?? "github"}"\`) to find matching tool names.
+1. Call \`tool_search({ query })\` with keywords or a server name (e.g., \`"${summary.servers[0]?.name ?? "executor"}"\`) to find matching tool names.
 2. Call \`tool_describe({ tools })\` to load the exact parameter schema for the selected tool(s).
 3. Call \`tool_call({ tool, arguments })\` to run the tool.
-Use these MCP tools whenever the user's request involves an external service listed above.${composioGuidance}`;
+Use these MCP tools whenever the user's request involves an external service listed above.${executorGuidance}`;
   }
 
   const sortedDirect = [...summary.directToolNames].sort((a, b) =>
@@ -547,7 +555,7 @@ Use these MCP tools whenever the user's request involves an external service lis
 ## Connected MCP Servers
 These external MCP servers are connected and ready to call directly:
 ${serverLines.join("\n")}${directPreview}
-Call the \`mcp__<server>__<tool>\` tools directly whenever the user's request matches an external service listed above.${composioGuidance}`;
+Call the \`mcp__<server>__<tool>\` tools directly whenever the user's request matches an external service listed above.${executorGuidance}`;
 }
 
 /**

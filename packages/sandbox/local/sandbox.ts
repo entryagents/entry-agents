@@ -1,5 +1,3 @@
-"use step";
-
 import { spawn, type ChildProcess } from "node:child_process";
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
@@ -248,12 +246,20 @@ class LocalSandboxImpl implements Sandbox {
     // sandbox whose `exec` accepts an out-of-root cwd is not a boundary.
     const resolvedCwd = await this.resolvePath(cwd);
 
+    const {
+      BASH_ENV: _bashEnv,
+      ENV: _env,
+      GITHUB_TOKEN: _ghToken,
+      VERCEL_TOKEN: _vcToken,
+      ...inheritedEnv
+    } = process.env;
+
     return new Promise((resolve) => {
-      const child = spawn("bash", ["-c", command], {
+      const child = spawn("bash", ["--norc", "--noprofile", "-c", command], {
         cwd: resolvedCwd,
         detached: true,
         env: {
-          ...process.env,
+          ...inheritedEnv,
           ...this.env,
           ...options?.env,
           ...(this.githubToken ? { GITHUB_TOKEN: this.githubToken } : {}),
@@ -376,10 +382,18 @@ class LocalSandboxImpl implements Sandbox {
   ): Promise<{ commandId: string }> {
     const resolvedCwd = await this.resolvePath(cwd);
 
-    const child = spawn("bash", ["-c", command], {
+    const {
+      BASH_ENV: _bashEnv,
+      ENV: _env,
+      GITHUB_TOKEN: _ghToken,
+      VERCEL_TOKEN: _vcToken,
+      ...inheritedEnv
+    } = process.env;
+
+    const child = spawn("bash", ["--norc", "--noprofile", "-c", command], {
       cwd: resolvedCwd,
       env: {
-        ...process.env,
+        ...inheritedEnv,
         ...this.env,
         ...(this.githubToken ? { GITHUB_TOKEN: this.githubToken } : {}),
         ...(this.vercelToken ? { VERCEL_TOKEN: this.vercelToken } : {}),

@@ -1,6 +1,8 @@
 export {
   TeamBoard,
   clearTeamBoard,
+  computeExecutionWaves,
+  extractMentions,
   findFileOwnershipConflicts,
   formatTeamContextSummary,
   getOrCreateTeamBoard,
@@ -8,7 +10,16 @@ export {
   type TeamBoardEntry,
   type TeamBoardEntryKind,
   type TeamBoardSnapshot,
+  type TeamExecutionWave,
   type TeamFileConflict,
   type TeamTaskStatus,
   type TeamWorkItem,
 } from "./team-board";
+export {
+  WORKTREE_ISOLATED_ROLES,
+  isWorktreeEligibleRole,
+  prepareSubagentWorktree,
+  type SubagentWorktree,
+  type WorktreeCleanupResult,
+  type WorktreeDiffSummary,
+} from "./worktree";

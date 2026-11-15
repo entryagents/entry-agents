@@ -10,8 +10,8 @@ import {
   GitMerge,
   GitPullRequest,
   Loader2,
+  PenLine,
   RefreshCw,
-  Sparkles,
   Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -415,20 +415,20 @@ export function WorkspaceGitTab(props: GitPanelProps) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 text-[11px] gap-1 px-1.5 text-purple-600 dark:text-purple-400 hover:bg-purple-500/10"
+                className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                 onClick={handleGenerateMessage}
                 disabled={isGeneratingMessage || uncommittedFiles.length === 0}
               >
                 {isGeneratingMessage ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.5} />
                 ) : (
-                  <Sparkles className="h-3 w-3" />
+                  <PenLine className="h-3 w-3" strokeWidth={1.5} />
                 )}
-                <span>AI Message</span>
+                <span>Draft message</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              Generate conventional commit message with AI
+              Draft conventional commit message from diff
             </TooltipContent>
           </Tooltip>
         </div>
@@ -458,7 +458,7 @@ export function WorkspaceGitTab(props: GitPanelProps) {
         )}
 
         <div className="flex items-center justify-between pt-1">
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[10px] tabular-nums text-muted-foreground">
             {uncommittedFiles.length} file
             {uncommittedFiles.length !== 1 ? "s" : ""} to commit
           </span>
@@ -475,9 +475,9 @@ export function WorkspaceGitTab(props: GitPanelProps) {
             className="h-7 text-xs font-medium px-3 gap-1.5"
           >
             {isCommitting ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.5} />
             ) : (
-              <Check className="h-3 w-3" />
+              <Check className="h-3 w-3" strokeWidth={1.5} />
             )}
             <span>Commit</span>
           </Button>
@@ -486,14 +486,14 @@ export function WorkspaceGitTab(props: GitPanelProps) {
 
       {/* 3. Changes Section (Working Tree) */}
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between px-1 text-xs font-semibold text-muted-foreground">
+        <div className="flex items-center justify-between px-1 text-xs font-medium text-muted-foreground">
           <div className="flex items-center gap-2">
-            <span>CHANGES</span>
-            <span className="rounded-full bg-muted px-1.5 py-0.2 text-[10px] font-mono">
+            <span>Changes</span>
+            <span className="rounded-full bg-muted px-1.5 py-0.2 font-mono text-[10px] tabular-nums">
               {uncommittedFiles.length}
             </span>
             {(totalAdds > 0 || totalDels > 0) && (
-              <span className="text-[10px] font-mono">
+              <span className="font-mono text-[10px] tabular-nums">
                 {totalAdds > 0 && (
                   <span className="text-emerald-500">+{totalAdds} </span>
                 )}
@@ -511,7 +511,7 @@ export function WorkspaceGitTab(props: GitPanelProps) {
               onClick={() => setIsDiscardingAll(true)}
               className="h-5 text-[10px] text-muted-foreground hover:text-destructive px-1.5"
             >
-              Discard All
+              Discard all
             </Button>
           )}
         </div>
@@ -550,7 +550,7 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                   </button>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <div className="flex items-center gap-1 text-[10px] font-mono">
+                    <div className="flex items-center gap-1 font-mono text-[10px] tabular-nums">
                       {file.additions > 0 && (
                         <span className="text-emerald-500">
                           +{file.additions}
@@ -573,10 +573,10 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                               openDiffToFile(file.path);
                             }}
                           >
-                            <GitCompare className="h-3 w-3" />
+                            <GitCompare className="h-3 w-3" strokeWidth={1.5} />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent side="bottom">View Diff</TooltipContent>
+                        <TooltipContent side="bottom">View diff</TooltipContent>
                       </Tooltip>
 
                       <Tooltip>
@@ -590,7 +590,7 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                               setDiscardTarget(file.path);
                             }}
                           >
-                            <Trash2 className="h-3 w-3" />
+                            <Trash2 className="h-3 w-3" strokeWidth={1.5} />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
@@ -608,11 +608,16 @@ export function WorkspaceGitTab(props: GitPanelProps) {
 
       {/* 4. Pull Request Center */}
       {hasExistingPr ? (
-        <div className="rounded-lg border border-purple-500/20 bg-purple-500/5 p-3 space-y-3">
+        <div className="space-y-3 rounded-lg border border-border/80 bg-card p-3">
           <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-1.5 font-semibold text-foreground">
-              <GitPullRequest className="h-3.5 w-3.5 text-purple-500" />
-              <span>Pull Request #{session.prNumber}</span>
+            <div className="flex items-center gap-1.5 font-medium text-foreground">
+              <GitPullRequest
+                className="h-3.5 w-3.5 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+              <span className="tabular-nums">
+                Pull request #{session.prNumber}
+              </span>
             </div>
 
             {existingPrUrl && (
@@ -623,7 +628,7 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                 className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
               >
                 <span>GitHub</span>
-                <ExternalLink className="h-2.5 w-2.5" />
+                <ExternalLink className="h-2.5 w-2.5" strokeWidth={1.5} />
               </a>
             )}
           </div>
@@ -655,12 +660,18 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                     className="h-7 text-xs flex-1 gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
                     {isSubmittingMerge ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <Loader2
+                        className="h-3 w-3 animate-spin"
+                        strokeWidth={1.5}
+                      />
                     ) : (
-                      <GitMerge className="h-3 w-3" />
+                      <GitMerge className="h-3 w-3" strokeWidth={1.5} />
                     )}
                     <span>Merge PR ({mergeMethod})</span>
-                    <ChevronDown className="h-3 w-3 opacity-60" />
+                    <ChevronDown
+                      className="h-3 w-3 opacity-60"
+                      strokeWidth={1.5}
+                    />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
@@ -690,10 +701,13 @@ export function WorkspaceGitTab(props: GitPanelProps) {
         </div>
       ) : hasRepo ? (
         <div className="rounded-lg border border-border bg-card p-3 shadow-xs space-y-2.5">
-          <div className="flex items-center justify-between text-xs font-semibold text-foreground">
+          <div className="flex items-center justify-between text-xs font-medium text-foreground">
             <div className="flex items-center gap-1.5">
-              <GitPullRequest className="h-3.5 w-3.5 text-primary" />
-              <span>Create Pull Request</span>
+              <GitPullRequest
+                className="h-3.5 w-3.5 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+              <span>Create pull request</span>
             </div>
 
             <Button
@@ -701,14 +715,14 @@ export function WorkspaceGitTab(props: GitPanelProps) {
               size="sm"
               onClick={handleGeneratePr}
               disabled={isGeneratingPr || isCreatingPr}
-              className="h-6 text-[11px] gap-1 px-1.5 text-purple-600 dark:text-purple-400"
+              className="h-6 gap-1 px-1.5 text-[11px] text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             >
               {isGeneratingPr ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.5} />
               ) : (
-                <Sparkles className="h-3 w-3" />
+                <PenLine className="h-3 w-3" strokeWidth={1.5} />
               )}
-              <span>AI PR Content</span>
+              <span>Draft PR details</span>
             </Button>
           </div>
 

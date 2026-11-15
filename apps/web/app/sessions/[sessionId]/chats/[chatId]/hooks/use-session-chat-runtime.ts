@@ -22,6 +22,7 @@ import {
 } from "@/lib/chat-instance-manager";
 import { cleanupChatRouteOnUnmount } from "@/lib/chat-route-cleanup";
 import { isFriendlyChatErrorText } from "@/lib/chat/friendly-error";
+import { getTeamRoleModelsSnapshot } from "@/lib/team/role-models-store";
 import {
   CONTINUE_AFTER_ERROR_PROMPT,
   getDeadTurnRetryAction,
@@ -128,9 +129,13 @@ export function useSessionChatRuntime({
         api: "/api/chat",
         body: () => {
           const requestContextLimit = contextLimitRef.current;
+          const teamRoleModels = getTeamRoleModelsSnapshot(chatId);
           return {
             sessionId,
             chatId,
+            ...(Object.keys(teamRoleModels).length > 0
+              ? { teamRoleModels }
+              : {}),
             ...(requestContextLimit !== null
               ? {
                   context: {
@@ -562,18 +567,21 @@ export function useSessionChatRuntime({
     }
 
     let cancelled = false;
-    // Backoff schedule tuned to cover the observed race window: the
-    // workflow's first step claims activeStreamId shortly after start().
-    // Total probe budget ~10s.
-    const delaysMs = [0, 1_000, 2_500, 5_500, 10_000];
+    // If `useChat({ resume: true })` already initiated resume on mount,
+    // skip the 0ms duplicate probe so we don't attach twice simultaneously.
+    const delaysMs = shouldResumeOnMountRef.current
+      ? [1_500, 3_500, 7_000]
+      : [0, 1_000, 2_500, 5_500, 10_000];
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     const attemptResume = async () => {
-      if (cancelled) return;
+      if (cancelled || retryInFlightRef.current || userStoppedRef.current) {
+        return;
+      }
 
       // Skip if a local send / resume is already in flight for this chat.
       const status = chatInstance.status;
-      if (status !== "ready" && status !== "error") {
+      if (status !== "ready") {
         return;
       }
 

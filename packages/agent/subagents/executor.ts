@@ -53,7 +53,7 @@ Example final response:
 ${SUBAGENT_VALIDATE_RULES}
 
 ## TEAM COLLABORATION
-- If the Shared Team Board Snapshot shows active tasks or teammate decisions, read \`team_board\` first, claim your assigned task with \`update_task\` (\`in_progress\` + \`files\`), respect file-ownership warnings so you don't overwrite another teammate's files, and when finished mark it \`completed\` with concrete \`verification\` evidence plus a \`handoff\` entry naming modified files for \`reviewer\`.
+- If the Shared Team Board Snapshot shows active tasks, contracts, or challenges, call \`team_board\` (\`action: "read"\`) first, claim your assigned task with \`update_task\` (\`in_progress\`, exact \`files\`, and your current git branch as \`worktreeBranch\` when running in an isolated worktree), respect locked contracts and file-ownership warnings, post \`@role\` debates or handoffs (\`kind: "handoff"\` or \`kind: "debate"\`) if assumptions conflict, and when finished mark your task \`completed\` with concrete \`verification\` command evidence targeting \`@reviewer\`.
 
 ## TOOLS
 You have full access to file operations (read, write, edit, grep, glob), bash commands, and \`team_board\`. Use them to complete your task.
@@ -74,9 +74,22 @@ const callOptionsSchema = z.object({
   // applies call settings to every internal step, so one value caps
   // each step's output. Undefined = no cap.
   maxOutputTokens: z.number().int().positive().optional(),
+  contextWindow: z.number().int().positive().optional(),
+  compactionThreshold: z.number().positive().optional(),
 });
 
 export type ExecutorCallOptions = z.infer<typeof callOptionsSchema>;
+
+const executorTools = {
+  read: readFileTool(),
+  write: writeFileTool(),
+  edit: editFileTool(),
+  dir_list: dirListTool(),
+  grep: grepTool(),
+  glob: globTool(),
+  bash: bashTool(),
+  team_board: teamBoardTool,
+};
 
 export const executorSubagent = new ToolLoopAgent({
   // Inert placeholder -- see createInertPlaceholderModel for why this
@@ -85,21 +98,14 @@ export const executorSubagent = new ToolLoopAgent({
   // doesn't pass one explicitly.
   model: createInertPlaceholderModel(defaultModelLabel),
   instructions: EXECUTOR_SYSTEM_PROMPT,
-  tools: {
-    read: readFileTool(),
-    write: writeFileTool(),
-    edit: editFileTool(),
-    dir_list: dirListTool(),
-    grep: grepTool(),
-    glob: globTool(),
-    bash: bashTool(),
-    team_board: teamBoardTool,
-  },
+  tools: executorTools,
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
   prepareStep: ({ messages, model, experimental_context }) => {
     const context = (experimental_context ?? {}) as {
       readFileState?: unknown;
+      contextWindow?: number;
+      compactionThreshold?: number;
     };
     let readFileState: ReadFileState | undefined =
       context.readFileState instanceof Map ? context.readFileState : undefined;
@@ -113,12 +119,8 @@ export const executorSubagent = new ToolLoopAgent({
         messages: maybeCompactMessages({
           messages,
           model,
-          contextWindowOverride: (
-            context as { contextWindow?: number; compactionThreshold?: number }
-          ).contextWindow,
-          compactionThresholdOverride: (
-            context as { contextWindow?: number; compactionThreshold?: number }
-          ).compactionThreshold,
+          contextWindowOverride: context.contextWindow,
+          compactionThresholdOverride: context.compactionThreshold,
         }),
         model,
       }),
@@ -135,33 +137,22 @@ export const executorSubagent = new ToolLoopAgent({
 
     const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider(defaultModelLabel);
-    const teamBlock = options.teamContext ? `\n\n${options.teamContext}` : "";
+    const teamBlock = options.teamContext ? `${options.teamContext}\n\n` : "";
     return {
       ...settings,
       model,
+      tools: addCacheControl({
+        tools: settings.tools ?? executorTools,
+        model,
+      }),
       ...(options.maxOutputTokens
         ? { maxOutputTokens: options.maxOutputTokens }
         : {}),
-      // Wrapped in addCacheControl() (2026-08-18): this whole block used to
-      // be a bare string with no cache_control breakpoint at all, so
-      // Anthropic reprocessed it from scratch on every single step of a
-      // subagent's own tool loop (up to SUBAGENT_STEP_LIMIT steps for ONE
-      // task), even though it's byte-identical across every step of that
-      // task. Doesn't help caching ACROSS different subagent tasks (the
-      // task/instructions text legitimately differs each time), but the
-      // within-task multi-step savings are real and free.
       instructions: addCacheControl({
-        instructions: `${EXECUTOR_SYSTEM_PROMPT}
-
-${SUBAGENT_WORKING_DIR}${teamBlock}
-
-## Your Task
-${options.task}
-
-## Detailed Instructions
-${options.instructions}
-
-${SUBAGENT_REMINDER}`,
+        instructions: [
+          `${EXECUTOR_SYSTEM_PROMPT}\n\n${SUBAGENT_WORKING_DIR}`,
+          `${teamBlock}## Your Task\n${options.task}\n\n## Detailed Instructions\n${options.instructions}\n\n${SUBAGENT_REMINDER}`,
+        ],
         model,
       }),
       experimental_context: {
@@ -169,6 +160,8 @@ ${SUBAGENT_REMINDER}`,
         model,
         teamId: options.teamId ?? "default-team",
         agentRole: "executor",
+        contextWindow: options.contextWindow,
+        compactionThreshold: options.compactionThreshold,
         // Read-before-edit gate state (tools/read-state.ts): a fresh
         // store per subagent run — the subagent must read a file
         // before editing it, same rule as the main agent. Parent

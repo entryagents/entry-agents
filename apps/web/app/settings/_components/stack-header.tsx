@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import useSWR from "swr";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
 import { useUserSecrets } from "@/hooks/use-user-secrets";
-import type { ComposioToolkitsStatusResult } from "@/lib/mcp/composio";
+import type { IntegrationToolkitsResult } from "@/lib/integrations/registry-types";
 import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 
@@ -38,13 +38,15 @@ export function StackHeader({
   const pathname = usePathname();
   const { servers } = useMcpServers();
   const { secrets } = useUserSecrets();
-  const { data: toolkitsData } = useSWR<ComposioToolkitsStatusResult>(
-    "/api/composio/toolkits",
+  const { data: toolkitsData } = useSWR<IntegrationToolkitsResult>(
+    "/api/integrations",
     fetcher,
   );
 
   const connectedAppsCount =
-    toolkitsData?.toolkits?.filter((t) => t.isConnected).length ?? null;
+    toolkitsData?.connectedCount ??
+    toolkitsData?.items?.filter((t) => t.connected).length ??
+    null;
   const activeMcpCount = servers.filter((s) => s.enabled).length;
 
   const getTabCount = (href: string): string | null => {
@@ -80,7 +82,7 @@ export function StackHeader({
               key={tab.href}
               href={tab.href}
               className={cn(
-                "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors duration-150",
+                "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-[background-color,color,border-color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98]",
                 active
                   ? "border-foreground/20 bg-foreground text-background"
                   : "border-border/70 bg-card text-muted-foreground hover:border-border hover:text-foreground",

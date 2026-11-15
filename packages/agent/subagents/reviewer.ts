@@ -20,12 +20,13 @@ import {
 
 const REVIEWER_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
-- This is READ-ONLY review - do NOT create, modify, or delete any files
-- Read \`team_board\` to see teammate artifacts and handoffs; post critical findings back to \`team_board\` (\`kind: "finding"\` or \`kind: "handoff"\`, \`targetRole: "executor"\`)
-- Your final message MUST be a comprehensive text response including both **Summary** of what you reviewed AND the **Answer** with all findings ranked by severity
+- This is READ-ONLY adversarial verification — do NOT create, modify, or delete any files
+- Read \`team_board\` to inspect teammate claims, locked contracts, and isolated \`team/*\` worktree branches. Never trust claims blindly: inspect diffs and run read-only verification checks.
+- Post concrete gaps or unverified claims as \`kind: "challenge"\` (\`targetRole: "executor"\` or \`"design"\`, tagging \`@role\`) and publish passing/failing check evidence as \`kind: "verification"\`
+- Your final message MUST be a comprehensive text response including both **Summary** of what you reviewed AND the **Answer** with all verified outcomes and findings ranked by severity
 - CRITICAL: Never terminate your execution on a tool call without a text message. Always synthesize and emit your review findings in text before finishing or exhausting your step budget.`;
 
-const REVIEWER_SYSTEM_PROMPT = `You are a reviewer agent - a meticulous, read-only subagent specialized for reviewing code before it ships.
+const REVIEWER_SYSTEM_PROMPT = `You are an adversarial verifier and code-reviewer agent — a meticulous, read-only subagent specialized in challenging unverified claims, auditing diffs across worktree branches, and verifying changes before they ship.
 
 ## CRITICAL RULES
 
@@ -95,9 +96,20 @@ const callOptionsSchema = z.object({
   // applies call settings to every internal step, so one value caps
   // each step's output. Undefined = no cap.
   maxOutputTokens: z.number().int().positive().optional(),
+  contextWindow: z.number().int().positive().optional(),
+  compactionThreshold: z.number().positive().optional(),
 });
 
 export type ReviewerCallOptions = z.infer<typeof callOptionsSchema>;
+
+const reviewerTools = {
+  read: readFileTool(),
+  dir_list: dirListTool(),
+  grep: grepTool(),
+  glob: globTool(),
+  bash: bashTool(),
+  team_board: teamBoardTool,
+};
 
 export const reviewerSubagent = new ToolLoopAgent({
   // Inert placeholder -- see createInertPlaceholderModel for why this
@@ -106,31 +118,21 @@ export const reviewerSubagent = new ToolLoopAgent({
   // doesn't pass one explicitly.
   model: createInertPlaceholderModel(defaultModelLabel),
   instructions: REVIEWER_SYSTEM_PROMPT,
-  tools: {
-    read: readFileTool(),
-    dir_list: dirListTool(),
-    grep: grepTool(),
-    glob: globTool(),
-    bash: bashTool(),
-    team_board: teamBoardTool,
-  },
+  tools: reviewerTools,
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
   prepareStep: ({ messages, model, experimental_context }) => {
     const context = (experimental_context ?? {}) as {
       contextWindow?: number;
+      compactionThreshold?: number;
     };
     return {
       messages: addCacheControl({
         messages: maybeCompactMessages({
           messages,
           model,
-          contextWindowOverride: (
-            context as { contextWindow?: number; compactionThreshold?: number }
-          ).contextWindow,
-          compactionThresholdOverride: (
-            context as { contextWindow?: number; compactionThreshold?: number }
-          ).compactionThreshold,
+          contextWindowOverride: context.contextWindow,
+          compactionThresholdOverride: context.compactionThreshold,
         }),
         model,
       }),
@@ -144,28 +146,22 @@ export const reviewerSubagent = new ToolLoopAgent({
 
     const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider(defaultModelLabel);
-    const teamBlock = options.teamContext ? `\n\n${options.teamContext}` : "";
+    const teamBlock = options.teamContext ? `${options.teamContext}\n\n` : "";
     return {
       ...settings,
       model,
+      tools: addCacheControl({
+        tools: settings.tools ?? reviewerTools,
+        model,
+      }),
       ...(options.maxOutputTokens
         ? { maxOutputTokens: options.maxOutputTokens }
         : {}),
-      // addCacheControl (2026-08-18 pattern): the static system-prompt
-      // block gets a cache breakpoint so Anthropic doesn't reprocess
-      // it on every step of this task's own loop.
       instructions: addCacheControl({
-        instructions: `${REVIEWER_SYSTEM_PROMPT}
-
-${SUBAGENT_WORKING_DIR}${teamBlock}
-
-## Your Task
-${options.task}
-
-## Detailed Instructions
-${options.instructions}
-
-${REVIEWER_REMINDER}`,
+        instructions: [
+          `${REVIEWER_SYSTEM_PROMPT}\n\n${SUBAGENT_WORKING_DIR}`,
+          `${teamBlock}## Your Task\n${options.task}\n\n## Detailed Instructions\n${options.instructions}\n\n${REVIEWER_REMINDER}`,
+        ],
         model,
       }),
       experimental_context: {
@@ -173,6 +169,8 @@ ${REVIEWER_REMINDER}`,
         model,
         teamId: options.teamId ?? "default-team",
         agentRole: "reviewer",
+        contextWindow: options.contextWindow,
+        compactionThreshold: options.compactionThreshold,
       },
     };
   },

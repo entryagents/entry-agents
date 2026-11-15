@@ -146,4 +146,41 @@ describe("addCacheControl", () => {
     });
     expect(joined).toBe("STATIC\nDYNAMIC");
   });
+
+  test("enrichUsageWithProviderCache extracts DeepSeek and OpenAI cached tokens into LanguageModelUsage", async () => {
+    const { enrichUsageWithProviderCache } = await import("../usage");
+
+    const rawUsage = {
+      inputTokens: 4000,
+      outputTokens: 250,
+      totalTokens: 4250,
+      inputTokenDetails: {
+        noCacheTokens: undefined,
+        cacheReadTokens: undefined,
+        cacheWriteTokens: undefined,
+      },
+      outputTokenDetails: {
+        textTokens: undefined,
+        reasoningTokens: undefined,
+      },
+    };
+
+    const enrichedDeepSeek = enrichUsageWithProviderCache(rawUsage, {
+      deepseek: {
+        prompt_cache_hit_tokens: 3200,
+      },
+    });
+    expect(enrichedDeepSeek?.cachedInputTokens).toBe(3200);
+    expect(enrichedDeepSeek?.inputTokenDetails?.cacheReadTokens).toBe(3200);
+
+    const enrichedAnthropic = enrichUsageWithProviderCache(rawUsage, {
+      anthropic: {
+        cache_read_input_tokens: 2800,
+        cache_creation_input_tokens: 400,
+      },
+    });
+    expect(enrichedAnthropic?.cachedInputTokens).toBe(2800);
+    expect(enrichedAnthropic?.inputTokenDetails?.cacheReadTokens).toBe(2800);
+    expect(enrichedAnthropic?.inputTokenDetails?.cacheWriteTokens).toBe(400);
+  });
 });

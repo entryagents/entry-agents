@@ -21,8 +21,9 @@ import {
 const ARCHITECT_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
 - This is READ-ONLY architecture & planning - do NOT create, modify, or delete any repository files
-- Post concrete decisions, interface contracts, and parallel/sequential subtasks to \`team_board\` (\`plan_tasks\` and \`post\`) so \`executor\`, \`design\`, and \`reviewer\` teammates can execute cleanly
-- Your final message MUST contain both **Summary** and **Answer** with exact file paths, interface contracts, and execution order`;
+- Lock interface contracts (\`kind: "contract"\`) and schedule dependency-ordered waves via \`team_board\` (\`plan_tasks\` with \`dependsOn\`, non-overlapping \`files\`, and \`status: "parked"\` for deferred work) so \`executor\`, \`design\`, and \`reviewer\` operate without colliding edits
+- Use \`@role\` mentions in \`team_board\` entries when tagging \`@executor\`, \`@design\`, \`@explorer\`, or \`@reviewer\`
+- Your final message MUST contain both **Summary** and **Answer** with exact file paths, interface contracts, and wave execution order`;
 
 const ARCHITECT_SYSTEM_PROMPT = `You are an architect agent — a principal systems engineer subagent specialized in dependency mapping, interface design, and decomposing multi-file engineering tasks into coordinated teammate work.
 
@@ -38,9 +39,9 @@ ${SUBAGENT_NO_QUESTIONS_RULES}
 ${SUBAGENT_RESPONSE_FORMAT}
 
 ## TEAM COLLABORATION
-- Always call \`team_board\` (\`action: "read"\`) first to check existing teammate findings.
-- Post architecture decisions and interface contracts with \`team_board\` (\`action: "post"\`, \`kind: "decision"\` or \`kind: "handoff"\`, specifying \`files\` and \`targetRole\`).
-- Decompose non-trivial changes via \`team_board\` (\`action: "plan_tasks"\`) assigning work cleanly across \`explorer\`, \`executor\`, \`design\`, and \`reviewer\`.
+- Always call \`team_board\` (\`action: "read"\`) first to check existing teammate findings and active wave state.
+- Publish locked interface/type contracts (\`kind: "contract"\`), architectural decisions (\`kind: "decision"\`), and scoped debates (\`kind: "debate"\`) via \`team_board\` (\`action: "post"\`, using \`@role\` mentions and \`targetRole\`).
+- Decompose non-trivial changes via \`team_board\` (\`action: "plan_tasks"\`) with explicit \`dependsOn\` edges, strictly non-overlapping \`files\` claims across concurrent workers, and \`status: "parked"\` for optional/out-of-scope follow-ups.
 
 ## TOOLS & GUIDELINES
 You have access to: \`read\`, \`dir_list\`, \`grep\`, \`glob\`, \`bash\` (read-only commands only), \`team_board\`.
@@ -59,21 +60,25 @@ const callOptionsSchema = z.object({
   teamId: z.string().optional(),
   teamContext: z.string().optional(),
   maxOutputTokens: z.number().int().positive().optional(),
+  contextWindow: z.number().int().positive().optional(),
+  compactionThreshold: z.number().positive().optional(),
 });
 
 export type ArchitectCallOptions = z.infer<typeof callOptionsSchema>;
 
+const architectTools = {
+  read: readFileTool(),
+  dir_list: dirListTool(),
+  grep: grepTool(),
+  glob: globTool(),
+  bash: bashTool(),
+  team_board: teamBoardTool,
+};
+
 export const architectSubagent = new ToolLoopAgent({
   model: createInertPlaceholderModel(defaultModelLabel),
   instructions: ARCHITECT_SYSTEM_PROMPT,
-  tools: {
-    read: readFileTool(),
-    dir_list: dirListTool(),
-    grep: grepTool(),
-    glob: globTool(),
-    bash: bashTool(),
-    team_board: teamBoardTool,
-  },
+  tools: architectTools,
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
   prepareStep: ({ messages, model, experimental_context }) => {
@@ -101,25 +106,22 @@ export const architectSubagent = new ToolLoopAgent({
 
     const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider(defaultModelLabel);
-    const teamBlock = options.teamContext ? `\n\n${options.teamContext}` : "";
+    const teamBlock = options.teamContext ? `${options.teamContext}\n\n` : "";
     return {
       ...settings,
       model,
+      tools: addCacheControl({
+        tools: settings.tools ?? architectTools,
+        model,
+      }),
       ...(options.maxOutputTokens
         ? { maxOutputTokens: options.maxOutputTokens }
         : {}),
       instructions: addCacheControl({
-        instructions: `${ARCHITECT_SYSTEM_PROMPT}
-
-${SUBAGENT_WORKING_DIR}${teamBlock}
-
-## Your Task
-${options.task}
-
-## Detailed Instructions
-${options.instructions}
-
-${ARCHITECT_REMINDER}`,
+        instructions: [
+          `${ARCHITECT_SYSTEM_PROMPT}\n\n${SUBAGENT_WORKING_DIR}`,
+          `${teamBlock}## Your Task\n${options.task}\n\n## Detailed Instructions\n${options.instructions}\n\n${ARCHITECT_REMINDER}`,
+        ],
         model,
       }),
       experimental_context: {
@@ -127,6 +129,8 @@ ${ARCHITECT_REMINDER}`,
         model,
         teamId: options.teamId ?? "default-team",
         agentRole: "architect",
+        contextWindow: options.contextWindow,
+        compactionThreshold: options.compactionThreshold,
       },
     };
   },

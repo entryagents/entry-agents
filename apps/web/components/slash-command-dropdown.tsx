@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { Blocks, Bot, Settings2, Sparkles } from "lucide-react";
+import { Blocks, Bot, Settings2, Terminal, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SkillSuggestion } from "@/app/api/sessions/[sessionId]/skills/route";
 
@@ -56,13 +56,13 @@ export function SlashCommandDropdown({
     <div className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
       <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[11px] text-muted-foreground">
         <span className="font-medium text-foreground/80">
-          Invoke Skill or Specialist Subagent
+          Invoke skill, subagent, or /team
         </span>
         <Link
           href="/settings/skills"
           className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
-          <Settings2 className="h-3 w-3" />
+          <Settings2 className="size-3" strokeWidth={1.5} />
           Manage skills
         </Link>
       </div>
@@ -73,6 +73,9 @@ export function SlashCommandDropdown({
       >
         {suggestions.map((suggestion, index) => {
           const isTeam = suggestion.source === "team";
+          const isTeamOrchestrator =
+            isTeam &&
+            (suggestion.name === "team" || suggestion.name === "team-plan");
           const isPlugin = suggestion.source === "plugin";
           return (
             <button
@@ -88,11 +91,25 @@ export function SlashCommandDropdown({
               )}
             >
               {isPlugin ? (
-                <Blocks className="h-4 w-4 shrink-0 text-primary/80" />
+                <Blocks
+                  className="size-4 shrink-0 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
+              ) : isTeamOrchestrator ? (
+                <Users
+                  className="size-4 shrink-0 text-primary"
+                  strokeWidth={1.5}
+                />
               ) : isTeam ? (
-                <Bot className="h-4 w-4 shrink-0 text-amber-500" />
+                <Bot
+                  className="size-4 shrink-0 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
               ) : (
-                <Sparkles className="h-4 w-4 shrink-0 text-emerald-500" />
+                <Terminal
+                  className="size-4 shrink-0 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
               )}
               <div className="flex min-w-0 flex-1 flex-col">
                 <div className="flex items-center gap-2">
@@ -103,12 +120,16 @@ export function SlashCommandDropdown({
                     <span className="shrink-0 rounded border border-border/70 bg-muted/60 px-1.5 py-0 font-mono text-[10px] text-muted-foreground">
                       {suggestion.pluginName ?? "Plugin"}
                     </span>
+                  ) : isTeamOrchestrator ? (
+                    <span className="shrink-0 rounded border border-primary/25 bg-primary/10 px-1.5 py-0 font-mono text-[10px] font-medium text-primary">
+                      Team mode
+                    </span>
                   ) : isTeam ? (
-                    <span className="shrink-0 rounded border border-amber-500/30 bg-amber-500/10 px-1.5 py-0 font-mono text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                      On-Demand Subagent
+                    <span className="shrink-0 rounded border border-border/70 bg-muted/60 px-1.5 py-0 font-mono text-[10px] font-medium text-muted-foreground">
+                      Subagent
                     </span>
                   ) : (
-                    <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0 font-mono text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+                    <span className="shrink-0 rounded border border-border/70 bg-muted/60 px-1.5 py-0 font-mono text-[10px] font-medium text-muted-foreground">
                       Skill
                     </span>
                   )}

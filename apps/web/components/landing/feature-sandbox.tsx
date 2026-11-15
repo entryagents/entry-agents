@@ -1,6 +1,9 @@
 "use client";
 
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
+
+const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
 const STAGES = [
   {
@@ -84,14 +87,23 @@ export function FeatureSandbox() {
           ))}
         </div>
 
-        <div className="mt-6">
-          <div className="text-base font-medium text-(--l-panel-fg)">
-            {entry.state}
-          </div>
-          <div className="mt-1 font-sans text-xs leading-relaxed text-(--l-panel-fg-2)">
-            {entry.description}
-          </div>
-        </div>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={entry.state}
+            initial={{ opacity: 0, transform: "translateY(4px)" }}
+            animate={{ opacity: 1, transform: "translateY(0px)" }}
+            exit={{ opacity: 0, transform: "translateY(-4px)" }}
+            transition={{ duration: 0.16, ease: EASE_OUT }}
+            className="mt-6"
+          >
+            <div className="text-base font-medium text-(--l-panel-fg)">
+              {entry.state}
+            </div>
+            <div className="mt-1 font-sans text-xs leading-relaxed text-(--l-panel-fg-2)">
+              {entry.description}
+            </div>
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       <div className="flex flex-wrap gap-6 border-t border-(--l-panel-border) pt-3 text-[11px] tabular-nums sm:gap-8">

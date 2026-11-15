@@ -188,7 +188,23 @@ export function EntryLogo3D({
       0.1,
       50,
     );
-    camera.position.set(0, 0.02, 5.75);
+
+    const updateCameraFraming = (width: number, height: number) => {
+      const aspect = Math.max(0.4, width / Math.max(1, height));
+      camera.aspect = aspect;
+      const halfV = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+      const halfH = halfV * aspect;
+      // Outer inclined ring radius is 2.18 * 1.06 scale (~2.31); 2.58 adds headroom for tilt
+      const boundRadius = 2.58;
+      const fitDistance = Math.max(boundRadius / halfV, boundRadius / halfH);
+      camera.position.set(0, 0.02, fitDistance);
+      camera.updateProjectionMatrix();
+    };
+
+    updateCameraFraming(
+      Math.max(1, container.clientWidth),
+      Math.max(1, container.clientHeight),
+    );
 
     const pmrem = new THREE.PMREMGenerator(renderer);
     let currentIsDark = document.documentElement.classList.contains("dark");
@@ -198,59 +214,8 @@ export function EntryLogo3D({
     scene.environment = envRT.texture;
 
     const group = new THREE.Group();
-    group.scale.setScalar(1.08);
+    group.scale.setScalar(1.06);
     scene.add(group);
-
-    // Load and blend the actual Entry emblem mark (`/logo-dark.png` / `/logo-light.png`)
-    // as a floating optical glass medallion suspended at the core of the 3D orbital weave.
-    const textureLoader = new THREE.TextureLoader();
-    const logoTexPath =
-      tone === "obsidian" || currentIsDark
-        ? "/logo-dark.png?v=2"
-        : "/logo-light.png?v=2";
-    const logoTexture = textureLoader.load(logoTexPath);
-    logoTexture.colorSpace = THREE.SRGBColorSpace;
-    logoTexture.anisotropy = Math.min(
-      8,
-      renderer.capabilities.getMaxAnisotropy(),
-    );
-
-    const coreDiscGeometry = new THREE.CylinderGeometry(1.18, 1.18, 0.08, 72);
-    coreDiscGeometry.rotateX(Math.PI / 2);
-    const coreRimMaterial = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(palette.outerRingColor),
-      metalness: 0.92,
-      roughness: 0.16,
-      clearcoat: 1,
-      envMapIntensity: palette.envMapIntensity,
-    });
-    const coreFaceMaterial = new THREE.MeshPhysicalMaterial({
-      map: logoTexture,
-      roughness: 0.18,
-      metalness: 0.35,
-      clearcoat: 1,
-      clearcoatRoughness: 0.08,
-      envMapIntensity: 1.65,
-    });
-    const coreMedallion = new THREE.Mesh(coreDiscGeometry, [
-      coreRimMaterial,
-      coreFaceMaterial,
-      coreFaceMaterial,
-    ]);
-    coreMedallion.position.set(0, 0, -0.14);
-    group.add(coreMedallion);
-
-    const coreBezelGeometry = new THREE.TorusGeometry(1.2, 0.032, 24, 128);
-    const coreBezelMaterial = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(palette.ribbonColor),
-      metalness: 0.95,
-      roughness: 0.14,
-      clearcoat: 1,
-      envMapIntensity: palette.envMapIntensity,
-    });
-    const coreBezel = new THREE.Mesh(coreBezelGeometry, coreBezelMaterial);
-    coreBezel.position.set(0, 0, -0.14);
-    group.add(coreBezel);
 
     // Continuous calligraphic 'ae' infinity weave:
     // Start neatly tucked behind the upper-center crossover so no flat cap or kink is visible,
@@ -293,9 +258,9 @@ export function EntryLogo3D({
 
     const ribbonGeometry = buildTaperedRibbonGeometry(
       mainCurve,
-      240,
+      200,
       0.215,
-      36,
+      28,
       false,
       (u) => {
         // Taper start smoothly into the crossover seam and sweep end to a sculpted calligraphic point
@@ -314,9 +279,9 @@ export function EntryLogo3D({
 
     const crossGeometry = buildTaperedRibbonGeometry(
       crossCurve,
-      96,
+      84,
       0.138,
-      28,
+      24,
       false,
       (u) => Math.max(0.12, Math.sin(u * Math.PI) * 0.96),
     );
@@ -337,7 +302,7 @@ export function EntryLogo3D({
     group.add(mainMesh, crossMesh);
 
     // Crisp orbital rings & warm amber optical filament
-    const outerRingGeometry = new THREE.TorusGeometry(2.02, 0.024, 20, 144);
+    const outerRingGeometry = new THREE.TorusGeometry(2.02, 0.024, 16, 120);
     const outerRingMaterial = new THREE.MeshStandardMaterial({
       color: new THREE.Color(palette.outerRingColor),
       emissive: new THREE.Color(palette.outerRingEmissive),
@@ -348,7 +313,7 @@ export function EntryLogo3D({
     outerRing.rotation.x = Math.PI * 0.08;
     group.add(outerRing);
 
-    const inclinedOrbitGeometry = new THREE.TorusGeometry(2.18, 0.014, 16, 144);
+    const inclinedOrbitGeometry = new THREE.TorusGeometry(2.18, 0.014, 14, 120);
     const inclinedOrbit = new THREE.Mesh(
       inclinedOrbitGeometry,
       outerRingMaterial,
@@ -365,7 +330,7 @@ export function EntryLogo3D({
     ]);
     const warmArcGeometry = new THREE.TubeGeometry(
       warmArcCurve,
-      64,
+      56,
       0.026,
       12,
       false,
@@ -456,44 +421,48 @@ export function EntryLogo3D({
     window.addEventListener("pointerup", handlePointerUp);
     container.addEventListener("pointerleave", handlePointerLeave);
 
-    // Theme observer updates material/env map dynamically
-    const themeObserver = new MutationObserver(() => {
-      const nextDark = document.documentElement.classList.contains("dark");
-      if (nextDark === currentIsDark) return;
-      currentIsDark = nextDark;
+    // Theme observer updates material/env map dynamically only for auto tone
+    let themeObserver: MutationObserver | null = null;
+    if (tone === "auto") {
+      themeObserver = new MutationObserver(() => {
+        const nextDark = document.documentElement.classList.contains("dark");
+        if (nextDark === currentIsDark) return;
+        currentIsDark = nextDark;
 
-      const nextPalette = resolveMaterialPalette(tone, nextDark);
-      palette = nextPalette;
-      const nextRawEnv = createStudioEnvTexture(nextPalette.envIsDark);
-      const nextEnvRT = pmrem.fromEquirectangular(nextRawEnv);
-      envRT.dispose();
-      rawEnvTex.dispose();
-      rawEnvTex = nextRawEnv;
-      envRT = nextEnvRT;
-      scene.environment = envRT.texture;
+        const nextPalette = resolveMaterialPalette(tone, nextDark);
+        if (nextPalette.envIsDark !== palette.envIsDark) {
+          const nextRawEnv = createStudioEnvTexture(nextPalette.envIsDark);
+          const nextEnvRT = pmrem.fromEquirectangular(nextRawEnv);
+          envRT.dispose();
+          rawEnvTex.dispose();
+          rawEnvTex = nextRawEnv;
+          envRT = nextEnvRT;
+          scene.environment = envRT.texture;
+        }
+        palette = nextPalette;
 
-      ribbonMaterial.color.set(nextPalette.ribbonColor);
-      ribbonMaterial.metalness = nextPalette.metalness;
-      ribbonMaterial.roughness = nextPalette.roughness;
-      ribbonMaterial.envMapIntensity = nextPalette.envMapIntensity;
+        ribbonMaterial.color.set(nextPalette.ribbonColor);
+        ribbonMaterial.metalness = nextPalette.metalness;
+        ribbonMaterial.roughness = nextPalette.roughness;
+        ribbonMaterial.envMapIntensity = nextPalette.envMapIntensity;
 
-      outerRingMaterial.color.set(nextPalette.outerRingColor);
-      outerRingMaterial.emissive.set(nextPalette.outerRingEmissive);
-      warmArcMaterial.color.set(nextPalette.arcColor);
-      warmArcMaterial.emissiveIntensity = nextPalette.arcEmissiveIntensity;
-    });
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
+        outerRingMaterial.color.set(nextPalette.outerRingColor);
+        outerRingMaterial.emissive.set(nextPalette.outerRingEmissive);
+        warmArcMaterial.color.set(nextPalette.arcColor);
+        warmArcMaterial.emissiveIntensity = nextPalette.arcEmissiveIntensity;
+      });
+      themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+    }
 
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
       const w = Math.max(1, entry.contentRect.width);
       const h = Math.max(1, entry.contentRect.height);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
+      updateCameraFraming(w, h);
       renderer.setSize(w, h);
     });
     resizeObserver.observe(container);
@@ -537,7 +506,7 @@ export function EntryLogo3D({
     return () => {
       cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
-      themeObserver.disconnect();
+      themeObserver?.disconnect();
       canvasEl.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
@@ -545,12 +514,6 @@ export function EntryLogo3D({
       ribbonGeometry.dispose();
       crossGeometry.dispose();
       ribbonMaterial.dispose();
-      coreDiscGeometry.dispose();
-      coreRimMaterial.dispose();
-      coreFaceMaterial.dispose();
-      coreBezelGeometry.dispose();
-      coreBezelMaterial.dispose();
-      logoTexture.dispose();
       outerRingGeometry.dispose();
       inclinedOrbitGeometry.dispose();
       outerRingMaterial.dispose();

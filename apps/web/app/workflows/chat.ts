@@ -78,6 +78,7 @@ import { sanitizeMessageToolInputs } from "@/lib/chat/sanitize-tool-inputs";
 import {
   type ChatErrorCategory,
   classifyChatError,
+  isFriendlyChatErrorText,
   serializeErrorForDiagnostics,
   toFriendlyChatErrorText,
 } from "@/lib/chat/friendly-error";
@@ -112,6 +113,7 @@ type Options = {
   authSession: AuthSessionContext;
   selectedModelId?: string;
   modelId?: string;
+  teamRoleModels?: Record<string, string>;
   agentOptions?: Omit<OpenAgentCallOptions, "sandbox" | "skills">;
   assistantId?: string;
   inputMessagesPersisted?: boolean;
@@ -420,7 +422,23 @@ const convertMessages = async (
   const dedupedMessages = messages
     .map(dedupeMessageReasoning)
     .map(canonicalizeMessageParts)
-    .map(sanitizeMessageToolInputs);
+    .map(sanitizeMessageToolInputs)
+    .map((msg) => {
+      if (msg.role !== "assistant" || !Array.isArray(msg.parts)) {
+        return msg;
+      }
+      const cleanedParts = msg.parts.filter(
+        (part) =>
+          !(
+            part.type === "text" &&
+            typeof part.text === "string" &&
+            isFriendlyChatErrorText(part.text)
+          ),
+      );
+      return cleanedParts.length === msg.parts.length
+        ? msg
+        : { ...msg, parts: cleanedParts };
+    });
   const modelMessages = await convertToModelMessages<WebAgentUIMessage>(
     dedupedMessages,
     {
@@ -560,6 +578,7 @@ async function resolveChatModelRuntime(params: {
   workflowRunId: string;
   overrideModelId?: string | null;
   overrideReasoningEffort?: string | null;
+  teamRoleModels?: Record<string, string>;
 }): Promise<ChatModelRuntime | UsageBlocked> {
   "use step";
 
@@ -571,7 +590,7 @@ async function resolveChatModelRuntime(params: {
   // restricted "use workflow" bundle even when it's only ever called
   // from this "use step" function -- same reasoning as
   // performAgentCommitAndPush/checkVercelConnectedStep/etc. above.
-  const { resolveChatModelSelection } =
+  const { resolveChatModelSelection, resolveLiveModelId } =
     await import("../api/chat/_lib/model-selection");
 
   const [sessions, chats, prefs] = await Promise.all([
@@ -650,6 +669,7 @@ async function resolveChatModelRuntime(params: {
   let startingBalanceCents = 0;
   let windowBudgetCents: number | null = null;
   let planUsageWindows: PlanUsageWindows | null = null;
+  let freeAllowedModelIds: string[] | null = null;
   if (!isAdminUser) {
     const { enforcePlanExpiry, claimUserBillingTurn } =
       await import("@/lib/billing/credit-ledger");
@@ -720,6 +740,7 @@ async function resolveChatModelRuntime(params: {
     const freeModelConfig = parseAdminFreeTierModels(adminFreeTierModel);
 
     if (plan.modelAccess === "luna-only" && !freeModelConfig.allowAll) {
+      freeAllowedModelIds = freeModelConfig.allowedModelIds;
       if (freeModelConfig.allowedModelIds.length === 0) {
         return {
           blockedNotice:
@@ -842,6 +863,42 @@ async function resolveChatModelRuntime(params: {
       : Promise.resolve(undefined),
   ]);
 
+  const allowedTeamRoles = new Set([
+    "architect",
+    "explorer",
+    "executor",
+    "design",
+    "reviewer",
+  ]);
+  let resolvedTeamRoleModels: Record<string, string> | undefined;
+  if (params.teamRoleModels && typeof params.teamRoleModels === "object") {
+    const nextPins: Record<string, string> = {};
+    for (const [role, rawPinnedId] of Object.entries(params.teamRoleModels)) {
+      if (!allowedTeamRoles.has(role) || typeof rawPinnedId !== "string") {
+        continue;
+      }
+      const trimmed = rawPinnedId.trim();
+      if (!trimmed) continue;
+      const sessionModelId = sanitizeSelectedModelIdForSession(
+        trimmed,
+        params.authSession,
+        params.requestUrl,
+      );
+      if (!sessionModelId) continue;
+      const liveCandidate = resolveLiveModelId
+        ? await resolveLiveModelId(sessionModelId).catch(() => sessionModelId)
+        : sessionModelId;
+      const resolvedId = liveCandidate ?? mainModelSelection.id;
+      nextPins[role] =
+        freeAllowedModelIds && !freeAllowedModelIds.includes(resolvedId)
+          ? mainModelSelection.id
+          : resolvedId;
+    }
+    if (Object.keys(nextPins).length > 0) {
+      resolvedTeamRoleModels = nextPins;
+    }
+  }
+
   // Auto-heal: if the model resolved to a different active gateway model
   // (e.g. chat was previously pinned to an unavailable free model),
   // persist the healed model to the chat row so it never fails again.
@@ -885,6 +942,9 @@ async function resolveChatModelRuntime(params: {
       ...(subagentModelSelection
         ? { subagentModel: subagentModelSelection }
         : {}),
+      ...(resolvedTeamRoleModels
+        ? { teamRoleModels: resolvedTeamRoleModels }
+        : {}),
       customInstructions: assistantFileLinkPrompt,
       permissionMode,
     },
@@ -902,8 +962,6 @@ async function persistInputMessages(
   chatId: string,
   messages: WebAgentUIMessage[],
 ): Promise<void> {
-  "use step";
-
   const latestMessage = messages[messages.length - 1];
   if (!latestMessage) {
     return;
@@ -1611,7 +1669,7 @@ async function getSandboxStatusStep(
   }
 
   const state = session.sandboxState;
-  return {
+  return withoutUndefined({
     status: !state
       ? "missing"
       : canOperateOnSandbox(state)
@@ -1630,7 +1688,7 @@ async function getSandboxStatusStep(
     sandboxExpiresAt: session.sandboxExpiresAt?.toISOString() ?? null,
     hasRepo: Boolean(session.repoOwner && session.repoName),
     isArchived: session.status === "archived",
-  };
+  });
 }
 
 async function provisionSandboxStep(
@@ -1644,7 +1702,10 @@ async function provisionSandboxStep(
   // Reuses the session's own provisioning claim-lock, so a concurrent UI
   // click or lifecycle run can't double-provision.
   const kick = await kickSandboxProvisioningWorkflow(sessionId);
-  return { kickStatus: kick.status, started: Boolean(kick.runId) };
+  return withoutUndefined({
+    kickStatus: kick.status,
+    started: Boolean(kick.runId),
+  });
 }
 
 async function reconnectSandboxStep(
@@ -1726,7 +1787,7 @@ async function snapshotSandboxStep(
       : "provisioning",
   });
 
-  return { snapshotted: true, snapshotId: result.snapshotId };
+  return withoutUndefined({ snapshotted: true, snapshotId: result.snapshotId });
 }
 
 async function deleteSandboxStep(
@@ -1844,17 +1905,17 @@ async function performAgentGithubApiRequest(params: {
       `${params.method} ${fullPath}`,
       params.params ?? {},
     );
-    return {
+    return withoutUndefined({
       success: true,
       status: response.status,
       ...(response.data !== undefined ? { data: response.data } : {}),
-    };
+    });
   } catch (error) {
     const status =
       typeof error === "object" && error !== null && "status" in error
         ? (error as { status?: number }).status
         : undefined;
-    return {
+    return withoutUndefined({
       success: false,
       // Omit (never assign) an undefined status: the Workflow SDK cannot
       // serialise `undefined`, so an explicit `status: undefined` is a
@@ -1863,7 +1924,7 @@ async function performAgentGithubApiRequest(params: {
       ...(status !== undefined ? { status } : {}),
       error:
         error instanceof Error ? error.message : "GitHub API request failed",
-    };
+    });
   }
 }
 
@@ -2041,12 +2102,12 @@ async function performAgentVercelCli(params: {
       }
     }
 
-    return {
+    return withoutUndefined({
       success: result.success,
       exitCode: result.exitCode,
       stdout: redact(result.stdout),
       stderr: redact(result.stderr),
-    };
+    });
   } catch (error) {
     return {
       success: false,
@@ -2178,12 +2239,12 @@ async function performAgentGithubCli(params: {
             .join("[REDACTED]")
         : text;
 
-    return {
+    return withoutUndefined({
       success: result.success,
       exitCode: result.exitCode,
       stdout: redact(result.stdout),
       stderr: redact(result.stderr),
-    };
+    });
   } finally {
     await revokeInstallationToken(scoped.token).catch((error) =>
       console.warn(
@@ -2276,7 +2337,11 @@ async function performAgentVercelApiRequest(params: {
       }
     }
 
-    return { success: response.ok, status: response.status, data };
+    return withoutUndefined({
+      success: response.ok,
+      status: response.status,
+      data,
+    });
   } catch (error) {
     return {
       success: false,
@@ -2306,6 +2371,8 @@ export async function runAgentWorkflow(options: Options) {
   const inputMessagesPersistPromise = options.inputMessagesPersisted
     ? Promise.resolve()
     : persistInputMessages(options.chatId, options.messages);
+  const initialTeamRoleModels =
+    options.teamRoleModels ?? options.agentOptions?.teamRoleModels;
   const modelRuntimePromise = resolveChatModelRuntime({
     userId: options.userId,
     sessionId: options.sessionId,
@@ -2313,6 +2380,9 @@ export async function runAgentWorkflow(options: Options) {
     requestUrl: options.requestUrl,
     authSession: options.authSession,
     workflowRunId,
+    ...(initialTeamRoleModels && Object.keys(initialTeamRoleModels).length > 0
+      ? { teamRoleModels: initialTeamRoleModels }
+      : {}),
   });
   // AGENT-FIRST (owner 2026-09-19): the model turn must start -- and be
   // able to finish -- whether or not the workspace came up. This used to be
@@ -2568,6 +2638,10 @@ export async function runAgentWorkflow(options: Options) {
     const guidedFrontendWorkflow =
       modelRuntime.guidedFrontendWorkflowEnabled ||
       hasGuidedFrontendWorkflowTrigger(latestMessage);
+    const mergedTeamRoleModels = {
+      ...modelRuntime.agentOptions.teamRoleModels,
+      ...options.agentOptions?.teamRoleModels,
+    };
     const agentOptions: WorkflowAgentOptions = {
       ...modelRuntime.agentOptions,
       ...options.agentOptions,
@@ -2588,6 +2662,9 @@ export async function runAgentWorkflow(options: Options) {
               modelCostCatalog,
             ),
           }
+        : {}),
+      ...(Object.keys(mergedTeamRoleModels).length > 0
+        ? { teamRoleModels: mergedTeamRoleModels }
         : {}),
       // Optional: absent when there is no live workspace this turn (see
       // runtimePromise above). Every workspace tool resolves its own
@@ -2648,6 +2725,9 @@ export async function runAgentWorkflow(options: Options) {
         sessionId: options.sessionId,
       },
     };
+    if (Object.keys(mergedTeamRoleModels).length === 0) {
+      delete agentOptions.teamRoleModels;
+    }
     sandboxState = runtime?.sandboxState;
 
     const turnStartedAt = Date.now();
@@ -2893,6 +2973,8 @@ export async function runAgentWorkflow(options: Options) {
               dequeuedPrompt.modelId !== undefined ||
               dequeuedPrompt.reasoningEffort !== undefined
             ) {
+              const activeTeamRoleModels =
+                options.teamRoleModels ?? agentOptions.teamRoleModels;
               const nextModelRuntime = await resolveChatModelRuntime({
                 userId: options.userId,
                 sessionId: options.sessionId,
@@ -2905,6 +2987,10 @@ export async function runAgentWorkflow(options: Options) {
                   : {}),
                 ...(dequeuedPrompt.reasoningEffort !== undefined
                   ? { overrideReasoningEffort: dequeuedPrompt.reasoningEffort }
+                  : {}),
+                ...(activeTeamRoleModels &&
+                Object.keys(activeTeamRoleModels).length > 0
+                  ? { teamRoleModels: activeTeamRoleModels }
                   : {}),
               });
 
@@ -2941,6 +3027,12 @@ export async function runAgentWorkflow(options: Options) {
                 );
               } else {
                 delete agentOptions.subagentModel;
+              }
+              if (nextModelRuntime.agentOptions.teamRoleModels !== undefined) {
+                agentOptions.teamRoleModels =
+                  nextModelRuntime.agentOptions.teamRoleModels;
+              } else {
+                delete agentOptions.teamRoleModels;
               }
             }
 
@@ -3299,13 +3391,24 @@ export async function runAgentWorkflow(options: Options) {
       };
     }
 
+    const errorText = getSetupErrorMessage(error, isRepeatFailure);
     if (pendingAssistantResponse.parts.length === 0 && !streamClosed) {
-      const errorText = getSetupErrorMessage(error, isRepeatFailure);
       pendingAssistantResponse = {
         ...pendingAssistantResponse,
         parts: [{ type: "text", text: errorText }],
       };
       await sendTextMessage(writable, "setup-error", errorText);
+    } else if (
+      pendingAssistantResponse.parts.length > 0 &&
+      errorCategory !== "aborted"
+    ) {
+      pendingAssistantResponse = {
+        ...pendingAssistantResponse,
+        metadata: {
+          ...pendingAssistantResponse.metadata,
+          turnError: errorText,
+        },
+      };
     }
 
     if (pendingAssistantResponse.parts.length > 0) {
@@ -3548,6 +3651,10 @@ const runAgentStep = async (
   let mcpToolSet: Awaited<ReturnType<typeof createMcpToolSet>> | undefined;
   let streamWriter: WritableStreamDefaultWriter<UIMessageChunk> | undefined;
   let streamWriteFailed = false;
+  let hasEmittedStreamChunks = false;
+  let responseMessage: WebAgentUIMessage | undefined;
+  let lastStepUsage: LanguageModelUsage | undefined;
+  let lastStepCost: number | undefined;
   let stepSecretRedactor: SecretRedactor | undefined;
   const usedSecretNames = new Set<string>();
   const triggeredPluginSlugs = new Set<string>();
@@ -3560,9 +3667,6 @@ const runAgentStep = async (
   };
 
   try {
-    let responseMessage: WebAgentUIMessage | undefined;
-    let lastStepUsage: LanguageModelUsage | undefined;
-    let lastStepCost: number | undefined;
     const lastOriginalMessage = originalMessages.at(-1);
     const existingStepFinishReasons: WebAgentStepFinishMetadata[] =
       lastOriginalMessage?.role === "assistant"
@@ -3644,6 +3748,7 @@ const runAgentStep = async (
     const controlContext = agentOptions.sandboxControl;
     const fullAgentOptions: OpenAgentCallOptions = {
       ...agentOptions,
+      teamId: chatId,
       billingGuard: subagentBudgetGuard,
       github: githubContext
         ? {
@@ -4033,11 +4138,11 @@ const runAgentStep = async (
     try {
       const [
         { getEnabledMcpServersForRequest, recordMcpServerConnectionResult },
-        { getComposioMcpServerConfig, getConnectedComposioToolkitsForUser },
+        { getIntegrationProvider },
         { prepareMcpServersForExecution },
       ] = await Promise.all([
         import("@/lib/db/mcp-servers"),
-        import("@/lib/mcp/composio"),
+        import("@/lib/integrations/registry"),
         import("@/lib/mcp/resolve-server-config"),
       ]);
       const rawEnabledServers = await getEnabledMcpServersForRequest(userId);
@@ -4064,22 +4169,51 @@ const runAgentStep = async (
         );
       }
 
-      // Composio (see lib/mcp/composio.ts) is a built-in MCP server,
-      // resolved the same way as a self-serve one and merged into the
-      // same combined server list -- createMcpToolSet() doesn't care
-      // which source a server config came from. Never throws: absent
-      // COMPOSIO_API_KEY or any SDK failure resolves to null.
-      const [composioServer, composioConnectedToolkits] = await Promise.all([
-        getComposioMcpServerConfig(userId),
-        getConnectedComposioToolkitsForUser(userId),
+      // Built-in integration gateway (Executor by default via registry plugin)
+      // resolved per user with OAuth auto-refresh or encrypted PAT fallback.
+      const integrationProvider = getIntegrationProvider();
+      const integrationMcp = await integrationProvider
+        .getMcpConfig(userId)
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!msg.includes("POSTGRES_URL environment variable is required")) {
+            console.warn(
+              `[workflow] Failed to resolve integration MCP config for user ${userId}:`,
+              err,
+            );
+          }
+          return null;
+        });
+      const [integrationServer, connectedToolkits] = await Promise.all([
+        Promise.resolve(
+          integrationMcp
+            ? {
+                id: integrationProvider.id,
+                name: integrationProvider.id,
+                url: integrationMcp.url,
+                headers: integrationMcp.headers,
+                transport: "http" as const,
+              }
+            : null,
+        ),
+        integrationProvider
+          .listToolkits(userId, undefined, {
+            category: "connected",
+            limit: 120,
+          })
+          .then((res) =>
+            res.items.filter((item) => item.connected).map((item) => item.slug),
+          )
+          .catch(() => [] as string[]),
       ]);
-      if (composioServer) {
+      if (integrationServer) {
         fullAgentOptions.mcpMetadata = {
-          composioConnectedToolkits,
+          composioConnectedToolkits: connectedToolkits,
+          connectedIntegrations: connectedToolkits,
         };
       }
-      const combinedServers = composioServer
-        ? [...enabledServers, composioServer]
+      const combinedServers = integrationServer
+        ? [...enabledServers, integrationServer]
         : enabledServers;
       if (combinedServers.length > 0) {
         let stepMcpSandbox:
@@ -4171,13 +4305,81 @@ const runAgentStep = async (
         }
       }
     } catch (error) {
-      console.warn(
-        `[workflow] Failed to resolve MCP servers for user ${userId}, continuing without them:`,
-        error,
-      );
+      const msg = error instanceof Error ? error.message : String(error);
+      if (!msg.includes("POSTGRES_URL environment variable is required")) {
+        console.warn(
+          `[workflow] Failed to resolve MCP servers for user ${userId}, continuing without them:`,
+          error,
+        );
+      }
     }
     if (mcpToolSet?.tools && Object.keys(mcpToolSet.tools).length > 0) {
       fullAgentOptions.extraTools = mcpToolSet.tools;
+    }
+
+    const latestUserMsgForCommand = [...originalMessages]
+      .toReversed()
+      .find((m) => m.role === "user");
+    const latestUserText = latestUserMsgForCommand
+      ? extractPlainText(latestUserMsgForCommand.parts).trim()
+      : "";
+
+    // Built-in /team, /team-plan, @team, and specialist (/architect, @architect, etc.)
+    // command routing — works out of the box regardless of user plugin toggles.
+    const teamOrSpecialistMatch = latestUserText.match(
+      /^[/|@](team|team-plan|architect|explorer|executor|design|reviewer)\b(?:\s+([\s\S]*))?$/i,
+    );
+    const inlineSpecialistTags = [
+      ...new Set(
+        Array.from(
+          latestUserText.matchAll(
+            /(?:^|\s)@(team|architect|explorer|executor|design|reviewer)\b/gi,
+          ),
+          (m) => m[1]?.toLowerCase(),
+        ).filter((role): role is string => typeof role === "string"),
+      ),
+    ];
+
+    if (teamOrSpecialistMatch?.[1]) {
+      const target = teamOrSpecialistMatch[1].toLowerCase();
+      const args = teamOrSpecialistMatch[2]?.trim();
+      const builtInDirective =
+        target === "team" || target === "team-plan"
+          ? [
+              `## Active Multi-Agent Team Mode (/${target})`,
+              "Execute this request as a wave-coordinated Multi-Agent Team streaming live in the main chat:",
+              '1. **Wave 0 (Plan, File Ownership & Contracts)**: Call `team_board` (`action: "plan_tasks"`) with dependency-ordered `tasks` (`id`, `title`, `assignedRole`, `dependsOn`, and non-overlapping `files` claims). Park out-of-scope or deferred work with status `"parked"` so downstream waves settle without burning tokens, and post interface contracts (`action: "post"`, `kind: "contract"`, `targetRole`).',
+              "2. **Wave 1..N (Isolated Worktrees & Directed Teammate Comms)**: Dispatch specialist teammates (`architect`, `explorer`, `executor`, `design`, `reviewer`) via `task` in parallel waves once their `dependsOn` prerequisites settle. Write-capable teammates (`executor`, `design`) operate in isolated `team/<role>-<shortId>` git worktrees when inside a repo. Instruct every teammate to read `team_board` first and post `@authorRole -> @targetRole` messages (`finding`, `debate`, `challenge`, `handoff`) with explicit `@role` mentions back to `team_board` before finishing.",
+              "3. **Final Adversarial Verification Wave**: Close multi-file changes with a dedicated `reviewer` audit that posts `challenge` or `verification` evidence on `team_board`, and update every finished task to `completed` with concrete `verification` proof (and `worktreeBranch` when isolated).",
+              args ? `User request:\n${args}` : undefined,
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : [
+              `## Direct Specialist Invocation (@${target})`,
+              `Immediately dispatch the \`${target}\` subagent via \`task\` as your FIRST tool call to handle this request, and record key findings, challenges, or handoffs on \`team_board\`.`,
+              args ? `User request:\n${args}` : undefined,
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+      fullAgentOptions.customInstructions = [
+        fullAgentOptions.customInstructions,
+        builtInDirective,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+    } else if (inlineSpecialistTags.length > 0) {
+      const tagDirective = inlineSpecialistTags.includes("team")
+        ? '## Tagged Multi-Agent Team (@team)\nThe user tagged `@team` in their message. Coordinate specialist teammates (`architect`, `explorer`, `executor`, `design`, `reviewer`) across dependency waves: define Wave 0 `plan_tasks` (with non-overlapping `files` claims and `"parked"` deferral for skipped scope) and `contract` entries, run write-capable roles in `team/<role>-<shortId>` isolated worktrees via `task`, exchange `@authorRole -> @targetRole` `debate`/`challenge`/`handoff` notes, and close with a `reviewer` `verification` pass on `team_board`.'
+        : `## Tagged Specialist Subagents (${inlineSpecialistTags.map((r) => `@${r}`).join(", ")})\nThe user explicitly tagged ${inlineSpecialistTags.map((r) => `\`@${r}\``).join(", ")}. Dispatch ${inlineSpecialistTags.length === 1 ? "that specialist subagent" : "those specialist subagents"} via \`task\` and coordinate their findings/handoffs on \`team_board\`.`;
+
+      fullAgentOptions.customInstructions = [
+        fullAgentOptions.customInstructions,
+        tagDirective,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
     }
 
     // Enabled Entry plugins (built-in toggles + custom JSON manifest plugins).
@@ -4190,16 +4392,10 @@ const runAgentStep = async (
       if (enabledPlugins.length > 0) {
         fullAgentOptions.plugins = enabledPlugins;
 
-        const latestUserMsg = [...originalMessages]
-          .toReversed()
-          .find((m) => m.role === "user");
-        const latestUserText = latestUserMsg
-          ? extractPlainText(latestUserMsg.parts).trim()
-          : "";
         const slashMatch = latestUserText.match(
           /^\/([a-z0-9][a-z0-9_-]*)(?:\s+([\s\S]*))?$/i,
         );
-        if (slashMatch?.[1]) {
+        if (slashMatch?.[1] && !teamOrSpecialistMatch) {
           const cmdName = slashMatch[1].toLowerCase();
           const cmdArgs = slashMatch[2]?.trim();
           for (const plugin of enabledPlugins) {
@@ -4229,10 +4425,13 @@ const runAgentStep = async (
         }
       }
     } catch (error) {
-      console.warn(
-        `[workflow] Failed to resolve Entry plugins for user ${userId}, continuing without them:`,
-        error,
-      );
+      const msg = error instanceof Error ? error.message : String(error);
+      if (!msg.includes("POSTGRES_URL environment variable is required")) {
+        console.warn(
+          `[workflow] Failed to resolve Entry plugins for user ${userId}, continuing without them:`,
+          error,
+        );
+      }
     }
 
     // COMPACT TELEMETRY SCOPE (moved inside this "use step" function
@@ -4741,6 +4940,15 @@ const runAgentStep = async (
             responseMessage = finishedResponseMessage;
           },
         })) {
+          if (
+            part.type === "text-delta" ||
+            part.type === "reasoning-delta" ||
+            part.type === "tool-input-start" ||
+            part.type === "tool-input-available" ||
+            part.type === "tool-output-available"
+          ) {
+            hasEmittedStreamChunks = true;
+          }
           if (!streamWriteFailed) {
             try {
               coalescingWriter.write(part);
@@ -5037,16 +5245,27 @@ const runAgentStep = async (
 
     if (isAbortError(error)) {
       const abortedFinishReason: FinishReason = "stop";
-      // Deliberately `withoutUndefined`: this branch sets four fields to
+      // Deliberately `withoutUndefined`: this branch sets optional fields to
       // `undefined` explicitly, and an `undefined` step return value cannot
-      // be persisted by the Workflow SDK.
+      // be persisted by the Workflow SDK. Preserve any partial responseMessage
+      // that finished assembling before the abort signal fired.
+      const abortedResponseMessage = responseMessage
+        ? {
+            ...responseMessage,
+            metadata: withModelMetadata(
+              responseMessage.metadata,
+              selectedModelId,
+              modelId,
+            ),
+          }
+        : undefined;
       return withoutUndefined({
-        responseMessage: undefined,
+        responseMessage: abortedResponseMessage,
         responseMessages: [],
         finishReason: abortedFinishReason,
         rawFinishReason: undefined,
-        stepUsage: undefined,
-        stepCost: undefined,
+        stepUsage: lastStepUsage,
+        stepCost: lastStepCost,
         stepWasAborted: true,
         remainingBalanceCents,
         remainingWindowBudgetCents,
@@ -5091,7 +5310,16 @@ const runAgentStep = async (
     // class of error `FatalError` exists for -- skips the Workflow SDK's
     // retries entirely so a permanent, param-level failure fails once
     // and immediately instead of 4 times.
-    if (isNonRetryableApiCallError(errorWithStepTiming)) {
+    //
+    // Additionally, if `hasEmittedStreamChunks` is true, this step has ALREADY
+    // written reasoning/text/tool chunks into the live `writable` stream under
+    // `messageId`. Letting the Workflow SDK retry `runAgentStep` would write
+    // a second copy of reasoning, text, and tool calls into the SAME message
+    // (causing the "two models working / repeating Thought + Bash" split bug).
+    if (
+      isNonRetryableApiCallError(errorWithStepTiming) ||
+      hasEmittedStreamChunks
+    ) {
       // FatalError's constructor only takes a message string (see
       // node_modules/workflow's own docs -- no options/cause param), so
       // stepTiming has to be reattached manually to keep the outer

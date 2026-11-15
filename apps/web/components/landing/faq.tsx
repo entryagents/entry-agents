@@ -14,7 +14,7 @@ const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "How does the Free $1 plan and $5 → $10 AI credit pricing work",
     answer:
-      "Every account starts on the Free plan with $1 of real execution credit included. If you need more, try our $5/mo Plus plan and get $10 of AI credit (2x value), or scale up to Goat ($13/mo → $50 credit), Pro ($20/mo → $100 credit), and Max ($40/mo → $180 credit) with zero per-token markup and up to 99% prompt caching across main chat and subagents.",
+      "Every account starts on the Free plan with $1 of real execution credit included. If you need more, try our $5/mo Plus plan and get $10 of AI credit (2x value), or scale up to Entry (Goat) ($13/mo → $50 credit), Pro ($20/mo → $100 credit), and Max ($40/mo → $180 credit) with zero per-token markup and up to 99% prompt caching across main chat and subagents.",
   },
   {
     question: "What happens if I lose internet or close my browser mid-turn",

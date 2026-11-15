@@ -482,6 +482,16 @@ const ChatMessageRow = memo(function ChatMessageRow({
           p.type === "tool-visualize" ||
           toolName === "visualize";
         if (!isToolCallsExpanded && !isAlwaysVisibleTool) return null;
+        const hasLaterStepOrProse = m.parts
+          .slice(group.index + 1)
+          .some(
+            (laterPart) =>
+              laterPart.type === "step-start" ||
+              laterPart.type === "reasoning" ||
+              (laterPart.type === "text" &&
+                Boolean((laterPart.text ?? "").trim())),
+          );
+        const isToolPartStreaming = isMessageStreaming && !hasLaterStepOrProse;
         return (
           <div
             key={`${m.id}-${group.renderKey}`}
@@ -492,7 +502,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
           >
             <ToolCall
               part={p as WebAgentUIToolPart}
-              isStreaming={isMessageStreaming}
+              isStreaming={isToolPartStreaming}
               activeApprovalId={activeApprovalId}
               cwd={cwd}
               onApprove={onApproveTool}
