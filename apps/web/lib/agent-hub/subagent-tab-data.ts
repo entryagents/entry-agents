@@ -20,6 +20,7 @@ export interface SubagentTabData {
   title: string;
   instructions: string;
   startedAt: number | null;
+  completedAt: number | null;
   status: SubagentStatus;
   modelId: string | null;
   toolCallCount: number | null;
@@ -90,71 +91,106 @@ function unwrapToolOutput(output: unknown): unknown {
   return output;
 }
 
+export function formatSubagentElapsed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
+}
+
+export function formatSubagentModelTag(modelId: string | null): string | null {
+  if (!modelId) return null;
+  const slashIdx = modelId.indexOf("/");
+  return slashIdx !== -1 ? modelId.slice(slashIdx + 1) : modelId;
+}
+
 /**
- * Extract completed tool calls from subagent's final ModelMessage array.
- * Mirrors the extraction in task-renderer.tsx so all tool renderers work identically.
+ * Extract completed tool calls from subagent's final ModelMessage array,
+ * falling back to streamed `executedTools` while execution is in progress.
  */
 export function extractSubagentToolParts(
   finalMessages: unknown,
+  executedTools?: unknown,
 ): WebAgentUIToolPart[] {
-  if (!Array.isArray(finalMessages)) return [];
+  if (Array.isArray(finalMessages) && finalMessages.length > 0) {
+    const toolCalls: {
+      toolCallId: string;
+      toolName: string;
+      input: unknown;
+    }[] = [];
+    const toolOutputs = new Map<string, unknown>();
 
-  const toolCalls: { toolCallId: string; toolName: string; input: unknown }[] =
-    [];
-  const toolOutputs = new Map<string, unknown>();
+    for (const rawMsg of finalMessages as ModelMessage[]) {
+      if (!rawMsg || typeof rawMsg !== "object") continue;
 
-  for (const rawMsg of finalMessages as ModelMessage[]) {
-    if (!rawMsg || typeof rawMsg !== "object") continue;
+      if (rawMsg.role === "assistant" && Array.isArray(rawMsg.content)) {
+        for (const part of rawMsg.content) {
+          if (
+            part &&
+            typeof part === "object" &&
+            (part as { type?: string }).type === "tool-call"
+          ) {
+            const tc = part as {
+              toolCallId?: string;
+              toolName?: string;
+              input?: unknown;
+            };
+            if (tc.toolCallId && tc.toolName) {
+              toolCalls.push({
+                toolCallId: tc.toolCallId,
+                toolName: tc.toolName,
+                input: tc.input,
+              });
+            }
+          }
+        }
+      }
 
-    if (rawMsg.role === "assistant" && Array.isArray(rawMsg.content)) {
-      for (const part of rawMsg.content) {
-        if (
-          part &&
-          typeof part === "object" &&
-          (part as { type?: string }).type === "tool-call"
-        ) {
-          const tc = part as {
-            toolCallId?: string;
-            toolName?: string;
-            input?: unknown;
-          };
-          if (tc.toolCallId && tc.toolName) {
-            toolCalls.push({
-              toolCallId: tc.toolCallId,
-              toolName: tc.toolName,
-              input: tc.input,
-            });
+      if (rawMsg.role === "tool" && Array.isArray(rawMsg.content)) {
+        for (const part of rawMsg.content) {
+          if (
+            part &&
+            typeof part === "object" &&
+            (part as { type?: string }).type === "tool-result"
+          ) {
+            const tr = part as { toolCallId?: string; output?: unknown };
+            if (tr.toolCallId) {
+              toolOutputs.set(tr.toolCallId, unwrapToolOutput(tr.output));
+            }
           }
         }
       }
     }
 
-    if (rawMsg.role === "tool" && Array.isArray(rawMsg.content)) {
-      for (const part of rawMsg.content) {
-        if (
-          part &&
-          typeof part === "object" &&
-          (part as { type?: string }).type === "tool-result"
-        ) {
-          const tr = part as { toolCallId?: string; output?: unknown };
-          if (tr.toolCallId) {
-            toolOutputs.set(tr.toolCallId, unwrapToolOutput(tr.output));
-          }
-        }
-      }
+    if (toolCalls.length > 0) {
+      return toolCalls.map((call) => {
+        const output = toolOutputs.get(call.toolCallId);
+        return {
+          type: `tool-${call.toolName}`,
+          toolCallId: call.toolCallId,
+          state: "output-available",
+          input: call.input,
+          output,
+        } as unknown as WebAgentUIToolPart;
+      });
     }
   }
 
-  return toolCalls.map((call) => {
-    const output = toolOutputs.get(call.toolCallId);
-    return {
-      type: `tool-${call.toolName}`,
-      toolCallId: call.toolCallId,
-      state: "output-available",
-      input: call.input,
-      output,
-    } as unknown as WebAgentUIToolPart;
-  });
+  if (Array.isArray(executedTools) && executedTools.length > 0) {
+    return executedTools.map((raw, idx) => {
+      const call = (raw ?? {}) as Record<string, unknown>;
+      return {
+        type: `tool-${String(call.name ?? "tool")}`,
+        toolCallId: String(call.toolCallId ?? `exec-${idx}`),
+        state:
+          call.state === "running" ? "input-available" : "output-available",
+        input: call.input,
+        output: call.output,
+      } as unknown as WebAgentUIToolPart;
+    });
+  }
+
+  return [];
 }
 
 function extractFinalAssistantText(finalMessages: unknown): string | null {
@@ -182,6 +218,34 @@ function extractFinalAssistantText(finalMessages: unknown): string | null {
   }
 
   return texts.length > 0 ? texts.join("\n\n") : null;
+}
+
+export function extractConciseTaskSummary(
+  finalMessages: unknown,
+  streamedText: unknown,
+  maxChars = 160,
+): string | null {
+  const fromMessages = extractFinalAssistantText(finalMessages);
+  const rawText =
+    fromMessages?.trim() ||
+    (typeof streamedText === "string" ? streamedText.trim() : "");
+  if (!rawText) return null;
+
+  const summaryMatch = rawText.match(
+    /\*\*Summary\*\*:?\s*([\s\S]*?)(?:\n\s*\*\*Answer\*\*|$)/i,
+  );
+  const candidate = (summaryMatch?.[1] ?? rawText)
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^---+\s*/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!candidate) return null;
+  return candidate.length > maxChars
+    ? `${candidate.slice(0, maxChars - 3)}...`
+    : candidate;
 }
 
 /**
@@ -223,26 +287,10 @@ export function deriveSubagentTabData(
           : null;
 
       const finalMessages = output?.final;
-      const partsFromFinal = extractSubagentToolParts(finalMessages);
-
-      // Support live streaming executedTools directly from task tool updates
-      const executedToolsRaw = Array.isArray(output?.executedTools)
-        ? (output.executedTools as Array<Record<string, unknown>>)
-        : [];
-      const partsFromExecuted = executedToolsRaw.map(
-        (call) =>
-          ({
-            type: `tool-${String(call.name ?? "tool")}`,
-            toolCallId: String(call.toolCallId ?? crypto.randomUUID()),
-            state:
-              call.state === "running" ? "input-available" : "output-available",
-            input: call.input,
-            output: call.output,
-          }) as unknown as WebAgentUIToolPart,
+      const completedParts = extractSubagentToolParts(
+        finalMessages,
+        output?.executedTools,
       );
-
-      const completedParts =
-        partsFromFinal.length > 0 ? partsFromFinal : partsFromExecuted;
 
       const finalText =
         extractFinalAssistantText(finalMessages) ??
@@ -269,10 +317,11 @@ export function deriveSubagentTabData(
         title:
           typeof input?.task === "string" && input.task.length > 0
             ? input.task
-            : "Subagent Task",
+            : "Subagent task",
         instructions:
           typeof input?.instructions === "string" ? input.instructions : "",
         startedAt: numberOrNull(output?.startedAt),
+        completedAt: numberOrNull(output?.completedAt),
         status: statusOf(taskPart),
         modelId: typeof output?.modelId === "string" ? output.modelId : null,
         toolCallCount:

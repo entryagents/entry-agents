@@ -72,6 +72,7 @@ export const taskOutputSchema = z.object({
   pending: taskPendingToolCallSchema.optional(),
   toolCallCount: z.number().int().nonnegative().optional(),
   startedAt: z.number().int().nonnegative().optional(),
+  completedAt: z.number().int().nonnegative().optional(),
   modelId: z.string().optional(),
   final: z.custom<ModelMessage[]>().optional(),
   streamedText: z.string().optional(),
@@ -569,6 +570,8 @@ IMPORTANT:
       });
     }
 
+    const completedAt = Date.now();
+
     if (streamError) {
       const cleanError = streamError.replace(/^Error:\s*/, "");
       const messagesWithError: ModelMessage[] = [
@@ -587,6 +590,7 @@ IMPORTANT:
         toolCallCount,
         usage: finalUsage,
         startedAt,
+        completedAt,
         modelId: subagentModelId,
         sessionId: activeSessionId,
         depth: currentDepth + 1,
@@ -617,6 +621,7 @@ IMPORTANT:
         toolCallCount,
         usage: finalUsage,
         startedAt,
+        completedAt,
         modelId: subagentModelId,
         sessionId: activeSessionId,
         depth: currentDepth + 1,
@@ -633,6 +638,7 @@ IMPORTANT:
       toolCallCount,
       usage: finalUsage,
       startedAt,
+      completedAt,
       modelId: subagentModelId,
       sessionId: activeSessionId,
       depth: currentDepth + 1,

@@ -1,224 +1,34 @@
 "use client";
 
 import type { TaskPendingToolCall } from "@entry-agents/agent";
-import { formatTokens, toRelativePath } from "@entry-agents/shared";
-import type { ToolRenderState } from "@entry-agents/shared/lib/tool-state";
+import { formatTokens } from "@entry-agents/shared";
 import {
-  ShieldCheck,
-  Bot,
-  ExternalLink,
-  FileText,
-  FilePlus,
-  FolderSearch,
-  Globe,
-  Hammer,
-  Layers,
-  Paintbrush,
-  Pencil,
-  Search,
-  Share2,
-  Telescope,
-  Terminal,
-  Zap,
+  AlertCircle,
+  ArrowUpRight,
+  Check,
+  ChevronRight,
+  XCircle,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useState } from "react";
+import type { ToolRendererProps } from "@/app/lib/render-tool";
 import { useOptionalGitPanel } from "@/app/sessions/[sessionId]/chats/[chatId]/git-panel-context";
+import { SubagentIcon } from "@/components/agent-hub/agent-status";
+import { useNow } from "@/components/agent-hub/use-now";
 import {
-  extractRenderState,
-  getToolName,
-  type ToolRendererProps,
-} from "@/app/lib/render-tool";
-import type { WebAgentUIToolPart } from "@/app/types";
-import { DEFAULT_WORKING_DIRECTORY } from "@/lib/sandbox/config";
-import { ToolLayout } from "../tool-layout";
-import { BashRenderer } from "./bash-renderer";
-import { ReadRenderer } from "./read-renderer";
-import { WriteRenderer } from "./write-renderer";
-import { EditRenderer } from "./edit-renderer";
-import { GlobRenderer } from "./glob-renderer";
-import { GrepRenderer } from "./grep-renderer";
-import { TodoRenderer } from "./todo-renderer";
-import { AskUserQuestionRenderer } from "./ask-user-question-renderer";
-import { FetchRenderer } from "./fetch-renderer";
-import { SkillRenderer } from "./skill-renderer";
-import { TeamBoardRenderer } from "./team-board-renderer";
-
-// ---------------------------------------------------------------------------
-// Tool name → icon / display name mapping (for pending tool call only)
-// ---------------------------------------------------------------------------
-
-type ToolMeta = { displayName: string; icon: ReactNode };
-
-const TOOL_ICON_CLASS = "h-3.5 w-3.5";
-
-function getToolMeta(toolName: string): ToolMeta {
-  switch (toolName) {
-    case "bash":
-      return {
-        displayName: "Bash",
-        icon: <Terminal className={TOOL_ICON_CLASS} />,
-      };
-    case "read":
-      return {
-        displayName: "Read",
-        icon: <FileText className={TOOL_ICON_CLASS} />,
-      };
-    case "write":
-      return {
-        displayName: "Create",
-        icon: <FilePlus className={TOOL_ICON_CLASS} />,
-      };
-    case "edit":
-      return {
-        displayName: "Update",
-        icon: <Pencil className={TOOL_ICON_CLASS} />,
-      };
-    case "grep":
-      return {
-        displayName: "Grep",
-        icon: <Search className={TOOL_ICON_CLASS} />,
-      };
-    case "glob":
-      return {
-        displayName: "Glob",
-        icon: <FolderSearch className={TOOL_ICON_CLASS} />,
-      };
-    case "web_fetch":
-      return {
-        displayName: "Fetch",
-        icon: <Globe className={TOOL_ICON_CLASS} />,
-      };
-    case "skill":
-      return {
-        displayName: "Skill",
-        icon: <Zap className={TOOL_ICON_CLASS} />,
-      };
-    case "team_board":
-      return {
-        displayName: "Team Board",
-        icon: <Share2 className={TOOL_ICON_CLASS} />,
-      };
-    case "task":
-      return {
-        displayName: "Task",
-        icon: <Telescope className={TOOL_ICON_CLASS} />,
-      };
-    default: {
-      const name = toolName.charAt(0).toUpperCase() + toolName.slice(1);
-      return { displayName: name, icon: undefined };
-    }
-  }
-}
-
-function getToolSummary(name: string, input: unknown): string {
-  const inp = input as Record<string, unknown> | undefined;
-  if (!inp) return "";
-  switch (name) {
-    case "read":
-    case "write":
-    case "edit": {
-      const fp = inp.filePath ?? "";
-      return fp ? toRelativePath(String(fp), DEFAULT_WORKING_DIRECTORY) : "";
-    }
-    case "grep":
-    case "glob":
-      return inp.pattern ? `'${inp.pattern}'` : "";
-    case "bash":
-      return inp.command ? String(inp.command) : "";
-    default:
-      return "";
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Extract completed tool calls from final messages and synthesize UI parts
-// ---------------------------------------------------------------------------
-
-/** Unwrap AI SDK tool output envelope: { type: "json", value: { ... } } */
-function unwrapToolOutput(output: unknown): unknown {
-  if (!output || typeof output !== "object") return output;
-  const o = output as Record<string, unknown>;
-  if (o.type === "json" && o.value && typeof o.value === "object") {
-    return o.value;
-  }
-  return output;
-}
-
-function extractToolParts(messages: unknown): WebAgentUIToolPart[] {
-  if (!Array.isArray(messages)) return [];
-
-  // First pass: collect tool-call parts from assistant messages
-  type CallInfo = { id: string; name: string; input: unknown };
-  const calls: CallInfo[] = [];
-  for (const msg of messages) {
-    if (
-      typeof msg !== "object" ||
-      msg === null ||
-      (msg as { role?: string }).role !== "assistant"
-    )
-      continue;
-
-    const content = (msg as { content?: unknown }).content;
-    if (!Array.isArray(content)) continue;
-
-    for (const part of content) {
-      if (
-        typeof part === "object" &&
-        part !== null &&
-        (part as { type?: string }).type === "tool-call"
-      ) {
-        const tc = part as {
-          toolCallId?: string;
-          toolName?: string;
-          input?: unknown;
-        };
-        if (tc.toolName && tc.toolCallId) {
-          calls.push({ id: tc.toolCallId, name: tc.toolName, input: tc.input });
-        }
-      }
-    }
-  }
-
-  // Second pass: match tool results from tool-role messages
-  const resultMap = new Map<string, unknown>();
-  for (const msg of messages) {
-    if (
-      typeof msg !== "object" ||
-      msg === null ||
-      (msg as { role?: string }).role !== "tool"
-    )
-      continue;
-
-    const content = (msg as { content?: unknown }).content;
-    if (!Array.isArray(content)) continue;
-
-    for (const part of content) {
-      if (
-        typeof part === "object" &&
-        part !== null &&
-        (part as { type?: string }).type === "tool-result"
-      ) {
-        const tr = part as { toolCallId?: string; output?: unknown };
-        if (tr.toolCallId) {
-          resultMap.set(tr.toolCallId, tr.output);
-        }
-      }
-    }
-  }
-
-  // Synthesize WebAgentUIToolPart objects
-  return calls.map((call) => {
-    const rawOutput = resultMap.get(call.id);
-    const output = unwrapToolOutput(rawOutput);
-    return {
-      type: `tool-${call.name}`,
-      toolCallId: call.id,
-      state: "output-available",
-      input: call.input,
-      output,
-    } as unknown as WebAgentUIToolPart;
-  });
-}
+  getSubagentRoleTag,
+  getSubagentToolSummary,
+  PendingSubagentToolItem,
+  SubagentToolItem,
+} from "@/components/subagent-chat/subagent-tool-item";
+import { Button } from "@/components/ui/button";
+import {
+  extractConciseTaskSummary,
+  extractSubagentToolParts,
+  formatSubagentElapsed,
+  formatSubagentModelTag,
+} from "@/lib/agent-hub/subagent-tab-data";
+import { extractCachedInputTokens } from "@/lib/chat/usage-extract";
+import { cn } from "@/lib/utils";
 
 function countToolCalls(messages: unknown): number {
   if (!Array.isArray(messages)) return 0;
@@ -230,133 +40,19 @@ function countToolCalls(messages: unknown): number {
   ).length;
 }
 
-// ---------------------------------------------------------------------------
-// Subagent helpers
-// ---------------------------------------------------------------------------
-
-function getSubagentIcon(
-  subagentType: string | undefined,
-  className: string,
-): ReactNode {
-  switch (subagentType) {
-    case "architect":
-      return <Layers className={className} />;
-    case "executor":
-      return <Hammer className={className} />;
-    case "design":
-      return <Paintbrush className={className} />;
-    case "explorer":
-      return <Telescope className={className} />;
-    case "reviewer":
-      return <ShieldCheck className={className} />;
-    default:
-      return <Bot className={className} />;
-  }
-}
-
-function getSubagentLabel(subagentType: string | undefined): string {
-  switch (subagentType) {
-    case "architect":
-      return "Architect Subagent";
-    case "executor":
-      return "Executor Subagent";
-    case "design":
-      return "Design Subagent";
-    case "explorer":
-      return "Explorer Subagent";
-    case "reviewer":
-      return "Reviewer Subagent";
-    default:
-      return subagentType
-        ? `${subagentType.charAt(0).toUpperCase() + subagentType.slice(1)} Subagent`
-        : "Subagent";
-  }
+function formatLatestStreamLine(streamedText: unknown): string | null {
+  if (typeof streamedText !== "string") return null;
+  const lines = streamedText
+    .split("\n")
+    .map((line) => line.replace(/^#+\s*/, "").trim())
+    .filter((line) => line.length > 0 && line !== "---");
+  if (lines.length === 0) return null;
+  const last = lines[lines.length - 1] ?? "";
+  return last.length > 96 ? `${last.slice(0, 93)}...` : last;
 }
 
 // ---------------------------------------------------------------------------
-// Pending tool call (streaming only — no output yet)
-// ---------------------------------------------------------------------------
-
-const IDLE_STATE: ToolRenderState = {
-  running: false,
-  interrupted: false,
-  denied: false,
-  approvalRequested: false,
-  isActiveApproval: false,
-};
-
-/**
- * Render a completed subagent tool call using the real renderers.
- * This is a local dispatch to avoid circular imports with tool-call.tsx.
- */
-function SubagentToolCall({ part }: { part: WebAgentUIToolPart }) {
-  const state = extractRenderState(part, null, false);
-  const cwd = DEFAULT_WORKING_DIRECTORY;
-
-  switch (part.type) {
-    case "tool-bash":
-      return <BashRenderer part={part} state={state} />;
-    case "tool-read":
-      return <ReadRenderer part={part} state={state} cwd={cwd} />;
-    case "tool-write":
-      return <WriteRenderer part={part} state={state} cwd={cwd} />;
-    case "tool-edit":
-      return <EditRenderer part={part} state={state} cwd={cwd} />;
-    case "tool-glob":
-      return <GlobRenderer part={part} state={state} />;
-    case "tool-grep":
-      return <GrepRenderer part={part} state={state} />;
-    case "tool-todo_write":
-      return <TodoRenderer part={part} state={state} />;
-    case "tool-ask_user_question":
-      return <AskUserQuestionRenderer part={part} state={state} />;
-    case "tool-web_fetch":
-      return <FetchRenderer part={part} state={state} />;
-    case "tool-skill":
-      return <SkillRenderer part={part} state={state} />;
-    case "tool-team_board":
-      return <TeamBoardRenderer part={part} state={state} />;
-    default: {
-      const toolName = getToolName(part);
-      const name = toolName.charAt(0).toUpperCase() + toolName.slice(1);
-      const input = part.input as Record<string, unknown> | undefined;
-      const summary = input ? JSON.stringify(input).slice(0, 40) : "...";
-      return (
-        <ToolLayout
-          name={name}
-          summary={summary}
-          summaryClassName="font-mono"
-          meta={part.state === "output-available" ? "Done" : undefined}
-          state={state}
-        />
-      );
-    }
-  }
-}
-
-function PendingMiniToolCall({
-  name,
-  input,
-}: {
-  name: string;
-  input: unknown;
-}) {
-  const meta = getToolMeta(name);
-  const summary = getToolSummary(name, input);
-
-  return (
-    <ToolLayout
-      name={meta.displayName}
-      icon={meta.icon}
-      summary={summary}
-      summaryClassName="font-mono"
-      state={IDLE_STATE}
-    />
-  );
-}
-
-// ---------------------------------------------------------------------------
-// TaskRenderer
+// TaskRenderer — Flush Hairline Execution Trace Strip
 // ---------------------------------------------------------------------------
 
 export function TaskRenderer({
@@ -366,111 +62,273 @@ export function TaskRenderer({
   onDeny,
 }: ToolRendererProps<"tool-task">) {
   const input = part.input;
-  const desc = input?.task ?? "Spawning subagent";
+  const desc = input?.task ?? "Subagent task";
   const subagentType = input?.subagentType;
+  const roleTag = getSubagentRoleTag(subagentType);
   const taskApprovalRequested = part.state === "approval-requested";
   const taskDenied = part.state === "output-denied";
+  const taskErrored = part.state === "output-error";
 
   const hasOutput = part.state === "output-available";
   const isPreliminary = hasOutput && part.preliminary === true;
   const isComplete = hasOutput && !isPreliminary;
   const output = hasOutput ? part.output : undefined;
+  const isFailed = taskDenied || taskErrored || output?.status === "failed";
+  const isRunning = state.running || isPreliminary;
 
   const pendingToolCall: TaskPendingToolCall | null = output?.pending ?? null;
+  const completedParts = extractSubagentToolParts(
+    output?.final,
+    output?.executedTools,
+  );
   const toolCount =
-    output?.toolCallCount ?? (isComplete ? countToolCalls(output?.final) : 0);
-  const tokenCount = output?.usage?.inputTokens ?? null;
+    output?.toolCallCount ??
+    (completedParts.length > 0
+      ? completedParts.length
+      : countToolCalls(output?.final));
+  const inputTokens = output?.usage?.inputTokens ?? null;
+  const cachedTokens = extractCachedInputTokens(output?.usage);
+  const cacheHitPct =
+    inputTokens && inputTokens > 0 && cachedTokens > 0
+      ? Math.min(100, Math.round((cachedTokens / inputTokens) * 100))
+      : null;
 
-  // Build mono stats for right-aligned meta
-  const statParts: string[] = [];
-  if (toolCount > 0) {
-    statParts.push(`${toolCount} tool${toolCount !== 1 ? "s" : ""}`);
-  }
-  if (tokenCount !== null) {
-    statParts.push(`${formatTokens(tokenCount)} tokens`);
-  }
+  const startedAt =
+    typeof output?.startedAt === "number" ? output.startedAt : null;
+  const completedAt =
+    typeof (output as { completedAt?: unknown } | undefined)?.completedAt ===
+    "number"
+      ? (output as { completedAt: number }).completedAt
+      : null;
+  const now = useNow(isRunning && startedAt !== null);
+  const elapsedLabel =
+    isRunning && startedAt !== null
+      ? formatSubagentElapsed(now - startedAt)
+      : completedAt !== null && startedAt !== null
+        ? formatSubagentElapsed(completedAt - startedAt)
+        : null;
 
-  const gitPanel = useOptionalGitPanel();
-
-  const meta = (
-    <div className="flex items-center gap-2">
-      {statParts.length > 0 && (
-        <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400">
-          {statParts.join(" · ")}
-        </span>
-      )}
-      {gitPanel && (
-        <span
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground group-hover:text-foreground transition-colors"
-          title="Click to open subagent chat"
-        >
-          <ExternalLink className="h-3 w-3" />
-        </span>
-      )}
-    </div>
+  const modelTag = formatSubagentModelTag(output?.modelId ?? null);
+  const summaryPreview = extractConciseTaskSummary(
+    output?.final,
+    output?.streamedText,
+    140,
   );
 
-  // --- Expanded content ---
-  // While running: show the current pending tool call
-  // When complete: show all tool calls using the real ToolCall component
-  const completedParts = isComplete ? extractToolParts(output?.final) : [];
+  const [stepsExpanded, setStepsExpanded] = useState(false);
+  const gitPanel = useOptionalGitPanel();
 
-  const hasExpandableContent =
-    pendingToolCall !== null || completedParts.length > 0;
+  const liveActivityLine = isRunning
+    ? pendingToolCall
+      ? `${pendingToolCall.name} ${getSubagentToolSummary(pendingToolCall.name, pendingToolCall.input)}`.trim()
+      : formatLatestStreamLine(output?.streamedText)
+    : null;
 
-  const expandedContent = hasExpandableContent ? (
-    <div className="space-y-0.5 pl-6">
-      {/* Live: show current pending tool call with slide-up animation */}
-      {pendingToolCall && !isComplete && (
-        <div
-          key={`pending-${toolCount}-${pendingToolCall.name}`}
-          style={{ animation: "slide-up-fade 150ms ease-out both" }}
-        >
-          <PendingMiniToolCall
-            name={pendingToolCall.name}
-            input={pendingToolCall.input}
-          />
-        </div>
-      )}
-      {/* Complete: render real tool call components */}
-      {isComplete &&
-        completedParts.map((toolPart) => (
-          <SubagentToolCall key={toolPart.toolCallId} part={toolPart} />
-        ))}
-    </div>
-  ) : undefined;
+  const hasSteps =
+    completedParts.length > 0 || (Boolean(pendingToolCall) && !isComplete);
 
-  const approvalWarning =
-    taskApprovalRequested && subagentType === "executor" ? (
-      <div className="mt-2 pl-5 text-sm text-yellow-500">
-        This executor has full write access and can create, modify, and delete
-        files.
-      </div>
-    ) : undefined;
+  const openFullTrace = () => {
+    if (!gitPanel) return;
+    gitPanel.openSubagentTab(part.toolCallId, desc, subagentType);
+  };
 
   return (
-    <ToolLayout
-      name={getSubagentLabel(subagentType)}
-      summary={desc}
-      summaryClassName="font-sans text-neutral-700 dark:text-neutral-300 font-medium"
-      meta={meta}
-      rightAlignMeta
-      state={state}
-      icon={getSubagentIcon(subagentType, "h-3.5 w-3.5")}
-      nameClassName={taskDenied ? "text-red-500" : undefined}
-      expandedContent={expandedContent}
-      onApprove={onApprove}
-      onDeny={onDeny}
-      defaultExpanded={!isComplete}
-      onHeaderClick={
-        gitPanel
-          ? () => {
-              gitPanel.openSubagentTab(part.toolCallId, desc, subagentType);
-            }
-          : undefined
-      }
+    <div
+      className={cn(
+        "my-1 min-w-0 border-l-2 py-0.5 pl-3 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
+        isFailed
+          ? "border-l-destructive/75"
+          : isRunning
+            ? "border-l-foreground/45"
+            : "border-l-border hover:border-l-foreground/35",
+      )}
     >
-      {approvalWarning}
-    </ToolLayout>
+      {/* Primary Single-Row Trace Header */}
+      <div className="flex min-w-0 items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            if (hasSteps) {
+              setStepsExpanded((prev) => !prev);
+            } else {
+              openFullTrace();
+            }
+          }}
+          aria-expanded={hasSteps ? stepsExpanded : undefined}
+          className="-mx-1.5 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          {/* Status / Expand Indicator */}
+          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
+            {hasSteps ? (
+              <ChevronRight
+                className={cn(
+                  "h-3.5 w-3.5 transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                  stepsExpanded && "rotate-90 text-foreground",
+                )}
+                strokeWidth={1.5}
+              />
+            ) : taskDenied ? (
+              <XCircle
+                className="h-3.5 w-3.5 text-destructive"
+                strokeWidth={1.5}
+              />
+            ) : isFailed ? (
+              <AlertCircle
+                className="h-3.5 w-3.5 text-destructive"
+                strokeWidth={1.5}
+              />
+            ) : isComplete ? (
+              <Check
+                className="h-3.5 w-3.5 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+            ) : (
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            )}
+          </span>
+
+          {/* Role Token (unboxed inline monospace) */}
+          <span className="inline-flex shrink-0 items-center gap-1 font-mono text-xs font-medium text-foreground/85">
+            <SubagentIcon
+              type={subagentType ?? "agent"}
+              className="h-3.5 w-3.5 text-muted-foreground"
+            />
+            <span>@{roleTag}</span>
+          </span>
+
+          {/* Task Title */}
+          <span
+            className={cn(
+              "min-w-0 flex-1 truncate text-[13px] font-medium",
+              isFailed ? "text-destructive" : "text-foreground",
+            )}
+          >
+            {desc}
+          </span>
+        </button>
+
+        {/* Tabular Telemetry + Direct Trace Link */}
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+            {elapsedLabel && <span>{elapsedLabel}</span>}
+            {toolCount > 0 && (
+              <span>
+                {elapsedLabel ? "· " : ""}
+                {toolCount} {toolCount === 1 ? "step" : "steps"}
+              </span>
+            )}
+            {inputTokens !== null && (
+              <span className="hidden sm:inline">
+                · {formatTokens(inputTokens)} tok
+              </span>
+            )}
+            {cacheHitPct !== null && (
+              <span
+                className="hidden text-muted-foreground/80 md:inline"
+                title={`${formatTokens(cachedTokens)} cached input tokens`}
+              >
+                · {cacheHitPct}% cached
+              </span>
+            )}
+            {modelTag && (
+              <span
+                className="hidden max-w-[120px] truncate text-muted-foreground/70 lg:inline"
+                title={output?.modelId ?? undefined}
+              >
+                · {modelTag}
+              </span>
+            )}
+          </div>
+
+          {gitPanel && (
+            <button
+              type="button"
+              onClick={openFullTrace}
+              aria-label={`Open full trace for ${desc}`}
+              className="inline-flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-[11px] font-medium text-muted-foreground transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground active:scale-[0.97]"
+            >
+              <span>Open</span>
+              <ArrowUpRight className="h-3 w-3" strokeWidth={1.5} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Live Single-Line Ticker (while running and collapsed) */}
+      {liveActivityLine && !stepsExpanded && (
+        <div className="flex min-w-0 items-center gap-1.5 py-0.5 pl-6 font-mono text-[11px] text-muted-foreground">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+          <span className="truncate">{liveActivityLine}</span>
+        </div>
+      )}
+
+      {/* Concise Outcome Line (when complete/failed and collapsed) */}
+      {!isRunning && summaryPreview && !stepsExpanded && (
+        <p
+          className={cn(
+            "truncate py-0.5 pl-6 text-xs",
+            isFailed ? "text-destructive/90" : "text-muted-foreground",
+          )}
+        >
+          {summaryPreview}
+        </p>
+      )}
+
+      {/* Inline Approval Controls */}
+      {taskApprovalRequested && state.approvalId && (
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 bg-muted/25 px-2.5 py-1.5 text-xs">
+          <span className="text-muted-foreground">
+            {subagentType === "executor"
+              ? "Executor subagent requests write and shell access"
+              : "Approve subagent task execution"}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {onDeny && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => state.approvalId && onDeny(state.approvalId)}
+                className="h-6 px-2 text-xs active:scale-[0.97]"
+              >
+                Deny
+              </Button>
+            )}
+            {onApprove && (
+              <Button
+                size="sm"
+                onClick={() => state.approvalId && onApprove(state.approvalId)}
+                className="h-6 px-2.5 text-xs active:scale-[0.97]"
+              >
+                Approve
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Expanded Step Ledger */}
+      {stepsExpanded && hasSteps && (
+        <div className="mt-1.5 space-y-0.5 border-l border-border/50 pl-2">
+          <div className="max-h-72 space-y-0.5 overflow-y-auto">
+            {completedParts.map((toolPart) => (
+              <SubagentToolItem key={toolPart.toolCallId} part={toolPart} />
+            ))}
+            {pendingToolCall && !isComplete && (
+              <PendingSubagentToolItem pending={pendingToolCall} />
+            )}
+          </div>
+          {gitPanel && (
+            <button
+              type="button"
+              onClick={openFullTrace}
+              className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted/50 hover:text-foreground"
+            >
+              <span>Inspect full trace</span>
+              <ArrowUpRight className="h-3 w-3" strokeWidth={1.5} />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
