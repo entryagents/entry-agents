@@ -178,6 +178,7 @@ const callOptionsSchema = z.object({
   plugins: z.custom<ResolvedEntryPlugin[]>().optional(),
   mcpMetadata: z
     .object({
+      connectedIntegrations: z.array(z.string()).optional(),
       composioConnectedToolkits: z.array(z.string()).optional(),
     })
     .optional(),
@@ -365,6 +366,7 @@ export const openAgent = new ToolLoopAgent({
           bridged: boolean;
           servers: Array<{ name: string; toolCount: number }>;
           directToolNames: string[];
+          connectedIntegrations?: string[];
           composioConnectedToolkits?: string[];
         }
       | undefined;
@@ -384,16 +386,19 @@ export const openAgent = new ToolLoopAgent({
         }
       }
       if (extraKeys.length > 0) {
+        const connectedList =
+          options.mcpMetadata?.connectedIntegrations ??
+          options.mcpMetadata?.composioConnectedToolkits;
         mcpSummary = {
           bridged: disclosedExtraTools.bridged,
           servers: [...countsByServer.entries()]
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([name, toolCount]) => ({ name, toolCount })),
           directToolNames: disclosedExtraTools.bridged ? [] : extraKeys,
-          ...(options.mcpMetadata?.composioConnectedToolkits
+          ...(connectedList
             ? {
-                composioConnectedToolkits:
-                  options.mcpMetadata.composioConnectedToolkits,
+                connectedIntegrations: connectedList,
+                composioConnectedToolkits: connectedList,
               }
             : {}),
         };

@@ -1,5 +1,5 @@
 import type { McpServerConfig } from "@entry-agents/agent";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   decryptMcpHeaders,
@@ -37,11 +37,17 @@ export interface McpServerSummary {
 
 const NAME_PATTERN = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
-// "composio" is reserved for the built-in Composio MCP integration
-// (see lib/mcp/composio.ts) -- a self-serve server sharing that exact
-// name would collide with it in the merged tool set's namespacing
-// (mcp__composio__<tool>) and in failure-result bookkeeping.
-const RESERVED_NAMES = new Set(["composio"]);
+/**
+ * Row `name` used internally in `mcp_servers` to store an encrypted per-user
+ * Executor connection (OAuth tokens or personal access token + org metadata).
+ * Excluded from user-managed custom MCP lists and reserved against manual creation.
+ */
+export const INTERNAL_EXECUTOR_SERVER_NAME = "executor";
+
+// "composio" and "executor" are reserved for built-in integration providers
+// so self-serve MCP servers never collide in tool namespacing (mcp__<name>__<tool>)
+// or overwrite encrypted provider credentials stored under that name.
+const RESERVED_NAMES = new Set(["composio", INTERNAL_EXECUTOR_SERVER_NAME]);
 
 export class InvalidMcpServerNameError extends Error {
   constructor(message: string) {
@@ -129,7 +135,12 @@ export async function listMcpServers(
   const rows = await db
     .select()
     .from(mcpServers)
-    .where(eq(mcpServers.userId, userId))
+    .where(
+      and(
+        eq(mcpServers.userId, userId),
+        ne(mcpServers.name, INTERNAL_EXECUTOR_SERVER_NAME),
+      ),
+    )
     .orderBy(asc(mcpServers.name));
 
   return rows.map(toSummary);
@@ -146,7 +157,13 @@ export async function getEnabledMcpServersForRequest(
   const rows = await db
     .select()
     .from(mcpServers)
-    .where(and(eq(mcpServers.userId, userId), eq(mcpServers.enabled, true)))
+    .where(
+      and(
+        eq(mcpServers.userId, userId),
+        eq(mcpServers.enabled, true),
+        ne(mcpServers.name, INTERNAL_EXECUTOR_SERVER_NAME),
+      ),
+    )
     .orderBy(asc(mcpServers.name));
 
   return rows.map((row) => ({
@@ -163,7 +180,13 @@ export async function getMcpServerByIdForExecution(
   const [row] = await db
     .select()
     .from(mcpServers)
-    .where(and(eq(mcpServers.userId, userId), eq(mcpServers.id, id)));
+    .where(
+      and(
+        eq(mcpServers.userId, userId),
+        eq(mcpServers.id, id),
+        ne(mcpServers.name, INTERNAL_EXECUTOR_SERVER_NAME),
+      ),
+    );
 
   if (!row) return null;
   return {
@@ -280,7 +303,11 @@ export async function updateMcpServer(params: {
       updatedAt: new Date(),
     })
     .where(
-      and(eq(mcpServers.id, params.id), eq(mcpServers.userId, params.userId)),
+      and(
+        eq(mcpServers.id, params.id),
+        eq(mcpServers.userId, params.userId),
+        ne(mcpServers.name, INTERNAL_EXECUTOR_SERVER_NAME),
+      ),
     )
     .returning();
 
@@ -293,7 +320,13 @@ export async function deleteMcpServer(
 ): Promise<boolean> {
   const deleted = await db
     .delete(mcpServers)
-    .where(and(eq(mcpServers.id, id), eq(mcpServers.userId, userId)))
+    .where(
+      and(
+        eq(mcpServers.id, id),
+        eq(mcpServers.userId, userId),
+        ne(mcpServers.name, INTERNAL_EXECUTOR_SERVER_NAME),
+      ),
+    )
     .returning({ id: mcpServers.id });
 
   return deleted.length > 0;

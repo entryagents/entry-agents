@@ -20,7 +20,7 @@ export default function ConnectionsPage() {
     <div className="space-y-6">
       <StackHeader
         title="Apps & accounts"
-        description="Connect GitHub, Vercel, Gmail, Slack, Linear, Notion, and 500+ workplace apps so agents can inspect issues, docs, and deploy directly from chat."
+        description="Connect GitHub, Vercel, Gmail, Slack, Linear, Notion, and 1,840+ official apps via Executor so agents use tools directly from chat."
       />
       <div className="grid gap-4 md:grid-cols-2">
         <Suspense fallback={<VercelSectionSkeleton />}>
