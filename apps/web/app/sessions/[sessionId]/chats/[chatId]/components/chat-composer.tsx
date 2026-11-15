@@ -471,7 +471,9 @@ export const ChatComposer = memo(
     const sanitizedReasoningEffort = useMemo(
       () =>
         modelId
-          ? sanitizeReasoningEffort(modelId, reasoningEffort, modelOptions)
+          ? modelOptions.length > 0
+            ? sanitizeReasoningEffort(modelId, reasoningEffort, modelOptions)
+            : reasoningEffort
           : null,
       [modelId, modelOptions, reasoningEffort],
     );
@@ -760,10 +762,6 @@ export const ChatComposer = memo(
                       modelOptions={modelOptions}
                       disabled={isArchived || modelOptionsLoading}
                       appliesToNextPrompt={isBusy}
-                      reasoningEffort={sanitizedReasoningEffort}
-                      defaultReasoningEffort={defaultReasoningEffort}
-                      reasoningLevels={selectedModelLevels}
-                      onReasoningEffortChange={onReasoningEffortChange}
                       onCloseAutoFocus={() => {
                         window.requestAnimationFrame(() => {
                           const textarea = inputRef.current;

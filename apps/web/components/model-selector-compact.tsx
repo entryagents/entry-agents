@@ -1,21 +1,16 @@
 "use client";
 
+import { CheckIcon, ChevronDown, Lock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { CheckIcon, ChevronDown, Cpu, Lock } from "lucide-react";
-import { type ModelOption, groupByProvider } from "@/lib/model-options";
-import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
-import type { ReasoningEffortLevel } from "@/lib/model-reasoning";
-import { cn } from "@/lib/utils";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+  getProviderDisplayName,
+  ProviderIcon,
+} from "@/components/provider-icons";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandEmpty,
   CommandGroup,
-  CommandInput,
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
@@ -27,11 +22,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import {
-  ProviderIcon,
-  getProviderDisplayName,
-} from "@/components/provider-icons";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { groupByProvider, type ModelOption } from "@/lib/model-options";
+import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { cn } from "@/lib/utils";
 
 interface ModelSelectorCompactProps {
   value: string;
@@ -40,11 +38,6 @@ interface ModelSelectorCompactProps {
   disabled?: boolean;
   /** True while a turn is currently running — changing model remains unlocked and applies cleanly to the next prompt. */
   appliesToNextPrompt?: boolean;
-  /** Optional integrated reasoning effort controls rendered smoothly inside the popover footer */
-  reasoningEffort?: string | null;
-  defaultReasoningEffort?: string | null;
-  reasoningLevels?: ReasoningEffortLevel[];
-  onReasoningEffortChange?: (effort: string) => void;
   onCloseAutoFocus?: () => void;
   /** True when the signed-in user is on the Free plan
    * -- every model not unlocked by the admin in Platform Settings renders
@@ -65,10 +58,6 @@ export function ModelSelectorCompact({
   onChange,
   disabled = false,
   appliesToNextPrompt = false,
-  reasoningEffort,
-  defaultReasoningEffort,
-  reasoningLevels = [],
-  onReasoningEffortChange,
   onCloseAutoFocus,
   isFreeTierLocked = false,
   freePlanModelId,
@@ -87,15 +76,10 @@ export function ModelSelectorCompact({
   const [open, setOpen] = useState(false);
   const [lockedModel, setLockedModel] = useState<ModelOption | null>(null);
   const [optimisticModelId, setOptimisticModelId] = useState(value);
-  const [optimisticEffort, setOptimisticEffort] = useState(reasoningEffort);
 
   useEffect(() => {
     setOptimisticModelId(value);
   }, [value]);
-
-  useEffect(() => {
-    setOptimisticEffort(reasoningEffort);
-  }, [reasoningEffort]);
 
   useEffect(() => {
     if (disabled) {
@@ -135,18 +119,6 @@ export function ModelSelectorCompact({
 
   const groups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
 
-  const effectiveEffort =
-    (optimisticEffort &&
-    reasoningLevels.some((level) => level.value === optimisticEffort)
-      ? optimisticEffort
-      : null) ??
-    (defaultReasoningEffort &&
-    reasoningLevels.some((level) => level.value === defaultReasoningEffort)
-      ? defaultReasoningEffort
-      : null) ??
-    reasoningLevels[0]?.value ??
-    null;
-
   return (
     <>
       <Popover open={open} onOpenChange={setOpen}>
@@ -184,7 +156,6 @@ export function ModelSelectorCompact({
           }}
         >
           <Command>
-            <CommandInput placeholder="Search models..." />
             <CommandList className="max-h-72">
               <CommandEmpty>No models found.</CommandEmpty>
               {groups.map((group) => (
@@ -247,52 +218,12 @@ export function ModelSelectorCompact({
               ))}
             </CommandList>
           </Command>
-          {(reasoningLevels.length > 0 && onReasoningEffortChange) ||
-          appliesToNextPrompt ? (
-            <div className="border-t border-border bg-muted/30 px-2.5 py-2 space-y-2">
-              {reasoningLevels.length > 0 && onReasoningEffortChange && (
-                <div className="space-y-1">
-                  <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground">
-                    <span className="inline-flex items-center gap-1">
-                      <Cpu className="size-3" />
-                      Reasoning effort
-                    </span>
-                    <span className="text-foreground capitalize">
-                      {reasoningLevels.find((l) => l.value === effectiveEffort)
-                        ?.label ?? effectiveEffort}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    {reasoningLevels.map((level) => {
-                      const active = effectiveEffort === level.value;
-                      return (
-                        <button
-                          key={level.value}
-                          type="button"
-                          onClick={() => {
-                            setOptimisticEffort(level.value);
-                            onReasoningEffortChange(level.value);
-                          }}
-                          className={cn(
-                            "rounded px-2 py-0.5 text-[11px] font-medium transition-colors",
-                            active
-                              ? "bg-primary text-primary-foreground shadow-xs"
-                              : "bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground",
-                          )}
-                        >
-                          {level.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {appliesToNextPrompt && (
-                <p className="text-[11px] leading-snug text-muted-foreground">
-                  Changes apply cleanly to your next prompt without interrupting
-                  the current run.
-                </p>
-              )}
+          {appliesToNextPrompt ? (
+            <div className="border-t border-border bg-muted/30 px-2.5 py-2">
+              <p className="text-[11px] leading-snug text-muted-foreground">
+                Changes apply cleanly to your next prompt without interrupting
+                the current run.
+              </p>
             </div>
           ) : null}
         </PopoverContent>
