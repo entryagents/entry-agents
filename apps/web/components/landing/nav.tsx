@@ -34,7 +34,7 @@ export function LandingNav({
   return (
     <nav
       aria-label="Primary navigation"
-      className={`fixed left-0 right-0 top-0 z-50 border-b transition-[border-color,background-color] duration-150 ${
+      className={`fixed left-0 right-0 top-0 z-50 border-b ${
         scrolled || mobileMenuOpen
           ? "border-(--l-border) bg-(--l-bg)/90 backdrop-blur-md"
           : "border-transparent bg-(--l-bg)/70 backdrop-blur-xs"
@@ -44,12 +44,12 @@ export function LandingNav({
         <div className="flex items-center gap-8">
           <Logo className="h-5" />
 
-          <div className="hidden items-center gap-6 text-sm text-(--l-fg-2) md:flex">
+          <div className="hidden items-center gap-6 text-sm text-(--l-fg) md:flex">
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
-                className="transition-colors duration-150 hover:text-(--l-fg)"
+                className="opacity-75 transition-opacity duration-150 hover:opacity-100"
               >
                 {link.label}
               </Link>
@@ -69,7 +69,7 @@ export function LandingNav({
             showSignIn && (
               <Link
                 href="/login"
-                className="inline-flex h-8 items-center rounded-lg border border-(--l-border) bg-(--l-surface) px-3 text-xs font-medium text-(--l-fg) transition-colors duration-150 hover:border-(--l-fg-4)"
+                className="inline-flex h-8 items-center rounded-lg border border-(--l-border) bg-(--l-surface) px-3 text-xs font-medium text-(--l-fg) transition-[border-color] duration-150 hover:border-(--l-fg-4)"
               >
                 Sign in
               </Link>
@@ -81,7 +81,7 @@ export function LandingNav({
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileMenuOpen}
             onClick={() => setMobileMenuOpen((prev) => !prev)}
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-(--l-border) text-(--l-fg-2) transition-colors hover:text-(--l-fg) md:hidden"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-(--l-border) text-(--l-fg) opacity-75 transition-opacity duration-150 hover:opacity-100 md:hidden"
           >
             {mobileMenuOpen ? (
               <X className="size-4" strokeWidth={1.5} />
@@ -100,7 +100,7 @@ export function LandingNav({
                 key={link.href}
                 href={link.href}
                 onClick={() => setMobileMenuOpen(false)}
-                className="rounded-lg px-3 py-2 text-sm text-(--l-fg-2) transition-colors hover:bg-(--l-surface-3) hover:text-(--l-fg)"
+                className="rounded-lg px-3 py-2 text-sm text-(--l-fg) opacity-80 transition-[opacity,background-color] duration-150 hover:bg-(--l-surface-3) hover:opacity-100"
               >
                 {link.label}
               </Link>

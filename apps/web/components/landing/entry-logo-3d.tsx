@@ -188,7 +188,23 @@ export function EntryLogo3D({
       0.1,
       50,
     );
-    camera.position.set(0, 0.04, 7.05);
+
+    const updateCameraFraming = (width: number, height: number) => {
+      const aspect = Math.max(0.4, width / Math.max(1, height));
+      camera.aspect = aspect;
+      const halfV = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+      const halfH = halfV * aspect;
+      // Outer inclined ring radius is 2.18 * 1.06 scale (~2.31); 2.58 adds headroom for tilt
+      const boundRadius = 2.58;
+      const fitDistance = Math.max(boundRadius / halfV, boundRadius / halfH);
+      camera.position.set(0, 0.02, fitDistance);
+      camera.updateProjectionMatrix();
+    };
+
+    updateCameraFraming(
+      Math.max(1, container.clientWidth),
+      Math.max(1, container.clientHeight),
+    );
 
     const pmrem = new THREE.PMREMGenerator(renderer);
     let currentIsDark = document.documentElement.classList.contains("dark");
@@ -198,6 +214,7 @@ export function EntryLogo3D({
     scene.environment = envRT.texture;
 
     const group = new THREE.Group();
+    group.scale.setScalar(1.06);
     scene.add(group);
 
     // Continuous calligraphic 'ae' infinity weave:
@@ -241,9 +258,9 @@ export function EntryLogo3D({
 
     const ribbonGeometry = buildTaperedRibbonGeometry(
       mainCurve,
-      240,
+      200,
       0.215,
-      36,
+      28,
       false,
       (u) => {
         // Taper start smoothly into the crossover seam and sweep end to a sculpted calligraphic point
@@ -262,9 +279,9 @@ export function EntryLogo3D({
 
     const crossGeometry = buildTaperedRibbonGeometry(
       crossCurve,
-      96,
+      84,
       0.138,
-      28,
+      24,
       false,
       (u) => Math.max(0.12, Math.sin(u * Math.PI) * 0.96),
     );
@@ -280,10 +297,12 @@ export function EntryLogo3D({
 
     const mainMesh = new THREE.Mesh(ribbonGeometry, ribbonMaterial);
     const crossMesh = new THREE.Mesh(crossGeometry, ribbonMaterial);
+    mainMesh.position.z = 0.12;
+    crossMesh.position.z = 0.12;
     group.add(mainMesh, crossMesh);
 
-    // Crisp orbital ring & warm amber optical filament (sized to stay inside card bounds)
-    const outerRingGeometry = new THREE.TorusGeometry(1.9, 0.022, 16, 128);
+    // Crisp orbital rings & warm amber optical filament
+    const outerRingGeometry = new THREE.TorusGeometry(2.02, 0.024, 16, 120);
     const outerRingMaterial = new THREE.MeshStandardMaterial({
       color: new THREE.Color(palette.outerRingColor),
       emissive: new THREE.Color(palette.outerRingEmissive),
@@ -294,16 +313,25 @@ export function EntryLogo3D({
     outerRing.rotation.x = Math.PI * 0.08;
     group.add(outerRing);
 
+    const inclinedOrbitGeometry = new THREE.TorusGeometry(2.18, 0.014, 14, 120);
+    const inclinedOrbit = new THREE.Mesh(
+      inclinedOrbitGeometry,
+      outerRingMaterial,
+    );
+    inclinedOrbit.rotation.x = Math.PI * 0.34;
+    inclinedOrbit.rotation.y = -Math.PI * 0.18;
+    group.add(inclinedOrbit);
+
     const warmArcCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-1.88, -0.28, 0.12),
-      new THREE.Vector3(-1.2, -1.49, 0.15),
-      new THREE.Vector3(0, -1.9, 0.17),
-      new THREE.Vector3(1.22, -1.46, 0.12),
+      new THREE.Vector3(-2, -0.3, 0.14),
+      new THREE.Vector3(-1.28, -1.58, 0.18),
+      new THREE.Vector3(0, -2.02, 0.2),
+      new THREE.Vector3(1.3, -1.55, 0.14),
     ]);
     const warmArcGeometry = new THREE.TubeGeometry(
       warmArcCurve,
-      64,
-      0.022,
+      56,
+      0.026,
       12,
       false,
     );
@@ -393,44 +421,48 @@ export function EntryLogo3D({
     window.addEventListener("pointerup", handlePointerUp);
     container.addEventListener("pointerleave", handlePointerLeave);
 
-    // Theme observer updates material/env map dynamically
-    const themeObserver = new MutationObserver(() => {
-      const nextDark = document.documentElement.classList.contains("dark");
-      if (nextDark === currentIsDark) return;
-      currentIsDark = nextDark;
+    // Theme observer updates material/env map dynamically only for auto tone
+    let themeObserver: MutationObserver | null = null;
+    if (tone === "auto") {
+      themeObserver = new MutationObserver(() => {
+        const nextDark = document.documentElement.classList.contains("dark");
+        if (nextDark === currentIsDark) return;
+        currentIsDark = nextDark;
 
-      const nextPalette = resolveMaterialPalette(tone, nextDark);
-      palette = nextPalette;
-      const nextRawEnv = createStudioEnvTexture(nextPalette.envIsDark);
-      const nextEnvRT = pmrem.fromEquirectangular(nextRawEnv);
-      envRT.dispose();
-      rawEnvTex.dispose();
-      rawEnvTex = nextRawEnv;
-      envRT = nextEnvRT;
-      scene.environment = envRT.texture;
+        const nextPalette = resolveMaterialPalette(tone, nextDark);
+        if (nextPalette.envIsDark !== palette.envIsDark) {
+          const nextRawEnv = createStudioEnvTexture(nextPalette.envIsDark);
+          const nextEnvRT = pmrem.fromEquirectangular(nextRawEnv);
+          envRT.dispose();
+          rawEnvTex.dispose();
+          rawEnvTex = nextRawEnv;
+          envRT = nextEnvRT;
+          scene.environment = envRT.texture;
+        }
+        palette = nextPalette;
 
-      ribbonMaterial.color.set(nextPalette.ribbonColor);
-      ribbonMaterial.metalness = nextPalette.metalness;
-      ribbonMaterial.roughness = nextPalette.roughness;
-      ribbonMaterial.envMapIntensity = nextPalette.envMapIntensity;
+        ribbonMaterial.color.set(nextPalette.ribbonColor);
+        ribbonMaterial.metalness = nextPalette.metalness;
+        ribbonMaterial.roughness = nextPalette.roughness;
+        ribbonMaterial.envMapIntensity = nextPalette.envMapIntensity;
 
-      outerRingMaterial.color.set(nextPalette.outerRingColor);
-      outerRingMaterial.emissive.set(nextPalette.outerRingEmissive);
-      warmArcMaterial.color.set(nextPalette.arcColor);
-      warmArcMaterial.emissiveIntensity = nextPalette.arcEmissiveIntensity;
-    });
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
+        outerRingMaterial.color.set(nextPalette.outerRingColor);
+        outerRingMaterial.emissive.set(nextPalette.outerRingEmissive);
+        warmArcMaterial.color.set(nextPalette.arcColor);
+        warmArcMaterial.emissiveIntensity = nextPalette.arcEmissiveIntensity;
+      });
+      themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+    }
 
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (!entry) return;
       const w = Math.max(1, entry.contentRect.width);
       const h = Math.max(1, entry.contentRect.height);
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
+      updateCameraFraming(w, h);
       renderer.setSize(w, h);
     });
     resizeObserver.observe(container);
@@ -463,6 +495,7 @@ export function EntryLogo3D({
       group.rotation.x = currentRotX;
       group.rotation.y = currentRotY;
       outerRing.rotation.z = prefersReducedMotion ? 0 : elapsed * 0.12;
+      inclinedOrbit.rotation.z = prefersReducedMotion ? 0 : -elapsed * 0.18;
 
       renderer.render(scene, camera);
       rafId = requestAnimationFrame(renderFrame);
@@ -473,7 +506,7 @@ export function EntryLogo3D({
     return () => {
       cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
-      themeObserver.disconnect();
+      themeObserver?.disconnect();
       canvasEl.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
@@ -482,6 +515,7 @@ export function EntryLogo3D({
       crossGeometry.dispose();
       ribbonMaterial.dispose();
       outerRingGeometry.dispose();
+      inclinedOrbitGeometry.dispose();
       outerRingMaterial.dispose();
       warmArcGeometry.dispose();
       warmArcMaterial.dispose();
@@ -500,8 +534,8 @@ export function EntryLogo3D({
       <div
         className={`relative flex items-center justify-center ${className ?? ""}`}
       >
-        <div className="flex size-32 items-center justify-center rounded-full border border-white/15 bg-black/50 backdrop-blur-xs">
-          <EntryMark className="size-20" />
+        <div className="flex size-36 items-center justify-center rounded-full border border-white/15 bg-black/50 backdrop-blur-xs">
+          <EntryMark className="size-24" />
         </div>
       </div>
     );
