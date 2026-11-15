@@ -13,7 +13,8 @@ CREATE TABLE "composio_connected_accounts" (
 	"last_error" text,
 	"last_verified_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL,
-	"updated_at" timestamp DEFAULT now() NOT NULL
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "composio_connected_accounts_connected_account_id_unique" UNIQUE("connected_account_id")
 );
 --> statement-breakpoint
 CREATE TABLE "composio_oauth_attempts" (
@@ -49,7 +50,6 @@ ALTER TABLE "composio_shared_account_grants" ADD CONSTRAINT "composio_shared_acc
 ALTER TABLE "composio_shared_account_grants" ADD CONSTRAINT "composio_shared_account_grants_owner_user_id_users_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "composio_shared_account_grants" ADD CONSTRAINT "composio_shared_account_grants_grantee_user_id_users_id_fk" FOREIGN KEY ("grantee_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "composio_connected_accounts_user_toolkit_idx" ON "composio_connected_accounts" USING btree ("user_id","toolkit_slug");--> statement-breakpoint
-CREATE UNIQUE INDEX "composio_connected_accounts_account_id_idx" ON "composio_connected_accounts" USING btree ("connected_account_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "composio_oauth_attempts_state_nonce_idx" ON "composio_oauth_attempts" USING btree ("state_nonce");--> statement-breakpoint
 CREATE INDEX "composio_oauth_attempts_user_id_idx" ON "composio_oauth_attempts" USING btree ("user_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "composio_shared_grants_account_grantee_idx" ON "composio_shared_account_grants" USING btree ("connected_account_id","grantee_user_id");--> statement-breakpoint

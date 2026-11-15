@@ -1045,7 +1045,7 @@ export const composioConnectedAccounts = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     composioUserId: text("composio_user_id").notNull(),
-    connectedAccountId: text("connected_account_id").notNull(),
+    connectedAccountId: text("connected_account_id").notNull().unique(),
     toolkitSlug: text("toolkit_slug").notNull(),
     authConfigId: text("auth_config_id"),
     alias: text("alias"),
@@ -1075,9 +1075,6 @@ export const composioConnectedAccounts = pgTable(
     index("composio_connected_accounts_user_toolkit_idx").on(
       table.userId,
       table.toolkitSlug,
-    ),
-    uniqueIndex("composio_connected_accounts_account_id_idx").on(
-      table.connectedAccountId,
     ),
   ],
 );
