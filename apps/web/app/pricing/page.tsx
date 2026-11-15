@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { PLAN_CATALOG, PLAN_IDS } from "@/lib/billing/plans";
 import { PlansCatalog } from "./plans-catalog";
 
 export const metadata: Metadata = {
@@ -27,16 +26,5 @@ export const dynamic = "force-dynamic";
  * redirects here; the model price table moved to /model.
  */
 export default function PricingPage() {
-  const initialPlans = PLAN_IDS.map((id) => {
-    const plan = PLAN_CATALOG[id];
-    return {
-      id: plan.id,
-      name: plan.name,
-      priceUsdCents: plan.priceUsdCents,
-      creditGrantCents: plan.creditGrantCents,
-      modelAccess: plan.modelAccess,
-    };
-  });
-
-  return <PlansCatalog initialPlans={initialPlans} />;
+  return <PlansCatalog />;
 }

@@ -1,9 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
-
-const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
 type RoleKey = "architect" | "explorer" | "executor" | "reviewer";
 
@@ -138,7 +135,7 @@ export function FeatureAgent() {
                     setPaused(true);
                     setRoleIdx(i);
                   }}
-                  className={`shrink-0 cursor-pointer rounded px-2 py-1 text-xs transition-[background-color,color,transform] duration-150 active:scale-[0.97] ${
+                  className={`shrink-0 cursor-pointer rounded px-2 py-1 text-xs transition-colors duration-150 ${
                     active
                       ? "bg-(--l-panel-active) text-(--l-panel-fg)"
                       : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg-2)"
@@ -154,36 +151,27 @@ export function FeatureAgent() {
           </span>
         </div>
 
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={role.id}
-            initial={{ opacity: 0, transform: "translateY(4px)" }}
-            animate={{ opacity: 1, transform: "translateY(0px)" }}
-            exit={{ opacity: 0, transform: "translateY(-4px)" }}
-            transition={{ duration: 0.16, ease: EASE_OUT }}
-            className="mt-4 space-y-2"
-          >
-            {role.steps.map((step, i) => (
-              <div
-                key={`${role.id}-${step.action}-${i}`}
-                className="flex items-center justify-between gap-3 py-0.5 text-[11px]"
-              >
-                <div className="flex min-w-0 items-center gap-2.5">
-                  <span className="text-(--l-panel-fg-2)">›</span>
-                  <span className="w-16 shrink-0 text-(--l-panel-fg)">
-                    {step.action}
-                  </span>
-                  <span className="truncate text-(--l-panel-fg-3)">
-                    {step.target}
-                  </span>
-                </div>
-                <span className="shrink-0 tabular-nums text-(--l-panel-fg-4)">
-                  {step.duration}
+        <div className="mt-4 space-y-2">
+          {role.steps.map((step, i) => (
+            <div
+              key={`${role.id}-${step.action}-${i}`}
+              className="flex items-center justify-between gap-3 py-0.5 text-[11px]"
+            >
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="text-(--l-panel-fg-2)">›</span>
+                <span className="w-16 shrink-0 text-(--l-panel-fg)">
+                  {step.action}
+                </span>
+                <span className="truncate text-(--l-panel-fg-3)">
+                  {step.target}
                 </span>
               </div>
-            ))}
-          </motion.div>
-        </AnimatePresence>
+              <span className="shrink-0 tabular-nums text-(--l-panel-fg-4)">
+                {step.duration}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="border-t border-(--l-panel-border) pt-3 font-sans text-xs leading-relaxed text-(--l-panel-fg-2)">

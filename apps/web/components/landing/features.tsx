@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "motion/react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { FeatureAgent } from "./feature-agent";
@@ -8,8 +7,6 @@ import { FeatureSandbox } from "./feature-sandbox";
 import { FeatureWorkflow } from "./feature-workflow";
 import { Stage } from "./stage";
 import { Window } from "./window";
-
-const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
 function Spotlight({
   title,
@@ -26,11 +23,7 @@ function Spotlight({
 }) {
   return (
     <div className="grid items-center gap-8 border-t border-(--l-border) py-12 sm:py-20 lg:grid-cols-12 lg:gap-12">
-      <motion.div
-        initial={{ opacity: 0, transform: "translateY(12px)" }}
-        whileInView={{ opacity: 1, transform: "translateY(0px)" }}
-        viewport={{ once: true, amount: 0.25 }}
-        transition={{ duration: 0.36, ease: EASE_OUT }}
+      <div
         className={cn(
           "min-w-0 lg:col-span-5",
           flip ? "lg:order-2" : "lg:order-1",
@@ -53,13 +46,9 @@ function Spotlight({
             </li>
           ))}
         </ul>
-      </motion.div>
+      </div>
 
-      <motion.div
-        initial={{ opacity: 0, transform: "translateY(14px) scale(0.98)" }}
-        whileInView={{ opacity: 1, transform: "translateY(0px) scale(1)" }}
-        viewport={{ once: true, amount: 0.2 }}
-        transition={{ duration: 0.4, delay: 0.05, ease: EASE_OUT }}
+      <div
         className={cn(
           "min-w-0 lg:col-span-7",
           flip ? "lg:order-1" : "lg:order-2",
@@ -68,7 +57,7 @@ function Spotlight({
         <Stage>
           <Window>{windowContent}</Window>
         </Stage>
-      </motion.div>
+      </div>
     </div>
   );
 }
