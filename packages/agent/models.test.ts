@@ -300,6 +300,7 @@ describe("gateway attribution headers", () => {
             "http-referer": "https://entry-agents.dev",
             "x-title": "Entry Agent",
           },
+          includeUsage: true,
         },
       ]);
     } finally {
@@ -328,6 +329,7 @@ describe("gateway attribution headers", () => {
             "http-referer": "https://myapp.com",
             "x-title": "My App",
           },
+          includeUsage: true,
         },
       ]);
     } finally {
@@ -351,6 +353,7 @@ describe("gateway attribution headers", () => {
           "http-referer": "https://entry-agents.dev",
           "x-title": "Entry Agent",
         },
+        includeUsage: true,
       },
     ]);
   });

@@ -16,6 +16,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { useSWRConfig } from "swr";
 import type { ReconnectResponse } from "@/app/api/sandbox/reconnect/route";
@@ -54,6 +55,11 @@ import {
   hasPausedSandboxState,
   hasRuntimeSandboxState as hasRuntimeSandboxStateValue,
 } from "@/lib/sandbox/utils";
+import {
+  getTeamRoleModelsSnapshot,
+  setTeamRoleModelPin,
+  subscribeTeamRoleModels,
+} from "@/lib/team/role-models-store";
 import {
   type RetryChatStreamOptions,
   useSessionChatRuntime,
@@ -144,6 +150,8 @@ type SessionChatContextValue = {
   updateAutoCreatePr: (autoCreatePrOverride: boolean | null) => Promise<void>;
   updateChatModel: (modelId: string) => Promise<void>;
   updateChatReasoningEffort: (reasoningEffort: string | null) => Promise<void>;
+  teamRoleModels: Record<string, string>;
+  updateTeamRoleModel: (role: string, modelId: string | null) => void;
   /** Whether the chat had persisted messages when it was loaded */
   hadInitialMessages: boolean;
   /** The initial message snapshot used for SSR hydration */
@@ -299,6 +307,8 @@ type SessionChatMetadataContextValue = Pick<
   | "updateAutoCreatePr"
   | "updateChatModel"
   | "updateChatReasoningEffort"
+  | "teamRoleModels"
+  | "updateTeamRoleModel"
   | "updateSessionSnapshot"
   | "preferredSandboxType"
   | "supportsDiff"
@@ -1223,6 +1233,26 @@ export function SessionChatProvider({
     [sessionRecord.id, chatInfo.id],
   );
 
+  const subscribeRoleModels = useCallback(
+    (listener: () => void) => subscribeTeamRoleModels(chatInfo.id, listener),
+    [chatInfo.id],
+  );
+  const getRoleModelsSnapshot = useCallback(
+    () => getTeamRoleModelsSnapshot(chatInfo.id),
+    [chatInfo.id],
+  );
+  const teamRoleModels = useSyncExternalStore(
+    subscribeRoleModels,
+    getRoleModelsSnapshot,
+    getRoleModelsSnapshot,
+  );
+  const updateTeamRoleModel = useCallback(
+    (role: string, modelId: string | null) => {
+      setTeamRoleModelPin(chatInfo.id, role, modelId);
+    },
+    [chatInfo.id],
+  );
+
   const runtimeContextValue = useMemo<SessionChatRuntimeContextValue>(
     () => ({
       chat,
@@ -1309,6 +1339,8 @@ export function SessionChatProvider({
       updateAutoCreatePr,
       updateChatModel,
       updateChatReasoningEffort,
+      teamRoleModels,
+      updateTeamRoleModel,
       updateSessionSnapshot,
       preferredSandboxType,
       supportsDiff,
@@ -1344,6 +1376,8 @@ export function SessionChatProvider({
       updateAutoCreatePr,
       updateChatModel,
       updateChatReasoningEffort,
+      teamRoleModels,
+      updateTeamRoleModel,
       updateSessionSnapshot,
       preferredSandboxType,
       supportsDiff,

@@ -110,6 +110,7 @@ const callOptionsSchema = z.object({
   sandbox: z.custom<AgentSandboxContext>().optional(),
   model: z.custom<OpenAgentModelInput>().optional(),
   subagentModel: z.custom<OpenAgentModelInput>().optional(),
+  teamRoleModels: z.record(z.string(), z.string()).optional(),
   customInstructions: z.string().optional(),
   skills: z.custom<SkillMetadata[]>().optional(),
   // Permission mode for this call, threaded to every tool via
@@ -502,6 +503,16 @@ export const openAgent = new ToolLoopAgent({
         skills,
         model: callModel,
         subagentModel,
+        ...(options.teamRoleModels &&
+        Object.keys(options.teamRoleModels).length > 0
+          ? { teamRoleModels: options.teamRoleModels }
+          : {}),
+        ...((mainSelection.gatewayConfig ?? subagentSelection?.gatewayConfig)
+          ? {
+              gatewayConfig:
+                mainSelection.gatewayConfig ?? subagentSelection?.gatewayConfig,
+            }
+          : {}),
         contextWindow: mainSelection.contextWindow,
         compactionThreshold: mainSelection.compactionThreshold,
         permissionMode: options.permissionMode ?? "ask",

@@ -1,6 +1,7 @@
 import { connectSandbox, type Sandbox } from "@entry-agents/sandbox";
 import type { LanguageModel, ModelMessage } from "ai";
 import * as path from "path";
+import { sharedProvider } from "../models";
 import type { AgentContext, SandboxCommandGateResult } from "../types";
 
 export function isAgentContext(value: unknown): value is AgentContext {
@@ -258,12 +259,14 @@ export function getModel(
 }
 
 /**
- * Get subagent model from experimental context, falling back to the main model.
- * Returns the dedicated subagent model if configured, otherwise the main agent model.
+ * Get subagent model from experimental context, checking any explicit
+ * per-role team pin (`teamRoleModels[subagentType]`) before falling back to
+ * `subagentModel` and finally the main agent model.
  */
 export function getSubagentModel(
   experimental_context: unknown,
   toolName?: string,
+  subagentType?: string,
 ): LanguageModel {
   const context = isAgentContext(experimental_context)
     ? experimental_context
@@ -273,6 +276,15 @@ export function getSubagentModel(
     throw new Error(
       `Model not initialized in context${toolInfo}. ` +
         "Ensure the agent's prepareCall sets experimental_context: { model, ... }",
+    );
+  }
+  const pinnedModelId = subagentType
+    ? context.teamRoleModels?.[subagentType]?.trim()
+    : undefined;
+  if (pinnedModelId) {
+    return sharedProvider(
+      pinnedModelId,
+      context.gatewayConfig ? { config: context.gatewayConfig } : {},
     );
   }
   return context.subagentModel ?? context.model;

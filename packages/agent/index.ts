@@ -138,17 +138,26 @@ export {
 // Multi-agent team exports
 export {
   TeamBoard,
+  WORKTREE_ISOLATED_ROLES,
   clearTeamBoard,
+  computeExecutionWaves,
+  extractMentions,
   findFileOwnershipConflicts,
   formatTeamContextSummary,
   getOrCreateTeamBoard,
+  isWorktreeEligibleRole,
+  prepareSubagentWorktree,
   rebuildTeamBoardFromMessages,
+  type SubagentWorktree,
   type TeamBoardEntry,
   type TeamBoardEntryKind,
   type TeamBoardSnapshot,
+  type TeamExecutionWave,
   type TeamFileConflict,
   type TeamTaskStatus,
   type TeamWorkItem,
+  type WorktreeCleanupResult,
+  type WorktreeDiffSummary,
 } from "./team";
 export type {
   TeamBoardToolInput,

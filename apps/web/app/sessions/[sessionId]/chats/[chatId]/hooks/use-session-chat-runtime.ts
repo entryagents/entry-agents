@@ -22,6 +22,7 @@ import {
 } from "@/lib/chat-instance-manager";
 import { cleanupChatRouteOnUnmount } from "@/lib/chat-route-cleanup";
 import { isFriendlyChatErrorText } from "@/lib/chat/friendly-error";
+import { getTeamRoleModelsSnapshot } from "@/lib/team/role-models-store";
 import {
   CONTINUE_AFTER_ERROR_PROMPT,
   getDeadTurnRetryAction,
@@ -128,9 +129,13 @@ export function useSessionChatRuntime({
         api: "/api/chat",
         body: () => {
           const requestContextLimit = contextLimitRef.current;
+          const teamRoleModels = getTeamRoleModelsSnapshot(chatId);
           return {
             sessionId,
             chatId,
+            ...(Object.keys(teamRoleModels).length > 0
+              ? { teamRoleModels }
+              : {}),
             ...(requestContextLimit !== null
               ? {
                   context: {

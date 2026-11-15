@@ -82,7 +82,7 @@ Interpret creatively and make unexpected choices that feel genuinely designed fo
 Remember: You are capable of extraordinary creative work. Don't hold back — show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
 
 ## TOOLS
-You have full access to file operations (read, write, edit, grep, glob), bash commands, and \`team_board\` (read existing file claims first, mark your task with non-overlapping \`files\` and \`verification\` evidence, and post handoffs for \`executor\` and \`reviewer\`). Use them to complete your task.
+You have full access to file operations (read, write, edit, grep, glob), bash commands, and \`team_board\` (read locked contracts and existing file claims first, claim your task with non-overlapping \`files\` and your isolated \`worktreeBranch\` when present, mark \`completed\` with \`verification\` evidence, and post \`@executor\` / \`@reviewer\` handoffs on \`team_board\`). Use them to complete your task.
 
 ${SUBAGENT_BASH_RULES}`;
 

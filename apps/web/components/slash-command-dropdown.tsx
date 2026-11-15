@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { Blocks, Bot, Settings2, Terminal } from "lucide-react";
+import { Blocks, Bot, Settings2, Terminal, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SkillSuggestion } from "@/app/api/sessions/[sessionId]/skills/route";
 
@@ -56,7 +56,7 @@ export function SlashCommandDropdown({
     <div className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
       <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[11px] text-muted-foreground">
         <span className="font-medium text-foreground/80">
-          Invoke skill or subagent
+          Invoke skill, subagent, or /team
         </span>
         <Link
           href="/settings/skills"
@@ -73,6 +73,9 @@ export function SlashCommandDropdown({
       >
         {suggestions.map((suggestion, index) => {
           const isTeam = suggestion.source === "team";
+          const isTeamOrchestrator =
+            isTeam &&
+            (suggestion.name === "team" || suggestion.name === "team-plan");
           const isPlugin = suggestion.source === "plugin";
           return (
             <button
@@ -90,6 +93,11 @@ export function SlashCommandDropdown({
               {isPlugin ? (
                 <Blocks
                   className="size-4 shrink-0 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
+              ) : isTeamOrchestrator ? (
+                <Users
+                  className="size-4 shrink-0 text-primary"
                   strokeWidth={1.5}
                 />
               ) : isTeam ? (
@@ -111,6 +119,10 @@ export function SlashCommandDropdown({
                   {isPlugin ? (
                     <span className="shrink-0 rounded border border-border/70 bg-muted/60 px-1.5 py-0 font-mono text-[10px] text-muted-foreground">
                       {suggestion.pluginName ?? "Plugin"}
+                    </span>
+                  ) : isTeamOrchestrator ? (
+                    <span className="shrink-0 rounded border border-primary/25 bg-primary/10 px-1.5 py-0 font-mono text-[10px] font-medium text-primary">
+                      Team mode
                     </span>
                   ) : isTeam ? (
                     <span className="shrink-0 rounded border border-border/70 bg-muted/60 px-1.5 py-0 font-mono text-[10px] font-medium text-muted-foreground">

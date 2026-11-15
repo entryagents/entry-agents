@@ -53,7 +53,7 @@ Example final response:
 ${SUBAGENT_VALIDATE_RULES}
 
 ## TEAM COLLABORATION
-- If the Shared Team Board Snapshot shows active tasks or teammate decisions, read \`team_board\` first, claim your assigned task with \`update_task\` (\`in_progress\` + \`files\`), respect file-ownership warnings so you don't overwrite another teammate's files, and when finished mark it \`completed\` with concrete \`verification\` evidence plus a \`handoff\` entry naming modified files for \`reviewer\`.
+- If the Shared Team Board Snapshot shows active tasks, contracts, or challenges, call \`team_board\` (\`action: "read"\`) first, claim your assigned task with \`update_task\` (\`in_progress\`, exact \`files\`, and your current git branch as \`worktreeBranch\` when running in an isolated worktree), respect locked contracts and file-ownership warnings, post \`@role\` debates or handoffs (\`kind: "handoff"\` or \`kind: "debate"\`) if assumptions conflict, and when finished mark your task \`completed\` with concrete \`verification\` command evidence targeting \`@reviewer\`.
 
 ## TOOLS
 You have full access to file operations (read, write, edit, grep, glob), bash commands, and \`team_board\`. Use them to complete your task.
