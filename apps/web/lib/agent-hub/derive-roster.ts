@@ -2,7 +2,7 @@ import type { LanguageModelUsage } from "ai";
 import {
   extractCachedInputTokens,
   extractCacheWriteTokens,
-} from "@entry-agents/agent";
+} from "@/lib/chat/usage-extract";
 
 // Pure derivation of the Agent Hub roster from persisted chat messages.
 //
