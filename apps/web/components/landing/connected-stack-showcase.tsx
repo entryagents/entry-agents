@@ -142,33 +142,33 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
 
 const PLAN_ECONOMICS = [
   {
+    name: "Free",
+    price: "$0",
+    credit: "$1 AI credit",
+    ratio: "Included",
+    note: "Grants $1 of real execution credit to start immediately",
+  },
+  {
     name: "Plus",
     price: "$5/mo",
-    credit: "$10 credit",
+    credit: "$10 AI credit",
     ratio: "2.0x",
-    note: "Daily fixes and side projects",
+    note: "Try our $5 plan and get $10 of AI credit (2x value)",
+    featured: true,
   },
   {
     name: "Goat",
     price: "$13/mo",
-    credit: "$50 credit",
+    credit: "$50 AI credit",
     ratio: "3.8x",
     note: "Rolling windows ($10/5h · $25/7d · $50/30d)",
-    featured: true,
   },
   {
     name: "Pro",
     price: "$20/mo",
-    credit: "$100 credit",
+    credit: "$100 AI credit",
     ratio: "5.0x",
-    note: "Sustained multi-repo builds",
-  },
-  {
-    name: "Max",
-    price: "$40/mo",
-    credit: "$180 credit",
-    ratio: "4.5x",
-    note: "High-volume team wave runs",
+    note: "Sustained multi-repo builds & team wave runs",
   },
 ] as const;
 
@@ -203,7 +203,7 @@ export function ConnectedStackShowcase() {
                 </div>
                 <Link
                   href="/settings/connections"
-                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-(--l-border) bg-(--l-surface-2) px-3 py-1.5 text-xs font-medium text-(--l-fg-2) transition-[border-color,color] duration-150 hover:border-(--l-fg-4) hover:text-(--l-fg)"
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-(--l-border) bg-(--l-surface-2) px-3 py-1.5 text-xs font-medium text-(--l-fg-2) transition-[border-color,color,transform] duration-150 hover:border-(--l-fg-4) hover:text-(--l-fg) active:scale-[0.97]"
                 >
                   <span>Explore connections</span>
                   <ArrowRight className="size-3.5" strokeWidth={1.5} />
@@ -228,7 +228,7 @@ export function ConnectedStackShowcase() {
                       aria-label={app.name}
                       aria-selected={isSelected}
                       onClick={() => setSelectedSlug(app.slug)}
-                      className={`flex min-w-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-2 text-left transition-[border-color,background-color,color] duration-150 sm:gap-2 sm:px-2.5 ${
+                      className={`flex min-w-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2 py-2 text-left transition-[border-color,background-color,color,transform] duration-150 active:scale-[0.97] sm:gap-2 sm:px-2.5 ${
                         isSelected
                           ? "border-(--l-accent) bg-(--l-surface-2) text-(--l-fg)"
                           : "border-(--l-border) bg-(--l-surface) text-(--l-fg-2) hover:border-(--l-fg-4) hover:text-(--l-fg)"
@@ -330,7 +330,7 @@ export function ConnectedStackShowcase() {
                       className="size-4 text-(--l-accent)"
                       strokeWidth={1.5}
                     />
-                    <span>Plans &amp; prompt caching</span>
+                    <span>Simple plans &amp; 99% caching</span>
                   </span>
                   <span className="font-mono text-xs tabular-nums">
                     Zero token markup
@@ -338,19 +338,21 @@ export function ConnectedStackShowcase() {
                 </div>
 
                 <h2 className="mt-3 text-balance text-2xl font-semibold tracking-tight">
-                  Up to 99% prompt caching on affordable $5–$40 plans
+                  Start free with $1 credit — or try our $5 plan for $10 of AI
+                  credit
                 </h2>
                 <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
-                  Repository context, tool definitions, and long sessions stay
-                  cached across multi-step turns so everyday developers and
-                  heavy power builders stretch credits far further.
+                  Every account starts with $1 of real execution on the Free
+                  plan. When you need more, upgrade to the $5 Plus plan for $10
+                  of AI credit — stretched even further by up to 99% prompt
+                  caching across main chat and subagents.
                 </p>
 
                 {/* Caching Bar Visual */}
                 <div className="mt-5 rounded-xl border border-(--l-border) bg-(--l-surface-2) p-4">
                   <div className="flex items-baseline justify-between font-mono text-xs tabular-nums">
                     <span className="text-(--l-fg-2)">
-                      Multi-turn workspace context reuse
+                      Main &amp; subagent prompt cache reuse
                     </span>
                     <span className="font-semibold text-(--l-fg)">
                       Up to 99% cached
@@ -363,7 +365,8 @@ export function ConnectedStackShowcase() {
                     />
                   </div>
                   <p className="mt-2.5 text-xs text-(--l-fg-3)">
-                    Free trial starts with $1 credit and zero card required.
+                    Free plan grants $1 execution credit · $5 plan grants $10 AI
+                    credit.
                   </p>
                 </div>
 
@@ -383,7 +386,7 @@ export function ConnectedStackShowcase() {
                           <span>{plan.name}</span>
                           {"featured" in plan && plan.featured && (
                             <span className="rounded border border-(--l-accent)/40 px-1.5 py-0.5 font-mono text-[11px] font-medium text-(--l-accent) tabular-nums">
-                              3.8x value
+                              2x AI credit
                             </span>
                           )}
                         </div>

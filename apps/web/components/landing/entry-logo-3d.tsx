@@ -188,7 +188,7 @@ export function EntryLogo3D({
       0.1,
       50,
     );
-    camera.position.set(0, 0.04, 7.05);
+    camera.position.set(0, 0.02, 5.75);
 
     const pmrem = new THREE.PMREMGenerator(renderer);
     let currentIsDark = document.documentElement.classList.contains("dark");
@@ -198,7 +198,59 @@ export function EntryLogo3D({
     scene.environment = envRT.texture;
 
     const group = new THREE.Group();
+    group.scale.setScalar(1.08);
     scene.add(group);
+
+    // Load and blend the actual Entry emblem mark (`/logo-dark.png` / `/logo-light.png`)
+    // as a floating optical glass medallion suspended at the core of the 3D orbital weave.
+    const textureLoader = new THREE.TextureLoader();
+    const logoTexPath =
+      tone === "obsidian" || currentIsDark
+        ? "/logo-dark.png?v=2"
+        : "/logo-light.png?v=2";
+    const logoTexture = textureLoader.load(logoTexPath);
+    logoTexture.colorSpace = THREE.SRGBColorSpace;
+    logoTexture.anisotropy = Math.min(
+      8,
+      renderer.capabilities.getMaxAnisotropy(),
+    );
+
+    const coreDiscGeometry = new THREE.CylinderGeometry(1.18, 1.18, 0.08, 72);
+    coreDiscGeometry.rotateX(Math.PI / 2);
+    const coreRimMaterial = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(palette.outerRingColor),
+      metalness: 0.92,
+      roughness: 0.16,
+      clearcoat: 1,
+      envMapIntensity: palette.envMapIntensity,
+    });
+    const coreFaceMaterial = new THREE.MeshPhysicalMaterial({
+      map: logoTexture,
+      roughness: 0.18,
+      metalness: 0.35,
+      clearcoat: 1,
+      clearcoatRoughness: 0.08,
+      envMapIntensity: 1.65,
+    });
+    const coreMedallion = new THREE.Mesh(coreDiscGeometry, [
+      coreRimMaterial,
+      coreFaceMaterial,
+      coreFaceMaterial,
+    ]);
+    coreMedallion.position.set(0, 0, -0.14);
+    group.add(coreMedallion);
+
+    const coreBezelGeometry = new THREE.TorusGeometry(1.2, 0.032, 24, 128);
+    const coreBezelMaterial = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(palette.ribbonColor),
+      metalness: 0.95,
+      roughness: 0.14,
+      clearcoat: 1,
+      envMapIntensity: palette.envMapIntensity,
+    });
+    const coreBezel = new THREE.Mesh(coreBezelGeometry, coreBezelMaterial);
+    coreBezel.position.set(0, 0, -0.14);
+    group.add(coreBezel);
 
     // Continuous calligraphic 'ae' infinity weave:
     // Start neatly tucked behind the upper-center crossover so no flat cap or kink is visible,
@@ -280,10 +332,12 @@ export function EntryLogo3D({
 
     const mainMesh = new THREE.Mesh(ribbonGeometry, ribbonMaterial);
     const crossMesh = new THREE.Mesh(crossGeometry, ribbonMaterial);
+    mainMesh.position.z = 0.12;
+    crossMesh.position.z = 0.12;
     group.add(mainMesh, crossMesh);
 
-    // Crisp orbital ring & warm amber optical filament (sized to stay inside card bounds)
-    const outerRingGeometry = new THREE.TorusGeometry(1.9, 0.022, 16, 128);
+    // Crisp orbital rings & warm amber optical filament
+    const outerRingGeometry = new THREE.TorusGeometry(2.02, 0.024, 20, 144);
     const outerRingMaterial = new THREE.MeshStandardMaterial({
       color: new THREE.Color(palette.outerRingColor),
       emissive: new THREE.Color(palette.outerRingEmissive),
@@ -294,16 +348,25 @@ export function EntryLogo3D({
     outerRing.rotation.x = Math.PI * 0.08;
     group.add(outerRing);
 
+    const inclinedOrbitGeometry = new THREE.TorusGeometry(2.18, 0.014, 16, 144);
+    const inclinedOrbit = new THREE.Mesh(
+      inclinedOrbitGeometry,
+      outerRingMaterial,
+    );
+    inclinedOrbit.rotation.x = Math.PI * 0.34;
+    inclinedOrbit.rotation.y = -Math.PI * 0.18;
+    group.add(inclinedOrbit);
+
     const warmArcCurve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-1.88, -0.28, 0.12),
-      new THREE.Vector3(-1.2, -1.49, 0.15),
-      new THREE.Vector3(0, -1.9, 0.17),
-      new THREE.Vector3(1.22, -1.46, 0.12),
+      new THREE.Vector3(-2, -0.3, 0.14),
+      new THREE.Vector3(-1.28, -1.58, 0.18),
+      new THREE.Vector3(0, -2.02, 0.2),
+      new THREE.Vector3(1.3, -1.55, 0.14),
     ]);
     const warmArcGeometry = new THREE.TubeGeometry(
       warmArcCurve,
       64,
-      0.022,
+      0.026,
       12,
       false,
     );
@@ -463,6 +526,7 @@ export function EntryLogo3D({
       group.rotation.x = currentRotX;
       group.rotation.y = currentRotY;
       outerRing.rotation.z = prefersReducedMotion ? 0 : elapsed * 0.12;
+      inclinedOrbit.rotation.z = prefersReducedMotion ? 0 : -elapsed * 0.18;
 
       renderer.render(scene, camera);
       rafId = requestAnimationFrame(renderFrame);
@@ -481,7 +545,14 @@ export function EntryLogo3D({
       ribbonGeometry.dispose();
       crossGeometry.dispose();
       ribbonMaterial.dispose();
+      coreDiscGeometry.dispose();
+      coreRimMaterial.dispose();
+      coreFaceMaterial.dispose();
+      coreBezelGeometry.dispose();
+      coreBezelMaterial.dispose();
+      logoTexture.dispose();
       outerRingGeometry.dispose();
+      inclinedOrbitGeometry.dispose();
       outerRingMaterial.dispose();
       warmArcGeometry.dispose();
       warmArcMaterial.dispose();
@@ -500,8 +571,8 @@ export function EntryLogo3D({
       <div
         className={`relative flex items-center justify-center ${className ?? ""}`}
       >
-        <div className="flex size-32 items-center justify-center rounded-full border border-white/15 bg-black/50 backdrop-blur-xs">
-          <EntryMark className="size-20" />
+        <div className="flex size-36 items-center justify-center rounded-full border border-white/15 bg-black/50 backdrop-blur-xs">
+          <EntryMark className="size-24" />
         </div>
       </div>
     );

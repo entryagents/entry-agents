@@ -1,6 +1,11 @@
+"use client";
+
 import { CheckCircle2, Layers, Plug, Terminal, Users } from "lucide-react";
+import { motion } from "motion/react";
 import Link from "next/link";
 import { ToolkitPresetIcon } from "@/components/toolkit-icons";
+
+const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
 const CONNECTED_APPS = [
   { slug: "github", name: "GitHub" },
@@ -37,7 +42,13 @@ export function LandingBento() {
           {/* Asymmetric 12-column grid (7 + 5, then 5 + 7) */}
           <div className="mt-10 grid gap-4 lg:mt-12 lg:grid-cols-12">
             {/* Primary Card 1 (7 cols): Live In-Chat Team Wave Mode */}
-            <article className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7">
+            <motion.article
+              initial={{ opacity: 0, transform: "translateY(12px)" }}
+              whileInView={{ opacity: 1, transform: "translateY(0px)" }}
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ duration: 0.36, ease: EASE_OUT }}
+              className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7"
+            >
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
                   <span className="inline-flex items-center gap-2 font-medium text-(--l-fg-2)">
@@ -45,32 +56,35 @@ export function LandingBento() {
                       className="size-4 text-(--l-fg-3)"
                       strokeWidth={1.5}
                     />
-                    <span>Live in-chat Team waves</span>
+                    <span>Live in-chat /team waves</span>
                   </span>
                   <span className="font-mono text-xs tabular-nums">
-                    Dependency DAG · 1 conversation
+                    Dependency DAG · @role handoffs
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
                   Watch the whole team work right inside your main chat
                 </h3>
                 <p className="mt-3 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
-                  Complex builds split into dependency waves: scout specs lock
-                  shared types first, builders implement disjoint files in
-                  parallel, and reviewers verify the real diff inline before
-                  handing back a clean summary.
+                  Invoke <code className="font-mono text-(--l-fg)">/team</code>{" "}
+                  or tag specialists with{" "}
+                  <code className="font-mono text-(--l-fg)">@architect</code>,{" "}
+                  <code className="font-mono text-(--l-fg)">@executor</code>,
+                  and <code className="font-mono text-(--l-fg)">@reviewer</code>
+                  : Wave 0 locks shared contracts, builders edit disjoint files
+                  in parallel, and reviewers verify the real diff inline.
                 </p>
               </div>
 
               <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-4">
                 {[
                   {
-                    role: "Wave 0 · Architect",
+                    role: "Wave 0 · @architect",
                     focus: "Contracts & wave plan",
                   },
-                  { role: "Wave 0 · Explorer", focus: "Codebase discovery" },
-                  { role: "Wave 1 · Executor", focus: "Disjoint file edits" },
-                  { role: "Wave 2 · Reviewer", focus: "Tests & edge cases" },
+                  { role: "Wave 0 · @explorer", focus: "Codebase discovery" },
+                  { role: "Wave 1 · @executor", focus: "Disjoint file edits" },
+                  { role: "Wave 2 · @reviewer", focus: "Tests & edge cases" },
                 ].map((item) => (
                   <div
                     key={item.role}
@@ -85,10 +99,16 @@ export function LandingBento() {
                   </div>
                 ))}
               </div>
-            </article>
+            </motion.article>
 
             {/* Supporting Card 1 (5 cols): Full 3-pane Workspace */}
-            <article className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5">
+            <motion.article
+              initial={{ opacity: 0, transform: "translateY(12px)" }}
+              whileInView={{ opacity: 1, transform: "translateY(0px)" }}
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ duration: 0.36, delay: 0.05, ease: EASE_OUT }}
+              className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5"
+            >
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
                   <span className="inline-flex items-center gap-2 font-medium text-(--l-fg-2)">
@@ -127,10 +147,16 @@ export function LandingBento() {
                   </span>
                 </div>
               </div>
-            </article>
+            </motion.article>
 
             {/* Supporting Card 2 (5 cols): Connected Apps */}
-            <article className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5">
+            <motion.article
+              initial={{ opacity: 0, transform: "translateY(12px)" }}
+              whileInView={{ opacity: 1, transform: "translateY(0px)" }}
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ duration: 0.36, delay: 0.08, ease: EASE_OUT }}
+              className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-5"
+            >
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
                   <span className="inline-flex items-center gap-2 font-medium text-(--l-fg-2)">
@@ -166,10 +192,16 @@ export function LandingBento() {
                   </span>
                 ))}
               </div>
-            </article>
+            </motion.article>
 
-            {/* Primary Card 2 (7 cols): Frontier Model Routing, Caching & Durable Execution */}
-            <article className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7">
+            {/* Primary Card 2 (7 cols): Free $1, $5 -> $10 Credit, 99% Caching & Durable Execution */}
+            <motion.article
+              initial={{ opacity: 0, transform: "translateY(12px)" }}
+              whileInView={{ opacity: 1, transform: "translateY(0px)" }}
+              viewport={{ once: true, amount: 0.2 }}
+              transition={{ duration: 0.36, delay: 0.12, ease: EASE_OUT }}
+              className="flex min-w-0 flex-col justify-between rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8 lg:col-span-7"
+            >
               <div>
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
                   <span className="inline-flex items-center gap-2 font-medium text-(--l-fg-2)">
@@ -177,53 +209,54 @@ export function LandingBento() {
                       className="size-4 text-(--l-fg-3)"
                       strokeWidth={1.5}
                     />
-                    <span>Frontier models &amp; durable continuity</span>
+                    <span>Generous credit &amp; durable continuity</span>
                   </span>
                   <span className="font-mono text-xs">
                     Claude · GPT · Gemini · DeepSeek
                   </span>
                 </div>
                 <h3 className="mt-3 text-xl font-semibold tracking-tight sm:text-2xl">
-                  99% prompt caching, $5–$40 plans, and runs that survive
-                  offline drops
+                  Start free with $1 execution — or try our $5 plan for $10 of
+                  AI credit
                 </h3>
                 <p className="mt-3 max-w-[60ch] text-sm leading-relaxed text-(--l-fg-2)">
-                  Switch models or reasoning effort between turns with zero
-                  token markup. Multi-turn workspace caching cuts repeat prompt
-                  cost by up to 99%, while server-side checkpoints keep work
-                  alive even if your Wi-Fi drops.
+                  Every Free account grants $1 of real execution credit out of
+                  the box. Need more room to build? Try the $5 plan and get $10
+                  of AI credit — stretched by up to 99% prompt caching across
+                  main chat and subagents, with durable checkpoints that survive
+                  offline drops.
                 </p>
               </div>
 
               <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-(--l-border) pt-4">
                 <div className="flex flex-wrap gap-6 font-mono text-xs tabular-nums">
                   <div>
+                    <span className="text-(--l-fg-3)">Free plan</span>{" "}
+                    <span className="font-medium text-(--l-fg)">
+                      $1 execution credit
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-(--l-fg-3)">$5 Plus plan</span>{" "}
+                    <span className="font-medium text-(--l-fg)">
+                      $10 AI credit (2x)
+                    </span>
+                  </div>
+                  <div>
                     <span className="text-(--l-fg-3)">Prompt cache</span>{" "}
                     <span className="font-medium text-(--l-fg)">
                       Up to 99% reuse
                     </span>
                   </div>
-                  <div>
-                    <span className="text-(--l-fg-3)">Goat plan</span>{" "}
-                    <span className="font-medium text-(--l-fg)">
-                      $13/mo → $50 credit
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-(--l-fg-3)">Stream sync</span>{" "}
-                    <span className="font-medium text-(--l-fg)">
-                      Resumes on reconnect
-                    </span>
-                  </div>
                 </div>
                 <Link
                   href="/login"
-                  className="inline-flex h-9 items-center rounded-lg bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-opacity duration-150 hover:opacity-90"
+                  className="inline-flex h-9 items-center rounded-lg bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.97]"
                 >
-                  Start a session
+                  Start free ($1 credit)
                 </Link>
               </div>
-            </article>
+            </motion.article>
           </div>
         </div>
       </div>
