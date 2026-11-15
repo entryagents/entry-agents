@@ -9,7 +9,6 @@ import {
   Layers,
   Paintbrush,
   ShieldCheck,
-  Sparkles,
   Telescope,
   XCircle,
 } from "lucide-react";
@@ -62,7 +61,7 @@ export const SUBAGENT_TYPE_META: Record<
   design: {
     label: "Design",
     description: "Frontend design, styling & micro-interactions",
-    icon: Sparkles,
+    icon: Paintbrush,
     colorClass: "text-foreground/85",
     badgeClass: "bg-muted/60 text-foreground border-border/80",
     borderClass: "border-border",

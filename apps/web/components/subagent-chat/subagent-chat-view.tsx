@@ -2,8 +2,16 @@
 
 import { formatTokens } from "@entry-agents/shared";
 import type { LanguageModelUsage } from "ai";
-import { AlertCircle, ArrowLeft, Check, Square } from "lucide-react";
-import { useMemo } from "react";
+import { extractCachedInputTokens } from "@/lib/chat/usage-extract";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  ChevronRight,
+  FileText,
+  Square,
+} from "lucide-react";
+import { useMemo, useState } from "react";
 import type {
   WebAgentUIMessage,
   WebAgentUIMessagePart,
@@ -18,6 +26,7 @@ import { useNow } from "@/components/agent-hub/use-now";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
 import { Button } from "@/components/ui/button";
 import { deriveSubagentTabData } from "@/lib/agent-hub/subagent-tab-data";
+import { cn } from "@/lib/utils";
 
 function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));
@@ -34,10 +43,9 @@ export interface SubagentChatViewProps {
 }
 
 /**
- * Read-only Subagent Chat View.
- * Shares the exact same ChatMessageFeed, streaming, and tool call rendering
- * components as normal chat so fixes, streaming improvements, and unslop styling
- * automatically apply across both.
+ * Focused Subagent Execution Trace Inspector.
+ * Presents a collapsible Delegation Brief header so the subagent's live tool
+ * execution and final deliverable are immediately visible above the fold.
  */
 export function SubagentChatView({
   subagentId,
@@ -49,6 +57,7 @@ export function SubagentChatView({
     () => deriveSubagentTabData(messages, subagentId),
     [messages, subagentId],
   );
+  const [briefExpanded, setBriefExpanded] = useState(false);
 
   const isLive = data?.status === "running" || data?.status === "starting";
   const now = useNow(isLive && data?.startedAt !== null);
@@ -57,40 +66,16 @@ export function SubagentChatView({
       ? formatElapsed((isLive ? now : Date.now()) - data.startedAt)
       : null;
 
-  // Transform subagent execution state into standard WebAgentUIMessage[]
-  // so it renders with the identical pipeline as main session chat
+  // Transform subagent execution into a focused assistant execution trace message
   const subagentMessages = useMemo<WebAgentUIMessage[]>(() => {
     if (!data) return [];
 
-    const msgs: WebAgentUIMessage[] = [];
-
-    // 1. Parent model delegation instructions (User role in subagent conversation)
-    const promptText = data.instructions?.trim()
-      ? data.instructions
-      : data.title;
-
-    if (promptText) {
-      msgs.push({
-        id: `${subagentId}-prompt`,
-        role: "user",
-        parts: [
-          {
-            type: "text",
-            text: promptText,
-          },
-        ],
-      });
-    }
-
-    // 2. Subagent execution response (Assistant role in subagent conversation)
     const assistantParts: WebAgentUIMessagePart[] = [];
 
-    // All executed tool calls (write, edit, bash, glob, search, etc.)
     for (const toolPart of data.completedParts) {
       assistantParts.push(toolPart);
     }
 
-    // Pending in-flight tool call if actively running
     if (data.pending && isLive) {
       assistantParts.push({
         type: `tool-${data.pending.name}`,
@@ -100,7 +85,6 @@ export function SubagentChatView({
       } as unknown as WebAgentUIToolPart);
     }
 
-    // Streamed or completed text output
     if (data.finalText) {
       assistantParts.push({
         type: "text",
@@ -108,8 +92,12 @@ export function SubagentChatView({
       });
     }
 
-    if (assistantParts.length > 0 || isLive) {
-      msgs.push({
+    if (assistantParts.length === 0 && !isLive) {
+      return [];
+    }
+
+    return [
+      {
         id: `${subagentId}-response`,
         role: "assistant",
         parts: assistantParts,
@@ -134,10 +122,8 @@ export function SubagentChatView({
                 } as LanguageModelUsage)
               : undefined,
         },
-      });
-    }
-
-    return msgs;
+      },
+    ];
   }, [data, isLive, subagentId]);
 
   if (!data) {
@@ -145,73 +131,88 @@ export function SubagentChatView({
       <div className="flex h-full flex-col items-center justify-center p-8 text-center">
         <SubagentIcon
           type="agent"
-          className="h-10 w-10 text-muted-foreground/60 mb-3"
+          className="mb-3 h-8 w-8 text-muted-foreground/60"
         />
-        <h3 className="text-base font-semibold">Subagent not found</h3>
-        <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-          This subagent session may have expired or is not present in the
-          current chat history.
+        <h3 className="text-sm font-semibold">Subagent trace unavailable</h3>
+        <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+          This subagent run is not present in the current chat history.
         </p>
         <Button
           variant="outline"
           size="sm"
           onClick={onClose}
-          className="mt-4 transition-colors"
+          className="mt-4 h-8 text-xs transition-colors"
         >
-          <ArrowLeft className="mr-1.5 h-4 w-4" /> Return to Main Chat
+          <ArrowLeft className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.5} />
+          Return to chat
         </Button>
       </div>
     );
   }
 
+  const promptText = data.instructions?.trim() || data.title;
+  const cachedTokens = extractCachedInputTokens(
+    subagentMessages[0]?.metadata?.totalMessageUsage,
+  );
+  const cacheHitPct =
+    data.inputTokens && data.inputTokens > 0 && cachedTokens > 0
+      ? Math.min(100, Math.round((cachedTokens / data.inputTokens) * 100))
+      : null;
+
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
-      {/* 1. Subagent Top Control Header */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-3 py-2.5 select-none sm:px-4">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 sm:gap-3">
+      {/* 1. Compact Instrument Header Bar */}
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card/60 px-3 py-2 select-none sm:px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="-ml-1.5 h-8 shrink-0 px-2 text-muted-foreground hover:text-foreground transition-colors"
+            className="-ml-1.5 h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
             aria-label="Back to main chat"
           >
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            <span className="text-xs">Chat</span>
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <span>Back</span>
           </Button>
 
-          <div className="h-4 w-px bg-border shrink-0" />
+          <div className="h-3.5 w-px shrink-0 bg-border" />
 
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:gap-2">
-            <SubagentIcon
-              type={data.subagentType}
-              className="h-4 w-4 shrink-0 text-foreground"
-            />
-            <span className="min-w-0 max-w-full truncate text-sm font-semibold sm:max-w-md">
-              {data.title}
-            </span>
-            <SubagentRoleBadge subagentType={data.subagentType} />
-            <StatusBadge status={data.status} size="sm" />
-          </div>
+          <SubagentRoleBadge subagentType={data.subagentType} />
+
+          <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground sm:text-sm">
+            {data.title}
+          </span>
+
+          <StatusBadge status={data.status} size="sm" />
         </div>
 
-        {/* Live Metrics Pill & Stop Run Button */}
-        <div className="flex w-full flex-wrap items-center justify-between gap-2 shrink-0 sm:w-auto sm:justify-end sm:gap-3">
-          <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] sm:text-xs text-muted-foreground tabular-nums">
+        {/* Right Telemetry & Stop Control */}
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+            {data.modelId && (
+              <span className="hidden rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] text-foreground/80 lg:inline-block">
+                {data.modelId}
+              </span>
+            )}
             {elapsed && <span>{elapsed}</span>}
             {data.toolCallCount !== null && (
               <>
                 {elapsed && <span>·</span>}
                 <span>
-                  {data.toolCallCount} tool{data.toolCallCount !== 1 ? "s" : ""}
+                  {data.toolCallCount}{" "}
+                  {data.toolCallCount === 1 ? "step" : "steps"}
                 </span>
               </>
             )}
             {data.inputTokens !== null && (
-              <>
-                <span>·</span>
-                <span>{formatTokens(data.inputTokens)} tokens</span>
-              </>
+              <span className="hidden sm:inline">
+                · {formatTokens(data.inputTokens)} tok
+              </span>
+            )}
+            {cacheHitPct !== null && (
+              <span className="hidden rounded border border-border/70 bg-muted/50 px-1 py-0.2 text-[10px] text-foreground/80 md:inline-block">
+                {cacheHitPct}% cached
+              </span>
             )}
           </div>
 
@@ -220,64 +221,108 @@ export function SubagentChatView({
               variant="destructive"
               size="sm"
               onClick={onStopRun}
-              className="h-7 px-2.5 text-xs gap-1 transition-colors"
+              className="h-7 gap-1 px-2.5 text-xs transition-colors"
             >
               <Square className="h-3 w-3 fill-current" />
-              <span>Stop run</span>
+              <span>Stop</span>
             </Button>
           )}
         </div>
       </div>
 
-      {/* 2. Scrollable Messages Timeline: Same Stream and UI as Main Chat */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8">
-        <div className="mx-auto max-w-4xl space-y-6">
+      {/* 2. Scrollable Execution Trace Body */}
+      <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6">
+        <div className="mx-auto max-w-4xl space-y-4">
+          {/* Collapsible Delegation Brief Card */}
+          {promptText && (
+            <div className="rounded-lg border border-border/80 bg-muted/20">
+              <button
+                type="button"
+                onClick={() => setBriefExpanded((prev) => !prev)}
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/40"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <ChevronRight
+                    className={cn(
+                      "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
+                      briefExpanded && "rotate-90 text-foreground",
+                    )}
+                    strokeWidth={1.5}
+                  />
+                  <FileText
+                    className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                    strokeWidth={1.5}
+                  />
+                  <span className="font-medium text-foreground">
+                    Delegation brief
+                  </span>
+                  {!briefExpanded && (
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      — {promptText.replace(/\s+/g, " ")}
+                    </span>
+                  )}
+                </div>
+                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                  {briefExpanded ? "Hide" : "View brief"}
+                </span>
+              </button>
+
+              {briefExpanded && (
+                <div className="border-t border-border/60 bg-background/50 px-3 py-2.5 text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
+                  {promptText}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Subagent Execution Trace & Deliverable */}
           <ChatMessageFeed
             messages={subagentMessages}
             isStreaming={isLive}
             readOnly={true}
-            agentName={`Entry · ${data.title}`}
+            agentName={`@${data.subagentType}`}
             agentIcon={
               <SubagentIcon
                 type={data.subagentType}
                 className="h-3 w-3 text-foreground"
               />
             }
-            emptyStateMessage="No subagent events recorded"
+            emptyStateMessage="Waiting for subagent tool execution"
           />
 
-          {/* Clean Error Notice if subagent failed */}
+          {/* Error Notice if subagent failed */}
           {data.errorText && (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-600 dark:text-red-400">
-              <div className="flex items-center gap-2 font-semibold">
-                <AlertCircle className="h-4 w-4" />
+            <div className="rounded-lg border border-destructive/35 bg-destructive/[0.04] p-3 text-xs text-destructive">
+              <div className="flex items-center gap-2 font-medium">
+                <AlertCircle className="h-3.5 w-3.5" strokeWidth={1.5} />
                 <span>Subagent encountered an error</span>
               </div>
-              <p className="mt-1 text-xs">{data.errorText}</p>
+              <p className="mt-1 text-muted-foreground">{data.errorText}</p>
             </div>
           )}
         </div>
       </div>
 
-      {/* 3. Read-Only Status Footer (No prompt composer for user) */}
-      <div className="shrink-0 border-t border-border bg-muted/20 px-4 py-3 select-none">
-        <div className="mx-auto max-w-4xl flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+      {/* 3. Compact Status Footer */}
+      <div className="shrink-0 border-t border-border bg-card/40 px-3 py-2 select-none sm:px-4">
+        <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 text-xs text-muted-foreground">
           {isLive ? (
             <div className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-foreground/50" />
-              <span>Subagent running autonomously · Read-only view</span>
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span>Subagent running autonomously</span>
             </div>
           ) : data.status === "failed" ? (
-            <div className="flex items-center gap-2 text-red-500">
-              <AlertCircle className="h-3.5 w-3.5" />
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-3.5 w-3.5" strokeWidth={1.5} />
               <span>Subagent execution stopped</span>
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <Check className="h-3.5 w-3.5 text-muted-foreground" />
-              <span>
-                Subagent execution complete · Output returned to main agent
-              </span>
+              <Check
+                className="h-3.5 w-3.5 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+              <span>Deliverable returned to main agent</span>
             </div>
           )}
 
@@ -285,7 +330,7 @@ export function SubagentChatView({
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             Return to chat
           </Button>
