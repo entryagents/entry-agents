@@ -1,39 +1,68 @@
 "use client";
 
 import { formatTokens } from "@entry-agents/shared";
-import type { LanguageModelUsage } from "ai";
-import { extractCachedInputTokens } from "@/lib/chat/usage-extract";
 import {
   AlertCircle,
   ArrowLeft,
   Check,
   ChevronRight,
+  Copy,
   FileText,
   Square,
 } from "lucide-react";
-import { useMemo, useState } from "react";
-import type {
-  WebAgentUIMessage,
-  WebAgentUIMessagePart,
-  WebAgentUIToolPart,
-} from "@/app/types";
-import {
-  StatusBadge,
-  SubagentIcon,
-  SubagentRoleBadge,
-} from "@/components/agent-hub/agent-status";
+import { useState } from "react";
+import { SubagentIcon } from "@/components/agent-hub/agent-status";
 import { useNow } from "@/components/agent-hub/use-now";
-import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
+import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { Button } from "@/components/ui/button";
-import { deriveSubagentTabData } from "@/lib/agent-hub/subagent-tab-data";
+import {
+  deriveSubagentTabData,
+  formatSubagentElapsed,
+  formatSubagentModelTag,
+  type SubagentStatus,
+} from "@/lib/agent-hub/subagent-tab-data";
 import { cn } from "@/lib/utils";
+import {
+  getSubagentRoleTag,
+  PendingSubagentToolItem,
+  SubagentToolItem,
+} from "./subagent-tool-item";
 
-function formatElapsed(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
-}
+const STATUS_DISPLAY: Record<
+  SubagentStatus,
+  { label: string; dot: string; text: string }
+> = {
+  starting: {
+    label: "Starting",
+    dot: "bg-amber-500",
+    text: "text-amber-600 dark:text-amber-400",
+  },
+  running: {
+    label: "Running",
+    dot: "bg-emerald-500",
+    text: "text-emerald-600 dark:text-emerald-400",
+  },
+  "awaiting-approval": {
+    label: "Approval needed",
+    dot: "bg-amber-500",
+    text: "text-amber-600 dark:text-amber-400",
+  },
+  completed: {
+    label: "Done",
+    dot: "bg-muted-foreground/60",
+    text: "text-muted-foreground",
+  },
+  failed: {
+    label: "Failed",
+    dot: "bg-destructive",
+    text: "text-destructive",
+  },
+  denied: {
+    label: "Stopped",
+    dot: "bg-destructive",
+    text: "text-destructive",
+  },
+};
 
 export interface SubagentChatViewProps {
   subagentId: string;
@@ -44,8 +73,8 @@ export interface SubagentChatViewProps {
 
 /**
  * Focused Subagent Execution Trace Inspector.
- * Presents a collapsible Delegation Brief header so the subagent's live tool
- * execution and final deliverable are immediately visible above the fold.
+ * Shares the same hairline execution-rail grammar as inline `TaskRenderer`
+ * so transitioning from chat to full trace feels seamless and immediately legible.
  */
 export function SubagentChatView({
   subagentId,
@@ -53,87 +82,25 @@ export function SubagentChatView({
   onClose,
   onStopRun,
 }: SubagentChatViewProps) {
-  const data = useMemo(
-    () => deriveSubagentTabData(messages, subagentId),
-    [messages, subagentId],
-  );
+  const data = deriveSubagentTabData(messages, subagentId);
   const [briefExpanded, setBriefExpanded] = useState(false);
+  const [traceExpanded, setTraceExpanded] = useState(true);
+  const [copiedOutput, setCopiedOutput] = useState(false);
+  const [copiedSession, setCopiedSession] = useState(false);
 
   const isLive = data?.status === "running" || data?.status === "starting";
   const now = useNow(isLive && data?.startedAt !== null);
-  const elapsed =
-    data?.startedAt !== null && data?.startedAt !== undefined
-      ? formatElapsed((isLive ? now : Date.now()) - data.startedAt)
-      : null;
-
-  // Transform subagent execution into a focused assistant execution trace message
-  const subagentMessages = useMemo<WebAgentUIMessage[]>(() => {
-    if (!data) return [];
-
-    const assistantParts: WebAgentUIMessagePart[] = [];
-
-    for (const toolPart of data.completedParts) {
-      assistantParts.push(toolPart);
-    }
-
-    if (data.pending && isLive) {
-      assistantParts.push({
-        type: `tool-${data.pending.name}`,
-        toolCallId: `pending-${data.pending.name}`,
-        state: "input-available",
-        input: data.pending.input,
-      } as unknown as WebAgentUIToolPart);
-    }
-
-    if (data.finalText) {
-      assistantParts.push({
-        type: "text",
-        text: data.finalText,
-      });
-    }
-
-    if (assistantParts.length === 0 && !isLive) {
-      return [];
-    }
-
-    return [
-      {
-        id: `${subagentId}-response`,
-        role: "assistant",
-        parts: assistantParts,
-        metadata: {
-          modelId: data.modelId ?? undefined,
-          totalMessageUsage:
-            data.inputTokens !== null
-              ? ({
-                  inputTokens: data.inputTokens,
-                  outputTokens: data.outputTokens ?? undefined,
-                  totalTokens:
-                    (data.inputTokens ?? 0) + (data.outputTokens ?? 0),
-                  inputTokenDetails: {
-                    noCacheTokens: undefined,
-                    cacheReadTokens: undefined,
-                    cacheWriteTokens: undefined,
-                  },
-                  outputTokenDetails: {
-                    textTokens: undefined,
-                    reasoningTokens: undefined,
-                  },
-                } as LanguageModelUsage)
-              : undefined,
-        },
-      },
-    ];
-  }, [data, isLive, subagentId]);
 
   if (!data) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-8 text-center">
         <SubagentIcon
           type="agent"
-          className="mb-3 h-8 w-8 text-muted-foreground/60"
+          className="mb-3 h-7 w-7 text-muted-foreground/60"
         />
-        <h3 className="text-sm font-semibold">Subagent trace unavailable</h3>
+        <h3 className="text-sm font-medium text-foreground">
+          Subagent trace unavailable
+        </h3>
         <p className="mt-1 max-w-sm text-xs text-muted-foreground">
           This subagent run is not present in the current chat history.
         </p>
@@ -141,7 +108,7 @@ export function SubagentChatView({
           variant="outline"
           size="sm"
           onClick={onClose}
-          className="mt-4 h-8 text-xs transition-colors"
+          className="mt-4 h-8 text-xs active:scale-[0.97]"
         >
           <ArrowLeft className="mr-1.5 h-3.5 w-3.5" strokeWidth={1.5} />
           Return to chat
@@ -150,68 +117,138 @@ export function SubagentChatView({
     );
   }
 
-  const promptText = data.instructions?.trim() || data.title;
-  const cachedTokens = extractCachedInputTokens(
-    subagentMessages[0]?.metadata?.totalMessageUsage,
-  );
+  const roleTag = getSubagentRoleTag(data.subagentType);
+  const statusInfo = STATUS_DISPLAY[data.status];
+  const elapsed =
+    isLive && data.startedAt !== null
+      ? formatSubagentElapsed(now - data.startedAt)
+      : data.completedAt !== null && data.startedAt !== null
+        ? formatSubagentElapsed(data.completedAt - data.startedAt)
+        : null;
+
+  const modelTag = formatSubagentModelTag(data.modelId);
+  const promptText = data.instructions.trim() || data.title;
   const cacheHitPct =
-    data.inputTokens && data.inputTokens > 0 && cachedTokens > 0
-      ? Math.min(100, Math.round((cachedTokens / data.inputTokens) * 100))
+    data.inputTokens &&
+    data.inputTokens > 0 &&
+    data.cachedInputTokens &&
+    data.cachedInputTokens > 0
+      ? Math.min(
+          100,
+          Math.round((data.cachedInputTokens / data.inputTokens) * 100),
+        )
       : null;
+
+  const hasSteps =
+    data.completedParts.length > 0 || (isLive && Boolean(data.pending));
+  const stepCount =
+    data.toolCallCount ??
+    data.completedParts.length + (isLive && data.pending ? 1 : 0);
+
+  const handleCopyOutput = async () => {
+    if (
+      !data.finalText ||
+      typeof navigator === "undefined" ||
+      !navigator.clipboard
+    ) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(data.finalText);
+      setCopiedOutput(true);
+      window.setTimeout(() => setCopiedOutput(false), 1800);
+    } catch {
+      // Clipboard unavailable in restricted contexts
+    }
+  };
+
+  const handleCopySession = async () => {
+    if (
+      !data.sessionId ||
+      typeof navigator === "undefined" ||
+      !navigator.clipboard
+    ) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(data.sessionId);
+      setCopiedSession(true);
+      window.setTimeout(() => setCopiedSession(false), 1800);
+    } catch {
+      // Clipboard unavailable
+    }
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* 1. Compact Instrument Header Bar */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card/60 px-3 py-2 select-none sm:px-4">
+      <header className="flex min-h-11 shrink-0 items-center justify-between gap-2 border-b border-border/70 bg-background/95 px-3 py-1.5 backdrop-blur-xs select-none sm:px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={onClose}
-            className="-ml-1.5 h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            className="-ml-1.5 h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground transition-[transform,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-foreground active:scale-[0.97]"
             aria-label="Back to main chat"
           >
             <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
-            <span>Back</span>
+            <span className="hidden sm:inline">Back</span>
           </Button>
 
-          <div className="h-3.5 w-px shrink-0 bg-border" />
+          <div className="h-3.5 w-px shrink-0 bg-border/80" />
 
-          <SubagentRoleBadge subagentType={data.subagentType} />
-
-          <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground sm:text-sm">
-            {data.title}
+          <span className="inline-flex shrink-0 items-center gap-1 font-mono text-xs font-medium text-foreground/90">
+            <SubagentIcon
+              type={data.subagentType}
+              className="h-3.5 w-3.5 text-muted-foreground"
+            />
+            <span>@{roleTag}</span>
           </span>
 
-          <StatusBadge status={data.status} size="sm" />
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
+            {data.title}
+          </span>
         </div>
 
-        {/* Right Telemetry & Stop Control */}
-        <div className="flex shrink-0 items-center gap-2">
-          <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground tabular-nums">
-            {data.modelId && (
-              <span className="hidden rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[10px] text-foreground/80 lg:inline-block">
-                {data.modelId}
+        {/* Right Telemetry + Controls */}
+        <div className="flex shrink-0 items-center gap-2.5">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 text-[11px] font-medium tabular-nums",
+              statusInfo.text,
+            )}
+          >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                statusInfo.dot,
+              )}
+            />
+            <span>{statusInfo.label}</span>
+          </span>
+
+          <div className="hidden items-center gap-1.5 font-mono text-[11px] text-muted-foreground tabular-nums sm:flex">
+            {modelTag && (
+              <span
+                className="hidden max-w-[140px] truncate text-muted-foreground/80 lg:inline"
+                title={data.modelId ?? undefined}
+              >
+                {modelTag} ·
               </span>
             )}
-            {elapsed && <span>{elapsed}</span>}
-            {data.toolCallCount !== null && (
-              <>
-                {elapsed && <span>·</span>}
-                <span>
-                  {data.toolCallCount}{" "}
-                  {data.toolCallCount === 1 ? "step" : "steps"}
-                </span>
-              </>
-            )}
+            {elapsed && <span>{elapsed} ·</span>}
+            <span>
+              {stepCount} {stepCount === 1 ? "step" : "steps"}
+            </span>
             {data.inputTokens !== null && (
-              <span className="hidden sm:inline">
-                · {formatTokens(data.inputTokens)} tok
-              </span>
+              <span>· {formatTokens(data.inputTokens)} in</span>
             )}
             {cacheHitPct !== null && (
-              <span className="hidden rounded border border-border/70 bg-muted/50 px-1 py-0.2 text-[10px] text-foreground/80 md:inline-block">
-                {cacheHitPct}% cached
+              <span
+                className="hidden md:inline"
+                title={`${formatTokens(data.cachedInputTokens ?? 0)} cached tokens`}
+              >
+                · {cacheHitPct}% cached
               </span>
             )}
           </div>
@@ -221,121 +258,220 @@ export function SubagentChatView({
               variant="destructive"
               size="sm"
               onClick={onStopRun}
-              className="h-7 gap-1 px-2.5 text-xs transition-colors"
+              className="h-7 gap-1 px-2 text-xs active:scale-[0.97]"
             >
               <Square className="h-3 w-3 fill-current" />
               <span>Stop</span>
             </Button>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* 2. Scrollable Execution Trace Body */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 sm:px-6">
-        <div className="mx-auto max-w-4xl space-y-4">
-          {/* Collapsible Delegation Brief Card */}
-          {promptText && (
-            <div className="rounded-lg border border-border/80 bg-muted/20">
-              <button
-                type="button"
-                onClick={() => setBriefExpanded((prev) => !prev)}
-                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-muted/40"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <ChevronRight
-                    className={cn(
-                      "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
-                      briefExpanded && "rotate-90 text-foreground",
-                    )}
-                    strokeWidth={1.5}
-                  />
-                  <FileText
-                    className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                  <span className="font-medium text-foreground">
-                    Delegation brief
-                  </span>
-                  {!briefExpanded && (
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                      — {promptText.replace(/\s+/g, " ")}
-                    </span>
-                  )}
-                </div>
-                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                  {briefExpanded ? "Hide" : "View brief"}
+      {/* 2. Collapsible Delegation Brief Bar */}
+      {promptText && (
+        <div className="shrink-0 border-b border-border/60 bg-muted/15">
+          <button
+            type="button"
+            onClick={() => setBriefExpanded((prev) => !prev)}
+            aria-expanded={briefExpanded}
+            className="flex h-8 w-full items-center justify-between gap-2 px-3 text-left text-xs transition-colors duration-150 hover:bg-muted/35 sm:px-4"
+          >
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <ChevronRight
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                  briefExpanded && "rotate-90 text-foreground",
+                )}
+                strokeWidth={1.5}
+              />
+              <FileText
+                className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+              <span className="shrink-0 font-medium text-foreground/85">
+                Brief
+              </span>
+              {!briefExpanded && (
+                <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                  {promptText.replace(/\s+/g, " ")}
                 </span>
-              </button>
-
-              {briefExpanded && (
-                <div className="border-t border-border/60 bg-background/50 px-3 py-2.5 text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
-                  {promptText}
-                </div>
               )}
             </div>
+            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+              {briefExpanded ? "Hide" : "Expand"}
+            </span>
+          </button>
+
+          {briefExpanded && (
+            <div className="max-h-56 overflow-y-auto border-t border-border/50 bg-background/60 px-3 py-3 text-xs text-muted-foreground sm:px-6">
+              <div className="mx-auto max-w-3xl">
+                <StreamingMarkdown content={promptText} isStreaming={false} />
+              </div>
+            </div>
           )}
+        </div>
+      )}
 
-          {/* Subagent Execution Trace & Deliverable */}
-          <ChatMessageFeed
-            messages={subagentMessages}
-            isStreaming={isLive}
-            readOnly={true}
-            agentName={`@${data.subagentType}`}
-            agentIcon={
-              <SubagentIcon
-                type={data.subagentType}
-                className="h-3 w-3 text-foreground"
-              />
-            }
-            emptyStateMessage="Waiting for subagent tool execution"
-          />
-
-          {/* Error Notice if subagent failed */}
+      {/* 3. Scrollable Execution Trace & Output Body */}
+      <div className="flex-1 overflow-y-auto px-3 py-5 sm:px-6">
+        <div className="mx-auto max-w-3xl space-y-6">
+          {/* Error Banner */}
           {data.errorText && (
-            <div className="rounded-lg border border-destructive/35 bg-destructive/[0.04] p-3 text-xs text-destructive">
-              <div className="flex items-center gap-2 font-medium">
-                <AlertCircle className="h-3.5 w-3.5" strokeWidth={1.5} />
-                <span>Subagent encountered an error</span>
+            <div className="border-l-2 border-l-destructive bg-destructive/[0.04] px-3 py-2 text-xs">
+              <div className="flex items-center gap-1.5 font-medium text-destructive">
+                <AlertCircle
+                  className="h-3.5 w-3.5 shrink-0"
+                  strokeWidth={1.5}
+                />
+                <span>Execution error</span>
               </div>
               <p className="mt-1 text-muted-foreground">{data.errorText}</p>
             </div>
           )}
-        </div>
-      </div>
 
-      {/* 3. Compact Status Footer */}
-      <div className="shrink-0 border-t border-border bg-card/40 px-3 py-2 select-none sm:px-4">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 text-xs text-muted-foreground">
-          {isLive ? (
-            <div className="flex items-center gap-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-              <span>Subagent running autonomously</span>
-            </div>
-          ) : data.status === "failed" ? (
-            <div className="flex items-center gap-2 text-destructive">
-              <AlertCircle className="h-3.5 w-3.5" strokeWidth={1.5} />
-              <span>Subagent execution stopped</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Check
-                className="h-3.5 w-3.5 text-muted-foreground"
-                strokeWidth={1.5}
-              />
-              <span>Deliverable returned to main agent</span>
-            </div>
+          {/* Direct Step Ledger (immediately visible, matches inline TaskRenderer) */}
+          {hasSteps && (
+            <section aria-label="Execution steps">
+              <button
+                type="button"
+                onClick={() => setTraceExpanded((prev) => !prev)}
+                aria-expanded={traceExpanded}
+                className="mb-2 flex w-full items-center justify-between gap-2 text-left text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground"
+              >
+                <span className="inline-flex items-center gap-1.5 font-medium">
+                  <ChevronRight
+                    className={cn(
+                      "h-3.5 w-3.5 transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      traceExpanded && "rotate-90 text-foreground",
+                    )}
+                    strokeWidth={1.5}
+                  />
+                  <span>Trace</span>
+                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground/80">
+                    {stepCount} {stepCount === 1 ? "step" : "steps"}
+                  </span>
+                </span>
+                <span className="font-mono text-[11px] text-muted-foreground/75">
+                  {traceExpanded ? "Collapse" : "Show"}
+                </span>
+              </button>
+
+              {traceExpanded && (
+                <div className="space-y-0.5 border-l border-border/70 pl-3">
+                  {data.completedParts.map((toolPart) => (
+                    <SubagentToolItem
+                      key={toolPart.toolCallId}
+                      part={toolPart}
+                    />
+                  ))}
+                  {isLive && data.pending && (
+                    <PendingSubagentToolItem pending={data.pending} />
+                  )}
+                </div>
+              )}
+            </section>
           )}
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Return to chat
-          </Button>
+          {/* Subagent Output / Deliverable */}
+          {data.finalText && (
+            <section aria-label="Subagent output">
+              <div className="mb-3 flex items-center justify-between border-b border-border/50 pb-1.5">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Output
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyOutput}
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-muted-foreground transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted hover:text-foreground active:scale-[0.97]"
+                >
+                  {copiedOutput ? (
+                    <>
+                      <Check
+                        className="h-3 w-3 text-emerald-500"
+                        strokeWidth={1.5}
+                      />
+                      <span>Copied</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3 w-3" strokeWidth={1.5} />
+                      <span>Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="text-[14.5px] leading-[1.65] text-foreground select-text">
+                <StreamingMarkdown
+                  content={data.finalText}
+                  isStreaming={isLive}
+                />
+              </div>
+            </section>
+          )}
+
+          {/* Waiting / Empty State */}
+          {!hasSteps && !data.finalText && !data.errorText && (
+            <div className="border-l-2 border-l-border pl-3 py-1 text-xs text-muted-foreground">
+              {isLive
+                ? "Waiting for subagent tool execution"
+                : "No execution trace recorded"}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* 4. Compact Status Footer */}
+      <footer className="flex h-9 shrink-0 items-center justify-between gap-2 border-t border-border/70 bg-background px-3 text-xs text-muted-foreground select-none sm:px-4">
+        <div className="flex min-w-0 items-center gap-3">
+          {isLive ? (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              <span>Running autonomously</span>
+            </span>
+          ) : data.status === "failed" || data.status === "denied" ? (
+            <span className="inline-flex items-center gap-1.5 text-destructive">
+              <AlertCircle className="h-3.5 w-3.5" strokeWidth={1.5} />
+              <span>
+                {data.status === "denied"
+                  ? "Subagent stopped"
+                  : "Subagent failed"}
+              </span>
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5">
+              <Check className="h-3.5 w-3.5" strokeWidth={1.5} />
+              <span>Returned to coordinator</span>
+            </span>
+          )}
+
+          {data.sessionId && (
+            <button
+              type="button"
+              onClick={handleCopySession}
+              className="hidden items-center gap-1 font-mono text-[11px] tabular-nums text-muted-foreground/75 transition-colors hover:text-foreground sm:inline-flex"
+              title="Copy subagent session ID"
+            >
+              <span>
+                {copiedSession
+                  ? "Copied session"
+                  : `session ${data.sessionId.slice(0, 8)}`}
+              </span>
+              {!copiedSession && (
+                <Copy className="h-2.5 w-2.5" strokeWidth={1.5} />
+              )}
+            </button>
+          )}
+        </div>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          className="h-7 px-2 text-xs text-muted-foreground transition-[transform,color] duration-150 hover:text-foreground active:scale-[0.97]"
+        >
+          Return to chat
+        </Button>
+      </footer>
     </div>
   );
 }

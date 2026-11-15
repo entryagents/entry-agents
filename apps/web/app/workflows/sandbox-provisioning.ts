@@ -1,18 +1,22 @@
-import { toErrorMessage } from "@entry-agents/sandbox";
 import { getWorkflowMetadata } from "workflow";
-import {
-  claimSessionSandboxProvisioningRunId,
-  clearSessionSandboxProvisioningRunIdIfOwned,
-  getSessionById,
-  updateSession,
-} from "@/lib/db/sessions";
-import {
-  provisionSessionSandbox,
-  SessionArchivedDuringProvisioningError,
-} from "@/lib/sandbox/provisioning";
 
 async function runProvisioning(sessionId: string, runId: string) {
   "use step";
+
+  const [
+    { toErrorMessage },
+    {
+      claimSessionSandboxProvisioningRunId,
+      clearSessionSandboxProvisioningRunIdIfOwned,
+      getSessionById,
+      updateSession,
+    },
+    { provisionSessionSandbox, SessionArchivedDuringProvisioningError },
+  ] = await Promise.all([
+    import("@entry-agents/sandbox"),
+    import("@/lib/db/sessions"),
+    import("@/lib/sandbox/provisioning"),
+  ]);
 
   const session = await getSessionById(sessionId);
   if (!session) {

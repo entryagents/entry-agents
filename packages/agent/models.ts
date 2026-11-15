@@ -398,6 +398,7 @@ export function sharedProvider(
       baseURL,
       apiKey,
       headers: attributionHeaders,
+      includeUsage: true,
     });
 
     model = openCodeZen.chatModel(modelId);

@@ -12,9 +12,9 @@ import {
   Github,
   Laptop,
   Loader2,
+  PenLine,
   RefreshCw,
   RotateCcw,
-  Sparkles,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -824,20 +824,20 @@ export function WorkspaceReviewTab({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
-              <span>Open Pull Request</span>
+              <span>Open pull request</span>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleGeneratePrSummary}
                 disabled={isGeneratingPr}
-                className="h-7 px-2 text-xs gap-1.5 text-primary hover:bg-primary/10 cursor-pointer"
+                className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground cursor-pointer"
               >
                 {isGeneratingPr ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.5} />
                 ) : (
-                  <Sparkles className="h-3 w-3 text-purple-500" />
+                  <PenLine className="h-3 w-3" strokeWidth={1.5} />
                 )}
-                <span>Auto-Summarize</span>
+                <span>Auto-summarize</span>
               </Button>
             </DialogTitle>
             <DialogDescription>

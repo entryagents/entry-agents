@@ -181,14 +181,14 @@ export function SidebarBalancePill() {
 
   if (isLoading || !data) {
     return (
-      <div className="h-6 w-14 shrink-0 animate-pulse rounded-full bg-muted" />
+      <div className="h-6 w-14 shrink-0 rounded-full border border-border/50 bg-muted/70" />
     );
   }
 
   return (
     <div
       title="Current credit balance"
-      className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-semibold tabular-nums text-foreground"
+      className="flex shrink-0 items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-1 text-xs font-medium tabular-nums text-foreground"
     >
       {formatUsdCents(data.creditBalanceCents)}
     </div>
@@ -217,7 +217,7 @@ export function DesktopBalanceBox() {
         router.push("/pricing");
       }}
       title={`Credit balance: ${formatUsdCents(data.creditBalanceCents)} (Click to view plans & top up)`}
-      className="flex h-9 min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-border bg-background/80 px-2.5 font-mono text-xs font-semibold tabular-nums text-foreground shadow-2xs transition-colors hover:bg-muted/80 cursor-pointer"
+      className="flex h-9 min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-border bg-background/80 px-2.5 font-mono text-xs font-semibold tabular-nums text-foreground shadow-2xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/80 cursor-pointer"
     >
       {formatCompactUsdCents(data.creditBalanceCents)}
     </button>
@@ -240,7 +240,7 @@ export function SidebarPlanBadge({ showIcon = false }: { showIcon?: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium tabular-nums",
         style.badge,
       )}
     >
@@ -298,15 +298,15 @@ export function DesktopCodexBillingStatus() {
         if (isMobile) setOpenMobile(false);
         router.push("/settings/usage");
       }}
-      title="Click to view detailed Usage & Balance"
+      title="View detailed usage & balance"
       className={cn(
-        "w-full text-left space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors cursor-pointer hover:border-foreground/30",
+        "w-full text-left space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer hover:border-foreground/30",
         PLAN_STYLES[data.plan]?.card ?? PLAN_STYLES.goat.card,
       )}
     >
       <div className="flex items-center justify-between gap-1.5 px-0.5">
-        <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          {windows.mode === "fixed" ? "Fixed Windows" : "Sliding Windows"}
+        <span className="text-[11px] font-medium text-muted-foreground">
+          {windows.mode === "fixed" ? "Fixed windows" : "Sliding windows"}
         </span>
 
         <div className="flex items-baseline gap-1 font-mono text-[11px] tabular-nums">
@@ -356,7 +356,7 @@ export function DesktopCodexBillingStatus() {
               <div className="my-1 h-1 w-full overflow-hidden rounded-full bg-muted">
                 <div
                   className={cn(
-                    "h-full rounded-full transition-all duration-300",
+                    "h-full rounded-full transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
                     isFull
                       ? "bg-red-500"
                       : isWarn
@@ -377,7 +377,7 @@ export function DesktopCodexBillingStatus() {
       {data.expiresAt ? (
         <div className="flex items-center justify-between border-t border-border/40 pt-1 text-[10px] text-muted-foreground/80">
           <span>Expires</span>
-          <span className="font-mono font-medium text-foreground/90">
+          <span className="font-mono font-medium tabular-nums text-foreground/90">
             {formatExpirationDate(data.expiresAt)}
           </span>
         </div>

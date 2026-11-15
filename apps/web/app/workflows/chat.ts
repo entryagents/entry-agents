@@ -78,6 +78,7 @@ import { sanitizeMessageToolInputs } from "@/lib/chat/sanitize-tool-inputs";
 import {
   type ChatErrorCategory,
   classifyChatError,
+  isFriendlyChatErrorText,
   serializeErrorForDiagnostics,
   toFriendlyChatErrorText,
 } from "@/lib/chat/friendly-error";
@@ -420,7 +421,23 @@ const convertMessages = async (
   const dedupedMessages = messages
     .map(dedupeMessageReasoning)
     .map(canonicalizeMessageParts)
-    .map(sanitizeMessageToolInputs);
+    .map(sanitizeMessageToolInputs)
+    .map((msg) => {
+      if (msg.role !== "assistant" || !Array.isArray(msg.parts)) {
+        return msg;
+      }
+      const cleanedParts = msg.parts.filter(
+        (part) =>
+          !(
+            part.type === "text" &&
+            typeof part.text === "string" &&
+            isFriendlyChatErrorText(part.text)
+          ),
+      );
+      return cleanedParts.length === msg.parts.length
+        ? msg
+        : { ...msg, parts: cleanedParts };
+    });
   const modelMessages = await convertToModelMessages<WebAgentUIMessage>(
     dedupedMessages,
     {
@@ -902,8 +919,6 @@ async function persistInputMessages(
   chatId: string,
   messages: WebAgentUIMessage[],
 ): Promise<void> {
-  "use step";
-
   const latestMessage = messages[messages.length - 1];
   if (!latestMessage) {
     return;
@@ -1611,7 +1626,7 @@ async function getSandboxStatusStep(
   }
 
   const state = session.sandboxState;
-  return {
+  return withoutUndefined({
     status: !state
       ? "missing"
       : canOperateOnSandbox(state)
@@ -1630,7 +1645,7 @@ async function getSandboxStatusStep(
     sandboxExpiresAt: session.sandboxExpiresAt?.toISOString() ?? null,
     hasRepo: Boolean(session.repoOwner && session.repoName),
     isArchived: session.status === "archived",
-  };
+  });
 }
 
 async function provisionSandboxStep(
@@ -1644,7 +1659,10 @@ async function provisionSandboxStep(
   // Reuses the session's own provisioning claim-lock, so a concurrent UI
   // click or lifecycle run can't double-provision.
   const kick = await kickSandboxProvisioningWorkflow(sessionId);
-  return { kickStatus: kick.status, started: Boolean(kick.runId) };
+  return withoutUndefined({
+    kickStatus: kick.status,
+    started: Boolean(kick.runId),
+  });
 }
 
 async function reconnectSandboxStep(
@@ -1726,7 +1744,7 @@ async function snapshotSandboxStep(
       : "provisioning",
   });
 
-  return { snapshotted: true, snapshotId: result.snapshotId };
+  return withoutUndefined({ snapshotted: true, snapshotId: result.snapshotId });
 }
 
 async function deleteSandboxStep(
@@ -1844,17 +1862,17 @@ async function performAgentGithubApiRequest(params: {
       `${params.method} ${fullPath}`,
       params.params ?? {},
     );
-    return {
+    return withoutUndefined({
       success: true,
       status: response.status,
       ...(response.data !== undefined ? { data: response.data } : {}),
-    };
+    });
   } catch (error) {
     const status =
       typeof error === "object" && error !== null && "status" in error
         ? (error as { status?: number }).status
         : undefined;
-    return {
+    return withoutUndefined({
       success: false,
       // Omit (never assign) an undefined status: the Workflow SDK cannot
       // serialise `undefined`, so an explicit `status: undefined` is a
@@ -1863,7 +1881,7 @@ async function performAgentGithubApiRequest(params: {
       ...(status !== undefined ? { status } : {}),
       error:
         error instanceof Error ? error.message : "GitHub API request failed",
-    };
+    });
   }
 }
 
@@ -2041,12 +2059,12 @@ async function performAgentVercelCli(params: {
       }
     }
 
-    return {
+    return withoutUndefined({
       success: result.success,
       exitCode: result.exitCode,
       stdout: redact(result.stdout),
       stderr: redact(result.stderr),
-    };
+    });
   } catch (error) {
     return {
       success: false,
@@ -2178,12 +2196,12 @@ async function performAgentGithubCli(params: {
             .join("[REDACTED]")
         : text;
 
-    return {
+    return withoutUndefined({
       success: result.success,
       exitCode: result.exitCode,
       stdout: redact(result.stdout),
       stderr: redact(result.stderr),
-    };
+    });
   } finally {
     await revokeInstallationToken(scoped.token).catch((error) =>
       console.warn(
@@ -2276,7 +2294,11 @@ async function performAgentVercelApiRequest(params: {
       }
     }
 
-    return { success: response.ok, status: response.status, data };
+    return withoutUndefined({
+      success: response.ok,
+      status: response.status,
+      data,
+    });
   } catch (error) {
     return {
       success: false,
@@ -3299,13 +3321,24 @@ export async function runAgentWorkflow(options: Options) {
       };
     }
 
+    const errorText = getSetupErrorMessage(error, isRepeatFailure);
     if (pendingAssistantResponse.parts.length === 0 && !streamClosed) {
-      const errorText = getSetupErrorMessage(error, isRepeatFailure);
       pendingAssistantResponse = {
         ...pendingAssistantResponse,
         parts: [{ type: "text", text: errorText }],
       };
       await sendTextMessage(writable, "setup-error", errorText);
+    } else if (
+      pendingAssistantResponse.parts.length > 0 &&
+      errorCategory !== "aborted"
+    ) {
+      pendingAssistantResponse = {
+        ...pendingAssistantResponse,
+        metadata: {
+          ...pendingAssistantResponse.metadata,
+          turnError: errorText,
+        },
+      };
     }
 
     if (pendingAssistantResponse.parts.length > 0) {
@@ -3548,6 +3581,10 @@ const runAgentStep = async (
   let mcpToolSet: Awaited<ReturnType<typeof createMcpToolSet>> | undefined;
   let streamWriter: WritableStreamDefaultWriter<UIMessageChunk> | undefined;
   let streamWriteFailed = false;
+  let hasEmittedStreamChunks = false;
+  let responseMessage: WebAgentUIMessage | undefined;
+  let lastStepUsage: LanguageModelUsage | undefined;
+  let lastStepCost: number | undefined;
   let stepSecretRedactor: SecretRedactor | undefined;
   const usedSecretNames = new Set<string>();
   const triggeredPluginSlugs = new Set<string>();
@@ -3560,9 +3597,6 @@ const runAgentStep = async (
   };
 
   try {
-    let responseMessage: WebAgentUIMessage | undefined;
-    let lastStepUsage: LanguageModelUsage | undefined;
-    let lastStepCost: number | undefined;
     const lastOriginalMessage = originalMessages.at(-1);
     const existingStepFinishReasons: WebAgentStepFinishMetadata[] =
       lastOriginalMessage?.role === "assistant"
@@ -4033,11 +4067,11 @@ const runAgentStep = async (
     try {
       const [
         { getEnabledMcpServersForRequest, recordMcpServerConnectionResult },
-        { getComposioMcpServerConfig, getConnectedComposioToolkitsForUser },
+        { getIntegrationProvider },
         { prepareMcpServersForExecution },
       ] = await Promise.all([
         import("@/lib/db/mcp-servers"),
-        import("@/lib/mcp/composio"),
+        import("@/lib/integrations/registry"),
         import("@/lib/mcp/resolve-server-config"),
       ]);
       const rawEnabledServers = await getEnabledMcpServersForRequest(userId);
@@ -4064,22 +4098,40 @@ const runAgentStep = async (
         );
       }
 
-      // Composio (see lib/mcp/composio.ts) is a built-in MCP server,
-      // resolved the same way as a self-serve one and merged into the
-      // same combined server list -- createMcpToolSet() doesn't care
-      // which source a server config came from. Never throws: absent
-      // COMPOSIO_API_KEY or any SDK failure resolves to null.
-      const [composioServer, composioConnectedToolkits] = await Promise.all([
-        getComposioMcpServerConfig(userId),
-        getConnectedComposioToolkitsForUser(userId),
+      // Built-in integration gateway (Executor by default via registry plugin)
+      // resolved per user with OAuth auto-refresh or encrypted PAT fallback.
+      const integrationProvider = getIntegrationProvider();
+      const integrationMcp = await integrationProvider.getMcpConfig(userId);
+      const [integrationServer, connectedToolkits] = await Promise.all([
+        Promise.resolve(
+          integrationMcp
+            ? {
+                id: integrationProvider.id,
+                name: integrationProvider.id,
+                url: integrationMcp.url,
+                headers: integrationMcp.headers,
+                transport: "http" as const,
+              }
+            : null,
+        ),
+        integrationProvider
+          .listToolkits(userId, undefined, {
+            category: "connected",
+            limit: 120,
+          })
+          .then((res) =>
+            res.items.filter((item) => item.connected).map((item) => item.slug),
+          )
+          .catch(() => [] as string[]),
       ]);
-      if (composioServer) {
+      if (integrationServer) {
         fullAgentOptions.mcpMetadata = {
-          composioConnectedToolkits,
+          composioConnectedToolkits: connectedToolkits,
+          connectedIntegrations: connectedToolkits,
         };
       }
-      const combinedServers = composioServer
-        ? [...enabledServers, composioServer]
+      const combinedServers = integrationServer
+        ? [...enabledServers, integrationServer]
         : enabledServers;
       if (combinedServers.length > 0) {
         let stepMcpSandbox:
@@ -4741,6 +4793,15 @@ const runAgentStep = async (
             responseMessage = finishedResponseMessage;
           },
         })) {
+          if (
+            part.type === "text-delta" ||
+            part.type === "reasoning-delta" ||
+            part.type === "tool-input-start" ||
+            part.type === "tool-input-available" ||
+            part.type === "tool-output-available"
+          ) {
+            hasEmittedStreamChunks = true;
+          }
           if (!streamWriteFailed) {
             try {
               coalescingWriter.write(part);
@@ -5037,16 +5098,27 @@ const runAgentStep = async (
 
     if (isAbortError(error)) {
       const abortedFinishReason: FinishReason = "stop";
-      // Deliberately `withoutUndefined`: this branch sets four fields to
+      // Deliberately `withoutUndefined`: this branch sets optional fields to
       // `undefined` explicitly, and an `undefined` step return value cannot
-      // be persisted by the Workflow SDK.
+      // be persisted by the Workflow SDK. Preserve any partial responseMessage
+      // that finished assembling before the abort signal fired.
+      const abortedResponseMessage = responseMessage
+        ? {
+            ...responseMessage,
+            metadata: withModelMetadata(
+              responseMessage.metadata,
+              selectedModelId,
+              modelId,
+            ),
+          }
+        : undefined;
       return withoutUndefined({
-        responseMessage: undefined,
+        responseMessage: abortedResponseMessage,
         responseMessages: [],
         finishReason: abortedFinishReason,
         rawFinishReason: undefined,
-        stepUsage: undefined,
-        stepCost: undefined,
+        stepUsage: lastStepUsage,
+        stepCost: lastStepCost,
         stepWasAborted: true,
         remainingBalanceCents,
         remainingWindowBudgetCents,
@@ -5091,7 +5163,16 @@ const runAgentStep = async (
     // class of error `FatalError` exists for -- skips the Workflow SDK's
     // retries entirely so a permanent, param-level failure fails once
     // and immediately instead of 4 times.
-    if (isNonRetryableApiCallError(errorWithStepTiming)) {
+    //
+    // Additionally, if `hasEmittedStreamChunks` is true, this step has ALREADY
+    // written reasoning/text/tool chunks into the live `writable` stream under
+    // `messageId`. Letting the Workflow SDK retry `runAgentStep` would write
+    // a second copy of reasoning, text, and tool calls into the SAME message
+    // (causing the "two models working / repeating Thought + Bash" split bug).
+    if (
+      isNonRetryableApiCallError(errorWithStepTiming) ||
+      hasEmittedStreamChunks
+    ) {
       // FatalError's constructor only takes a message string (see
       // node_modules/workflow's own docs -- no options/cause param), so
       // stepTiming has to be reattached manually to keep the outer

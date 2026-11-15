@@ -8,6 +8,7 @@ import {
   Hammer,
   Layers,
   Paintbrush,
+  PenTool,
   ShieldCheck,
   Telescope,
   XCircle,
@@ -61,7 +62,7 @@ export const SUBAGENT_TYPE_META: Record<
   design: {
     label: "Design",
     description: "Frontend design, styling & micro-interactions",
-    icon: Paintbrush,
+    icon: PenTool,
     colorClass: "text-foreground/85",
     badgeClass: "bg-muted/60 text-foreground border-border/80",
     borderClass: "border-border",
@@ -78,18 +79,22 @@ export function SubagentIcon({
   const meta = SUBAGENT_TYPE_META[type];
   if (meta) {
     const Icon = meta.icon;
-    return <Icon className={cn("shrink-0", className)} />;
+    return <Icon className={cn("shrink-0", className)} strokeWidth={1.5} />;
   }
 
   switch (type) {
     case "hammer":
-      return <Hammer className={cn("shrink-0", className)} />;
+      return <Hammer className={cn("shrink-0", className)} strokeWidth={1.5} />;
     case "telescope":
-      return <Telescope className={cn("shrink-0", className)} />;
+      return (
+        <Telescope className={cn("shrink-0", className)} strokeWidth={1.5} />
+      );
     case "paintbrush":
-      return <Paintbrush className={cn("shrink-0", className)} />;
+      return (
+        <Paintbrush className={cn("shrink-0", className)} strokeWidth={1.5} />
+      );
     default:
-      return <Bot className={cn("shrink-0", className)} />;
+      return <Bot className={cn("shrink-0", className)} strokeWidth={1.5} />;
   }
 }
 
@@ -113,12 +118,12 @@ export function SubagentRoleBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors",
+        "inline-flex items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[11px] font-medium transition-colors duration-150",
         meta.badgeClass,
         className,
       )}
     >
-      <Icon className="h-3 w-3 shrink-0" />
+      <Icon className="h-3 w-3 shrink-0" strokeWidth={1.5} />
       <span>{meta.label}</span>
     </span>
   );
@@ -132,7 +137,6 @@ const STATUS_STYLE: Record<
     text: string;
     bg: string;
     border: string;
-    pulse: boolean;
     icon: typeof Bot;
   }
 > = {
@@ -142,7 +146,6 @@ const STATUS_STYLE: Record<
     text: "text-amber-600 dark:text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/25",
-    pulse: true,
     icon: Clock,
   },
   running: {
@@ -151,16 +154,14 @@ const STATUS_STYLE: Record<
     text: "text-emerald-600 dark:text-emerald-400",
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/25",
-    pulse: true,
     icon: Bot,
   },
   "awaiting-approval": {
-    label: "Approval Needed",
+    label: "Approval needed",
     dot: "bg-amber-500",
     text: "text-amber-600 dark:text-amber-400",
     bg: "bg-amber-500/10",
     border: "border-amber-500/25",
-    pulse: false,
     icon: AlertTriangle,
   },
   completed: {
@@ -169,7 +170,6 @@ const STATUS_STYLE: Record<
     text: "text-neutral-600 dark:text-neutral-300",
     bg: "bg-muted/70",
     border: "border-border/80",
-    pulse: false,
     icon: CheckCircle2,
   },
   failed: {
@@ -178,7 +178,6 @@ const STATUS_STYLE: Record<
     text: "text-red-600 dark:text-red-400",
     bg: "bg-red-500/10",
     border: "border-red-500/25",
-    pulse: false,
     icon: XCircle,
   },
   denied: {
@@ -187,7 +186,6 @@ const STATUS_STYLE: Record<
     text: "text-red-600 dark:text-red-400",
     bg: "bg-red-500/10",
     border: "border-red-500/25",
-    pulse: false,
     icon: XCircle,
   },
 };
@@ -207,22 +205,19 @@ export function StatusBadge({
     return (
       <span
         className={cn(
-          "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.2 text-[10px] font-semibold tabular-nums",
+          "inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium tabular-nums",
           style.text,
           style.bg,
           style.border,
           className,
         )}
       >
-        <span className="relative flex h-1.5 w-1.5 shrink-0">
-          <span
-            className={cn(
-              "relative inline-flex h-1.5 w-1.5 rounded-full",
-              style.dot,
-              style.pulse && "ring-2 ring-emerald-500/25",
-            )}
-          />
-        </span>
+        <span
+          className={cn(
+            "inline-flex h-1.5 w-1.5 shrink-0 rounded-full",
+            style.dot,
+          )}
+        />
         <span>{style.label}</span>
       </span>
     );
@@ -231,22 +226,16 @@ export function StatusBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums shadow-2xs transition-colors",
+        "inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium tabular-nums transition-colors duration-150",
         style.text,
         style.bg,
         style.border,
         className,
       )}
     >
-      <span className="relative flex h-2 w-2 shrink-0">
-        <span
-          className={cn(
-            "relative inline-flex h-2 w-2 rounded-full",
-            style.dot,
-            style.pulse && "ring-2 ring-emerald-500/25",
-          )}
-        />
-      </span>
+      <span
+        className={cn("inline-flex h-2 w-2 shrink-0 rounded-full", style.dot)}
+      />
       <span>{style.label}</span>
     </span>
   );

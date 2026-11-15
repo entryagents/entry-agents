@@ -3,6 +3,7 @@ import {
   dedupeMessageList,
   dedupeMessageParts,
 } from "./dedupe-message-reasoning";
+import { isFriendlyChatErrorText } from "./friendly-error";
 
 /**
  * Merges server-authoritative messages with local client messages, guaranteeing
@@ -126,10 +127,19 @@ export function mergePreservingLocalWork(
             }
           : undefined;
 
+      const serverIsErrorOnly =
+        serverMsg.parts.length === 1 &&
+        serverMsg.parts[0]?.type === "text" &&
+        isFriendlyChatErrorText(serverMsg.parts[0].text ?? "");
+
+      const combinedParts = serverIsErrorOnly
+        ? [...localMsg.parts, ...serverMsg.parts]
+        : [...serverMsg.parts, ...localMsg.parts];
+
       const mergedParts = dedupeMessageParts({
         ...serverMsg,
         metadata: mergedMetadata,
-        parts: [...serverMsg.parts, ...localMsg.parts],
+        parts: combinedParts,
       });
       result.push(mergedParts);
     }

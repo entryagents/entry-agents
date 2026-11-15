@@ -10,86 +10,114 @@ import {
   Globe,
   Pencil,
   Search,
+  Share2,
   Telescope,
   Terminal,
-  Zap,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { extractRenderState, getToolName } from "@/app/lib/render-tool";
 import type { WebAgentUIToolPart } from "@/app/types";
 import { DEFAULT_WORKING_DIRECTORY } from "@/lib/sandbox/config";
 import { ToolLayout } from "../tool-call/tool-layout";
+import { AskUserQuestionRenderer } from "../tool-call/renderers/ask-user-question-renderer";
 import { BashRenderer } from "../tool-call/renderers/bash-renderer";
-import { ReadRenderer } from "../tool-call/renderers/read-renderer";
-import { WriteRenderer } from "../tool-call/renderers/write-renderer";
+import { BrandToolRenderer } from "../tool-call/renderers/brand-tool-renderer";
 import { EditRenderer } from "../tool-call/renderers/edit-renderer";
+import { FetchRenderer } from "../tool-call/renderers/fetch-renderer";
 import { GlobRenderer } from "../tool-call/renderers/glob-renderer";
 import { GrepRenderer } from "../tool-call/renderers/grep-renderer";
-import { TodoRenderer } from "../tool-call/renderers/todo-renderer";
-import { AskUserQuestionRenderer } from "../tool-call/renderers/ask-user-question-renderer";
-import { FetchRenderer } from "../tool-call/renderers/fetch-renderer";
+import {
+  isMcpOrBridgeTool,
+  McpRenderer,
+} from "../tool-call/renderers/mcp-renderer";
+import { ReadRenderer } from "../tool-call/renderers/read-renderer";
+import { SearchRenderer } from "../tool-call/renderers/search-renderer";
 import { SkillRenderer } from "../tool-call/renderers/skill-renderer";
+import { TeamBoardRenderer } from "../tool-call/renderers/team-board-renderer";
+import { TodoRenderer } from "../tool-call/renderers/todo-renderer";
+import { WriteRenderer } from "../tool-call/renderers/write-renderer";
 
 const TOOL_ICON_CLASS = "h-3.5 w-3.5";
 
-function getToolMeta(toolName: string): {
+export function getSubagentRoleTag(subagentType: string | undefined): string {
+  switch (subagentType) {
+    case "architect":
+    case "executor":
+    case "design":
+    case "explorer":
+    case "reviewer":
+      return subagentType;
+    default:
+      return subagentType ? subagentType.toLowerCase() : "subagent";
+  }
+}
+
+export function getSubagentToolMeta(toolName: string): {
   displayName: string;
   icon?: ReactNode;
 } {
   switch (toolName) {
     case "bash":
       return {
-        displayName: "Bash",
-        icon: <Terminal className={TOOL_ICON_CLASS} />,
+        displayName: "bash",
+        icon: <Terminal className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
       };
     case "read":
       return {
-        displayName: "Read",
-        icon: <FileText className={TOOL_ICON_CLASS} />,
+        displayName: "read",
+        icon: <FileText className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
       };
     case "write":
       return {
-        displayName: "Create",
-        icon: <FilePlus className={TOOL_ICON_CLASS} />,
+        displayName: "write",
+        icon: <FilePlus className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
       };
     case "edit":
       return {
-        displayName: "Update",
-        icon: <Pencil className={TOOL_ICON_CLASS} />,
+        displayName: "edit",
+        icon: <Pencil className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
       };
     case "grep":
       return {
-        displayName: "Grep",
-        icon: <Search className={TOOL_ICON_CLASS} />,
+        displayName: "grep",
+        icon: <Search className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
       };
     case "glob":
       return {
-        displayName: "Glob",
-        icon: <FolderSearch className={TOOL_ICON_CLASS} />,
+        displayName: "glob",
+        icon: <FolderSearch className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
       };
     case "web_fetch":
       return {
-        displayName: "Fetch",
-        icon: <Globe className={TOOL_ICON_CLASS} />,
+        displayName: "fetch",
+        icon: <Globe className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
+      };
+    case "web_search":
+      return {
+        displayName: "search",
+        icon: <Search className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
       };
     case "skill":
       return {
-        displayName: "Skill",
-        icon: <Zap className={TOOL_ICON_CLASS} />,
+        displayName: "skill",
+        icon: <Terminal className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
+      };
+    case "team_board":
+      return {
+        displayName: "team_board",
+        icon: <Share2 className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
       };
     case "task":
       return {
-        displayName: "Task",
-        icon: <Telescope className={TOOL_ICON_CLASS} />,
+        displayName: "task",
+        icon: <Telescope className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
       };
-    default: {
-      const name = toolName.charAt(0).toUpperCase() + toolName.slice(1);
-      return { displayName: name };
-    }
+    default:
+      return { displayName: toolName };
   }
 }
 
-function getToolSummary(name: string, input: unknown): string {
+export function getSubagentToolSummary(name: string, input: unknown): string {
   const inp = input as Record<string, unknown> | undefined;
   if (!inp) return "";
   switch (name) {
@@ -104,13 +132,19 @@ function getToolSummary(name: string, input: unknown): string {
       return inp.pattern ? `'${inp.pattern}'` : "";
     case "bash":
       return inp.command ? String(inp.command) : "";
+    case "web_fetch":
+      return inp.url ? String(inp.url) : "";
+    case "web_search":
+      return inp.query ? String(inp.query) : "";
+    case "team_board":
+      return inp.action ? String(inp.action) : "";
     default:
       return "";
   }
 }
 
-const IDLE_STATE: ToolRenderState = {
-  running: false,
+const LIVE_STEP_STATE: ToolRenderState = {
+  running: true,
   interrupted: false,
   denied: false,
   approvalRequested: false,
@@ -140,16 +174,26 @@ export function SubagentToolItem({ part }: { part: WebAgentUIToolPart }) {
       return <AskUserQuestionRenderer part={part} state={state} />;
     case "tool-web_fetch":
       return <FetchRenderer part={part} state={state} />;
+    case "tool-web_search":
+      return <SearchRenderer part={part} state={state} />;
     case "tool-skill":
       return <SkillRenderer part={part} state={state} />;
+    case "tool-team_board":
+      return <TeamBoardRenderer part={part} state={state} />;
+    case "tool-github_cli":
+    case "tool-vercel_cli":
+    case "tool-vercel_api":
+      return <BrandToolRenderer part={part} state={state} />;
     default: {
       const toolName = getToolName(part);
-      const name = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+      if (isMcpOrBridgeTool(toolName)) {
+        return <McpRenderer part={part} state={state} toolName={toolName} />;
+      }
       const input = part.input as Record<string, unknown> | undefined;
-      const summary = input ? JSON.stringify(input).slice(0, 40) : "...";
+      const summary = input ? JSON.stringify(input).slice(0, 48) : "...";
       return (
         <ToolLayout
-          name={name}
+          name={toolName}
           summary={summary}
           summaryClassName="font-mono"
           meta={part.state === "output-available" ? "Done" : undefined}
@@ -165,8 +209,8 @@ export function PendingSubagentToolItem({
 }: {
   pending: TaskPendingToolCall;
 }) {
-  const meta = getToolMeta(pending.name);
-  const summary = getToolSummary(pending.name, pending.input);
+  const meta = getSubagentToolMeta(pending.name);
+  const summary = getSubagentToolSummary(pending.name, pending.input);
 
   return (
     <ToolLayout
@@ -174,7 +218,7 @@ export function PendingSubagentToolItem({
       icon={meta.icon}
       summary={summary}
       summaryClassName="font-mono"
-      state={IDLE_STATE}
+      state={LIVE_STEP_STATE}
     />
   );
 }

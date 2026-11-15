@@ -1,304 +1,34 @@
 "use client";
 
 import type { TaskPendingToolCall } from "@entry-agents/agent";
-import { formatTokens, toRelativePath } from "@entry-agents/shared";
-import type { ToolRenderState } from "@entry-agents/shared/lib/tool-state";
-import { extractCachedInputTokens } from "@/lib/chat/usage-extract";
+import { formatTokens } from "@entry-agents/shared";
 import {
   AlertCircle,
   ArrowUpRight,
-  Bot,
   Check,
   ChevronRight,
-  FilePlus,
-  FileText,
-  FolderSearch,
-  Globe,
-  Hammer,
-  Layers,
-  Paintbrush,
-  Pencil,
-  Search,
-  Share2,
-  ShieldCheck,
-  Telescope,
-  Terminal,
-  Zap,
+  XCircle,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
-import {
-  extractRenderState,
-  getToolName,
-  type ToolRendererProps,
-} from "@/app/lib/render-tool";
+import { useState } from "react";
+import type { ToolRendererProps } from "@/app/lib/render-tool";
 import { useOptionalGitPanel } from "@/app/sessions/[sessionId]/chats/[chatId]/git-panel-context";
-import type { WebAgentUIToolPart } from "@/app/types";
+import { SubagentIcon } from "@/components/agent-hub/agent-status";
+import { useNow } from "@/components/agent-hub/use-now";
+import {
+  getSubagentRoleTag,
+  getSubagentToolSummary,
+  PendingSubagentToolItem,
+  SubagentToolItem,
+} from "@/components/subagent-chat/subagent-tool-item";
 import { Button } from "@/components/ui/button";
-import { DEFAULT_WORKING_DIRECTORY } from "@/lib/sandbox/config";
+import {
+  extractConciseTaskSummary,
+  extractSubagentToolParts,
+  formatSubagentElapsed,
+  formatSubagentModelTag,
+} from "@/lib/agent-hub/subagent-tab-data";
+import { extractCachedInputTokens } from "@/lib/chat/usage-extract";
 import { cn } from "@/lib/utils";
-import { ToolLayout } from "../tool-layout";
-import { AskUserQuestionRenderer } from "./ask-user-question-renderer";
-import { BashRenderer } from "./bash-renderer";
-import { EditRenderer } from "./edit-renderer";
-import { FetchRenderer } from "./fetch-renderer";
-import { GlobRenderer } from "./glob-renderer";
-import { GrepRenderer } from "./grep-renderer";
-import { ReadRenderer } from "./read-renderer";
-import { SkillRenderer } from "./skill-renderer";
-import { TeamBoardRenderer } from "./team-board-renderer";
-import { TodoRenderer } from "./todo-renderer";
-import { WriteRenderer } from "./write-renderer";
-
-// ---------------------------------------------------------------------------
-// Tool name → icon / display name mapping
-// ---------------------------------------------------------------------------
-
-type ToolMeta = { displayName: string; icon: ReactNode };
-
-const TOOL_ICON_CLASS = "h-3.5 w-3.5";
-
-function getToolMeta(toolName: string): ToolMeta {
-  switch (toolName) {
-    case "bash":
-      return {
-        displayName: "bash",
-        icon: <Terminal className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
-      };
-    case "read":
-      return {
-        displayName: "read",
-        icon: <FileText className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
-      };
-    case "write":
-      return {
-        displayName: "write",
-        icon: <FilePlus className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
-      };
-    case "edit":
-      return {
-        displayName: "edit",
-        icon: <Pencil className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
-      };
-    case "grep":
-      return {
-        displayName: "grep",
-        icon: <Search className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
-      };
-    case "glob":
-      return {
-        displayName: "glob",
-        icon: <FolderSearch className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
-      };
-    case "web_fetch":
-      return {
-        displayName: "fetch",
-        icon: <Globe className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
-      };
-    case "skill":
-      return {
-        displayName: "skill",
-        icon: <Zap className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
-      };
-    case "team_board":
-      return {
-        displayName: "team_board",
-        icon: <Share2 className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
-      };
-    case "task":
-      return {
-        displayName: "task",
-        icon: <Telescope className={TOOL_ICON_CLASS} strokeWidth={1.5} />,
-      };
-    default: {
-      return { displayName: toolName, icon: undefined };
-    }
-  }
-}
-
-function getToolSummary(name: string, input: unknown): string {
-  const inp = input as Record<string, unknown> | undefined;
-  if (!inp) return "";
-  switch (name) {
-    case "read":
-    case "write":
-    case "edit": {
-      const fp = inp.filePath ?? "";
-      return fp ? toRelativePath(String(fp), DEFAULT_WORKING_DIRECTORY) : "";
-    }
-    case "grep":
-    case "glob":
-      return inp.pattern ? `'${inp.pattern}'` : "";
-    case "bash":
-      return inp.command ? String(inp.command) : "";
-    case "team_board":
-      return inp.action ? String(inp.action) : "";
-    default:
-      return "";
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Extract completed tool calls and concise summary from final messages
-// ---------------------------------------------------------------------------
-
-/** Unwrap AI SDK tool output envelope: { type: "json", value: { ... } } */
-function unwrapToolOutput(output: unknown): unknown {
-  if (!output || typeof output !== "object") return output;
-  const o = output as Record<string, unknown>;
-  if (o.type === "json" && o.value && typeof o.value === "object") {
-    return o.value;
-  }
-  return output;
-}
-
-function extractToolParts(
-  messages: unknown,
-  executedTools?: unknown,
-): WebAgentUIToolPart[] {
-  if (Array.isArray(messages) && messages.length > 0) {
-    type CallInfo = { id: string; name: string; input: unknown };
-    const calls: CallInfo[] = [];
-    for (const msg of messages) {
-      if (
-        typeof msg !== "object" ||
-        msg === null ||
-        (msg as { role?: string }).role !== "assistant"
-      )
-        continue;
-
-      const content = (msg as { content?: unknown }).content;
-      if (!Array.isArray(content)) continue;
-
-      for (const part of content) {
-        if (
-          typeof part === "object" &&
-          part !== null &&
-          (part as { type?: string }).type === "tool-call"
-        ) {
-          const tc = part as {
-            toolCallId?: string;
-            toolName?: string;
-            input?: unknown;
-          };
-          if (tc.toolName && tc.toolCallId) {
-            calls.push({
-              id: tc.toolCallId,
-              name: tc.toolName,
-              input: tc.input,
-            });
-          }
-        }
-      }
-    }
-
-    const resultMap = new Map<string, unknown>();
-    for (const msg of messages) {
-      if (
-        typeof msg !== "object" ||
-        msg === null ||
-        (msg as { role?: string }).role !== "tool"
-      )
-        continue;
-
-      const content = (msg as { content?: unknown }).content;
-      if (!Array.isArray(content)) continue;
-
-      for (const part of content) {
-        if (
-          typeof part === "object" &&
-          part !== null &&
-          (part as { type?: string }).type === "tool-result"
-        ) {
-          const tr = part as { toolCallId?: string; output?: unknown };
-          if (tr.toolCallId) {
-            resultMap.set(tr.toolCallId, tr.output);
-          }
-        }
-      }
-    }
-
-    if (calls.length > 0) {
-      return calls.map((call) => {
-        const rawOutput = resultMap.get(call.id);
-        const output = unwrapToolOutput(rawOutput);
-        return {
-          type: `tool-${call.name}`,
-          toolCallId: call.id,
-          state: "output-available",
-          input: call.input,
-          output,
-        } as unknown as WebAgentUIToolPart;
-      });
-    }
-  }
-
-  if (Array.isArray(executedTools) && executedTools.length > 0) {
-    return executedTools.map((raw, idx) => {
-      const item = (raw ?? {}) as Record<string, unknown>;
-      return {
-        type: `tool-${String(item.name ?? "tool")}`,
-        toolCallId: String(item.toolCallId ?? `exec-${idx}`),
-        state:
-          item.state === "running" ? "input-available" : "output-available",
-        input: item.input,
-        output: item.output,
-      } as unknown as WebAgentUIToolPart;
-    });
-  }
-
-  return [];
-}
-
-function extractConciseSummary(
-  messages: unknown,
-  streamedText: unknown,
-): string | null {
-  let rawText = "";
-  if (Array.isArray(messages)) {
-    for (const msg of messages) {
-      if (
-        typeof msg !== "object" ||
-        msg === null ||
-        (msg as { role?: string }).role !== "assistant"
-      )
-        continue;
-      const content = (msg as { content?: unknown }).content;
-      if (typeof content === "string") {
-        rawText = content;
-      } else if (Array.isArray(content)) {
-        for (const part of content) {
-          if (
-            typeof part === "object" &&
-            part !== null &&
-            (part as { type?: string }).type === "text" &&
-            typeof (part as { text?: unknown }).text === "string"
-          ) {
-            rawText = (part as { text: string }).text;
-          }
-        }
-      }
-    }
-  }
-  if (!rawText && typeof streamedText === "string") {
-    rawText = streamedText;
-  }
-  const trimmed = rawText.trim();
-  if (!trimmed) return null;
-
-  // Prefer explicit **Summary**: block if present
-  const summaryMatch = trimmed.match(
-    /\*\*Summary\*\*:?\s*([\s\S]*?)(?:\n\s*\*\*Answer\*\*|$)/i,
-  );
-  const candidate = (summaryMatch?.[1] ?? trimmed)
-    .replace(/^---+\s*/gm, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!candidate) return null;
-  return candidate.length > 220 ? `${candidate.slice(0, 217)}...` : candidate;
-}
 
 function countToolCalls(messages: unknown): number {
   if (!Array.isArray(messages)) return 0;
@@ -310,123 +40,19 @@ function countToolCalls(messages: unknown): number {
   ).length;
 }
 
-// ---------------------------------------------------------------------------
-// Subagent helpers
-// ---------------------------------------------------------------------------
-
-function getSubagentIcon(
-  subagentType: string | undefined,
-  className: string,
-): ReactNode {
-  switch (subagentType) {
-    case "architect":
-      return <Layers className={className} strokeWidth={1.5} />;
-    case "executor":
-      return <Hammer className={className} strokeWidth={1.5} />;
-    case "design":
-      return <Paintbrush className={className} strokeWidth={1.5} />;
-    case "explorer":
-      return <Telescope className={className} strokeWidth={1.5} />;
-    case "reviewer":
-      return <ShieldCheck className={className} strokeWidth={1.5} />;
-    default:
-      return <Bot className={className} strokeWidth={1.5} />;
-  }
-}
-
-function getSubagentRoleTag(subagentType: string | undefined): string {
-  switch (subagentType) {
-    case "architect":
-      return "architect";
-    case "executor":
-      return "executor";
-    case "design":
-      return "design";
-    case "explorer":
-      return "explorer";
-    case "reviewer":
-      return "reviewer";
-    default:
-      return subagentType ? subagentType.toLowerCase() : "subagent";
-  }
-}
-
-const IDLE_STATE: ToolRenderState = {
-  running: false,
-  interrupted: false,
-  denied: false,
-  approvalRequested: false,
-  isActiveApproval: false,
-};
-
-function SubagentToolCall({ part }: { part: WebAgentUIToolPart }) {
-  const state = extractRenderState(part, null, false);
-  const cwd = DEFAULT_WORKING_DIRECTORY;
-
-  switch (part.type) {
-    case "tool-bash":
-      return <BashRenderer part={part} state={state} />;
-    case "tool-read":
-      return <ReadRenderer part={part} state={state} cwd={cwd} />;
-    case "tool-write":
-      return <WriteRenderer part={part} state={state} cwd={cwd} />;
-    case "tool-edit":
-      return <EditRenderer part={part} state={state} cwd={cwd} />;
-    case "tool-glob":
-      return <GlobRenderer part={part} state={state} />;
-    case "tool-grep":
-      return <GrepRenderer part={part} state={state} />;
-    case "tool-todo_write":
-      return <TodoRenderer part={part} state={state} />;
-    case "tool-ask_user_question":
-      return <AskUserQuestionRenderer part={part} state={state} />;
-    case "tool-web_fetch":
-      return <FetchRenderer part={part} state={state} />;
-    case "tool-skill":
-      return <SkillRenderer part={part} state={state} />;
-    case "tool-team_board":
-      return <TeamBoardRenderer part={part} state={state} />;
-    default: {
-      const toolName = getToolName(part);
-      const name = toolName.charAt(0).toUpperCase() + toolName.slice(1);
-      const input = part.input as Record<string, unknown> | undefined;
-      const summary = input ? JSON.stringify(input).slice(0, 40) : "...";
-      return (
-        <ToolLayout
-          name={name}
-          summary={summary}
-          summaryClassName="font-mono"
-          meta={part.state === "output-available" ? "Done" : undefined}
-          state={state}
-        />
-      );
-    }
-  }
-}
-
-function PendingMiniToolCall({
-  name,
-  input,
-}: {
-  name: string;
-  input: unknown;
-}) {
-  const meta = getToolMeta(name);
-  const summary = getToolSummary(name, input);
-
-  return (
-    <ToolLayout
-      name={meta.displayName}
-      icon={meta.icon}
-      summary={summary}
-      summaryClassName="font-mono"
-      state={IDLE_STATE}
-    />
-  );
+function formatLatestStreamLine(streamedText: unknown): string | null {
+  if (typeof streamedText !== "string") return null;
+  const lines = streamedText
+    .split("\n")
+    .map((line) => line.replace(/^#+\s*/, "").trim())
+    .filter((line) => line.length > 0 && line !== "---");
+  if (lines.length === 0) return null;
+  const last = lines[lines.length - 1] ?? "";
+  return last.length > 96 ? `${last.slice(0, 93)}...` : last;
 }
 
 // ---------------------------------------------------------------------------
-// TaskRenderer — High-Signal Execution Trace Strip
+// TaskRenderer — Flush Hairline Execution Trace Strip
 // ---------------------------------------------------------------------------
 
 export function TaskRenderer({
@@ -451,7 +77,10 @@ export function TaskRenderer({
   const isRunning = state.running || isPreliminary;
 
   const pendingToolCall: TaskPendingToolCall | null = output?.pending ?? null;
-  const completedParts = extractToolParts(output?.final, output?.executedTools);
+  const completedParts = extractSubagentToolParts(
+    output?.final,
+    output?.executedTools,
+  );
   const toolCount =
     output?.toolCallCount ??
     (completedParts.length > 0
@@ -464,53 +93,83 @@ export function TaskRenderer({
       ? Math.min(100, Math.round((cachedTokens / inputTokens) * 100))
       : null;
 
-  const summaryPreview = extractConciseSummary(
+  const startedAt =
+    typeof output?.startedAt === "number" ? output.startedAt : null;
+  const completedAt =
+    typeof (output as { completedAt?: unknown } | undefined)?.completedAt ===
+    "number"
+      ? (output as { completedAt: number }).completedAt
+      : null;
+  const now = useNow(isRunning && startedAt !== null);
+  const elapsedLabel =
+    isRunning && startedAt !== null
+      ? formatSubagentElapsed(now - startedAt)
+      : completedAt !== null && startedAt !== null
+        ? formatSubagentElapsed(completedAt - startedAt)
+        : null;
+
+  const modelTag = formatSubagentModelTag(output?.modelId ?? null);
+  const summaryPreview = extractConciseTaskSummary(
     output?.final,
     output?.streamedText,
+    140,
   );
 
   const [stepsExpanded, setStepsExpanded] = useState(false);
   const gitPanel = useOptionalGitPanel();
 
-  const activeStepTicker =
-    isRunning && pendingToolCall
-      ? `${pendingToolCall.name} ${getToolSummary(pendingToolCall.name, pendingToolCall.input)}`.trim()
-      : null;
+  const liveActivityLine = isRunning
+    ? pendingToolCall
+      ? `${pendingToolCall.name} ${getSubagentToolSummary(pendingToolCall.name, pendingToolCall.input)}`.trim()
+      : formatLatestStreamLine(output?.streamedText)
+    : null;
 
-  const hasSteps = completedParts.length > 0 || Boolean(pendingToolCall);
+  const hasSteps =
+    completedParts.length > 0 || (Boolean(pendingToolCall) && !isComplete);
+
+  const openFullTrace = () => {
+    if (!gitPanel) return;
+    gitPanel.openSubagentTab(part.toolCallId, desc, subagentType);
+  };
 
   return (
     <div
       className={cn(
-        "my-1.5 rounded-lg border bg-card/40 transition-colors duration-150",
+        "my-1 min-w-0 border-l-2 py-0.5 pl-3 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
         isFailed
-          ? "border-destructive/35 bg-destructive/[0.03]"
+          ? "border-l-destructive/75"
           : isRunning
-            ? "border-border bg-muted/20"
-            : "border-border/70 hover:border-border",
+            ? "border-l-foreground/45"
+            : "border-l-border hover:border-l-foreground/35",
       )}
     >
-      {/* Primary Trace Row */}
-      <div className="flex min-w-0 items-center justify-between gap-2 px-3 py-2">
+      {/* Primary Single-Row Trace Header */}
+      <div className="flex min-w-0 items-center justify-between gap-2">
         <button
           type="button"
           onClick={() => {
             if (hasSteps) {
               setStepsExpanded((prev) => !prev);
-            } else if (gitPanel) {
-              gitPanel.openSubagentTab(part.toolCallId, desc, subagentType);
+            } else {
+              openFullTrace();
             }
           }}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none"
+          aria-expanded={hasSteps ? stepsExpanded : undefined}
+          className="-mx-1.5 flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/45 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         >
           {/* Status / Expand Indicator */}
           <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
             {hasSteps ? (
               <ChevronRight
                 className={cn(
-                  "h-3.5 w-3.5 transition-transform duration-150",
+                  "h-3.5 w-3.5 transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
                   stepsExpanded && "rotate-90 text-foreground",
                 )}
+                strokeWidth={1.5}
+              />
+            ) : taskDenied ? (
+              <XCircle
+                className="h-3.5 w-3.5 text-destructive"
                 strokeWidth={1.5}
               />
             ) : isFailed ? (
@@ -524,13 +183,16 @@ export function TaskRenderer({
                 strokeWidth={1.5}
               />
             ) : (
-              getSubagentIcon(subagentType, "h-3.5 w-3.5 text-foreground")
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             )}
           </span>
 
-          {/* Role Tag Pill */}
-          <span className="inline-flex shrink-0 items-center gap-1 rounded border border-border/80 bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground/90">
-            {getSubagentIcon(subagentType, "h-3 w-3 text-muted-foreground")}
+          {/* Role Token (unboxed inline monospace) */}
+          <span className="inline-flex shrink-0 items-center gap-1 font-mono text-xs font-medium text-foreground/85">
+            <SubagentIcon
+              type={subagentType ?? "agent"}
+              className="h-3.5 w-3.5 text-muted-foreground"
+            />
             <span>@{roleTag}</span>
           </span>
 
@@ -545,73 +207,76 @@ export function TaskRenderer({
           </span>
         </button>
 
-        {/* Right Telemetry + Inspect Drawer Trigger */}
+        {/* Tabular Telemetry + Direct Trace Link */}
         <div className="flex shrink-0 items-center gap-2">
-          {/* Live tool ticker on desktop */}
-          {activeStepTicker && (
-            <span className="hidden max-w-[200px] truncate rounded bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground md:inline-block">
-              {activeStepTicker}
-            </span>
-          )}
-
-          {/* Tabular metrics */}
           <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+            {elapsedLabel && <span>{elapsedLabel}</span>}
             {toolCount > 0 && (
               <span>
+                {elapsedLabel ? "· " : ""}
                 {toolCount} {toolCount === 1 ? "step" : "steps"}
               </span>
             )}
             {inputTokens !== null && (
               <span className="hidden sm:inline">
-                {toolCount > 0 ? "· " : ""}
-                {formatTokens(inputTokens)} tok
+                · {formatTokens(inputTokens)} tok
               </span>
             )}
             {cacheHitPct !== null && (
               <span
-                className="hidden rounded border border-border/70 bg-muted/50 px-1 py-0.2 text-[10px] text-foreground/80 md:inline-block"
+                className="hidden text-muted-foreground/80 md:inline"
                 title={`${formatTokens(cachedTokens)} cached input tokens`}
               >
-                {cacheHitPct}% cached
+                · {cacheHitPct}% cached
+              </span>
+            )}
+            {modelTag && (
+              <span
+                className="hidden max-w-[120px] truncate text-muted-foreground/70 lg:inline"
+                title={output?.modelId ?? undefined}
+              >
+                · {modelTag}
               </span>
             )}
           </div>
 
-          {/* Open Subagent Trace Drawer button */}
           {gitPanel && (
             <button
               type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                gitPanel.openSubagentTab(part.toolCallId, desc, subagentType);
-              }}
-              className="inline-flex h-6 shrink-0 items-center gap-1 rounded border border-border/80 bg-background/80 px-2 text-[11px] font-medium text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-muted hover:text-foreground"
-              title="Inspect full subagent execution trace"
+              onClick={openFullTrace}
+              aria-label={`Open full trace for ${desc}`}
+              className="inline-flex h-6 shrink-0 items-center gap-1 rounded px-1.5 text-[11px] font-medium text-muted-foreground transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground active:scale-[0.97]"
             >
-              <span>Inspect</span>
+              <span>Open</span>
               <ArrowUpRight className="h-3 w-3" strokeWidth={1.5} />
             </button>
           )}
         </div>
       </div>
 
-      {/* Mobile Live Step Ticker */}
-      {activeStepTicker && (
-        <div className="border-t border-border/50 px-3 py-1.5 font-mono text-[11px] text-muted-foreground md:hidden">
-          <span className="truncate block">{activeStepTicker}</span>
+      {/* Live Single-Line Ticker (while running and collapsed) */}
+      {liveActivityLine && !stepsExpanded && (
+        <div className="flex min-w-0 items-center gap-1.5 py-0.5 pl-6 font-mono text-[11px] text-muted-foreground">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
+          <span className="truncate">{liveActivityLine}</span>
         </div>
       )}
 
-      {/* Concise Deliverable Preview (2 lines max, no need to open drawer just to read conclusion) */}
-      {summaryPreview && !stepsExpanded && (
-        <div className="border-t border-border/50 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-          <p className="line-clamp-2">{summaryPreview}</p>
-        </div>
+      {/* Concise Outcome Line (when complete/failed and collapsed) */}
+      {!isRunning && summaryPreview && !stepsExpanded && (
+        <p
+          className={cn(
+            "truncate py-0.5 pl-6 text-xs",
+            isFailed ? "text-destructive/90" : "text-muted-foreground",
+          )}
+        >
+          {summaryPreview}
+        </p>
       )}
 
-      {/* Approval Bar if requested */}
+      {/* Inline Approval Controls */}
       {taskApprovalRequested && state.approvalId && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 bg-muted/30 px-3 py-2 text-xs">
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/70 bg-muted/25 px-2.5 py-1.5 text-xs">
           <span className="text-muted-foreground">
             {subagentType === "executor"
               ? "Executor subagent requests write and shell access"
@@ -623,7 +288,7 @@ export function TaskRenderer({
                 variant="outline"
                 size="sm"
                 onClick={() => state.approvalId && onDeny(state.approvalId)}
-                className="h-6 px-2 text-xs"
+                className="h-6 px-2 text-xs active:scale-[0.97]"
               >
                 Deny
               </Button>
@@ -632,7 +297,7 @@ export function TaskRenderer({
               <Button
                 size="sm"
                 onClick={() => state.approvalId && onApprove(state.approvalId)}
-                className="h-6 px-2.5 text-xs"
+                className="h-6 px-2.5 text-xs active:scale-[0.97]"
               >
                 Approve
               </Button>
@@ -641,17 +306,26 @@ export function TaskRenderer({
         </div>
       )}
 
-      {/* Collapsible Inline Tool Steps */}
+      {/* Expanded Step Ledger */}
       {stepsExpanded && hasSteps && (
-        <div className="space-y-0.5 border-t border-border/60 bg-background/40 px-3 py-2">
-          {completedParts.map((toolPart) => (
-            <SubagentToolCall key={toolPart.toolCallId} part={toolPart} />
-          ))}
-          {pendingToolCall && !isComplete && (
-            <PendingMiniToolCall
-              name={pendingToolCall.name}
-              input={pendingToolCall.input}
-            />
+        <div className="mt-1.5 space-y-0.5 border-l border-border/50 pl-2">
+          <div className="max-h-72 space-y-0.5 overflow-y-auto">
+            {completedParts.map((toolPart) => (
+              <SubagentToolItem key={toolPart.toolCallId} part={toolPart} />
+            ))}
+            {pendingToolCall && !isComplete && (
+              <PendingSubagentToolItem pending={pendingToolCall} />
+            )}
+          </div>
+          {gitPanel && (
+            <button
+              type="button"
+              onClick={openFullTrace}
+              className="mt-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors duration-150 hover:bg-muted/50 hover:text-foreground"
+            >
+              <span>Inspect full trace</span>
+              <ArrowUpRight className="h-3 w-3" strokeWidth={1.5} />
+            </button>
           )}
         </div>
       )}
