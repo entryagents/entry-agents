@@ -118,12 +118,16 @@ describe("AbortableChatTransport durability", () => {
     });
 
     let reconnectNotified = false;
+    let completedSnapshotNotified = false;
     const transport = new AbortableChatTransport<UIMessage>({
       api: "/api/chat",
       fetch: mockFetch,
       body: { sessionId: "sess_1", chatId: "chat_2" },
       onReconnectNeeded: () => {
         reconnectNotified = true;
+      },
+      onCompletedSnapshotNeeded: () => {
+        completedSnapshotNotified = true;
       },
     });
 
@@ -140,7 +144,8 @@ describe("AbortableChatTransport durability", () => {
     });
 
     const chunks = await readAllChunks(stream);
-    expect(reconnectNotified).toBe(true);
+    expect(reconnectNotified).toBe(false);
+    expect(completedSnapshotNotified).toBe(true);
     expect(chunks.some((c) => c.type === "finish")).toBe(true);
   });
 

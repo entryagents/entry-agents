@@ -215,16 +215,6 @@ export function useStreamRecovery({
       // Reset throttle and error auto-retry latch so online recovery runs immediately.
       lastStreamRecoveryAtRef.current = 0;
       hasAutoRetriedCurrentErrorRef.current = false;
-      // When `isChatInFlight` is true, `AbortableChatTransport` is already
-      // waiting on the `online` event inside `waitForRetryOrOnline` to resume
-      // from `chunkIndex` without tearing down the active stream. Only call
-      // `retryChatStream` directly if the stream already exited (`!isChatInFlight`).
-      if (!isChatInFlight) {
-        retryChatStream({
-          auto: true,
-          strategy: "soft",
-        });
-      }
       maybeRecoverStreamOnVisibility();
     };
 

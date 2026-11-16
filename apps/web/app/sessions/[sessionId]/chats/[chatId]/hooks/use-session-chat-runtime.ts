@@ -17,6 +17,7 @@ import type {
 import { AbortableChatTransport } from "@/lib/abortable-chat-transport";
 import { triggerBillingSync } from "@/components/sidebar-billing-widget";
 import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
+import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import {
   abortChatInstanceTransport,
   getOrCreateChatInstance,
@@ -152,6 +153,9 @@ export function useSessionChatRuntime({
           forceReconcileOnFinishRef.current = true;
           setIsReconnecting(true);
         },
+        onCompletedSnapshotNeeded: () => {
+          forceReconcileOnFinishRef.current = true;
+        },
         // Always start from chunk 0 so the stream's `start` (messageId) and
         // `*-start` chunks are received on every reload and secondary device,
         // preventing @workflow/ai's orphanFilter from dropping live deltas.
@@ -181,8 +185,14 @@ export function useSessionChatRuntime({
           triggerBillingSync();
           const shouldReconcileAfterDrop = forceReconcileOnFinishRef.current;
           forceReconcileOnFinishRef.current = false;
-          const lastMsg =
-            chatInstance.messages[chatInstance.messages.length - 1];
+          const dedupedLocal = dedupeMessageList(chatInstance.messages);
+          if (
+            dedupedLocal.length !== chatInstance.messages.length ||
+            dedupedLocal.some((m, i) => m !== chatInstance.messages[i])
+          ) {
+            chat.setMessages(dedupedLocal);
+          }
+          const lastMsg = dedupedLocal[dedupedLocal.length - 1];
           const hasRenderableReply =
             lastMsg?.role === "assistant" &&
             lastMsg.parts.some(
@@ -299,15 +309,118 @@ export function useSessionChatRuntime({
       if (retryInFlightRef.current && strategy === "soft") {
         return;
       }
-      // Manual retry or forced reconnect — reset the flag and supersede any
-      // previous hung resumeStream() via generation counter.
       userStoppedRef.current = false;
       retryInFlightRef.current = true;
       const retryGeneration = ++retryGenerationRef.current;
-      setIsReconnecting(true);
 
       void (async () => {
         try {
+          if (strategy === "hard") {
+            // Manual retry: clear the error IMMEDIATELY for snappy feedback.
+            chat.clearError();
+          }
+
+          // Check authoritative server state FIRST before assuming a live
+          // stream exists. If the workflow already completed while the client
+          // was offline/away, reconcile silently without flashing
+          // "Reconnecting to live stream".
+          let serverKnownStreaming: boolean | null = null;
+          let serverSnapshotData: {
+            status?: string;
+            messages?: WebAgentUIMessage[];
+            isStreaming?: boolean;
+          } | null = null;
+
+          try {
+            const probeRes = await fetch(
+              `/api/sessions/${sessionId}/chats/${chatId}`,
+              { cache: "no-store" },
+            );
+            if (probeRes.ok) {
+              serverSnapshotData = (await probeRes.json()) as {
+                status?: string;
+                messages?: WebAgentUIMessage[];
+                isStreaming?: boolean;
+              };
+              serverKnownStreaming = Boolean(serverSnapshotData?.isStreaming);
+            }
+          } catch {
+            // Network probe failed; fall through to resumeStream() attempt.
+          }
+
+          if (retryGenerationRef.current !== retryGeneration) {
+            return;
+          }
+
+          if (serverKnownStreaming === false && serverSnapshotData) {
+            if (
+              chatInstance.status === "streaming" ||
+              chatInstance.status === "submitted"
+            ) {
+              try {
+                await chatInstance.stop();
+              } catch {
+                // Ignore stop failure
+              }
+              abortChatInstanceTransport(chatId);
+            }
+
+            const mergedMessages = serverSnapshotData.messages
+              ? mergePreservingLocalWork(
+                  serverSnapshotData.messages,
+                  chatInstance.messages,
+                )
+              : chatInstance.messages;
+            if (serverSnapshotData.messages) {
+              chat.setMessages(mergedMessages);
+            }
+            clearChatWorkspaceStatus(chatId);
+            triggerBillingSync();
+
+            const lastMerged = mergedMessages[mergedMessages.length - 1];
+            const lastIsCompletedNonErrorAssistant =
+              lastMerged?.role === "assistant" &&
+              lastMerged.parts.some(
+                (part) =>
+                  (part.type === "text" &&
+                    part.text.trim().length > 0 &&
+                    !isFriendlyChatErrorText(part.text)) ||
+                  part.type.startsWith("tool-") ||
+                  part.type === "reasoning",
+              );
+
+            if (
+              serverSnapshotData.status === "completed" ||
+              (serverSnapshotData.status !== "failed" &&
+                serverSnapshotData.status !== "cancelled" &&
+                lastIsCompletedNonErrorAssistant)
+            ) {
+              chat.clearError();
+              return;
+            }
+
+            if (userStoppedRef.current) {
+              return;
+            }
+
+            const retryAction = getDeadTurnRetryAction(
+              mergedMessages,
+              strategy === "hard" ? "hard" : "soft",
+            );
+            if (retryAction === "continue") {
+              await chat.sendMessage({
+                text: CONTINUE_AFTER_ERROR_PROMPT,
+              });
+            } else if (retryAction === "regenerate") {
+              await chat.regenerate();
+            }
+            return;
+          }
+
+          // Server confirmed an active stream (or probe failed and we are
+          // attempting recovery). Now show the reconnecting indicator.
+          setIsReconnecting(true);
+
           if (strategy === "hard" || strategy === "reconnect") {
             // Tear down any stale/hung local fetch before reconnecting.
             try {
@@ -316,38 +429,21 @@ export function useSessionChatRuntime({
               // Ignore stale local stop failures and still attempt reconnect.
             }
             abortChatInstanceTransport(chatId);
-            if (strategy === "hard") {
-              // Manual retry: clear the error IMMEDIATELY for snappy
-              // feedback while the resume round-trip is in flight.
-              chat.clearError();
-            }
           }
-          // Auto ("soft") recovery deliberately does NOT clear the error
-          // up front. The SDK clears it by itself the moment a stream
-          // actually attaches (makeRequest sets status submitted with
-          // error: undefined -- verified in the AI SDK source), and
-          // leaves it untouched when the turn is dead -- so a background
-          // recovery that can't do anything keeps the error banner
-          // visible for the user instead of silently wiping it (the old
-          // behavior cleared it unconditionally, which could make a
-          // failed turn look silently finished).
 
-          // Snapshot before resuming so we can tell whether resumeStream()
-          // actually attached to anything.
+          if (serverSnapshotData?.messages) {
+            chat.setMessages(
+              mergePreservingLocalWork(
+                serverSnapshotData.messages,
+                chatInstance.messages,
+              ),
+            );
+          }
+
           const messagesBeforeResume = chatInstance.messages;
           const lastMessageIdBeforeResume =
             messagesBeforeResume[messagesBeforeResume.length - 1]?.id;
 
-          // If the server-side stream is still running, reconnect to it.
-          // GET /api/chat/:id/stream returns 204 (a cheap no-op) when the
-          // workflow already finished -- including the case where it
-          // finished by ERRORING OUT server-side (e.g. a provider/model
-          // failure). In that case there is nothing left to "resume": the
-          // turn is dead and resumeStream() will keep 204'ing forever,
-          // which is exactly what made the manual Retry button look like
-          // it does nothing no matter how many times it's clicked (2026-08-19,
-          // confirmed live via repeated 204s on /api/chat/:id/stream in
-          // Vercel runtime logs during a real failed turn).
           await chat.resumeStream();
 
           const messagesAfterResume = chatInstance.messages;
@@ -359,17 +455,12 @@ export function useSessionChatRuntime({
             chatInstance.status !== "streaming" &&
             chatInstance.status !== "submitted";
 
-          // Also reconcile with the server snapshot when `resumeStream()` was a
-          // no-op because `chatInstance.status` was still `"streaming"` or
-          // `"submitted"` (e.g. AbortableChatTransport was still inside its
-          // offline retry loop when the turn already completed on the server).
           const shouldReconcileSnapshot =
             resumeAttachedToNothing ||
             chatInstance.status === "streaming" ||
             chatInstance.status === "submitted";
 
           if (shouldReconcileSnapshot) {
-            // Reconcile with latest server snapshot if turn completed while client was away
             try {
               const res = await fetch(
                 `/api/sessions/${sessionId}/chats/${chatId}`,
@@ -386,9 +477,6 @@ export function useSessionChatRuntime({
                 isStreaming?: boolean;
               };
               if (!data?.isStreaming) {
-                // Server confirms no workflow run is active. If the local
-                // transport is still looping, tear it down cleanly and hydrate
-                // the authoritative persisted messages from DB.
                 if (
                   chatInstance.status === "streaming" ||
                   chatInstance.status === "submitted"
@@ -430,8 +518,6 @@ export function useSessionChatRuntime({
                     data?.status !== "cancelled" &&
                     lastIsCompletedNonErrorAssistant)
                 ) {
-                  // Turn succeeded while client was offline/disconnected; clear
-                  // any stale client-side network error card immediately.
                   chat.clearError();
                   return;
                 }
@@ -462,24 +548,16 @@ export function useSessionChatRuntime({
                     ),
                   );
                 }
-                // Server is actively streaming (e.g. turn started on another
-                // device or reconnected after network loss) -- reset local
-                // transport and attach to the live stream.
                 chat.clearError();
                 abortChatInstanceTransport(chatId);
                 await chat.resumeStream();
                 return;
               }
             } catch {
-              // Network failure during hydration attempt — do not treat as dead server turn
               return;
             }
 
-            if (!resumeAttachedToNothing) {
-              return;
-            }
-
-            if (userStoppedRef.current) {
+            if (!resumeAttachedToNothing || userStoppedRef.current) {
               return;
             }
 
@@ -496,12 +574,6 @@ export function useSessionChatRuntime({
             }
           }
         } catch (error) {
-          // resumeStream() throws on transport-level failures (network
-          // down, non-2xx probe response). Never let that escape as an
-          // unhandled rejection from this fire-and-forget IIFE -- log it
-          // and leave the chat's error state visible; the user can tap
-          // Retry (or auto recovery re-fires on the next
-          // visibility/online event).
           console.error("[chat-runtime] retryChatStream failed", {
             chatId,
             strategy,
