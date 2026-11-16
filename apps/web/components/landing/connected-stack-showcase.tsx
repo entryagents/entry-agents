@@ -140,38 +140,6 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
   },
 ];
 
-const PLAN_ECONOMICS = [
-  {
-    name: "Plus",
-    price: "$5/mo",
-    credit: "$10 credit",
-    ratio: "2.0x",
-    note: "Daily fixes and side projects",
-  },
-  {
-    name: "Goat",
-    price: "$13/mo",
-    credit: "$50 credit",
-    ratio: "3.8x",
-    note: "Rolling windows ($10/5h · $25/7d · $50/30d)",
-    featured: true,
-  },
-  {
-    name: "Pro",
-    price: "$20/mo",
-    credit: "$100 credit",
-    ratio: "5.0x",
-    note: "Sustained multi-repo builds",
-  },
-  {
-    name: "Max",
-    price: "$40/mo",
-    credit: "$180 credit",
-    ratio: "4.5x",
-    note: "High-volume team wave runs",
-  },
-] as const;
-
 export function ConnectedStackShowcase() {
   const [selectedSlug, setSelectedSlug] = useState<string>("gmail");
   const activeItem =

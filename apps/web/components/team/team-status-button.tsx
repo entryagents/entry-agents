@@ -121,6 +121,7 @@ export function TeamStatusButton({
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <SheetContent
           side="right"
+          showCloseButton={false}
           className="flex w-full max-w-sm flex-col p-0 sm:max-w-md"
         >
           <SheetHeader className="sr-only">
