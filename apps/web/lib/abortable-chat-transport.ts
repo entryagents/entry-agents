@@ -524,50 +524,29 @@ export class AbortableChatTransport<
       }
 
       const reader = stream.getReader();
-      let first: Awaited<ReturnType<typeof reader.read>>;
-      try {
-        first = await reader.read();
-      } catch (readError) {
-        try {
-          reader.releaseLock();
-        } catch {
-          // Lock already released
-        }
-        if (
-          readError instanceof Error &&
-          readError.message.startsWith("Failed to fetch chat: 204")
-        ) {
-          return null;
-        }
-        throw readError;
-      }
-
-      if (first.done) {
-        try {
-          reader.releaseLock();
-        } catch {
-          // Lock already released
-        }
-        return null;
-      }
-
       const state = this._state;
-      state.lastChunkAt = Date.now();
 
       return new ReadableStream({
-        start(controller) {
-          controller.enqueue(first.value);
-        },
         async pull(controller) {
           try {
             const next = await reader.read();
             if (next.done) {
+              try {
+                reader.releaseLock();
+              } catch {
+                // Lock already released
+              }
               controller.close();
             } else {
               state.lastChunkAt = Date.now();
               controller.enqueue(next.value);
             }
           } catch (err) {
+            try {
+              reader.releaseLock();
+            } catch {
+              // Lock already released
+            }
             if (
               err instanceof Error &&
               err.message.startsWith("Failed to fetch chat: 204")
@@ -575,11 +554,16 @@ export class AbortableChatTransport<
               controller.close();
               return;
             }
-            throw err;
+            controller.error(err);
           }
         },
         async cancel(reason) {
-          await reader.cancel(reason);
+          await reader.cancel(reason).catch(() => {});
+          try {
+            reader.releaseLock();
+          } catch {
+            // Lock already released
+          }
         },
       });
     } catch (error) {

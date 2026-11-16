@@ -54,14 +54,19 @@ async function openReadableStreamResponse(
     const readable = getRun(runId).getReadable<WebAgentUIMessageChunk>({
       startIndex,
     });
-    const tailIndex = await readable.getTailIndex();
+    const tailIndex =
+      typeof startIndex === "number" && startIndex < 0
+        ? await readable.getTailIndex()
+        : undefined;
     const stream = createCancelableReadableStream(readable);
 
     return createUIMessageStreamResponse({
       stream,
       headers: {
         "x-workflow-run-id": runId,
-        "x-workflow-stream-tail-index": String(tailIndex),
+        ...(tailIndex !== undefined
+          ? { "x-workflow-stream-tail-index": String(tailIndex) }
+          : {}),
       },
     });
   } catch (error) {

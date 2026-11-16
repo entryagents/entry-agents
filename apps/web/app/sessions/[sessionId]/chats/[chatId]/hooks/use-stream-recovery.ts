@@ -157,12 +157,14 @@ export function useStreamRecovery({
 
         // Watchdog: if the server reports an active stream and this client believes
         // it is in flight, but the open SSE socket has delivered zero bytes for
-        // >45s (half-open mobile/proxy socket), tear down the hung fetch & reconnect.
+        // too long (half-open mobile/proxy socket), tear down the hung fetch & reconnect.
+        // When the user just returned to the tab (visibility/focus/online), use a
+        // short 5s threshold so a socket killed while backgrounded recovers immediately.
+        const staleThresholdMs = opts?.isVisibilityRecovery
+          ? 5_000
+          : HUNG_STREAM_THRESHOLD_MS;
         const lastChunkAt = getLastChunkReceivedAt?.() ?? 0;
-        if (
-          lastChunkAt > 0 &&
-          Date.now() - lastChunkAt > HUNG_STREAM_THRESHOLD_MS
-        ) {
+        if (lastChunkAt > 0 && Date.now() - lastChunkAt > staleThresholdMs) {
           retryChatStream({ auto: true, strategy: "reconnect" });
         }
       } catch {

@@ -172,4 +172,60 @@ describe("AbortableChatTransport durability", () => {
     expect(streamAttempts).toBe(2);
     expect(chunks.some((c) => c.type === "finish")).toBe(true);
   });
+
+  test("reconnectToStream returns ReadableStream immediately without blocking on slow first chunk", async () => {
+    let releaseFirstChunk!: () => void;
+    const firstChunkGate = new Promise<void>((resolve) => {
+      releaseFirstChunk = resolve;
+    });
+
+    const mockFetch = asFetch(async () => {
+      const slowBody = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          await firstChunkGate;
+          const encoder = new TextEncoder();
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ type: "start", messageId: "msg_slow" })}\n\ndata: ${JSON.stringify({ type: "finish" })}\n\n`,
+            ),
+          );
+          controller.close();
+        },
+      });
+      return new Response(slowBody, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "x-workflow-run-id": "run_slow",
+        },
+      });
+    });
+
+    const transport = new AbortableChatTransport<UIMessage>({
+      api: "/api/chat",
+      fetch: mockFetch,
+    });
+
+    // Must resolve before releaseFirstChunk() is called.
+    const stream = await transport.reconnectToStream({ chatId: "chat_slow" });
+    expect(stream).not.toBeNull();
+
+    releaseFirstChunk();
+    const chunks = await readAllChunks(stream!);
+    expect(chunks.some((c) => c.type === "finish")).toBe(true);
+  });
+
+  test("reconnectToStream closes cleanly when server returns 204", async () => {
+    const mockFetch = asFetch(async () => new Response(null, { status: 204 }));
+    const transport = new AbortableChatTransport<UIMessage>({
+      api: "/api/chat",
+      fetch: mockFetch,
+    });
+
+    const stream = await transport.reconnectToStream({ chatId: "chat_204" });
+    if (stream !== null) {
+      const chunks = await readAllChunks(stream);
+      expect(chunks).toEqual([]);
+    }
+  });
 });
