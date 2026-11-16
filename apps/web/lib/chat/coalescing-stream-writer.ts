@@ -94,5 +94,11 @@ export function createCoalescingStreamWriter<
     }
   }
 
-  return { write, flush };
+  async function waitForIdle(): Promise<void> {
+    while (draining !== null) {
+      await draining.catch(() => {});
+    }
+  }
+
+  return { write, flush, waitForIdle };
 }

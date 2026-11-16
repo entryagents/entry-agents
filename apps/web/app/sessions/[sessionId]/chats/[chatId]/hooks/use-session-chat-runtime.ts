@@ -227,6 +227,7 @@ export function useSessionChatRuntime({
   // "need to tap stop 3 times on iOS" bug).
   const userStoppedRef = useRef(false);
   const retryInFlightRef = useRef(false);
+  const retryGenerationRef = useRef(0);
 
   const stopChatStream = useCallback(() => {
     userStoppedRef.current = true;
@@ -295,12 +296,14 @@ export function useSessionChatRuntime({
       ) {
         return;
       }
-      if (retryInFlightRef.current) {
+      if (retryInFlightRef.current && strategy === "soft") {
         return;
       }
-      // Manual retry — reset the flag so the stream can proceed.
+      // Manual retry or forced reconnect — reset the flag and supersede any
+      // previous hung resumeStream() via generation counter.
       userStoppedRef.current = false;
       retryInFlightRef.current = true;
+      const retryGeneration = ++retryGenerationRef.current;
       setIsReconnecting(true);
 
       void (async () => {
@@ -505,8 +508,10 @@ export function useSessionChatRuntime({
             error,
           });
         } finally {
-          retryInFlightRef.current = false;
-          setIsReconnecting(false);
+          if (retryGenerationRef.current === retryGeneration) {
+            retryInFlightRef.current = false;
+            setIsReconnecting(false);
+          }
         }
       })();
     },

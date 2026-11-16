@@ -3679,6 +3679,9 @@ const runAgentStep = async (
   // needs to be closed regardless of which branch ran.
   let mcpToolSet: Awaited<ReturnType<typeof createMcpToolSet>> | undefined;
   let streamWriter: WritableStreamDefaultWriter<UIMessageChunk> | undefined;
+  let coalescingWriter:
+    | ReturnType<typeof createCoalescingStreamWriter<UIMessageChunk>>
+    | undefined;
   let streamWriteFailed = false;
   let hasEmittedStreamChunks = false;
   let responseMessage: WebAgentUIMessage | undefined;
@@ -4683,7 +4686,7 @@ const runAgentStep = async (
         }
 
         streamWriter = writable.getWriter();
-        const coalescingWriter =
+        coalescingWriter =
           createCoalescingStreamWriter<UIMessageChunk>(streamWriter);
         const streamedTextById = new Map<string, string>();
         const streamedTextOrder: string[] = [];
@@ -5465,6 +5468,11 @@ const runAgentStep = async (
 
     throw errorWithStepTiming;
   } finally {
+    try {
+      await coalescingWriter?.waitForIdle();
+    } catch {
+      // Ignore drain errors during cleanup
+    }
     try {
       streamWriter?.releaseLock();
     } catch {
