@@ -60,3 +60,4 @@ export {
   type McpToolSetResult,
   type McpConnectionFailure,
 } from "./mcp";
+export { createPgxTool, type PgxToolInput } from "./pgx";
