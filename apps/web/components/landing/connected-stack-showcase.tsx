@@ -315,7 +315,7 @@ export function ConnectedStackShowcase() {
               )}
             </motion.div>
 
-            {/* Economics & Prompt Caching Architecture Card */}
+            {/* Prompt Caching & $5 Plan Card */}
             <motion.div
               initial={{ opacity: 0, transform: "translateY(12px)" }}
               whileInView={{ opacity: 1, transform: "translateY(0px)" }}
@@ -330,30 +330,29 @@ export function ConnectedStackShowcase() {
                       className="size-4 text-(--l-accent)"
                       strokeWidth={1.5}
                     />
-                    <span>Plans &amp; prompt caching</span>
+                    <span>Prompt caching</span>
                   </span>
                   <span className="font-mono text-xs tabular-nums">
-                    Zero token markup
+                    99% cache hit rate
                   </span>
                 </div>
 
                 <h2 className="mt-3 text-balance text-2xl font-semibold tracking-tight">
-                  Up to 99% prompt caching on affordable $5–$40 plans
+                  99% cache hit rate across all models
                 </h2>
                 <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
-                  Repository context, tool definitions, and long sessions stay
-                  cached across multi-step turns so everyday developers and
-                  heavy power builders stretch credits far further.
+                  Repository context, tool definitions, and multi-turn history
+                  stay cached across every model so your credits go much further.
                 </p>
 
                 {/* Caching Bar Visual */}
                 <div className="mt-5 rounded-xl border border-(--l-border) bg-(--l-surface-2) p-4">
                   <div className="flex items-baseline justify-between font-mono text-xs tabular-nums">
                     <span className="text-(--l-fg-2)">
-                      Multi-turn workspace context reuse
+                      Multi-turn context reuse
                     </span>
                     <span className="font-semibold text-(--l-fg)">
-                      Up to 99% cached
+                      99% hit rate
                     </span>
                   </div>
                   <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-(--l-fg-6)">
@@ -363,42 +362,37 @@ export function ConnectedStackShowcase() {
                     />
                   </div>
                   <p className="mt-2.5 text-xs text-(--l-fg-3)">
-                    Free trial starts with $1 credit and zero card required.
+                    Start free with $1 credit and zero card required.
                   </p>
                 </div>
 
-                {/* Compact Tabular Plan Grid */}
-                <div className="mt-4 divide-y divide-(--l-border-subtle) rounded-xl border border-(--l-border)">
-                  {PLAN_ECONOMICS.map((plan) => (
-                    <div
-                      key={plan.name}
-                      className={`flex items-center justify-between gap-3 px-3.5 py-2.5 text-xs ${
-                        "featured" in plan && plan.featured
-                          ? "bg-(--l-surface-2)"
-                          : ""
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 font-medium text-(--l-fg)">
-                          <span>{plan.name}</span>
-                          {"featured" in plan && plan.featured && (
-                            <span className="rounded border border-(--l-accent)/40 px-1.5 py-0.5 font-mono text-[11px] font-medium text-(--l-accent) tabular-nums">
-                              3.8x value
-                            </span>
-                          )}
-                        </div>
-                        <div className="mt-0.5 truncate text-xs text-(--l-fg-3)">
-                          {plan.note}
-                        </div>
+                {/* $5 Plan Highlight */}
+                <div className="mt-4 rounded-xl border border-(--l-border) bg-(--l-surface-2) p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-(--l-fg)">
+                        Plus plan
                       </div>
-                      <div className="shrink-0 text-right font-mono tabular-nums">
-                        <div className="font-medium text-(--l-fg)">
-                          {plan.price}
-                        </div>
-                        <div className="text-(--l-fg-3)">{plan.credit}</div>
+                      <div className="mt-0.5 text-xs text-(--l-fg-3)">
+                        $10 AI credit every month for daily builds
                       </div>
                     </div>
-                  ))}
+                    <div className="shrink-0 text-right font-mono tabular-nums">
+                      <div className="text-base font-semibold text-(--l-fg)">
+                        $5/mo
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-3 border-t border-(--l-border-subtle) pt-2.5 text-xs text-(--l-fg-2)">
+                    Need higher limits or rolling windows? Visit the{" "}
+                    <Link
+                      href="/pricing"
+                      className="font-medium text-(--l-fg) underline underline-offset-4"
+                    >
+                      pricing page
+                    </Link>{" "}
+                    to explore bigger plans.
+                  </p>
                 </div>
               </div>
 

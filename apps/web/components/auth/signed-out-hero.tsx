@@ -44,14 +44,14 @@ export function SignedOutHero() {
               fill
               priority
               sizes="100vw"
-              className="object-cover object-[72%_center] opacity-25 contrast-110 dark:opacity-55"
+              className="object-cover object-[72%_center] opacity-45 contrast-110 dark:opacity-55"
             />
           </motion.div>
-          <div className="absolute inset-0 bg-gradient-to-b from-[#fafafa]/68 via-[#fafafa]/82 to-[#fafafa]/92 dark:from-[#0a0a0c]/55 dark:via-[#0a0a0c]/74 dark:to-[#0a0a0c]/88" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#fafafa]/78 via-[#fafafa]/40 to-transparent dark:from-[#0a0a0c]/80 dark:via-[#0a0a0c]/40 dark:to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#fafafa]/45 via-[#fafafa]/62 to-[#fafafa]/78 dark:from-[#0a0a0c]/55 dark:via-[#0a0a0c]/74 dark:to-[#0a0a0c]/88" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#fafafa]/60 via-[#fafafa]/25 to-transparent dark:from-[#0a0a0c]/80 dark:via-[#0a0a0c]/40 dark:to-transparent" />
         </div>
 
-        <LandingNav showSignIn />
+        <LandingNav showSignIn={false} />
 
         <section
           ref={heroStageRef}
