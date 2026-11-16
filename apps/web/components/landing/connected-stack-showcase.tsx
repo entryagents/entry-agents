@@ -327,7 +327,7 @@ export function ConnectedStackShowcase() {
                 <div className="flex items-center justify-between gap-2 text-xs text-(--l-fg-3)">
                   <span className="inline-flex items-center gap-2 font-medium text-(--l-fg-2)">
                     <Layers
-                      className="size-4 text-(--l-accent)"
+                      className="size-4 text-(--l-fg)"
                       strokeWidth={1.5}
                     />
                     <span>Prompt caching</span>
@@ -358,7 +358,7 @@ export function ConnectedStackShowcase() {
                   </div>
                   <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-(--l-fg-6)">
                     <div
-                      className="h-full rounded-full bg-(--l-accent)"
+                      className="h-full rounded-full bg-(--l-fg)"
                       style={{ width: "99%" }}
                     />
                   </div>
