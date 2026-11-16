@@ -4,6 +4,7 @@ import type { AskUserQuestionInput } from "@entry-agents/agent";
 import { formatTokens } from "@entry-agents/shared";
 import { isToolUIPart, type FileUIPart, type LanguageModelUsage } from "ai";
 import {
+  AlertCircle,
   Archive,
   ArrowDown,
   Lock,
@@ -1082,6 +1083,7 @@ export function SessionChatContent({
     stopChatStream,
     retryChatStream,
     getLastChunkReceivedAt,
+    isReconnecting,
     workspaceStatus,
     hadInitialMessages,
     initialMessages,
@@ -2444,9 +2446,17 @@ export function SessionChatContent({
     scrollIfAtBottom();
   }, [messages, scrollIfAtBottom]);
 
+  const prevInFlightForFocusRef = useRef(isChatInFlight);
   useEffect(() => {
-    if (!isChatInFlight) {
-      composerRef.current?.focus();
+    const wasInFlight = prevInFlightForFocusRef.current;
+    prevInFlightForFocusRef.current = isChatInFlight;
+    if (wasInFlight && !isChatInFlight) {
+      const isCoarsePointer =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(pointer: coarse)").matches;
+      if (!isCoarsePointer) {
+        composerRef.current?.focus();
+      }
     }
   }, [isChatInFlight]);
 
@@ -3372,42 +3382,41 @@ export function SessionChatContent({
                             workspaceStatus?.message ?? "Thinking…"
                           }
                         />
+                        {(!isOnline || isReconnecting) && (
+                          <div
+                            role="status"
+                            className="flex w-fit max-w-[85%] items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-muted-foreground"
+                          >
+                            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                            <span>
+                              {!isOnline
+                                ? "Offline — waiting to reconnect automatically"
+                                : "Reconnecting to live stream…"}
+                            </span>
+                          </div>
+                        )}
                         {error &&
-                          (!isOnline ? (
-                            <div
-                              role="status"
-                              className="flex w-fit max-w-[85%] items-center gap-2.5 rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
-                            >
-                              <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                              <span>
-                                Offline — waiting for your connection to resume
-                                automatically.
-                              </span>
-                            </div>
-                          ) : (
-                            // Inline, chat-bubble-style error card that lands
-                            // right where the failed response would've been —
-                            // not a full-width banner shouting from the top of
-                            // the page. Same "Last line of defense" note as
-                            // before: never render error.message directly,
-                            // transport-level failures can still carry raw
-                            // gateway/provider text that skipped the backend
-                            // sanitizer in app/workflows/chat.ts.
-                            <div className="flex w-fit max-w-[80%] flex-col gap-2 rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                              <p className="break-words">
-                                {toFriendlyChatErrorText(error)}
-                              </p>
+                          isOnline &&
+                          !isReconnecting &&
+                          !isChatInFlight && (
+                            <div className="flex w-fit max-w-[80%] flex-col gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-foreground">
+                              <div className="flex items-start gap-2.5">
+                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                                <p className="break-words text-foreground">
+                                  {toFriendlyChatErrorText(error)}
+                                </p>
+                              </div>
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="w-fit shrink-0 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+                                className="w-fit shrink-0 gap-1.5"
                                 onClick={() => retryChatStream()}
                               >
                                 <RefreshCw className="h-3 w-3" />
                                 Retry
                               </Button>
                             </div>
-                          ))}
+                          )}
                       </div>
                     </OpenFileProvider>
                   </div>

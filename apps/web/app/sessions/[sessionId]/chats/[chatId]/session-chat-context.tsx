@@ -220,6 +220,8 @@ type SessionChatContextValue = {
   retryChatStream: (opts?: RetryChatStreamOptions) => void;
   /** Timestamp (ms) of the last SSE chunk received on the active stream */
   getLastChunkReceivedAt: () => number;
+  /** Whether the client is currently reconnecting to an active stream */
+  isReconnecting: boolean;
   /** Update session repo info after creating a repo */
   updateSessionRepo: (info: {
     cloneUrl: string;
@@ -265,6 +267,7 @@ type SessionChatRuntimeContextValue = Pick<
   | "clearWorkspaceStatus"
   | "retryChatStream"
   | "getLastChunkReceivedAt"
+  | "isReconnecting"
   | "hadInitialMessages"
   | "initialMessages"
 >;
@@ -415,6 +418,7 @@ export function SessionChatProvider({
     stopChatStream,
     retryChatStream,
     getLastChunkReceivedAt,
+    isReconnecting,
     workspaceStatus,
     clearWorkspaceStatus,
   } = useSessionChatRuntime({
@@ -1263,6 +1267,7 @@ export function SessionChatProvider({
       stopChatStream,
       retryChatStream,
       getLastChunkReceivedAt,
+      isReconnecting,
       workspaceStatus,
       clearWorkspaceStatus,
       hadInitialMessages,
@@ -1274,6 +1279,7 @@ export function SessionChatProvider({
       stopChatStream,
       retryChatStream,
       getLastChunkReceivedAt,
+      isReconnecting,
       workspaceStatus,
       clearWorkspaceStatus,
       hadInitialMessages,

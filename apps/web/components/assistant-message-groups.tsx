@@ -134,10 +134,10 @@ export function AssistantMessageGroups({
   const stopNoticeCard = stopNotice ? (
     <div
       role="status"
-      className="flex w-fit max-w-full items-start gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-800 dark:border-amber-400/25 dark:bg-amber-400/[0.05] dark:text-amber-300"
+      className="flex w-fit max-w-full items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-foreground"
     >
       <svg
-        className="mt-0.5 size-4 shrink-0"
+        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -146,13 +146,17 @@ export function AssistantMessageGroups({
         strokeLinejoin="round"
         aria-hidden
       >
-        <path d="M12 9v4" />
-        <path d="M12 17h.01" />
-        <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+        <circle cx="12" cy="12" r="10" />
+        <path d="M12 8v4" />
+        <path d="M12 16h.01" />
       </svg>
       <div className="min-w-0">
-        <p className="font-medium">{stopNoticeTitle}</p>
-        <p className="mt-0.5 text-[13px] opacity-90">{stopNoticeBody}</p>
+        <p className="font-medium text-foreground">{stopNoticeTitle}</p>
+        {stopNoticeBody && (
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
+            {stopNoticeBody}
+          </p>
+        )}
       </div>
     </div>
   ) : null;

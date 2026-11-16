@@ -7,6 +7,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
 import type {
@@ -56,6 +57,7 @@ type UseSessionChatRuntimeReturn = {
   stopChatStream: () => void;
   retryChatStream: (opts?: RetryChatStreamOptions) => void;
   getLastChunkReceivedAt: () => number;
+  isReconnecting: boolean;
   workspaceStatus: WebAgentWorkspaceStatusData | null;
   clearWorkspaceStatus: () => void;
 };
@@ -121,6 +123,7 @@ export function useSessionChatRuntime({
     contextLimitRef.current = contextLimit;
   }, [contextLimit]);
 
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const forceReconcileOnFinishRef = useRef(false);
 
   const transport = useMemo(
@@ -147,6 +150,7 @@ export function useSessionChatRuntime({
         },
         onReconnectNeeded: () => {
           forceReconcileOnFinishRef.current = true;
+          setIsReconnecting(true);
         },
         // Always start from chunk 0 so the stream's `start` (messageId) and
         // `*-start` chunks are received on every reload and secondary device,
@@ -166,12 +170,14 @@ export function useSessionChatRuntime({
         transport,
         messages: initialMessages,
         onData: (dataPart) => {
+          setIsReconnecting(false);
           if (dataPart.type === "data-workspace-status") {
             setChatWorkspaceStatus(chatId, dataPart.data);
           }
           triggerBillingSync();
         },
         onFinish: () => {
+          setIsReconnecting(false);
           triggerBillingSync();
           const shouldReconcileAfterDrop = forceReconcileOnFinishRef.current;
           forceReconcileOnFinishRef.current = false;
@@ -195,9 +201,11 @@ export function useSessionChatRuntime({
                   messages?: WebAgentUIMessage[];
                 };
                 if (Array.isArray(data.messages) && data.messages.length > 0) {
-                  chatInstance.messages = mergePreservingLocalWork(
-                    data.messages,
-                    chatInstance.messages,
+                  chat.setMessages(
+                    mergePreservingLocalWork(
+                      data.messages,
+                      chatInstance.messages,
+                    ),
                   );
                 }
               })
@@ -205,6 +213,7 @@ export function useSessionChatRuntime({
           }
         },
         onError: () => {
+          setIsReconnecting(false);
           triggerBillingSync();
         },
         sendAutomaticallyWhen: shouldAutoSubmit,
@@ -292,6 +301,7 @@ export function useSessionChatRuntime({
       // Manual retry — reset the flag so the stream can proceed.
       userStoppedRef.current = false;
       retryInFlightRef.current = true;
+      setIsReconnecting(true);
 
       void (async () => {
         try {
@@ -452,6 +462,7 @@ export function useSessionChatRuntime({
                 // Server is actively streaming (e.g. turn started on another
                 // device or reconnected after network loss) -- reset local
                 // transport and attach to the live stream.
+                chat.clearError();
                 abortChatInstanceTransport(chatId);
                 await chat.resumeStream();
                 return;
@@ -495,6 +506,7 @@ export function useSessionChatRuntime({
           });
         } finally {
           retryInFlightRef.current = false;
+          setIsReconnecting(false);
         }
       })();
     },
@@ -557,13 +569,46 @@ export function useSessionChatRuntime({
           (p.type as string) === "finish",
       );
 
-    // If there is no active stream recorded and no in-flight turn, skip
+    // If there is no active stream recorded and no in-flight turn in SSR props,
+    // still run a single immediate check against the server in case Next.js
+    // router cache served stale SSR state after navigating away and back.
     if (
       !initialChatActiveStreamId &&
       !endsWithUserMessage &&
       !hasUnfinishedAssistant
     ) {
-      return;
+      let cancelled = false;
+      void fetch(`/api/sessions/${sessionId}/chats/${chatId}`, {
+        cache: "no-store",
+      })
+        .then(async (res) => {
+          if (cancelled || !res.ok) return;
+          const data = (await res.json()) as {
+            isStreaming?: boolean;
+            messages?: WebAgentUIMessage[];
+          };
+          if (cancelled) return;
+          if (Array.isArray(data.messages) && data.messages.length > 0) {
+            chat.setMessages(
+              mergePreservingLocalWork(data.messages, chatInstance.messages),
+            );
+          }
+          if (
+            data.isStreaming &&
+            chatInstance.status === "ready" &&
+            !userStoppedRef.current
+          ) {
+            setIsReconnecting(true);
+            await chat.resumeStream();
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setIsReconnecting(false);
+        });
+      return () => {
+        cancelled = true;
+      };
     }
 
     let cancelled = false;
@@ -639,6 +684,7 @@ export function useSessionChatRuntime({
     stopChatStream,
     retryChatStream,
     getLastChunkReceivedAt,
+    isReconnecting,
     workspaceStatus,
     clearWorkspaceStatus,
   };
