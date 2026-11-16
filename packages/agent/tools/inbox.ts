@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { consumeSubagentRealtimeMessages } from "../subagents/session-store";
 import type { AgentContext } from "../types";
 
 const inboxInputSchema = z.object({
@@ -16,10 +17,13 @@ export type InboxToolInput = z.infer<typeof inboxInputSchema>;
 
 export const inboxTool = tool({
   description:
-    "Check the user's real-time steering inbox for this chat. Returns all inbox messages in chronological order, clearly distinguishing [NEW / UNREAD] instructions from [OLD / READ] ones, and marks unread messages as read so no user instruction is missed or re-processed.",
+    "Check the user's real-time steering inbox and any real-time subagent updates for this chat. Returns all inbox messages in chronological order, clearly distinguishing [NEW / UNREAD] instructions from [OLD / READ] ones, and marks unread messages as read so no user instruction is missed or re-processed.",
   inputSchema: inboxInputSchema,
   execute: async ({ action }, { experimental_context }) => {
     const context = experimental_context as AgentContext | undefined;
+    const teamId = context?.teamId ?? "default-team";
+    const subagentUpdates =
+      action !== "list" ? consumeSubagentRealtimeMessages(teamId) : [];
     const inboxHooks = context?.inboxHooks;
     if (!inboxHooks) {
       return {
@@ -29,6 +33,7 @@ export const inboxTool = tool({
         totalCount: 0,
         newlyReadCount: 0,
         messages: [],
+        subagentUpdates,
       };
     }
 
@@ -51,6 +56,7 @@ export const inboxTool = tool({
         createdAt: msg.createdAt,
         readAt: msg.readAt,
       })),
+      subagentUpdates,
     };
   },
 });

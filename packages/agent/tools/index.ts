@@ -61,3 +61,9 @@ export {
   type McpConnectionFailure,
 } from "./mcp";
 export { createPgxTool, type PgxToolInput } from "./pgx";
+export {
+  stopSubagentTool,
+  sendParentUpdateTool,
+  type StopSubagentInput,
+  type SendParentUpdateInput,
+} from "./subagent-control";

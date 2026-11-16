@@ -123,3 +123,119 @@ class SubagentSessionStore {
 }
 
 export const subagentSessionStore = new SubagentSessionStore();
+
+export interface ActiveSubagentHandle {
+  subagentId: string;
+  sessionId?: string;
+  teamId: string;
+  subagentType: string;
+  controller: AbortController;
+  startedAt: number;
+}
+
+export interface SubagentRealtimeMessage {
+  id: string;
+  fromSubagentId: string;
+  subagentType: string;
+  teamId: string;
+  message: string;
+  createdAt: number;
+}
+
+const activeSubagents = new Map<string, ActiveSubagentHandle>();
+const realtimeParentMessages = new Map<string, SubagentRealtimeMessage[]>();
+const realtimeMessageListeners = new Map<
+  string,
+  Set<(msg: SubagentRealtimeMessage) => void>
+>();
+
+export function registerActiveSubagent(handle: ActiveSubagentHandle): void {
+  activeSubagents.set(handle.subagentId, handle);
+  if (handle.sessionId) {
+    activeSubagents.set(handle.sessionId, handle);
+  }
+}
+
+export function unregisterActiveSubagent(
+  subagentId: string,
+  sessionId?: string,
+): void {
+  activeSubagents.delete(subagentId);
+  if (sessionId) {
+    activeSubagents.delete(sessionId);
+  }
+}
+
+export function stopSubagentById(id: string): boolean {
+  const handle = activeSubagents.get(id);
+  if (!handle) return false;
+  handle.controller.abort();
+  unregisterActiveSubagent(handle.subagentId, handle.sessionId);
+  return true;
+}
+
+export function stopAllSubagentsForTeam(teamId: string): number {
+  let stopped = 0;
+  const seen = new Set<AbortController>();
+  for (const [key, handle] of activeSubagents.entries()) {
+    if (handle.teamId === teamId) {
+      if (!seen.has(handle.controller)) {
+        seen.add(handle.controller);
+        handle.controller.abort();
+        stopped++;
+      }
+      activeSubagents.delete(key);
+    }
+  }
+  return stopped;
+}
+
+export function pushSubagentRealtimeMessage(
+  msg: Omit<SubagentRealtimeMessage, "id" | "createdAt">,
+): SubagentRealtimeMessage {
+  const full: SubagentRealtimeMessage = {
+    ...msg,
+    id: crypto.randomUUID(),
+    createdAt: Date.now(),
+  };
+  const queue = realtimeParentMessages.get(msg.teamId) ?? [];
+  queue.push(full);
+  realtimeParentMessages.set(msg.teamId, queue);
+  const listeners = realtimeMessageListeners.get(msg.teamId);
+  if (listeners) {
+    for (const listener of listeners) {
+      try {
+        listener(full);
+      } catch {
+        // Ignore listener errors
+      }
+    }
+  }
+  return full;
+}
+
+export function consumeSubagentRealtimeMessages(
+  teamId: string,
+): SubagentRealtimeMessage[] {
+  const queue = realtimeParentMessages.get(teamId) ?? [];
+  realtimeParentMessages.delete(teamId);
+  return queue;
+}
+
+export function subscribeSubagentRealtimeMessages(
+  teamId: string,
+  listener: (msg: SubagentRealtimeMessage) => void,
+): () => void {
+  let set = realtimeMessageListeners.get(teamId);
+  if (!set) {
+    set = new Set();
+    realtimeMessageListeners.set(teamId, set);
+  }
+  set.add(listener);
+  return () => {
+    set?.delete(listener);
+    if (set?.size === 0) {
+      realtimeMessageListeners.delete(teamId);
+    }
+  };
+}

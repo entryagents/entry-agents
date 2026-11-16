@@ -1,6 +1,6 @@
 import type { LanguageModelUsage, ModelMessage } from "ai";
 import type { TaskPendingToolCall } from "@entry-agents/agent";
-import type { WebAgentUIToolPart } from "@/app/types";
+import type { WebAgentUIMessagePart, WebAgentUIToolPart } from "@/app/types";
 import {
   extractCachedInputTokens,
   extractCacheWriteTokens,
@@ -29,7 +29,7 @@ export interface SubagentTabData {
   cachedInputTokens: number | null;
   cacheWriteTokens: number | null;
   pending: TaskPendingToolCall | null;
-  completedParts: WebAgentUIToolPart[];
+  completedParts: WebAgentUIMessagePart[];
   finalText: string | null;
   errorText: string | null;
   sessionId: string | null;
@@ -102,6 +102,92 @@ export function formatSubagentModelTag(modelId: string | null): string | null {
   if (!modelId) return null;
   const slashIdx = modelId.indexOf("/");
   return slashIdx !== -1 ? modelId.slice(slashIdx + 1) : modelId;
+}
+
+/**
+ * Extract subagent message parts (reasoning, text, and completed tool calls)
+ * in exact chronological order from `finalMessages`, falling back to streamed
+ * `executedTools` while execution is in progress.
+ */
+export function extractSubagentThreadParts(
+  finalMessages: unknown,
+  executedTools?: unknown,
+): WebAgentUIMessagePart[] {
+  if (Array.isArray(finalMessages) && finalMessages.length > 0) {
+    const toolOutputs = new Map<string, unknown>();
+    for (const rawMsg of finalMessages as ModelMessage[]) {
+      if (!rawMsg || typeof rawMsg !== "object") continue;
+      if (rawMsg.role === "tool" && Array.isArray(rawMsg.content)) {
+        for (const part of rawMsg.content) {
+          if (
+            part &&
+            typeof part === "object" &&
+            (part as { type?: string }).type === "tool-result"
+          ) {
+            const tr = part as { toolCallId?: string; output?: unknown };
+            if (tr.toolCallId) {
+              toolOutputs.set(tr.toolCallId, unwrapToolOutput(tr.output));
+            }
+          }
+        }
+      }
+    }
+
+    const orderedParts: WebAgentUIMessagePart[] = [];
+    for (const rawMsg of finalMessages as ModelMessage[]) {
+      if (!rawMsg || typeof rawMsg !== "object") continue;
+      if (rawMsg.role !== "assistant") continue;
+
+      if (typeof rawMsg.content === "string") {
+        if (rawMsg.content.trim().length > 0) {
+          orderedParts.push({
+            type: "text",
+            text: rawMsg.content,
+          });
+        }
+        continue;
+      }
+
+      if (!Array.isArray(rawMsg.content)) continue;
+      for (const part of rawMsg.content) {
+        if (!part || typeof part !== "object") continue;
+        const p = part as Record<string, unknown>;
+        if (p.type === "reasoning" && typeof p.text === "string" && p.text) {
+          orderedParts.push({
+            type: "reasoning",
+            text: p.text,
+          } as WebAgentUIMessagePart);
+        } else if (
+          p.type === "text" &&
+          typeof p.text === "string" &&
+          p.text.trim().length > 0
+        ) {
+          orderedParts.push({
+            type: "text",
+            text: p.text,
+          });
+        } else if (
+          p.type === "tool-call" &&
+          typeof p.toolCallId === "string" &&
+          typeof p.toolName === "string"
+        ) {
+          orderedParts.push({
+            type: `tool-${p.toolName}`,
+            toolCallId: p.toolCallId,
+            state: "output-available",
+            input: p.input,
+            output: toolOutputs.get(p.toolCallId),
+          } as unknown as WebAgentUIMessagePart);
+        }
+      }
+    }
+
+    if (orderedParts.length > 0) {
+      return orderedParts;
+    }
+  }
+
+  return extractSubagentToolParts(finalMessages, executedTools);
 }
 
 /**
@@ -287,7 +373,7 @@ export function deriveSubagentTabData(
           : null;
 
       const finalMessages = output?.final;
-      const completedParts = extractSubagentToolParts(
+      const completedParts = extractSubagentThreadParts(
         finalMessages,
         output?.executedTools,
       );

@@ -392,17 +392,20 @@ export function ToolkitBrandIcon({
   readonly logo?: string | null;
   readonly className?: string;
 }) {
-  const [logoFailed, setLogoFailed] = useState(false);
+  const [failedLogo, setFailedLogo] = useState<string | null>(null);
+  const resolvedLogo =
+    logo?.trim() || `https://logos.composio.dev/api/${slug.toLowerCase()}`;
 
-  if (logo && !logoFailed) {
+  if (resolvedLogo && failedLogo !== resolvedLogo) {
     return (
       <Image
-        src={logo}
+        key={resolvedLogo}
+        src={resolvedLogo}
         alt=""
         width={20}
         height={20}
         unoptimized
-        onError={() => setLogoFailed(true)}
+        onError={() => setFailedLogo(resolvedLogo)}
         className={cn(className, "rounded-sm object-contain")}
       />
     );

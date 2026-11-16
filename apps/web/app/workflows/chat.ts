@@ -4685,6 +4685,8 @@ const runAgentStep = async (
         streamWriter = writable.getWriter();
         const coalescingWriter =
           createCoalescingStreamWriter<UIMessageChunk>(streamWriter);
+        const streamedTextById = new Map<string, string>();
+        const streamedTextOrder: string[] = [];
 
         for await (const part of stream.toUIMessageStream<WebAgentUIMessage>({
           originalMessages,
@@ -5001,6 +5003,25 @@ const runAgentStep = async (
             responseMessage = finishedResponseMessage;
           },
         })) {
+          if (part.type === "text-start" && typeof part.id === "string") {
+            if (!streamedTextById.has(part.id)) {
+              streamedTextById.set(part.id, "");
+              streamedTextOrder.push(part.id);
+            }
+          } else if (
+            part.type === "text-delta" &&
+            typeof part.id === "string" &&
+            typeof part.delta === "string"
+          ) {
+            if (!streamedTextById.has(part.id)) {
+              streamedTextById.set(part.id, "");
+              streamedTextOrder.push(part.id);
+            }
+            streamedTextById.set(
+              part.id,
+              (streamedTextById.get(part.id) ?? "") + part.delta,
+            );
+          }
           if (
             part.type === "text-delta" ||
             part.type === "reasoning-delta" ||
@@ -5043,6 +5064,53 @@ const runAgentStep = async (
             }
           }
         }
+
+        // Reconcile any streamed text segments that onFinish omitted or truncated
+        const combinedStreamedText = streamedTextOrder
+          .map((id) => streamedTextById.get(id) ?? "")
+          .join("")
+          .trim();
+        if (combinedStreamedText.length > 0) {
+          if (responseMessage == null) {
+            responseMessage = {
+              id: messageId,
+              role: "assistant",
+              parts: [{ type: "text", text: combinedStreamedText }],
+            } as WebAgentUIMessage;
+          } else {
+            const existingParts = Array.isArray(responseMessage.parts)
+              ? responseMessage.parts
+              : [];
+            const existingText = existingParts
+              .filter(
+                (p): p is { type: "text"; text: string } =>
+                  p != null &&
+                  typeof p === "object" &&
+                  (p as { type?: unknown }).type === "text" &&
+                  typeof (p as { text?: unknown }).text === "string",
+              )
+              .map((p) => p.text)
+              .join("")
+              .trim();
+            if (existingText.length < combinedStreamedText.length) {
+              const nonTextParts = existingParts.filter(
+                (p) =>
+                  p == null ||
+                  typeof p !== "object" ||
+                  (p as { type?: unknown }).type !== "text",
+              );
+              const mergedTextParts = streamedTextOrder
+                .map((id) => streamedTextById.get(id) ?? "")
+                .filter((text) => text.length > 0)
+                .map((text) => ({ type: "text" as const, text }));
+              responseMessage = {
+                ...responseMessage,
+                parts: [...nonTextParts, ...mergedTextParts],
+              } as WebAgentUIMessage;
+            }
+          }
+        }
+
         return stream;
       },
     );

@@ -42,6 +42,7 @@ import { buildSystemPrompt, buildSystemPromptParts } from "./system-prompt";
 import {
   askUserQuestionTool,
   bashTool,
+  createPgxTool,
   dirListTool,
   editFileTool,
   gitCloneTool,
@@ -54,7 +55,9 @@ import {
   processStatusTool,
   readFileTool,
   sandboxControlTool,
+  sendParentUpdateTool,
   skillTool,
+  stopSubagentTool,
   taskTool,
   teamBoardTool,
   todoReadTool,
@@ -264,6 +267,9 @@ const tools = {
   kill_process: killProcessTool,
   inbox: inboxTool,
   visualize: visualizeTool,
+  pgx: createPgxTool(),
+  stop_subagent: stopSubagentTool,
+  send_parent_update: sendParentUpdateTool,
 } satisfies ToolSet;
 
 export const openAgent = new ToolLoopAgent({

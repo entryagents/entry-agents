@@ -59,14 +59,18 @@ function normalizeStoredMessage(m: {
   id: string;
   role: string;
   parts: unknown;
+  metadata?: unknown;
   createdAt?: Date;
 }): WebAgentUIMessage {
   const raw = m.parts as unknown;
+  const fallbackMetadata =
+    (m.metadata as WebAgentUIMessage["metadata"]) ?? undefined;
   if (Array.isArray(raw)) {
     return {
       id: m.id,
       role: m.role as WebAgentUIMessage["role"],
       parts: raw,
+      ...(fallbackMetadata !== undefined ? { metadata: fallbackMetadata } : {}),
     } as WebAgentUIMessage;
   }
   if (raw && typeof raw === "object") {
@@ -78,13 +82,15 @@ function normalizeStoredMessage(m: {
         ? obj.role
         : m.role) as WebAgentUIMessage["role"],
       parts: Array.isArray(obj.parts) ? obj.parts : [],
-      metadata: (obj.metadata as WebAgentUIMessage["metadata"]) ?? undefined,
+      metadata:
+        (obj.metadata as WebAgentUIMessage["metadata"]) ?? fallbackMetadata,
     } as WebAgentUIMessage;
   }
   return {
     id: m.id,
     role: m.role as WebAgentUIMessage["role"],
     parts: [],
+    ...(fallbackMetadata !== undefined ? { metadata: fallbackMetadata } : {}),
   } as WebAgentUIMessage;
 }
 
