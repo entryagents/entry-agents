@@ -1284,6 +1284,83 @@ export async function getAdminTelemetry(
 
   durations.sort((a, b) => a - b);
 
+  const assistantTpsRows = await db
+    .select({
+      metadata: chatMessages.metadata,
+    })
+    .from(chatMessages)
+    .where(
+      sql`${chatMessages.role} = 'assistant' AND ${chatMessages.createdAt} >= ${sinceIso} AND ${chatMessages.metadata} IS NOT NULL`,
+    )
+    .orderBy(desc(chatMessages.createdAt))
+    .limit(500)
+    .catch(() => []);
+
+  const decodeTpsByModel = new Map<
+    string,
+    { outputTokens: number; decodeSec: number }
+  >();
+  const addDecodeSample = (
+    rawModelId: unknown,
+    tps: unknown,
+    outputTokens: unknown,
+  ) => {
+    if (
+      typeof rawModelId !== "string" ||
+      !rawModelId ||
+      typeof tps !== "number" ||
+      !Number.isFinite(tps) ||
+      tps <= 0
+    ) {
+      return;
+    }
+    const tokens =
+      typeof outputTokens === "number" &&
+      Number.isFinite(outputTokens) &&
+      outputTokens > 0
+        ? outputTokens
+        : 100;
+    const decodeSec = tokens / tps;
+    const prev = decodeTpsByModel.get(rawModelId) ?? {
+      outputTokens: 0,
+      decodeSec: 0,
+    };
+    prev.outputTokens += tokens;
+    prev.decodeSec += decodeSec;
+    decodeTpsByModel.set(rawModelId, prev);
+  };
+
+  for (const row of assistantTpsRows) {
+    const meta = row.metadata as Record<string, unknown> | null;
+    if (!meta || typeof meta !== "object") continue;
+    const steps = Array.isArray(meta.stepBreakdown)
+      ? (meta.stepBreakdown as Array<Record<string, unknown>>)
+      : [];
+    let usedSteps = false;
+    for (const step of steps) {
+      if (!step || typeof step !== "object") continue;
+      const usage = step.usage as Record<string, unknown> | undefined;
+      if (typeof step.tps === "number" && step.tps > 0) {
+        addDecodeSample(
+          step.modelId ?? meta.modelId ?? meta.selectedModelId,
+          step.tps,
+          usage?.outputTokens,
+        );
+        usedSteps = true;
+      }
+    }
+    if (!usedSteps && typeof meta.tps === "number" && meta.tps > 0) {
+      const totalUsage = meta.totalMessageUsage as
+        | Record<string, unknown>
+        | undefined;
+      addDecodeSample(
+        meta.modelId ?? meta.selectedModelId,
+        meta.tps,
+        totalUsage?.outputTokens,
+      );
+    }
+  }
+
   const perModel: TelemetryModelRow[] = [...modelStatsMap.values()]
     .map((m) => {
       const meta = resolveProviderCacheMeta(m.modelId, m.provider);
@@ -1296,14 +1373,19 @@ export async function getAdminTelemetry(
         m.inputTokens > 0
           ? Math.min(100, (m.cachedInputTokens / m.inputTokens) * 100)
           : 0;
+      const decodeSample = decodeTpsByModel.get(m.modelId);
       const activeDurationSec =
         (m.completedDurationMs > 0
           ? m.completedDurationMs
           : m.totalDurationMs) / 1000;
       const estimatedTps =
-        activeDurationSec > 0 && m.outputTokens > 0
-          ? Number((m.outputTokens / activeDurationSec).toFixed(1))
-          : null;
+        decodeSample && decodeSample.decodeSec > 0
+          ? Number(
+              (decodeSample.outputTokens / decodeSample.decodeSec).toFixed(1),
+            )
+          : activeDurationSec > 0 && m.outputTokens > 0
+            ? Number((m.outputTokens / activeDurationSec).toFixed(1))
+            : null;
 
       return {
         modelId: m.modelId,

@@ -928,6 +928,67 @@ type UpsertChatMessageScopedResult =
  * Upserts a chat message only when the existing row matches the same chat and role.
  * This prevents accidental overwrite when an ID collision occurs across chats/roles.
  */
+function mergeAssistantPayloadPreservingText(
+  existingPartsCol: unknown,
+  existingMetadata: unknown,
+  incomingPartsCol: unknown,
+  incomingMetadata: unknown,
+): { parts: unknown; metadata: unknown } {
+  const extractParts = (val: unknown): unknown[] => {
+    if (Array.isArray(val)) return val;
+    if (val && typeof val === "object" && "parts" in val) {
+      const p = (val as { parts?: unknown }).parts;
+      return Array.isArray(p) ? p : [];
+    }
+    return [];
+  };
+  const existingParts = extractParts(existingPartsCol);
+  const incomingParts = extractParts(incomingPartsCol);
+
+  const countTextChars = (parts: unknown[]) =>
+    parts.reduce<number>((sum, p) => {
+      if (
+        p &&
+        typeof p === "object" &&
+        (p as { type?: unknown }).type === "text" &&
+        typeof (p as { text?: unknown }).text === "string"
+      ) {
+        return sum + (p as { text: string }).text.trim().length;
+      }
+      return sum;
+    }, 0);
+
+  const existingTextChars = countTextChars(existingParts);
+  const incomingTextChars = countTextChars(incomingParts);
+
+  const mergedParts =
+    incomingParts.length === 0 && existingParts.length > 0
+      ? existingParts
+      : existingTextChars > incomingTextChars && incomingTextChars === 0
+        ? [...existingParts, ...incomingParts]
+        : incomingParts;
+
+  const finalPartsCol =
+    incomingPartsCol &&
+    typeof incomingPartsCol === "object" &&
+    !Array.isArray(incomingPartsCol)
+      ? { ...(incomingPartsCol as Record<string, unknown>), parts: mergedParts }
+      : mergedParts;
+
+  const mergedMeta =
+    existingMetadata &&
+    typeof existingMetadata === "object" &&
+    incomingMetadata &&
+    typeof incomingMetadata === "object"
+      ? {
+          ...(existingMetadata as Record<string, unknown>),
+          ...(incomingMetadata as Record<string, unknown>),
+        }
+      : (incomingMetadata ?? existingMetadata);
+
+  return { parts: finalPartsCol, metadata: mergedMeta };
+}
+
 export async function upsertChatMessageScoped(
   data: NewChatMessage,
 ): Promise<UpsertChatMessageScopedResult> {
@@ -942,9 +1003,31 @@ export async function upsertChatMessageScoped(
       return { status: "inserted", message: inserted };
     }
 
+    const existing = await tx.query.chatMessages.findFirst({
+      where: and(
+        eq(chatMessages.id, data.id),
+        eq(chatMessages.chatId, data.chatId),
+        eq(chatMessages.role, data.role),
+      ),
+    });
+
+    if (!existing) {
+      return { status: "conflict" };
+    }
+
+    const merged =
+      data.role === "assistant"
+        ? mergeAssistantPayloadPreservingText(
+            existing.parts,
+            existing.metadata,
+            data.parts,
+            data.metadata,
+          )
+        : { parts: data.parts, metadata: data.metadata };
+
     const [updated] = await tx
       .update(chatMessages)
-      .set({ parts: data.parts, metadata: data.metadata })
+      .set({ parts: merged.parts, metadata: merged.metadata })
       .where(
         and(
           eq(chatMessages.id, data.id),
@@ -1008,23 +1091,45 @@ export async function upsertChatMessageAndClearActiveStream(
     let message: typeof chatMessages.$inferSelect | undefined = inserted;
 
     if (!inserted) {
-      const [updated] = await tx
-        .update(chatMessages)
-        .set({ parts: data.parts, metadata: data.metadata })
-        .where(
-          and(
-            eq(chatMessages.id, data.id),
-            eq(chatMessages.chatId, data.chatId),
-            eq(chatMessages.role, data.role),
-          ),
-        )
-        .returning();
+      const existing = await tx.query.chatMessages.findFirst({
+        where: and(
+          eq(chatMessages.id, data.id),
+          eq(chatMessages.chatId, data.chatId),
+          eq(chatMessages.role, data.role),
+        ),
+      });
 
-      if (updated) {
-        status = "updated";
-        message = updated;
-      } else {
+      if (!existing) {
         status = "conflict";
+      } else {
+        const merged =
+          data.role === "assistant"
+            ? mergeAssistantPayloadPreservingText(
+                existing.parts,
+                existing.metadata,
+                data.parts,
+                data.metadata,
+              )
+            : { parts: data.parts, metadata: data.metadata };
+
+        const [updated] = await tx
+          .update(chatMessages)
+          .set({ parts: merged.parts, metadata: merged.metadata })
+          .where(
+            and(
+              eq(chatMessages.id, data.id),
+              eq(chatMessages.chatId, data.chatId),
+              eq(chatMessages.role, data.role),
+            ),
+          )
+          .returning();
+
+        if (updated) {
+          status = "updated";
+          message = updated;
+        } else {
+          status = "conflict";
+        }
       }
     }
 

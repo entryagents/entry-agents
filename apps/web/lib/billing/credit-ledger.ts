@@ -43,32 +43,79 @@ export async function getUserBillingState(
 
   const effectiveIsAdmin = opts?.isAdmin ?? row.isAdmin ?? false;
   if (!opts?.skipAutoRevert && !effectiveIsAdmin) {
-    const { shouldAutoRevertToFree } = await import("@/lib/billing/plans");
+    const { shouldAutoRevertToFree, expiredGrantCentsOnPlanEnd } =
+      await import("@/lib/billing/plans");
     if (shouldAutoRevertToFree(row.plan, row.billingCycleAnchor)) {
       const previousPlan = row.plan;
-      await db
-        .update(users)
-        .set({
+      const atomicResult = await db.transaction(async (tx) => {
+        const [revertedUser] = await tx
+          .update(users)
+          .set({
+            plan: "free",
+            billingSubscriptionCode: null,
+            billingCycleAnchor: null,
+          })
+          .where(and(eq(users.id, userId), sql`${users.plan} != 'free'`))
+          .returning({
+            balance: users.creditBalanceCents,
+            pool: users.planGrantBalanceCents,
+          });
+
+        if (!revertedUser) {
+          return null;
+        }
+
+        const expired = expiredGrantCentsOnPlanEnd(
+          revertedUser.balance,
+          revertedUser.pool,
+        );
+        const [updated] = await tx
+          .update(users)
+          .set({
+            creditBalanceCents:
+              expired > 0
+                ? sql`${users.creditBalanceCents} - ${expired}`
+                : revertedUser.balance,
+            planGrantBalanceCents: 0,
+          })
+          .where(eq(users.id, userId))
+          .returning({ creditBalanceCents: users.creditBalanceCents });
+
+        if (expired > 0) {
+          await tx.insert(creditTransactions).values({
+            id: nanoid(),
+            userId,
+            type: "grant_expiry",
+            amountCents: -expired,
+            balanceAfterCents: updated.creditBalanceCents,
+            description: "Subscription ended - unused plan credit expired",
+          });
+        }
+
+        return {
+          expiredCents: expired,
+          balanceAfterCents: updated.creditBalanceCents,
+        };
+      });
+
+      if (atomicResult) {
+        console.info(
+          "[billing] auto-revert to free: 1-month subscription cycle expired",
+          {
+            userId,
+            previousPlan,
+            expiredGrantCents: atomicResult.expiredCents,
+          },
+        );
+        return {
           plan: "free",
-          billingSubscriptionCode: null,
+          creditBalanceCents: atomicResult.balanceAfterCents,
+          planGrantBalanceCents: 0,
           billingCycleAnchor: null,
-        })
-        .where(eq(users.id, userId));
-
-      const pool = await expireGrantPoolOnPlanEnd(userId);
-      console.info(
-        "[billing] auto-revert to free: 1-month subscription cycle expired",
-        { userId, previousPlan, expiredGrantCents: pool.expiredCents },
-      );
-
-      return {
-        plan: "free",
-        creditBalanceCents: pool.balanceAfterCents,
-        planGrantBalanceCents: 0,
-        billingCycleAnchor: null,
-        billingCustomerCode: row.billingCustomerCode,
-        billingSubscriptionCode: null,
-      };
+          billingCustomerCode: row.billingCustomerCode,
+          billingSubscriptionCode: null,
+        };
+      }
     }
   }
 
@@ -107,6 +154,12 @@ export async function expireGrantPoolOnPlanEnd(
 
     const expired = expiredGrantCentsOnPlanEnd(row.balance, row.pool);
     if (expired <= 0) {
+      if (row.pool > 0) {
+        await tx
+          .update(users)
+          .set({ planGrantBalanceCents: 0 })
+          .where(eq(users.id, userId));
+      }
       return { expiredCents: 0, balanceAfterCents: row.balance };
     }
 

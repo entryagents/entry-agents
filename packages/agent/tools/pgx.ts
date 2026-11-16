@@ -1,6 +1,7 @@
 import { tool as createAiTool } from "ai";
 import { z } from "zod";
 import type { Sandbox } from "@entry-agents/sandbox";
+import { getSandbox } from "./utils";
 
 const pgxInputSchema = z.object({
   action: z
@@ -36,22 +37,27 @@ function sanitizeBranchIdentifier(raw: string): string {
   return raw.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 48) || "agent_db";
 }
 
-export function createPgxTool(options: { sandbox: Sandbox; agentId?: string }) {
+export function createPgxTool(options?: {
+  sandbox?: Sandbox;
+  agentId?: string;
+}) {
   const defaultBranch = sanitizeBranchIdentifier(
-    options.agentId ? `agent_${options.agentId}` : "agent_main",
+    options?.agentId ? `agent_${options.agentId}` : "agent_main",
   );
 
   return createAiTool({
     description:
       "Lightweight per-agent Postgres database (PGX). Each agent and subagent gets its own isolated, copy-on-write Postgres database branch in milliseconds for schema migrations, SQL testing, and data verification without touching production.",
     inputSchema: pgxInputSchema,
-    execute: async (rawArgs) => {
+    execute: async (rawArgs, { experimental_context }) => {
       const args = pgxInputSchema.parse(rawArgs);
       const branch = sanitizeBranchIdentifier(args.branchName ?? defaultBranch);
       const template = sanitizeBranchIdentifier(args.template ?? "app");
+      const sandbox =
+        options?.sandbox ?? (await getSandbox(experimental_context, "pgx"));
 
       const runCmd = async (cmd: string) => {
-        const res = await options.sandbox.exec(cmd, "/workspace", 30_000);
+        const res = await sandbox.exec(cmd, "/workspace", 30_000);
         return {
           exitCode: res.exitCode,
           stdout: res.stdout.trim(),

@@ -15,7 +15,12 @@ import {
   MAX_SUBAGENT_DEPTH,
   SUBAGENT_STEP_LIMIT,
 } from "../subagents/constants";
-import { subagentSessionStore } from "../subagents/session-store";
+import {
+  registerActiveSubagent,
+  stopAllSubagentsForTeam,
+  subagentSessionStore,
+  unregisterActiveSubagent,
+} from "../subagents/session-store";
 import {
   formatTeamContextSummary,
   getOrCreateTeamBoard,
@@ -262,14 +267,29 @@ IMPORTANT:
       }
     };
 
+    const parentContext = experimental_context as AgentContext | undefined;
+    const teamId = parentContext?.teamId ?? "default-team";
+    const subagentRegId = toolCallId || activeSessionId || crypto.randomUUID();
+
     // The subagent gets its own abort controller so the BUDGET guard
-    // can stop just the subagent without killing the parent turn --
-    // the parent's signal is forwarded so user-initiated stops still
-    // abort everything.
+    // or stop_subagent tool can stop just the subagent without killing
+    // the parent turn -- the parent's signal is forwarded so user-initiated
+    // stops abort all active subagents in the team.
     const localAbort = new AbortController();
-    const forwardParentAbort = () => localAbort.abort();
-    if (abortSignal?.aborted) {
+    registerActiveSubagent({
+      subagentId: subagentRegId,
+      sessionId: activeSessionId,
+      teamId,
+      subagentType,
+      controller: localAbort,
+      startedAt,
+    });
+    const forwardParentAbort = () => {
       localAbort.abort();
+      stopAllSubagentsForTeam(teamId);
+    };
+    if (abortSignal?.aborted) {
+      forwardParentAbort();
     } else {
       abortSignal?.addEventListener("abort", forwardParentAbort);
     }
@@ -293,8 +313,6 @@ IMPORTANT:
         ? `Follow-up Task: ${task}\n\nInstructions:\n${instructions}${verificationDirective}\n\nPlease proceed with this follow-up using your previous findings and context. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`
         : `Task: ${task}\n\nInstructions:\n${instructions}${verificationDirective}\n\nPlease complete this task thoroughly. When finished, your final turn MUST be a text message containing both **Summary** and **Answer** detailing what you found or changed. Do not end your execution on a tool call without a final summary.`;
 
-      const parentContext = experimental_context as AgentContext | undefined;
-      const teamId = parentContext?.teamId ?? "default-team";
       const teamBoard = getOrCreateTeamBoard(teamId);
       const teamContext = formatTeamContextSummary(teamBoard);
       const contextWindow = parentContext?.contextWindow;
@@ -675,9 +693,48 @@ IMPORTANT:
         return;
       }
 
+      const hasAssistantText = baseMessages.some((msg) => {
+        if (msg.role !== "assistant") return false;
+        if (typeof msg.content === "string") {
+          return msg.content.trim().length > 0;
+        }
+        if (Array.isArray(msg.content)) {
+          return msg.content.some(
+            (part) =>
+              part &&
+              typeof part === "object" &&
+              (part as { type?: string }).type === "text" &&
+              typeof (part as { text?: unknown }).text === "string" &&
+              ((part as { text: string }).text ?? "").trim().length > 0,
+          );
+        }
+        return false;
+      });
+
+      const finalMessages: ModelMessage[] = hasAssistantText
+        ? baseMessages
+        : [
+            ...baseMessages,
+            {
+              role: "assistant",
+              content:
+                streamedTextChunks.join("").trim() ||
+                `**Summary**: Completed subagent execution for "${task}" across ${toolCallCount} tool step(s)${
+                  executedTools.length > 0
+                    ? ` (${executedTools
+                        .slice(-5)
+                        .map((t) => t.name)
+                        .join(", ")})`
+                    : ""
+                }.`,
+            } as ModelMessage,
+          ];
+
       yield {
-        final: baseMessages,
-        streamedText: streamedTextChunks.join(""),
+        final: finalMessages,
+        streamedText:
+          streamedTextChunks.join("").trim() ||
+          `Completed "${task}" (${toolCallCount} step(s)).`,
         executedTools: [...executedTools],
         teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
         status: "completed",
@@ -692,6 +749,7 @@ IMPORTANT:
         ...(worktreeSummary ? { worktreeSummary } : {}),
       };
     } finally {
+      unregisterActiveSubagent(subagentRegId, activeSessionId);
       abortSignal?.removeEventListener("abort", forwardParentAbort);
       if (activeWorktree) {
         await activeWorktree.cleanup().catch(() => {});

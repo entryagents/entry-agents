@@ -11,6 +11,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
 import { Button } from "@/components/ui/button";
@@ -266,7 +267,14 @@ function ModelsTab({
   return (
     <div className="space-y-3 p-3.5">
       <p className="text-xs text-muted-foreground">
-        Pin a model per teammate role, or inherit the chat model.
+        Inherit uses your default Subagent / Chat model from{" "}
+        <Link
+          href="/settings/models"
+          className="underline underline-offset-2 hover:text-foreground"
+        >
+          Settings → Models
+        </Link>
+        . Pin a role below only to override it for this chat.
       </p>
       <div className="divide-y divide-border/60 rounded-lg border border-border/70">
         {TEAM_ROLE_IDS.map((role) => {

@@ -57,6 +57,7 @@ function normalizeStoredMessage(m: {
   id: string;
   role: string;
   parts: unknown;
+  metadata?: unknown;
   createdAt: Date;
 }): WebAgentUIMessage {
   const raw = m.parts as unknown;
@@ -65,6 +66,9 @@ function normalizeStoredMessage(m: {
       id: m.id,
       role: m.role as WebAgentUIMessage["role"],
       parts: raw,
+      ...(m.metadata
+        ? { metadata: m.metadata as WebAgentUIMessage["metadata"] }
+        : {}),
     } as WebAgentUIMessage;
   }
   if (raw && typeof raw === "object") {
@@ -76,13 +80,18 @@ function normalizeStoredMessage(m: {
         ? obj.role
         : m.role) as WebAgentUIMessage["role"],
       parts: Array.isArray(obj.parts) ? obj.parts : [],
-      metadata: (obj.metadata as WebAgentUIMessage["metadata"]) ?? undefined,
+      metadata:
+        ((obj.metadata ?? m.metadata) as WebAgentUIMessage["metadata"]) ??
+        undefined,
     } as WebAgentUIMessage;
   }
   return {
     id: m.id,
     role: m.role as WebAgentUIMessage["role"],
     parts: [],
+    ...(m.metadata
+      ? { metadata: m.metadata as WebAgentUIMessage["metadata"] }
+      : {}),
   } as WebAgentUIMessage;
 }
 

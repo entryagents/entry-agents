@@ -46,7 +46,15 @@ export function buildSubagentThreadMessages(
     assistantParts.push(pendingPart);
   }
 
-  if (subagent.finalText && subagent.finalText.trim().length > 0) {
+  const hasTextInCompleted = assistantParts.some(
+    (p) => p.type === "text" && p.text.trim().length > 0,
+  );
+
+  if (
+    !hasTextInCompleted &&
+    subagent.finalText &&
+    subagent.finalText.trim().length > 0
+  ) {
     assistantParts.push({
       type: "text",
       text: subagent.finalText,

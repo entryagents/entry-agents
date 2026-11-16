@@ -3,6 +3,7 @@
 import { FileCode2, Plug, Search } from "lucide-react";
 import type { ToolRenderState } from "@/app/lib/render-tool";
 import type { WebAgentUIToolPart } from "@/app/types";
+import { ToolkitBrandIcon } from "@/components/toolkit-icons";
 import { ToolLayout } from "../tool-layout";
 
 export type McpRendererProps = {
@@ -142,6 +143,20 @@ export function resolveMcpToolDisplay(
   };
 }
 
+function resolveToolkitSlugForMcp(
+  server: string | null,
+  action: string,
+): string | null {
+  if (server && server.toLowerCase() !== "composio") {
+    return server.toLowerCase();
+  }
+  const upperMatch = action.match(/^([A-Z][A-Z0-9]+)_/);
+  if (upperMatch) {
+    return upperMatch[1].toLowerCase();
+  }
+  return null;
+}
+
 export function McpRenderer({
   part,
   state,
@@ -155,12 +170,23 @@ export function McpRenderer({
       : undefined;
 
   const { kind, name, summary } = resolveMcpToolDisplay(toolName, input);
+  const parsed = parseNamespacedMcpTool(
+    toolName === "tool_call" && typeof input?.tool === "string"
+      ? input.tool
+      : toolName,
+  );
+  const toolkitSlug =
+    kind === "mcp"
+      ? resolveToolkitSlugForMcp(parsed.server, parsed.action)
+      : null;
 
   const icon =
     kind === "search" ? (
       <Search className="h-3.5 w-3.5" />
     ) : kind === "describe" ? (
       <FileCode2 className="h-3.5 w-3.5" />
+    ) : toolkitSlug ? (
+      <ToolkitBrandIcon slug={toolkitSlug} className="size-3.5 shrink-0" />
     ) : (
       <Plug className="h-3.5 w-3.5" />
     );

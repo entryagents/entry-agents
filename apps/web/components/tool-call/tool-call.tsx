@@ -10,6 +10,7 @@ import {
   type ToolRenderState,
 } from "@/app/lib/render-tool";
 import { DEFAULT_WORKING_DIRECTORY } from "@/lib/sandbox/config";
+import { ToolkitBrandIcon } from "@/components/toolkit-icons";
 import { ToolLayout } from "./tool-layout";
 import { BashRenderer } from "./renderers/bash-renderer";
 import { ReadRenderer } from "./renderers/read-renderer";
@@ -143,6 +144,18 @@ export function ToolCall({
   }
 }
 
+function resolveToolkitFromToolName(toolName: string): {
+  slug: string;
+  label: string;
+} | null {
+  const match = toolName.match(/^([A-Z][A-Z0-9]{1,24})_([A-Z0-9_]+)$/);
+  if (!match) return null;
+  const rawSlug = match[1].toLowerCase();
+  const action = match[2].toLowerCase().replaceAll("_", " ");
+  const prettySlug = rawSlug.charAt(0).toUpperCase() + rawSlug.slice(1);
+  return { slug: rawSlug, label: `${prettySlug} · ${action}` };
+}
+
 function DefaultRenderer({
   part,
   state,
@@ -156,7 +169,9 @@ function DefaultRenderer({
   onApprove?: (id: string) => void;
   onDeny?: (id: string, reason?: string) => void;
 }) {
-  const name = toolName.charAt(0).toUpperCase() + toolName.slice(1);
+  const toolkitInfo = resolveToolkitFromToolName(toolName);
+  const name =
+    toolkitInfo?.label ?? toolName.charAt(0).toUpperCase() + toolName.slice(1);
   const input = part.input as Record<string, unknown> | undefined;
   const summary = input ? JSON.stringify(input).slice(0, 40) : "...";
   const meta = part.state === "output-available" ? "Done" : undefined;
@@ -166,6 +181,14 @@ function DefaultRenderer({
       name={name}
       summary={summary}
       summaryClassName="font-mono"
+      icon={
+        toolkitInfo ? (
+          <ToolkitBrandIcon
+            slug={toolkitInfo.slug}
+            className="size-3.5 shrink-0"
+          />
+        ) : undefined
+      }
       meta={meta}
       state={state}
       onApprove={onApprove}
