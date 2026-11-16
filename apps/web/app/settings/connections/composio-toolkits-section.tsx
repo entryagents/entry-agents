@@ -20,11 +20,13 @@ import type {
   ComposioConnectedAccountSummary,
   ComposioToolkitCatalogItem,
 } from "@/lib/composio/client";
+import { ToolkitBrandIcon } from "@/components/toolkit-icons";
 
 interface ComposioToolkitsResponse {
   configured: boolean;
   toolkits: ComposioToolkitCatalogItem[];
   connectedCount: number;
+  categoryCounts?: Record<string, number>;
   sharedAccounts: ComposioConnectedAccountSummary[];
   error?: string;
 }
@@ -134,7 +136,7 @@ export function ComposioToolkitsSection() {
     return `/api/composio/toolkits?${params.toString()}`;
   }, [search, category]);
 
-  const { data, isLoading, mutate } = useSWR<ComposioToolkitsResponse>(
+  const { data, mutate } = useSWR<ComposioToolkitsResponse>(
     queryUrl,
     fetcher,
     { keepPreviousData: true },
@@ -320,7 +322,7 @@ export function ComposioToolkitsSection() {
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h2 className="text-base font-medium text-foreground">
-                Composio integrations
+                App integrations
               </h2>
               <span className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
                 {data?.connectedCount ?? 0} active
@@ -332,18 +334,6 @@ export function ComposioToolkitsSection() {
             </p>
           </div>
         </div>
-
-        <button
-          type="button"
-          onClick={() => mutate()}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 self-start rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted sm:self-auto"
-        >
-          <RefreshCw
-            className={`size-3.5 ${isLoading ? "animate-spin" : ""}`}
-            strokeWidth={1.5}
-          />
-          <span>Sync status</span>
-        </button>
       </div>
 
       {data && !data.configured ? (
@@ -404,18 +394,28 @@ export function ComposioToolkitsSection() {
         <div className="flex flex-wrap items-center gap-1">
           {CATEGORIES.map((cat) => {
             const active = category === cat;
+            const count = data?.categoryCounts?.[cat];
             return (
               <button
                 key={cat}
                 type="button"
                 onClick={() => setCategory(cat)}
-                className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                className={`inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors ${
                   active
                     ? "bg-foreground text-background"
                     : "border border-border bg-background text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {cat}
+                <span>{cat}</span>
+                {typeof count === "number" ? (
+                  <span
+                    className={`font-mono text-[11px] tabular-nums ${
+                      active ? "opacity-80" : "text-muted-foreground"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                ) : null}
               </button>
             );
           })}
@@ -434,16 +434,25 @@ export function ComposioToolkitsSection() {
             >
               <div className="space-y-2.5">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-medium text-foreground">
-                        {tk.name}
-                      </h3>
-                      <StatusBadge status={tk.status} />
-                    </div>
-                    <span className="text-[11px] text-muted-foreground">
-                      {tk.category}
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-card">
+                      <ToolkitBrandIcon
+                        slug={tk.slug}
+                        logo={tk.logo}
+                        className="size-4"
+                      />
                     </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="truncate text-sm font-medium text-foreground">
+                          {tk.name}
+                        </h3>
+                        <StatusBadge status={tk.status} />
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        {tk.category}
+                      </span>
+                    </div>
                   </div>
 
                   <button

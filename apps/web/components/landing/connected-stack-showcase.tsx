@@ -342,7 +342,8 @@ export function ConnectedStackShowcase() {
                 </h2>
                 <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
                   Repository context, tool definitions, and multi-turn history
-                  stay cached across every model so your credits go much further.
+                  stay cached across every model so your credits go much
+                  further.
                 </p>
 
                 {/* Caching Bar Visual */}
