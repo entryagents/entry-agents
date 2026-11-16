@@ -3,7 +3,6 @@
 import {
   CheckCircle2,
   ExternalLink,
-  KeyRound,
   Plug,
   RefreshCw,
   Search,
@@ -12,6 +11,7 @@ import { useState } from "react";
 import type { ToolRenderState } from "@/app/lib/render-tool";
 import type { WebAgentUIToolPart } from "@/app/types";
 import { ToolLayout } from "../tool-layout";
+import { ToolkitBrandIcon } from "@/components/toolkit-icons";
 
 const COMPOSIO_TOOLS = new Set([
   "COMPOSIO_SEARCH_TOOLS",
@@ -157,8 +157,14 @@ export function ComposioToolRenderer({
 
     return (
       <ToolLayout
-        icon={<KeyRound className="h-3.5 w-3.5" />}
-        name="Composio Auth"
+        icon={
+          <ToolkitBrandIcon
+            slug={toolkit}
+            logo={`https://logos.composio.dev/api/${toolkit.toLowerCase()}`}
+            className="h-3.5 w-3.5"
+          />
+        }
+        name="Connect"
         summary={`${toolkit}${alias ? ` (${alias})` : ""}`}
         meta={isConnected ? "Connected" : "Action required"}
         state={state}
@@ -174,7 +180,7 @@ export function ComposioToolRenderer({
     return (
       <ToolLayout
         icon={<Search className="h-3.5 w-3.5" />}
-        name="Composio Search"
+        name="Search Integrations"
         summary={query}
         meta={part.state === "output-available" ? "Done" : undefined}
         state={state}
@@ -200,6 +206,7 @@ export function ComposioToolRenderer({
         )
         .filter(Boolean)
     : [];
+  const inferredToolkit = toolsList[0]?.split("_")[0]?.toLowerCase() || toolkit;
   const summary =
     toolsList.length > 0
       ? toolsList.join(", ")
@@ -207,12 +214,22 @@ export function ComposioToolRenderer({
 
   return (
     <ToolLayout
-      icon={<Plug className="h-3.5 w-3.5" />}
+      icon={
+        inferredToolkit && inferredToolkit !== "integration" ? (
+          <ToolkitBrandIcon
+            slug={inferredToolkit}
+            logo={`https://logos.composio.dev/api/${inferredToolkit}`}
+            className="h-3.5 w-3.5"
+          />
+        ) : (
+          <Plug className="h-3.5 w-3.5" />
+        )
+      }
       name={
         toolName === "COMPOSIO_MULTI_EXECUTE_TOOL" ||
         toolName === "COMPOSIO_MULTI_EXECUTE"
-          ? "Composio Execute"
-          : "Composio Tool"
+          ? "Integration Execute"
+          : "Integration Tool"
       }
       summary={summary}
       meta={part.state === "output-available" ? "Done" : undefined}

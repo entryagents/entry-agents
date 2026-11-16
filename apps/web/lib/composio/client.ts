@@ -628,6 +628,141 @@ export async function syncUserComposioAccounts(
   return await listUserComposioConnectedAccounts(userId);
 }
 
+let cachedLiveToolkits: {
+  fetchedAt: number;
+  items: Array<{
+    slug: string;
+    name: string;
+    description: string;
+    category: ComposioToolkitCategory;
+    logo: string | null;
+  }>;
+} | null = null;
+
+function mapComposioCategory(
+  rawCategory?: string | null,
+): ComposioToolkitCategory {
+  const c = (rawCategory ?? "").toLowerCase();
+  if (
+    c.includes("email") ||
+    c.includes("chat") ||
+    c.includes("comm") ||
+    c.includes("social") ||
+    c.includes("messaging")
+  ) {
+    return "Communication";
+  }
+  if (
+    c.includes("dev") ||
+    c.includes("code") ||
+    c.includes("eng") ||
+    c.includes("git") ||
+    c.includes("issue") ||
+    c.includes("ci")
+  ) {
+    return "Engineering";
+  }
+  if (c.includes("design") || c.includes("figma") || c.includes("media")) {
+    return "Design";
+  }
+  if (
+    c.includes("crm") ||
+    c.includes("sales") ||
+    c.includes("payment") ||
+    c.includes("billing") ||
+    c.includes("commerce")
+  ) {
+    return "CRM";
+  }
+  if (c.includes("analytic") || c.includes("monitor") || c.includes("data")) {
+    return "Analytics";
+  }
+  return "Productivity";
+}
+
+async function getLiveComposioCatalog(): Promise<
+  Array<{
+    slug: string;
+    name: string;
+    description: string;
+    category: ComposioToolkitCategory;
+    logo: string | null;
+  }>
+> {
+  if (
+    cachedLiveToolkits &&
+    Date.now() - cachedLiveToolkits.fetchedAt < 5 * 60_000
+  ) {
+    return cachedLiveToolkits.items;
+  }
+
+  const presetMap = new Map(
+    COMPOSIO_POPULAR_TOOLKITS.map((p) => [
+      p.slug.toLowerCase(),
+      {
+        ...p,
+        logo: `https://logos.composio.dev/api/${p.slug.toLowerCase()}`,
+      },
+    ]),
+  );
+
+  if (!isComposioConfigured()) {
+    return Array.from(presetMap.values());
+  }
+
+  try {
+    const client = (await getComposioClient()) as ComposioSdkLike & {
+      toolkits?: {
+        get?: (opts?: { limit?: number }) => Promise<
+          Array<{
+            slug?: string;
+            name?: string;
+            meta?: {
+              description?: string;
+              logo?: string;
+              categories?: Array<{ slug?: string; name?: string }>;
+            };
+          }>
+        >;
+      };
+    };
+
+    const raw = await client.toolkits?.get?.({ limit: 200 });
+    if (Array.isArray(raw) && raw.length > 0) {
+      for (const tk of raw) {
+        const slug = tk.slug?.trim().toLowerCase();
+        if (!slug) continue;
+        const existing = presetMap.get(slug);
+        const rawCat =
+          tk.meta?.categories?.[0]?.slug ?? tk.meta?.categories?.[0]?.name;
+        presetMap.set(slug, {
+          slug,
+          name:
+            existing?.name ??
+            tk.name?.trim() ??
+            slug.charAt(0).toUpperCase() + slug.slice(1),
+          description:
+            existing?.description ??
+            tk.meta?.description?.trim() ??
+            `Connect ${tk.name ?? slug} tools to your workspace.`,
+          category: existing?.category ?? mapComposioCategory(rawCat),
+          logo:
+            tk.meta?.logo?.trim() || `https://logos.composio.dev/api/${slug}`,
+        });
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[composio] Failed to fetch live toolkit catalog:",
+      err instanceof Error ? scrubSecretsFromText(err.message) : err,
+    );
+  }
+
+  const items = Array.from(presetMap.values());
+  cachedLiveToolkits = { fetchedAt: Date.now(), items };
+  return items;
+}
+
 /**
  * Lists the full toolkit catalog + connected accounts + shared accounts for a user.
  */
@@ -641,19 +776,21 @@ export async function listComposioToolkitsForUser(
   configured: boolean;
   toolkits: ComposioToolkitCatalogItem[];
   connectedCount: number;
+  categoryCounts: Record<string, number>;
   sharedAccounts: ComposioConnectedAccountSummary[];
 }> {
   const { listAuthorizedSharedAccountsForUser } =
     await import("@/lib/db/composio-sessions");
 
   const configured = isComposioConfigured();
-  const [ownRows, sharedRows] = await Promise.all([
+  const [ownRows, sharedRows, baseCatalog] = await Promise.all([
     syncUserComposioAccounts(userId).catch(
       () => [] as ComposioConnectedAccountRow[],
     ),
     listAuthorizedSharedAccountsForUser(userId).catch(
       () => [] as ComposioConnectedAccountRow[],
     ),
+    getLiveComposioCatalog(),
   ]);
 
   const ownByToolkit = new Map<string, ComposioConnectedAccountSummary[]>();
@@ -673,8 +810,8 @@ export async function listComposioToolkitsForUser(
     sharedByToolkit.set(row.toolkitSlug, list);
   }
 
-  let catalogItems: ComposioToolkitCatalogItem[] =
-    COMPOSIO_POPULAR_TOOLKITS.map((preset) => {
+  const fullCatalog: ComposioToolkitCatalogItem[] = baseCatalog.map(
+    (preset) => {
       const slug = preset.slug.toLowerCase();
       const accounts = ownByToolkit.get(slug) ?? [];
       const sharedAccounts = sharedByToolkit.get(slug) ?? [];
@@ -689,7 +826,7 @@ export async function listComposioToolkitsForUser(
         name: preset.name,
         description: preset.description,
         category: preset.category,
-        logo: null,
+        logo: preset.logo ?? `https://logos.composio.dev/api/${slug}`,
         isConnected: accounts.some((a) => a.status === "ACTIVE"),
         status: primaryActive ? primaryActive.status : "NOT_CONNECTED",
         connectedAccountId: primaryActive
@@ -698,20 +835,21 @@ export async function listComposioToolkitsForUser(
         accounts,
         sharedAccounts,
       };
-    });
+    },
+  );
 
   // Also include any custom/dynamic toolkits the user has connected outside presets
-  const presetSlugs = new Set(catalogItems.map((i) => i.slug));
+  const presetSlugs = new Set(fullCatalog.map((i) => i.slug));
   for (const [slug, accounts] of ownByToolkit.entries()) {
     if (!presetSlugs.has(slug)) {
       const primary =
         accounts.find((a) => a.status === "ACTIVE") ?? accounts[0];
-      catalogItems.push({
+      fullCatalog.push({
         slug,
         name: slug.charAt(0).toUpperCase() + slug.slice(1),
-        description: `Connected ${slug} integration via Composio.`,
+        description: `Connected ${slug} integration.`,
         category: "Productivity",
-        logo: null,
+        logo: `https://logos.composio.dev/api/${slug}`,
         isConnected: accounts.some((a) => a.status === "ACTIVE"),
         status: primary ? primary.status : "NOT_CONNECTED",
         connectedAccountId: primary ? primary.connectedAccountId : null,
@@ -720,6 +858,25 @@ export async function listComposioToolkitsForUser(
       });
     }
   }
+
+  // Compute category counts from the full catalog before filtering
+  const categoryCounts: Record<string, number> = {
+    All: fullCatalog.length,
+    Connected: fullCatalog.filter(
+      (item) => item.isConnected || item.sharedAccounts.length > 0,
+    ).length,
+    Communication: 0,
+    Productivity: 0,
+    Engineering: 0,
+    Design: 0,
+    CRM: 0,
+    Analytics: 0,
+  };
+  for (const item of fullCatalog) {
+    categoryCounts[item.category] = (categoryCounts[item.category] ?? 0) + 1;
+  }
+
+  let catalogItems = fullCatalog;
 
   const search = options?.search?.trim().toLowerCase();
   if (search) {
@@ -745,12 +902,13 @@ export async function listComposioToolkitsForUser(
     }
   }
 
-  const connectedCount = catalogItems.filter((item) => item.isConnected).length;
+  const connectedCount = fullCatalog.filter((item) => item.isConnected).length;
 
   return {
     configured,
     toolkits: catalogItems,
     connectedCount,
+    categoryCounts,
     sharedAccounts: allSharedSummaries,
   };
 }
@@ -1054,6 +1212,156 @@ export async function verifyAndCompleteComposioCallback(input: {
     returnPath: attempt.returnPath ?? "/settings/connections",
     chatId: attempt.chatId,
     sessionId: attempt.sessionId,
+  };
+}
+
+/**
+ * Redeems a single-use Composio OAuth Callback Identity Verification `session_uri`
+ * by calling `POST /api/v3.1/connected_accounts/complete_auth` with the
+ * authenticated Entry user's ID and project API key.
+ *
+ * Defends against OAuth session fixation: Composio activates the connection
+ * only if `user_id` matches the user who initiated the flow.
+ */
+export async function completeComposioDeferredAuth(input: {
+  authenticatedUserId: string;
+  sessionUri: string;
+  fetchImpl?: typeof fetch;
+}): Promise<{
+  account: ComposioConnectedAccountRow;
+  connectedAccountId: string;
+  toolkitSlug: string;
+}> {
+  const apiKey = getComposioApiKey();
+  if (!apiKey) {
+    throw new ComposioServiceError(
+      "COMPOSIO_API_KEY is not configured on the server.",
+      503,
+      "COMPOSIO_UNCONFIGURED",
+    );
+  }
+  if (!input.authenticatedUserId.trim()) {
+    throw new ComposioServiceError(
+      "Authenticated Entry user is required.",
+      401,
+      "UNAUTHORIZED",
+    );
+  }
+  if (!input.sessionUri.trim()) {
+    throw new ComposioServiceError(
+      "Missing session_uri in OAuth callback.",
+      400,
+      "MISSING_SESSION_URI",
+    );
+  }
+
+  const doFetch = input.fetchImpl ?? fetch;
+  const response = await doFetch(
+    "https://backend.composio.dev/api/v3.1/connected_accounts/complete_auth",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+      },
+      body: JSON.stringify({
+        user_id: input.authenticatedUserId,
+        session_uri: input.sessionUri.trim(),
+      }),
+    },
+  );
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    connected_account_id?: string;
+    connectedAccountId?: string;
+    toolkit_slug?: string;
+    toolkitSlug?: string;
+    message?: string;
+    error?: { message?: string } | string;
+  };
+
+  if (response.status === 404) {
+    throw new ComposioServiceError(
+      "OAuth verification session expired or was already redeemed. Please try connecting again.",
+      404,
+      "SESSION_URI_EXPIRED",
+    );
+  }
+
+  if (response.status === 400) {
+    const errMsg =
+      typeof payload.error === "string"
+        ? payload.error
+        : payload.error?.message ||
+          payload.message ||
+          "Callback identity verification failed: user mismatch.";
+    throw new ComposioServiceError(
+      scrubSecretsFromText(errMsg),
+      400,
+      "CALLBACK_IDENTITY_MISMATCH",
+    );
+  }
+
+  if (!response.ok) {
+    const errMsg =
+      typeof payload.error === "string"
+        ? payload.error
+        : payload.error?.message ||
+          payload.message ||
+          `Composio complete_auth failed (${response.status}).`;
+    throw new ComposioServiceError(
+      scrubSecretsFromText(errMsg),
+      response.status >= 400 ? response.status : 502,
+      "COMPLETE_AUTH_FAILED",
+    );
+  }
+
+  const connectedAccountId =
+    payload.connected_account_id?.trim() ||
+    payload.connectedAccountId?.trim() ||
+    "";
+  const toolkitSlug = (
+    payload.toolkit_slug?.trim() ||
+    payload.toolkitSlug?.trim() ||
+    "integration"
+  ).toLowerCase();
+
+  if (!connectedAccountId) {
+    throw new ComposioServiceError(
+      "Composio complete_auth did not return a connected_account_id.",
+      502,
+      "MISSING_CONNECTED_ACCOUNT_ID",
+    );
+  }
+
+  const { getComposioConnectedAccountById, upsertComposioConnectedAccount } =
+    await import("@/lib/db/composio-sessions");
+
+  const existingLocal =
+    await getComposioConnectedAccountById(connectedAccountId);
+  if (existingLocal && existingLocal.userId !== input.authenticatedUserId) {
+    throw new ComposioServiceError(
+      "Connected account is already owned by another user.",
+      403,
+      "CROSS_USER_ACCOUNT_REJECTED",
+    );
+  }
+
+  const account = await upsertComposioConnectedAccount({
+    userId: input.authenticatedUserId,
+    composioUserId: input.authenticatedUserId,
+    connectedAccountId,
+    toolkitSlug,
+    status: "ACTIVE",
+    isDisabled: false,
+    lastError: null,
+    lastVerifiedAt: new Date(),
+  });
+
+  return {
+    account,
+    connectedAccountId,
+    toolkitSlug,
   };
 }
 

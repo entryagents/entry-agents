@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  completeComposioDeferredAuth,
   ComposioServiceError,
   scrubSecretsFromText,
   verifyAndCompleteComposioCallback,
@@ -21,6 +22,7 @@ export async function GET(req: Request) {
     return NextResponse.redirect(loginRedirect);
   }
 
+  const sessionUri = url.searchParams.get("session_uri")?.trim() ?? "";
   const stateNonce = url.searchParams.get("state")?.trim() ?? "";
   const connectedAccountId =
     url.searchParams.get("connectedAccountId")?.trim() ||
@@ -28,10 +30,40 @@ export async function GET(req: Request) {
     null;
   const statusParam = url.searchParams.get("status")?.trim() ?? null;
 
+  if (sessionUri) {
+    try {
+      const completed = await completeComposioDeferredAuth({
+        authenticatedUserId: session.user.id,
+        sessionUri,
+      });
+      const dest = new URL("/settings/connections", origin);
+      dest.searchParams.set("composio", "connected");
+      dest.searchParams.set("toolkit", completed.toolkitSlug);
+      dest.searchParams.set("connectedAccountId", completed.connectedAccountId);
+      return NextResponse.redirect(dest);
+    } catch (error) {
+      const reason =
+        error instanceof Error
+          ? scrubSecretsFromText(error.message)
+          : "OAuth callback identity verification failed";
+      const status =
+        error instanceof ComposioServiceError ? error.statusCode : 400;
+
+      if (req.headers.get("accept")?.includes("application/json")) {
+        return NextResponse.json({ error: reason }, { status });
+      }
+
+      const errUrl = new URL("/settings/connections", origin);
+      errUrl.searchParams.set("composio", "error");
+      errUrl.searchParams.set("reason", reason);
+      return NextResponse.redirect(errUrl);
+    }
+  }
+
   if (!stateNonce) {
     const errUrl = new URL("/settings/connections", origin);
     errUrl.searchParams.set("composio", "error");
-    errUrl.searchParams.set("reason", "Missing OAuth state nonce");
+    errUrl.searchParams.set("reason", "Missing OAuth session_uri or state");
     return NextResponse.redirect(errUrl);
   }
 
