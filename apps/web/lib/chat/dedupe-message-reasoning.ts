@@ -174,6 +174,26 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
   const seenToolCalls = new Map<string, number>();
   const seenIncompleteToolBySignature = new Map<string, number>();
   const seenCompletedToolSignatures = new Set<string>();
+  const seenTextNormalized = new Map<string, number>();
+
+  // Pre-detect if this message has replay signals (duplicate reasoning removed
+  // or duplicate toolCallIds present) so we can safely collapse even short
+  // replayed text blocks across tool boundaries.
+  const preSeenToolIds = new Set<string>();
+  let hasAnyReplaySignals = withDedupedReasoning !== message;
+  if (!hasAnyReplaySignals) {
+    for (const part of withDedupedReasoning.parts) {
+      const tid = getToolCallIdentity(part);
+      if (tid) {
+        if (preSeenToolIds.has(tid)) {
+          hasAnyReplaySignals = true;
+          break;
+        }
+        preSeenToolIds.add(tid);
+      }
+    }
+  }
+
   let hasToolDuplicates = false;
   let extractedTurnError: string | undefined;
   const filteredParts: WebAgentUIMessage["parts"] = [];
@@ -283,6 +303,8 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
         }
         if (newText.startsWith(prevText)) {
           hasToolDuplicates = true;
+          seenTextNormalized.delete(prevText);
+          seenTextNormalized.set(newText, lastTextIndex);
           filteredParts[lastTextIndex] = part;
           continue;
         }
@@ -291,8 +313,51 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
           continue;
         }
       }
+
+      // Non-adjacent duplicate text (e.g. from multi-step replay or
+      // mergePreservingLocalWork combining [...server.parts, ...local.parts]).
+      if (seenTextNormalized.has(newText)) {
+        if (hasAnyReplaySignals || hasToolDuplicates || newText.length >= 20) {
+          hasToolDuplicates = true;
+          continue;
+        }
+      } else if (hasAnyReplaySignals || hasToolDuplicates) {
+        let handledPrefix = false;
+        for (const [
+          existingText,
+          existingIdx,
+        ] of seenTextNormalized.entries()) {
+          if (existingText.length >= 12 && newText.startsWith(existingText)) {
+            hasToolDuplicates = true;
+            seenTextNormalized.delete(existingText);
+            seenTextNormalized.set(newText, existingIdx);
+            filteredParts[existingIdx] = part;
+            handledPrefix = true;
+            break;
+          }
+          if (newText.length >= 12 && existingText.startsWith(newText)) {
+            hasToolDuplicates = true;
+            handledPrefix = true;
+            break;
+          }
+        }
+        if (handledPrefix) {
+          continue;
+        }
+      }
+
       lastTextIndex = filteredParts.length;
+      seenTextNormalized.set(newText, lastTextIndex);
       filteredParts.push(part);
+      continue;
+    }
+
+    if (
+      part.type === "step-start" &&
+      filteredParts.length > 0 &&
+      filteredParts[filteredParts.length - 1]?.type === "step-start"
+    ) {
+      hasToolDuplicates = true;
       continue;
     }
 
@@ -415,7 +480,7 @@ export function dedupeMessageList<T extends WebAgentUIMessage>(
           metadata: mergedMeta,
           parts: [...prev.parts, ...msg.parts],
         });
-        if (merged.parts.length === prev.parts.length) {
+        if (merged.parts.length < prev.parts.length + msg.parts.length) {
           result[result.length - 1] = merged;
           continue;
         }

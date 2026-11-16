@@ -217,6 +217,32 @@ describe("dedupeMessageParts", () => {
     );
     expect(result.metadata?.turnError).toBe(inlineSetupError.text);
   });
+  test("deduplicates replayed multi-step text parts separated by tool calls", () => {
+    const toolPart = {
+      type: "tool-bash" as const,
+      toolCallId: "call_step_1",
+      state: "output-available" as const,
+      input: { command: "pwd" },
+      output: { stdout: "/app", exitCode: 0 },
+    };
+    const message = msg([
+      { type: "text" as const, text: "Checking directory." },
+      toolPart as unknown as WebAgentUIMessage["parts"][number],
+      { type: "text" as const, text: "Done checking." },
+      // Replayed sequence (e.g. from startIndex=0 resume or mergePreservingLocalWork)
+      { type: "text" as const, text: "Checking directory." },
+      toolPart as unknown as WebAgentUIMessage["parts"][number],
+      { type: "text" as const, text: "Done checking." },
+    ]);
+
+    const result = dedupeMessageParts(message);
+    expect(result.parts).toHaveLength(3);
+    expect(result.parts[0]).toEqual({
+      type: "text",
+      text: "Checking directory.",
+    });
+    expect(result.parts[2]).toEqual({ type: "text", text: "Done checking." });
+  });
 });
 
 describe("dedupeMessageList", () => {
@@ -228,5 +254,37 @@ describe("dedupeMessageList", () => {
     const list = dedupeMessageList([m1, m2]);
     expect(list).toHaveLength(1);
     expect(list[0].id).toBe("asst_1");
+  });
+
+  test("merges consecutive assistant messages with different IDs when partial local message precedes full server message", () => {
+    const partialLocal = msg([
+      { type: "text" as const, text: "Running build now." },
+    ]);
+    partialLocal.id = "asst_local";
+
+    const fullServer = msg([
+      { type: "text" as const, text: "Running build now." },
+      {
+        type: "tool-bash" as const,
+        toolCallId: "call_build_1",
+        state: "output-available" as const,
+        input: { command: "pnpm build" },
+        output: { stdout: "ok", exitCode: 0 },
+      } as unknown as WebAgentUIMessage["parts"][number],
+      { type: "text" as const, text: "Build succeeded." },
+    ]);
+    fullServer.id = "asst_server";
+
+    const list = dedupeMessageList([partialLocal, fullServer]);
+    expect(list).toHaveLength(1);
+    expect(list[0].parts).toHaveLength(3);
+    expect(list[0].parts[0]).toEqual({
+      type: "text",
+      text: "Running build now.",
+    });
+    expect(list[0].parts[2]).toEqual({
+      type: "text",
+      text: "Build succeeded.",
+    });
   });
 });

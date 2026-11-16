@@ -12,6 +12,7 @@ type AbortableWorkflowChatTransportOptions<UI_MESSAGE extends UIMessage> =
   WorkflowChatTransportOptions<UI_MESSAGE> & {
     body?: RequestBody | RequestBodyFactory;
     onReconnectNeeded?: () => void;
+    onCompletedSnapshotNeeded?: () => void;
   };
 
 /**
@@ -273,7 +274,7 @@ export class AbortableChatTransport<
           lastMsg?.role === "assistant" &&
           snapshot.status === "completed";
         if (hasCompletedReplyForUserMsg) {
-          options.onReconnectNeeded?.();
+          options.onCompletedSnapshotNeeded?.();
           return createSyntheticFinishSseResponse(
             snapshot.chat?.activeStreamId ?? "completed",
           );
@@ -400,7 +401,7 @@ export class AbortableChatTransport<
               (startIndex > 0 || state.activeSendMessagesCount > 0)
             ) {
               state.lastChunkAt = Date.now();
-              options.onReconnectNeeded?.();
+              options.onCompletedSnapshotNeeded?.();
               return createSyntheticFinishSseResponse();
             }
 

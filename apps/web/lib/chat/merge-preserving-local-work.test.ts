@@ -185,4 +185,57 @@ describe("mergePreservingLocalWork", () => {
     ]);
     expect(merged[0]?.metadata?.turnError).toBe(setupErrorText);
   });
+
+  test("never duplicates multi-step text and tool parts when server and local share the same assistant message", () => {
+    const toolPart = {
+      type: "tool-bash" as const,
+      toolCallId: "call_99",
+      state: "output-available" as const,
+      input: { command: "echo hi" },
+      output: { stdout: "hi", exitCode: 0 },
+    } as unknown as WebAgentUIMessage["parts"][number];
+
+    const serverMsgs: WebAgentUIMessage[] = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "Run echo" }],
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Running command." },
+          toolPart,
+          { type: "text", text: "All done." },
+        ],
+      },
+    ];
+
+    const localMsgs: WebAgentUIMessage[] = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "Run echo" }],
+      },
+      {
+        id: "a1",
+        role: "assistant",
+        parts: [
+          { type: "text", text: "Running command." },
+          toolPart,
+          { type: "text", text: "All done." },
+        ],
+      },
+    ];
+
+    const merged = mergePreservingLocalWork(serverMsgs, localMsgs);
+    expect(merged).toHaveLength(2);
+    expect(merged[1]?.parts).toHaveLength(3);
+    expect(
+      merged[1]?.parts
+        .filter((p) => p.type === "text")
+        .map((p) => (p as { text: string }).text),
+    ).toEqual(["Running command.", "All done."]);
+  });
 });

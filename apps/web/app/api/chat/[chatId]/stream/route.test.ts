@@ -207,7 +207,7 @@ describe("GET /api/chat/[chatId]/stream", () => {
     );
     expect(response.status).toBe(200);
     expect(lastStartIndex).toBe(10);
-    expect(response.headers.get("x-workflow-stream-tail-index")).toBe("12");
+    expect(response.headers.get("x-workflow-stream-tail-index")).toBeNull();
   });
 
   test("replays completed run from 0 when activeStreamId is null and x-entry-mid-turn header is present", async () => {
@@ -225,7 +225,7 @@ describe("GET /api/chat/[chatId]/stream", () => {
     const response = await GET(req, routeContext);
     expect(response.status).toBe(200);
     expect(lastStartIndex).toBe(0);
-    expect(response.headers.get("x-workflow-stream-tail-index")).toBe("12");
+    expect(response.headers.get("x-workflow-stream-tail-index")).toBeNull();
   });
 
   test("returns stream response when workflow is running", async () => {
@@ -234,7 +234,7 @@ describe("GET /api/chat/[chatId]/stream", () => {
 
     const response = await GET(createStreamRequest(), routeContext);
     expect(response.status).toBe(200);
-    expect(response.headers.get("x-workflow-stream-tail-index")).toBe("12");
+    expect(response.headers.get("x-workflow-stream-tail-index")).toBeNull();
     expect(lastStartIndex).toBeUndefined();
     expect(spies.updateChatActiveStreamId).not.toHaveBeenCalled();
   });
@@ -250,6 +250,20 @@ describe("GET /api/chat/[chatId]/stream", () => {
 
     expect(response.status).toBe(200);
     expect(lastStartIndex).toBe(8);
+    expect(response.headers.get("x-workflow-stream-tail-index")).toBeNull();
+  });
+
+  test("includes tail index header when startIndex is negative", async () => {
+    workflowRunStatus = "running";
+    const { GET } = await routeModulePromise;
+
+    const response = await GET(
+      createStreamRequestWithStartIndex("-1"),
+      routeContext,
+    );
+
+    expect(response.status).toBe(200);
+    expect(lastStartIndex).toBe(-1);
     expect(response.headers.get("x-workflow-stream-tail-index")).toBe("12");
   });
 

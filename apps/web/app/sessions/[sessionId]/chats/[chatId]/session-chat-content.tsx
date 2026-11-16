@@ -14,6 +14,7 @@ import {
   Loader2,
   RefreshCw,
   Share2,
+  WifiOff,
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -3382,19 +3383,6 @@ export function SessionChatContent({
                             workspaceStatus?.message ?? "Thinking…"
                           }
                         />
-                        {(!isOnline || isReconnecting) && (
-                          <div
-                            role="status"
-                            className="flex w-fit max-w-[85%] items-center gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-muted-foreground"
-                          >
-                            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                            <span>
-                              {!isOnline
-                                ? "Offline — waiting to reconnect automatically"
-                                : "Reconnecting to live stream…"}
-                            </span>
-                          </div>
-                        )}
                         {error &&
                           isOnline &&
                           !isReconnecting &&
@@ -3436,6 +3424,25 @@ export function SessionChatContent({
               {/* Input */}
               <div className="p-4 pb-2 sm:pb-8">
                 <div className="mx-auto max-w-4xl space-y-2">
+                  {(!isOnline || isReconnecting) && (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground"
+                    >
+                      {!isOnline ? (
+                        <>
+                          <WifiOff className="h-3.5 w-3.5 shrink-0" />
+                          <span>Offline. Waiting to reconnect</span>
+                        </>
+                      ) : (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                          <span>Reconnecting to live stream</span>
+                        </>
+                      )}
+                    </div>
+                  )}
                   {sandboxCreateError && (
                     <SandboxCreateErrorBanner
                       error={sandboxCreateError}
