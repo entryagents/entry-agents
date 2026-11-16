@@ -3,6 +3,7 @@
 import { Brain } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { ToolRenderState } from "@entry-agents/shared/lib/tool-state";
+import { UserMessageFold } from "./user-message-fold";
 import { ToolLayout } from "./tool-call/tool-layout";
 
 interface ThinkingBlockProps {
@@ -86,9 +87,10 @@ export function ThinkingBlock({
 
   const expandedContent = hasContent ? (
     <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
-      <p className="whitespace-pre-wrap break-words text-[13.2px] leading-relaxed text-muted-foreground">
-        {text}
-      </p>
+      <UserMessageFold
+        text={text}
+        className="text-[13.2px] text-muted-foreground"
+      />
     </div>
   ) : isStreaming ? (
     <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2">

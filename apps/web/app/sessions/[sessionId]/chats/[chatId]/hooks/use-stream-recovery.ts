@@ -16,7 +16,7 @@ import {
  * anything. Only controls polling -- never whether we reconnect.
  */
 const RECOVERY_POLL_INTERVAL_MS = 2_500;
-const HUNG_STREAM_THRESHOLD_MS = 45_000;
+const HUNG_STREAM_THRESHOLD_MS = 120_000;
 
 type RetryChatStream = (opts?: {
   auto?: boolean;
@@ -150,6 +150,7 @@ export function useStreamRecovery({
 
         // Attach when this device is not yet streaming or errored out.
         if (!isChatInFlight || status === "error") {
+          hasAutoRetriedCurrentErrorRef.current = false;
           retryChatStream({ auto: true, strategy: "soft" });
           return;
         }

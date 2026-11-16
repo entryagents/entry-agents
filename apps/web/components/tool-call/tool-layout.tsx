@@ -91,6 +91,7 @@ export function ToolLayout({
   const initialExpanded = autoExpanded ?? defaultExpanded;
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
   const prevAutoExpandedRef = useRef(autoExpanded);
+  const userInteractedRef = useRef(false);
   const showApprovalButtons = Boolean(
     state.approvalRequested && !state.isActiveApproval && state.approvalId,
   );
@@ -128,6 +129,9 @@ export function ToolLayout({
       return;
     }
     prevAutoExpandedRef.current = autoExpanded;
+    if (userInteractedRef.current) {
+      return;
+    }
     if (autoExpanded) {
       setShouldRenderExpandedContent(true);
     }
@@ -161,6 +165,7 @@ export function ToolLayout({
       return;
     }
 
+    userInteractedRef.current = true;
     const nextExpanded = !isExpanded;
 
     if (nextExpanded) {
