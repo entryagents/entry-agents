@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, Loader2, Square, XCircle } from "lucide-react";
+import { ArrowLeft, Check, Loader2, XCircle } from "lucide-react";
 import { useMemo } from "react";
 import type { WebAgentUIMessage, WebAgentUIMessagePart } from "@/app/types";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
@@ -88,7 +88,7 @@ export function SubagentThreadView({
   messages,
   streamdownComponents,
   onClose,
-  onStopRun,
+  onStopRun: _onStopRun,
   onApproveTool,
   onDenyTool,
 }: SubagentThreadViewProps) {
@@ -164,18 +164,6 @@ export function SubagentThreadView({
           <span className="hidden rounded border border-border/70 bg-muted/30 px-1.5 py-0.5 text-[10px] sm:inline">
             Read-only
           </span>
-          {isLive && onStopRun && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onStopRun}
-              className="h-7 gap-1 px-2 text-xs"
-            >
-              <Square className="size-3 fill-current" />
-              <span>Stop</span>
-            </Button>
-          )}
         </div>
       </div>
 
