@@ -136,11 +136,9 @@ export function ComposioToolkitsSection() {
     return `/api/composio/toolkits?${params.toString()}`;
   }, [search, category]);
 
-  const { data, mutate } = useSWR<ComposioToolkitsResponse>(
-    queryUrl,
-    fetcher,
-    { keepPreviousData: true },
-  );
+  const { data, mutate } = useSWR<ComposioToolkitsResponse>(queryUrl, fetcher, {
+    keepPreviousData: true,
+  });
 
   async function handleConnect(
     slug: string,
