@@ -193,15 +193,20 @@ export function useSessionChatRuntime({
             chat.setMessages(dedupedLocal);
           }
           const lastMsg = dedupedLocal[dedupedLocal.length - 1];
-          const hasRenderableReply =
+          const hasNonErrorReply =
             lastMsg?.role === "assistant" &&
             lastMsg.parts.some(
               (p) =>
-                (p.type === "text" && p.text.trim().length > 0) ||
+                (p.type === "text" &&
+                  p.text.trim().length > 0 &&
+                  !isFriendlyChatErrorText(p.text)) ||
                 p.type.startsWith("tool-") ||
                 p.type === "reasoning",
             );
-          if (!hasRenderableReply || shouldReconcileAfterDrop) {
+          if (hasNonErrorReply) {
+            chat.clearError();
+          }
+          if (!hasNonErrorReply || shouldReconcileAfterDrop) {
             void fetch(`/api/sessions/${sessionId}/chats/${chatId}`, {
               cache: "no-store",
             })
