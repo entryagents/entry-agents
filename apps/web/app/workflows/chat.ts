@@ -3380,11 +3380,25 @@ export async function runAgentWorkflow(options: Options) {
       releaseUserBillingTurnStep(options.userId, workflowRunId),
       sendFinish(writable).then(() => closeStream(writable)),
       ...(sandboxState && shouldRefreshCachedDiff
-        ? [refreshDiffCache(options.sessionId, sandboxState)]
+        ? [
+            refreshDiffCache(options.sessionId, sandboxState).catch((err) => {
+              console.warn(
+                "[workflow] Best-effort refreshDiffCache failed after completion:",
+                err,
+              );
+            }),
+          ]
         : []),
     ]);
-    await reconcileSessionStatusStep(options.sessionId, "completed");
     streamClosed = true;
+    await reconcileSessionStatusStep(options.sessionId, "completed").catch(
+      (err) => {
+        console.warn(
+          "[workflow] Best-effort reconcileSessionStatusStep failed after completion:",
+          err,
+        );
+      },
+    );
 
     workflowStatus = wasAborted
       ? "aborted"
@@ -3421,6 +3435,21 @@ export async function runAgentWorkflow(options: Options) {
     }
 
     const errorText = getSetupErrorMessage(error, isRepeatFailure);
+    if (pendingAssistantResponse.parts.length === 0) {
+      const recovered = await getPersistedAssistantMessageStep(
+        options.chatId,
+        assistantId,
+      );
+      if (recovered && recovered.parts.length > 0) {
+        pendingAssistantResponse = {
+          ...recovered,
+          metadata: {
+            ...recovered.metadata,
+            ...pendingAssistantResponse.metadata,
+          },
+        };
+      }
+    }
     if (pendingAssistantResponse.parts.length === 0 && !streamClosed) {
       pendingAssistantResponse = {
         ...pendingAssistantResponse,
@@ -3685,6 +3714,8 @@ const runAgentStep = async (
   let streamWriteFailed = false;
   let hasEmittedStreamChunks = false;
   let responseMessage: WebAgentUIMessage | undefined;
+  const streamedTextById = new Map<string, string>();
+  const streamedTextOrder: string[] = [];
   let lastStepUsage: LanguageModelUsage | undefined;
   let lastStepCost: number | undefined;
   let stepSecretRedactor: SecretRedactor | undefined;
@@ -4688,8 +4719,6 @@ const runAgentStep = async (
         streamWriter = writable.getWriter();
         coalescingWriter =
           createCoalescingStreamWriter<UIMessageChunk>(streamWriter);
-        const streamedTextById = new Map<string, string>();
-        const streamedTextOrder: string[] = [];
 
         for await (const part of stream.toUIMessageStream<WebAgentUIMessage>({
           originalMessages,
@@ -5413,6 +5442,41 @@ const runAgentStep = async (
       });
     }
 
+    // Persist any assistant text/parts already streamed to the client before
+    // rethrowing, so a page reload never loses the streamed reply.
+    try {
+      const combinedStreamed = streamedTextOrder
+        .map((id) => streamedTextById.get(id) ?? "")
+        .join("")
+        .trim();
+      const partialParts =
+        responseMessage &&
+        Array.isArray(responseMessage.parts) &&
+        responseMessage.parts.length > 0
+          ? responseMessage.parts
+          : combinedStreamed.length > 0
+            ? [{ type: "text" as const, text: combinedStreamed }]
+            : [];
+      if (partialParts.length > 0) {
+        let partialMessage: WebAgentUIMessage = {
+          id: messageId,
+          role: "assistant",
+          parts: partialParts,
+          metadata: withModelMetadata(
+            responseMessage?.metadata,
+            selectedModelId,
+            modelId,
+          ),
+        };
+        if (stepSecretRedactor?.hasSecrets()) {
+          partialMessage = stepSecretRedactor.redactUnknown(partialMessage);
+        }
+        await persistAssistantMessage(chatId, partialMessage);
+      }
+    } catch {
+      // Best-effort checkpoint; never mask the original step error.
+    }
+
     const errorWithStepTiming =
       error instanceof Error ? error : new Error(String(error));
     if (stepSecretRedactor?.hasSecrets() && errorWithStepTiming.message) {
@@ -5504,6 +5568,34 @@ const runAgentStep = async (
     }
   }
 };
+
+async function getPersistedAssistantMessageStep(
+  chatId: string,
+  messageId: string,
+): Promise<WebAgentUIMessage | null> {
+  "use step";
+
+  try {
+    const { getChatMessages } = await import("@/lib/db/sessions");
+    const rows = await getChatMessages(chatId);
+    const match = rows.find(
+      (m) => m.id === messageId && m.role === "assistant",
+    );
+    if (!match) return null;
+    const rawParts = Array.isArray(match.parts) ? match.parts : [];
+    if (rawParts.length === 0) return null;
+    return {
+      id: match.id,
+      role: "assistant",
+      parts: rawParts as WebAgentUIMessage["parts"],
+      ...(match.metadata
+        ? { metadata: match.metadata as WebAgentUIMessage["metadata"] }
+        : {}),
+    };
+  } catch {
+    return null;
+  }
+}
 
 async function checkChatCancelledStep(
   chatId: string,
