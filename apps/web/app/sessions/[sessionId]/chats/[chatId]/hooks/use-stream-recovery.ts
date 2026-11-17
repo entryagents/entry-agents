@@ -66,10 +66,11 @@ export function useStreamRecovery({
   // churn during streaming. The ref is updated on every render (cheap) while
   // the stable wrapper below keeps a constant identity for effects.
   const maybeRecoverStreamRef = useRef(
-    (_opts?: { isVisibilityRecovery?: boolean }) => {},
+    (_opts?: { isVisibilityRecovery?: boolean; isPoll?: boolean }) => {},
   );
   maybeRecoverStreamRef.current = (opts?: {
     isVisibilityRecovery?: boolean;
+    isPoll?: boolean;
   }) => {
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       return;
@@ -83,7 +84,7 @@ export function useStreamRecovery({
       hasAssistantRenderableContent,
       inFlightStartedAt: inFlightStartedAtRef.current,
       isProbeInFlight: streamRecoveryProbeInFlightRef.current,
-      isVisibilityRecovery: opts?.isVisibilityRecovery,
+      isVisibilityRecovery: Boolean(opts?.isVisibilityRecovery || opts?.isPoll),
       minIntervalMs: 2_000,
     });
 
@@ -160,6 +161,8 @@ export function useStreamRecovery({
         // too long (half-open mobile/proxy socket), tear down the hung fetch & reconnect.
         // When the user just returned to the tab (visibility/focus/online), use a
         // short 5s threshold so a socket killed while backgrounded recovers immediately.
+        // Foreground periodic polls use HUNG_STREAM_THRESHOLD_MS so normal tool calls
+        // or model thinking pauses (>5s) do not trigger false reconnects.
         const staleThresholdMs = opts?.isVisibilityRecovery
           ? 5_000
           : HUNG_STREAM_THRESHOLD_MS;
@@ -183,6 +186,10 @@ export function useStreamRecovery({
 
   const maybeRecoverStreamOnVisibility = useCallback(() => {
     maybeRecoverStreamRef.current({ isVisibilityRecovery: true });
+  }, []);
+
+  const maybeRecoverStreamOnPoll = useCallback(() => {
+    maybeRecoverStreamRef.current({ isPoll: true });
   }, []);
 
   useEffect(() => {
@@ -231,7 +238,7 @@ export function useStreamRecovery({
         typeof document === "undefined" ||
         document.visibilityState === "visible"
       ) {
-        maybeRecoverStreamOnVisibility();
+        maybeRecoverStreamOnPoll();
       }
     }, RECOVERY_POLL_INTERVAL_MS);
 
@@ -243,6 +250,7 @@ export function useStreamRecovery({
     };
   }, [
     maybeRecoverStream,
+    maybeRecoverStreamOnPoll,
     maybeRecoverStreamOnVisibility,
     isChatInFlight,
     retryChatStream,
