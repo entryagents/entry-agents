@@ -54,7 +54,6 @@ import {
   claimActiveStream,
   closeStream,
   clearActiveStream,
-  dequeueNextQueuedUserMessageStep,
   getUnreadInboxCountStep,
   releaseUserBillingTurnStep,
   reconcileSessionStatusStep,
@@ -71,6 +70,7 @@ import {
   runAutoCreatePrStep,
   runPostTurnPluginsStep,
   sendFinish,
+  startNextQueuedWorkflowStep,
 } from "./chat-post-finish";
 import { dedupeMessageReasoning } from "@/lib/chat/dedupe-message-reasoning";
 import { canonicalizeMessageParts } from "@/lib/chat/canonicalize-key-order";
@@ -113,6 +113,8 @@ type Options = {
   authSession: AuthSessionContext;
   selectedModelId?: string;
   modelId?: string;
+  overrideModelId?: string | null;
+  overrideReasoningEffort?: string | null;
   teamRoleModels?: Record<string, string>;
   agentOptions?: Omit<OpenAgentCallOptions, "sandbox" | "skills">;
   assistantId?: string;
@@ -2380,6 +2382,12 @@ export async function runAgentWorkflow(options: Options) {
     requestUrl: options.requestUrl,
     authSession: options.authSession,
     workflowRunId,
+    ...(options.overrideModelId !== undefined
+      ? { overrideModelId: options.overrideModelId }
+      : {}),
+    ...(options.overrideReasoningEffort !== undefined
+      ? { overrideReasoningEffort: options.overrideReasoningEffort }
+      : {}),
     ...(initialTeamRoleModels && Object.keys(initialTeamRoleModels).length > 0
       ? { teamRoleModels: initialTeamRoleModels }
       : {}),
@@ -2966,145 +2974,6 @@ export async function runAgentWorkflow(options: Options) {
         );
 
       if (!shouldContinue) {
-        // Server-side queue auto-drain: if the current turn finished naturally
-        // (not paused on a tool approval and not aborted) and the user queued
-        // follow-up prompts on the chat row, pop and execute the next queued
-        // prompt immediately inside this durable workflow run so queued tasks
-        // continue even when the user's phone/browser is completely offline.
-        const canDrainServerQueue =
-          !wasAborted &&
-          result.finishReason !== "tool-calls" &&
-          (options.maxSteps === undefined || step + 1 < options.maxSteps);
-
-        if (canDrainServerQueue) {
-          const dequeuedPrompt = await dequeueNextQueuedUserMessageStep(
-            options.chatId,
-          );
-          if (dequeuedPrompt) {
-            const nextQueuedUserMsg = dequeuedPrompt.message;
-            if (totalUsage) {
-              pendingAssistantResponse = {
-                ...pendingAssistantResponse,
-                metadata: {
-                  ...pendingAssistantResponse.metadata,
-                  totalMessageUsage: totalUsage,
-                },
-              };
-            }
-            await persistAssistantMessage(
-              options.chatId,
-              pendingAssistantResponse,
-            );
-
-            if (totalUsage) {
-              await recordWorkflowUsage(
-                options.userId,
-                modelId,
-                totalUsage,
-                pendingAssistantResponse,
-                previousResponseMessage,
-              );
-            }
-            totalUsage = undefined;
-            previousResponseMessage = undefined;
-
-            if (
-              dequeuedPrompt.modelId !== undefined ||
-              dequeuedPrompt.reasoningEffort !== undefined
-            ) {
-              const activeTeamRoleModels =
-                options.teamRoleModels ?? agentOptions.teamRoleModels;
-              const nextModelRuntime = await resolveChatModelRuntime({
-                userId: options.userId,
-                sessionId: options.sessionId,
-                chatId: options.chatId,
-                requestUrl: options.requestUrl,
-                authSession: options.authSession,
-                workflowRunId,
-                ...(dequeuedPrompt.modelId !== undefined
-                  ? { overrideModelId: dequeuedPrompt.modelId }
-                  : {}),
-                ...(dequeuedPrompt.reasoningEffort !== undefined
-                  ? { overrideReasoningEffort: dequeuedPrompt.reasoningEffort }
-                  : {}),
-                ...(activeTeamRoleModels &&
-                Object.keys(activeTeamRoleModels).length > 0
-                  ? { teamRoleModels: activeTeamRoleModels }
-                  : {}),
-              });
-
-              if ("blockedNotice" in nextModelRuntime) {
-                const blockedId = generateIdAi();
-                const notice = nextModelRuntime.blockedNotice;
-                await sendStart(writable, blockedId);
-                await sendTextMessage(writable, "setup-error", notice);
-                pendingAssistantResponse = {
-                  role: "assistant",
-                  id: blockedId,
-                  parts: [{ type: "text", text: notice }],
-                  metadata: withModelMetadata(
-                    undefined,
-                    selectedModelId,
-                    modelId,
-                  ),
-                };
-                break;
-              }
-
-              selectedModelId = nextModelRuntime.selectedModelId;
-              modelId = nextModelRuntime.modelId;
-              remainingBalanceCents = nextModelRuntime.startingBalanceCents;
-              remainingWindowBudgetCents = nextModelRuntime.windowBudgetCents;
-              agentOptions.model = attachLiveModelContextWindow(
-                nextModelRuntime.agentOptions.model,
-                modelCostCatalog,
-              );
-              if (nextModelRuntime.agentOptions.subagentModel !== undefined) {
-                agentOptions.subagentModel = attachLiveModelContextWindow(
-                  nextModelRuntime.agentOptions.subagentModel,
-                  modelCostCatalog,
-                );
-              } else {
-                delete agentOptions.subagentModel;
-              }
-              if (nextModelRuntime.agentOptions.teamRoleModels !== undefined) {
-                agentOptions.teamRoleModels =
-                  nextModelRuntime.agentOptions.teamRoleModels;
-              } else {
-                delete agentOptions.teamRoleModels;
-              }
-            }
-
-            const nextUserModelMessages = await convertMessages([
-              nextQueuedUserMsg,
-            ]);
-            modelMessages.push(...nextUserModelMessages);
-            assistantId = generateIdAi();
-            pendingAssistantResponse = {
-              role: "assistant",
-              id: assistantId,
-              parts: [],
-              metadata: withModelMetadata(undefined, selectedModelId, modelId),
-            };
-            originalMessagesForStep = [nextQueuedUserMsg];
-            lastConsecutiveToolSignature = undefined;
-            consecutiveIdenticalToolCount = 0;
-
-            await sendStart(writable, assistantId);
-            const nextUserText = (nextQueuedUserMsg.parts ?? [])
-              .map((part) =>
-                part.type === "text" && "text" in part ? String(part.text) : "",
-              )
-              .filter(Boolean)
-              .join("\n")
-              .slice(0, 4000);
-            await sendUserMessageMarker(writable, {
-              id: nextQueuedUserMsg.id,
-              text: nextUserText,
-            });
-            continue;
-          }
-        }
         break;
       }
 
@@ -3388,7 +3257,6 @@ export async function runAgentWorkflow(options: Options) {
     await Promise.all([
       clearActiveStream(options.chatId, workflowRunId),
       releaseUserBillingTurnStep(options.userId, workflowRunId),
-      sendFinish(writable).then(() => closeStream(writable)),
       ...(sandboxState && shouldRefreshCachedDiff
         ? [
             refreshDiffCache(options.sessionId, sandboxState).catch((err) => {
@@ -3400,7 +3268,7 @@ export async function runAgentWorkflow(options: Options) {
           ]
         : []),
     ]);
-    streamClosed = true;
+
     await reconcileSessionStatusStep(options.sessionId, "completed").catch(
       (err) => {
         console.warn(
@@ -3409,6 +3277,40 @@ export async function runAgentWorkflow(options: Options) {
         );
       },
     );
+
+    const canChainNextQueuedTurn =
+      !wasAborted &&
+      !exhaustedMaxSteps &&
+      !wasTimedOut &&
+      !creditExhausted &&
+      !windowExhausted &&
+      !turnSpendCapped &&
+      finalFinishReason !== "tool-calls";
+
+    if (canChainNextQueuedTurn) {
+      await startNextQueuedWorkflowStep({
+        chatId: options.chatId,
+        sessionId: options.sessionId,
+        userId: options.userId,
+        requestUrl: options.requestUrl,
+        authSession: options.authSession,
+        ...(options.maxSteps !== undefined
+          ? { maxSteps: options.maxSteps }
+          : {}),
+        ...(options.teamRoleModels
+          ? { teamRoleModels: options.teamRoleModels }
+          : {}),
+        ...(options.autoCommitEnabled !== undefined
+          ? { autoCommitEnabled: options.autoCommitEnabled }
+          : {}),
+        ...(options.autoCreatePrEnabled !== undefined
+          ? { autoCreatePrEnabled: options.autoCreatePrEnabled }
+          : {}),
+      });
+    }
+
+    await sendFinish(writable).then(() => closeStream(writable));
+    streamClosed = true;
 
     workflowStatus = wasAborted
       ? "aborted"
@@ -5826,16 +5728,6 @@ function isNonRetryableApiCallError(error: unknown): boolean {
     return data.error.type === "invalid_request_error";
   }
   return false;
-}
-
-async function sendStart(writable: Writable, messageId: string) {
-  "use step";
-  const writer = writable.getWriter();
-  try {
-    await writer.write({ type: "start", messageId });
-  } finally {
-    writer.releaseLock();
-  }
 }
 
 async function sendTextMessage(writable: Writable, id: string, text: string) {

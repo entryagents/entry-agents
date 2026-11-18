@@ -1917,10 +1917,8 @@ export function SessionChatContent({
       ...prev,
       { id, ...built, modelId, reasoningEffort },
     ]);
-    // Mirror to the server so the prompt survives a reload, a chat switch,
-    // or a different device. Local state updates first so the queue panel
-    // never waits on the network; a failed POST leaves it local-only,
-    // which is the same behaviour this had before it was server-backed.
+    // Persist on the chat row so queued prompts survive reloads and continue
+    // draining durably on the server even if the user disconnects.
     void fetch(`/api/chat/${chatInfo.id}/queue`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1931,7 +1929,39 @@ export function SessionChatContent({
         modelId,
         reasoningEffort,
       }),
-    }).catch(() => {});
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (
+          data: {
+            queued?: Array<{
+              id: string;
+              text: string;
+              payload: ComposerMessagePayload;
+              modelId?: string | null;
+              reasoningEffort?: string | null;
+            }>;
+            started?: boolean;
+          } | null,
+        ) => {
+          if (!data) return;
+          if (Array.isArray(data.queued)) {
+            setQueuedMessages(
+              data.queued.map((item) => ({
+                id: item.id,
+                displayText: item.text,
+                payload: item.payload,
+                modelId: item.modelId,
+                reasoningEffort: item.reasoningEffort,
+              })),
+            );
+          }
+          if (data.started) {
+            retryChatStream({ auto: true, strategy: "reconnect" });
+          }
+        },
+      )
+      .catch(() => {});
   }
 
   function removeQueuedMessage(id: string) {
@@ -2005,47 +2035,74 @@ export function SessionChatContent({
     persistQueuedMessages(nextOrder);
   }
 
-  const drainingQueueIdRef = useRef<string | null>(null);
+  const wasChatInFlightForQueueSyncRef = useRef(isChatInFlight);
+  const queuedCountRef = useRef(queuedMessages.length);
+  queuedCountRef.current = queuedMessages.length;
 
-  // Drain the queue one message at a time once the current turn settles.
-  // hasPendingResponse flips true synchronously inside submitBuiltMessage
-  // (via sendMessageWithPendingState) before this effect can re-run, so
-  // this only ever dequeues a single item per "became ready" transition.
+  // Read-only sync with the server-backed queue when a turn finishes: the
+  // workflow engine drains and chains the next queued prompt durably on the
+  // server, so this client only refreshes the displayed queue list and attaches
+  // to the chained workflow stream when a queued item was consumed.
   useEffect(() => {
-    if (userStopped || isChatInFlight || hasPendingResponse) {
-      return;
-    }
-    if (queuedMessages.length === 0) {
+    const transitionedToIdle =
+      wasChatInFlightForQueueSyncRef.current && !isChatInFlight;
+    wasChatInFlightForQueueSyncRef.current = isChatInFlight;
+
+    if (isChatInFlight) {
       return;
     }
 
-    const [next] = queuedMessages;
-    // Send first, then acknowledge the durable queue row. Deleting first
-    // made a transient /api/chat failure permanently lose the user's prompt.
-    // The local drain guard prevents the effect from starting the same item
-    // twice while the send and acknowledgement are in flight.
-    const drainId = next.id;
-    if (drainingQueueIdRef.current === drainId) return;
-    drainingQueueIdRef.current = drainId;
-    void submitBuiltMessage(next)
-      .then(async (sent) => {
-        if (!sent) return;
-        const response = await fetch(
-          `/api/chat/${chatInfo.id}/queue?id=${encodeURIComponent(next.id)}`,
-          { method: "DELETE" },
-        );
-        if (response.ok) {
-          setQueuedMessages((current) =>
-            current.filter((item) => item.id !== next.id),
+    const prevQueuedCount = queuedCountRef.current;
+    if (!transitionedToIdle && prevQueuedCount === 0) {
+      return;
+    }
+
+    let cancelled = false;
+    void fetch(`/api/chat/${chatInfo.id}/queue`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then(
+        (
+          data: {
+            queued?: Array<{
+              id: string;
+              text: string;
+              payload: ComposerMessagePayload;
+              modelId?: string | null;
+              reasoningEffort?: string | null;
+            }>;
+          } | null,
+        ) => {
+          if (cancelled || !data || !Array.isArray(data.queued)) return;
+          setQueuedMessages(
+            data.queued.map((item) => ({
+              id: item.id,
+              displayText: item.text,
+              payload: item.payload,
+              modelId: item.modelId,
+              reasoningEffort: item.reasoningEffort,
+            })),
           );
-        }
-      })
-      .catch(() => {})
-      .finally(() => {
-        drainingQueueIdRef.current = null;
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- submitBuiltMessage/buildComposerMessagePayload close over the latest render's state; only the gating signals and queue contents should retrigger this drain.
-  }, [userStopped, isChatInFlight, hasPendingResponse, queuedMessages]);
+          if (
+            transitionedToIdle &&
+            !userStopped &&
+            data.queued.length < prevQueuedCount
+          ) {
+            retryChatStream({ auto: true, strategy: "reconnect" });
+          }
+        },
+      )
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    chatInfo.id,
+    isChatInFlight,
+    messages.length,
+    retryChatStream,
+    userStopped,
+  ]);
 
   const handleFixChecks = useCallback(
     async (failedRuns: CheckRun[]) => {
