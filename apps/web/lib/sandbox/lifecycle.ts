@@ -120,6 +120,7 @@ export function buildLifecycleActivityUpdate(
     SandboxLifecycleState,
     "active" | "restoring"
   > = "active",
+  inactivityTimeoutMs: number = SANDBOX_INACTIVITY_TIMEOUT_MS,
 ): Pick<
   LifecycleUpdate,
   "lifecycleState" | "lifecycleError" | "lastActivityAt" | "hibernateAfter"
@@ -128,9 +129,7 @@ export function buildLifecycleActivityUpdate(
     lifecycleState,
     lifecycleError: null,
     lastActivityAt: activityAt,
-    hibernateAfter: new Date(
-      activityAt.getTime() + SANDBOX_INACTIVITY_TIMEOUT_MS,
-    ),
+    hibernateAfter: new Date(activityAt.getTime() + inactivityTimeoutMs),
   };
 }
 
@@ -139,6 +138,7 @@ export function buildActiveLifecycleUpdate(
   options?: {
     activityAt?: Date;
     lifecycleState?: Extract<SandboxLifecycleState, "active" | "restoring">;
+    inactivityTimeoutMs?: number;
   },
 ): LifecycleUpdate {
   const activityAt = options?.activityAt ?? new Date();
@@ -147,6 +147,7 @@ export function buildActiveLifecycleUpdate(
     ...buildLifecycleActivityUpdate(
       activityAt,
       options?.lifecycleState ?? "active",
+      options?.inactivityTimeoutMs,
     ),
     sandboxExpiresAt: getSandboxExpiresAtDate(sandboxState),
   };

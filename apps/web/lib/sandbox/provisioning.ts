@@ -11,11 +11,20 @@ import {
 } from "@entry-agents/sandbox";
 import {
   getSessionById,
+  getSessionsByUserId,
+  updateSession,
   updateSessionIfNotArchived,
   type SessionRecord,
 } from "@/lib/db/sessions";
+import { getUserBillingState } from "@/lib/billing/credit-ledger";
+import { getPlanDefinition } from "@/lib/billing/plans";
+import {
+  FREE_USER_SANDBOX_INACTIVITY_TIMEOUT_MS,
+  resolveFreeTierSandboxReuse,
+} from "@/lib/billing/sandbox-limits";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
+import { isUserAdmin } from "@/lib/db/users";
 import {
   verifyRepoAccess,
   getRepoAccessErrorMessage,
@@ -38,7 +47,11 @@ import {
   getNextLifecycleVersion,
 } from "@/lib/sandbox/lifecycle";
 import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
-import { isSandboxActive, isSandboxState } from "@/lib/sandbox/utils";
+import {
+  clearSandboxState,
+  isSandboxActive,
+  isSandboxState,
+} from "@/lib/sandbox/utils";
 import { installGlobalSkills } from "@/lib/skills/global-skill-installer";
 import { eq } from "drizzle-orm";
 
@@ -117,9 +130,13 @@ function resolveSessionProvider(session: SessionRecord): SandboxProvider {
 
 async function buildSandboxState(
   session: SessionRecord,
+  overrideExistingState?: SandboxState | null,
 ): Promise<SandboxState> {
   const provider = resolveSessionProvider(session);
-  const existingState = session.sandboxState;
+  const existingState =
+    overrideExistingState === undefined
+      ? session.sandboxState
+      : overrideExistingState;
   const source = buildSandboxSource(session);
 
   return await provider.buildProvisionState({
@@ -231,10 +248,29 @@ export async function provisionSessionSandbox(params: {
   }
 
   const didSetupWorkspace = !isSandboxActive(session.sandboxState);
-  const user = await getUserById(session.userId);
+  const [user, isAdmin, userSessions] = await Promise.all([
+    getUserById(session.userId),
+    isUserAdmin(session.userId).catch(() => false),
+    getSessionsByUserId(session.userId).catch(() => []),
+  ]);
   if (!user) {
     throw new Error("User not found");
   }
+  const billingState = await getUserBillingState(session.userId, {
+    isAdmin,
+  }).catch(() => null);
+  const plan = getPlanDefinition(billingState?.plan);
+  const isFreeUser = !isAdmin && plan.id === "free";
+
+  const provider = resolveSessionProvider(session);
+  const reuseDecision = resolveFreeTierSandboxReuse({
+    currentSessionId: session.id,
+    currentSandboxState: session.sandboxState,
+    requestedProviderType: provider.id,
+    userPlan: plan.id,
+    isAdmin,
+    userSessions,
+  });
 
   const gitUser = await getGitUser(user);
   const setupToken = await getSetupToken({
@@ -242,10 +278,12 @@ export async function provisionSessionSandbox(params: {
     session,
   });
 
-  let sandbox: Sandbox;
-  try {
-    sandbox = await connectSandbox({
-      state: await buildSandboxState(session),
+  const connectWithOptions = async (
+    stateOverride: SandboxState | null | undefined,
+    createIfMissing: boolean,
+  ) =>
+    connectSandbox({
+      state: await buildSandboxState(session, stateOverride),
       options: {
         githubToken: setupToken?.token,
         gitUser,
@@ -253,31 +291,39 @@ export async function provisionSessionSandbox(params: {
         vcpus: DEFAULT_SANDBOX_VCPUS,
         ports: DEFAULT_SANDBOX_PORTS,
         baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
-        // Kept non-persistent (owner-confirmed 2026-08-28, after briefly
-        // trying `persistent: true` earlier the same day -- see
-        // docs/agents/lessons-learned.md for the full back-and-forth).
-        // Non-persistent still means a stopped sandbox's filesystem is
-        // gone for good (Vercel's own docs: "cannot be resumed"), so the
-        // actual fix for not losing user work is upstream of this file:
-        // lib/sandbox/lifecycle.ts no longer proactively hibernates an
-        // idle sandbox 15 minutes early -- it now waits until the
-        // sandbox is genuinely near its real Hobby-plan 45-minute hard
-        // cap before stopping it, active or idle. That closes the actual
-        // gap (early voluntary stop on a sandbox that could have kept
-        // running) without paying Snapshot Storage costs for persistence
-        // this app doesn't otherwise need.
         persistent: false,
         resume: true,
-        // Opt-in via OPEN_AGENTS_SANDBOX_DRIVE=true. Mounts the
-        // per-session drive so files survive sandbox stop/expiry.
-        // Undefined when disabled, so the field is simply absent and
-        // behaviour is unchanged.
         ...(getSandboxDriveConfig(session.id) && {
           drives: getSandboxDriveConfig(session.id),
         }),
-        createIfMissing: true,
+        createIfMissing,
       },
     });
+
+  let sandbox: Sandbox;
+  let stateOverrideForFallback: SandboxState | null | undefined =
+    reuseDecision.mode === "detach-and-provision-fresh" ? null : undefined;
+  try {
+    if (reuseDecision.mode === "attach-existing") {
+      try {
+        sandbox = await connectWithOptions(reuseDecision.targetState, false);
+        stateOverrideForFallback = reuseDecision.targetState;
+      } catch (attachError) {
+        console.warn(
+          `[sandbox] Failed to attach reusable sandbox from session ${reuseDecision.sourceSessionId}; clearing stale state and provisioning fresh:`,
+          attachError instanceof Error ? attachError.message : attachError,
+        );
+        await updateSession(reuseDecision.sourceSessionId, {
+          sandboxState: clearSandboxState(reuseDecision.targetState),
+        }).catch(() => {});
+        stateOverrideForFallback = null;
+        sandbox = await connectWithOptions(null, true);
+      }
+    } else if (reuseDecision.mode === "detach-and-provision-fresh") {
+      sandbox = await connectWithOptions(null, true);
+    } else {
+      sandbox = await connectWithOptions(undefined, true);
+    }
   } finally {
     if (setupToken) {
       await revokeInstallationToken(setupToken.token);
@@ -287,7 +333,7 @@ export async function provisionSessionSandbox(params: {
   const rawSandboxState = sandbox.getState?.();
   const sandboxState = isSandboxState(rawSandboxState)
     ? rawSandboxState
-    : await buildSandboxState(session);
+    : await buildSandboxState(session, stateOverrideForFallback);
 
   const updatedSession = await updateSessionIfNotArchived(params.sessionId, {
     sandboxState,
@@ -295,7 +341,11 @@ export async function provisionSessionSandbox(params: {
     snapshotCreatedAt: null,
     lifecycleVersion: getNextLifecycleVersion(session.lifecycleVersion),
     lifecycleError: null,
-    ...buildActiveLifecycleUpdate(sandboxState),
+    ...buildActiveLifecycleUpdate(sandboxState, {
+      inactivityTimeoutMs: isFreeUser
+        ? FREE_USER_SANDBOX_INACTIVITY_TIMEOUT_MS
+        : undefined,
+    }),
   });
 
   if (!updatedSession) {
