@@ -2906,6 +2906,16 @@ export async function runAgentWorkflow(options: Options) {
       if (pendingAssistantResponse) {
         await persistAssistantMessage(options.chatId, pendingAssistantResponse);
       }
+      if (result.failedDebits && result.failedDebits.length > 0) {
+        await flushStepDebitsStep(options.userId, result.failedDebits).catch(
+          (err) => {
+            console.error(
+              `[chat-workflow] Failed to flush ${result.failedDebits?.length} deferred debit(s) for chat ${options.chatId}:`,
+              err,
+            );
+          },
+        );
+      }
       // See stripDanglingToolCalls's own comment above -- guards against
       // AI_MissingToolResultsError poisoning every subsequent step of
       // this same turn.
@@ -3547,6 +3557,32 @@ export async function runAgentWorkflow(options: Options) {
 // almost never fire.
 const MAX_TURN_SPEND_CENTS = 500;
 
+type PendingStepDebit = {
+  costUsd: number;
+  billingReference: string;
+  modelId?: string;
+  description?: string;
+};
+
+async function flushStepDebitsStep(
+  userId: string,
+  debits: PendingStepDebit[],
+): Promise<void> {
+  "use step";
+
+  if (debits.length === 0) return;
+  const { recordBillableUsage } = await import("@/lib/billing/credit-ledger");
+  await Promise.all(
+    debits.map((entry) =>
+      recordBillableUsage(userId, entry.costUsd, {
+        billingReference: entry.billingReference,
+        ...(entry.description ? { description: entry.description } : {}),
+        ...(entry.modelId ? { modelId: entry.modelId } : {}),
+      }),
+    ),
+  );
+}
+
 const runAgentStep = async (
   messages: ModelMessage[],
   originalMessages: WebAgentUIMessage[],
@@ -3608,6 +3644,7 @@ const runAgentStep = async (
   // Billing persistence promises are flushed before this durable step
   // returns. The database owns sub-cent carry and idempotency.
   const pendingDebits: Promise<void>[] = [];
+  const failedDebits: PendingStepDebit[] = [];
   const recordDebit = (
     costUsd: number,
     opts: {
@@ -3630,7 +3667,19 @@ const runAgentStep = async (
             await recordBillableUsage(userId, costUsd, entryOpts);
             return;
           } catch (err) {
-            if (attempt === 3) throw err;
+            if (attempt === 3) {
+              console.error(
+                "[workflow] recordDebit failed after 3 attempts; deferring to post-step flush:",
+                err,
+              );
+              failedDebits.push({
+                costUsd,
+                billingReference: opts.billingReference,
+                ...(opts.modelId ? { modelId: opts.modelId } : {}),
+                ...(opts.description ? { description: opts.description } : {}),
+              });
+              return;
+            }
             await delay(attempt * 100);
           }
         }
@@ -5380,6 +5429,8 @@ const runAgentStep = async (
     // unset one arrives as an explicit `undefined` -- which the Workflow
     // SDK refuses to serialize into the event log (it fails the run with a
     // non-retryable SerializationError). Strip them before returning.
+    await Promise.allSettled(pendingDebits);
+
     return withoutUndefined({
       responseMessage,
       responseMessages: safeResponseMessages,
@@ -5388,6 +5439,7 @@ const runAgentStep = async (
       stepUsage,
       stepCost: stepsCost,
       stepWasAborted: false,
+      failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
       remainingBalanceCents,
       remainingWindowBudgetCents,
       creditExhausted,
@@ -5405,6 +5457,7 @@ const runAgentStep = async (
     const stepFinishedAt = new Date();
 
     if (isAbortError(error)) {
+      await Promise.allSettled(pendingDebits);
       const abortedFinishReason: FinishReason = "stop";
       // Deliberately `withoutUndefined`: this branch sets optional fields to
       // `undefined` explicitly, and an `undefined` step return value cannot
@@ -5428,6 +5481,7 @@ const runAgentStep = async (
         stepUsage: lastStepUsage,
         stepCost: lastStepCost,
         stepWasAborted: true,
+        failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
         remainingBalanceCents,
         remainingWindowBudgetCents,
         creditExhausted,
@@ -5544,10 +5598,9 @@ const runAgentStep = async (
     }
     clearInterval(billingHeartbeat);
     try {
-      // Billing failures must fail the durable step so Workflow retries the
-      // same stable reference. Swallowing this error would lose provider
-      // usage permanently after a transient database outage.
-      await Promise.all(pendingDebits);
+      // Never throw billing/ledger errors out of finally: doing so bypasses
+      // runAgentStep's catch checkpoint and discards a completed responseMessage.
+      await Promise.allSettled(pendingDebits);
     } finally {
       // Always release process-local resources even when billing retries.
       await mcpToolSet?.close();

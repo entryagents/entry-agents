@@ -430,6 +430,7 @@ export function SessionChatProvider({
     chatId: chatInfo.id,
     initialMessages,
     initialChatActiveStreamId: initialChat.activeStreamId,
+    initialChatStatus: initialChat.status,
     contextLimit,
   });
 

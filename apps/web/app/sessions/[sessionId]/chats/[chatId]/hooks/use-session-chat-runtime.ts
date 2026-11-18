@@ -50,6 +50,7 @@ type UseSessionChatRuntimeParams = {
   chatId: string;
   initialMessages: WebAgentUIMessage[];
   initialChatActiveStreamId: string | null | undefined;
+  initialChatStatus?: string | null;
   contextLimit: number | null;
 };
 
@@ -109,6 +110,7 @@ export function useSessionChatRuntime({
   chatId,
   initialMessages,
   initialChatActiveStreamId,
+  initialChatStatus,
   contextLimit,
 }: UseSessionChatRuntimeParams): UseSessionChatRuntimeReturn {
   const contextLimitRef = useRef<number | null>(contextLimit);
@@ -651,13 +653,26 @@ export function useSessionChatRuntime({
   useEffect(() => {
     const lastMessage = chatInstance.messages[chatInstance.messages.length - 1];
     const endsWithUserMessage = lastMessage?.role === "user";
-    const hasUnfinishedAssistant =
+    const isInitialStatusActive =
+      initialChatStatus === "queued" ||
+      initialChatStatus === "running" ||
+      initialChatStatus === "sleeping" ||
+      initialChatStatus === "resuming";
+    const lastMessageIsError =
       lastMessage?.role === "assistant" &&
-      !lastMessage.parts.some(
-        (p) =>
-          (p.type as string) === "step-finish" ||
-          (p.type as string) === "finish",
+      Boolean(
+        lastMessage.metadata?.turnError ||
+        lastMessage.parts.some(
+          (p) => p.type === "text" && isFriendlyChatErrorText(p.text),
+        ),
       );
+    // DB chat_messages.parts never persists AI SDK "step-finish"/"finish" markers,
+    // so only treat an assistant tail as unfinished when the chat status in DB is
+    // actually active and the message is not already an error notice.
+    const hasUnfinishedAssistant =
+      isInitialStatusActive &&
+      lastMessage?.role === "assistant" &&
+      !lastMessageIsError;
 
     // If there is no active stream recorded and no in-flight turn in SSR props,
     // still run a single immediate check against the server in case Next.js
