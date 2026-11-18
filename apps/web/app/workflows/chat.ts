@@ -58,6 +58,7 @@ import {
   releaseUserBillingTurnStep,
   reconcileSessionStatusStep,
   hasAutoCommitChangesStep,
+  kickSandboxLifecycleStep,
   persistFinalAssistantMessage,
   persistAssistantMessage,
   persistAssistantMessageWithToolResults,
@@ -3384,6 +3385,7 @@ export async function runAgentWorkflow(options: Options) {
       const terminalState =
         workflowStatus === "failed" || caughtError ? "failed" : "completed";
       await reconcileSessionStatusStep(options.sessionId, terminalState);
+      await kickSandboxLifecycleStep(options.sessionId);
     } finally {
       const runFinishedAt = new Date();
       await Promise.all([
@@ -5626,40 +5628,42 @@ function startStopMonitor(
         return;
       }
 
-      try {
-        const { getUserBillingState, getUsageWindowTotals } =
-          await import("@/lib/billing/credit-ledger");
-        const { getPlanDefinition, findExceededUsageWindow } =
-          await import("@/lib/billing/plans");
-        const liveBilling = await getUserBillingState(userId);
+      if (!isAdminUser) {
+        try {
+          const { getUserBillingState, getUsageWindowTotals } =
+            await import("@/lib/billing/credit-ledger");
+          const { getPlanDefinition, findExceededUsageWindow } =
+            await import("@/lib/billing/plans");
+          const liveBilling = await getUserBillingState(userId);
 
-        if (!isAdminUser && (!liveBilling || liveBilling.plan === "free")) {
-          const { getFreeTierGateStatus } =
-            await import("@/lib/db/platform-settings");
-          const gate = await getFreeTierGateStatus().catch(() => ({
-            enabled: true,
-            reason: null,
-          }));
-          if (!gate.enabled) {
+          if (!liveBilling || liveBilling.plan === "free") {
+            const { getFreeTierGateStatus } =
+              await import("@/lib/db/platform-settings");
+            const gate = await getFreeTierGateStatus().catch(() => ({
+              enabled: true,
+              reason: null,
+            }));
+            if (!gate.enabled) {
+              abortController.abort();
+              return;
+            }
+          }
+
+          if (liveBilling && liveBilling.creditBalanceCents <= 0) {
             abortController.abort();
             return;
           }
-        }
-
-        if (liveBilling && liveBilling.creditBalanceCents <= 0) {
-          abortController.abort();
-          return;
-        }
-        const liveWindows = getPlanDefinition(liveBilling?.plan).usageWindows;
-        if (liveWindows) {
-          const liveTotals = await getUsageWindowTotals(userId);
-          if (findExceededUsageWindow(liveTotals, liveWindows) !== null) {
-            abortController.abort();
-            return;
+          const liveWindows = getPlanDefinition(liveBilling?.plan).usageWindows;
+          if (liveWindows) {
+            const liveTotals = await getUsageWindowTotals(userId);
+            if (findExceededUsageWindow(liveTotals, liveWindows) !== null) {
+              abortController.abort();
+              return;
+            }
           }
+        } catch {
+          // Ignore transient DB poll errors inside stop monitor
         }
-      } catch {
-        // Ignore transient DB poll errors inside stop monitor
       }
 
       await delay(1000);

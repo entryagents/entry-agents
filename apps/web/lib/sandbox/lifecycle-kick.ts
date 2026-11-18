@@ -97,33 +97,42 @@ function isLifecycleRunStale(
   return overdueMs > SANDBOX_LIFECYCLE_STALE_RUN_GRACE_MS;
 }
 
+export async function runKickSandboxLifecycleWorkflow(input: {
+  sessionId: string;
+  reason: SandboxLifecycleReason;
+}): Promise<void> {
+  const session = await getSessionById(input.sessionId);
+  if (!session) {
+    return;
+  }
+
+  const sessionForStart = isLifecycleRunStale(session)
+    ? { ...session, lifecycleRunId: null }
+    : session;
+
+  if (sessionForStart !== session) {
+    await updateSession(input.sessionId, { lifecycleRunId: null });
+  }
+
+  if (!shouldStartLifecycle(sessionForStart)) {
+    return;
+  }
+
+  const runId = createLifecycleRunId();
+  const claimed = await claimSessionLifecycleRunId(input.sessionId, runId);
+  if (!claimed) {
+    return;
+  }
+
+  await startLifecycleRun(input.sessionId, input.reason, runId);
+}
+
 export function kickSandboxLifecycleWorkflow(input: KickSandboxLifecycleInput) {
-  const run = async () => {
-    const session = await getSessionById(input.sessionId);
-    if (!session) {
-      return;
-    }
-
-    const sessionForStart = isLifecycleRunStale(session)
-      ? { ...session, lifecycleRunId: null }
-      : session;
-
-    if (sessionForStart !== session) {
-      await updateSession(input.sessionId, { lifecycleRunId: null });
-    }
-
-    if (!shouldStartLifecycle(sessionForStart)) {
-      return;
-    }
-
-    const runId = createLifecycleRunId();
-    const claimed = await claimSessionLifecycleRunId(input.sessionId, runId);
-    if (!claimed) {
-      return;
-    }
-
-    await startLifecycleRun(input.sessionId, input.reason, runId);
-  };
+  const run = () =>
+    runKickSandboxLifecycleWorkflow({
+      sessionId: input.sessionId,
+      reason: input.reason,
+    });
 
   if (input.scheduleBackgroundWork) {
     input.scheduleBackgroundWork(run);
