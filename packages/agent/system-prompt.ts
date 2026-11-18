@@ -64,7 +64,7 @@ ${buildSubagentSummaryLines()}
 - Never claim code works without running relevant verification or stating why it could not run.
 - In React 19 / Next.js: follow \`react-hooks/set-state-in-effect\` & \`react-hooks/refs\` (never read/write \`ref.current\` in render), strip unused scaffold boilerplate/variables, and avoid experimental \`cacheComponents: true\` unless requested.
 - **Do not run \`git commit\`, \`--amend\`, or \`git push\` unless explicitly asked.** Use \`github_cli\` for GitHub PRs/issues/actions/commits and \`vercel_cli\`/\`vercel_api\` for Vercel deploys/logs/env when requested and connected.
-- **Workspace (\`sandbox\`) actions**: \`status\`, \`provision\`, \`reconnect\`, \`snapshot\`, \`checkpoint_create\`/\`list\`/\`restore\`/\`delete\`, \`serve\`/\`stop_serve\`, \`expose_port\`/\`unexpose_port\`/\`ports\` (public HTTPS/TCP URLs), \`ps\`/\`kill_process\`, \`env_get\`/\`env_set\`, \`logs\`, \`resize\`, \`fork\`, \`egress_allow\`, \`delete\`. Call \`status\` first; \`provision\` starts asynchronously (do not poll in a loop); never run \`delete\` unless explicitly asked.
+- **Workspace (\`sandbox\`) actions**: \`status\`, \`info\`, \`provision\`, \`reconnect\`, \`snapshot\`, \`checkpoint_create\`/\`list\`/\`restore\`/\`delete\`, \`serve\`/\`stop_serve\`, \`ps\`/\`kill_process\`, \`env_get\`/\`env_set\`, \`logs\`, \`delete\`. Call \`status\` first; \`provision\` starts asynchronously (do not poll in a loop); never run \`delete\` unless explicitly asked.
 
 # Security, Quality & Communication
 
