@@ -271,7 +271,7 @@ export async function persistFinalAssistantMessage(
       console.warn(
         `[workflow] Skipped assistant upsert due to ID scope conflict: ${message.id}`,
       );
-    } else if (result.status === "inserted") {
+    } else if (result.status === "inserted" || result.status === "updated") {
       await updateChatAssistantActivity(chatId, new Date());
     }
 
