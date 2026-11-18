@@ -28,7 +28,7 @@ export type SessionWithUnread = Pick<
   lastActivityAt: Session["createdAt"];
 };
 
-interface CreateSessionInput {
+export interface CreateSessionInput {
   title?: string;
   repoOwner?: string;
   repoName?: string;
