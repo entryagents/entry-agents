@@ -2,7 +2,9 @@
 
 import {
   Archive,
+  ChevronDown,
   CircleDashed,
+  FolderGit2,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -12,6 +14,7 @@ import {
   Moon,
   Pencil,
   Plus,
+  PlusCircle,
   Search,
   Settings,
   SmilePlus,
@@ -20,6 +23,8 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/app/providers";
 import { EntryMark } from "@/components/entry-mark";
+import { GitHubImportDialog } from "@/components/github-import-dialog";
+import { SidebarProjectsSection } from "@/components/sidebar-projects-section";
 import {
   DesktopBalanceBox,
   DesktopCodexBillingStatus,
@@ -44,6 +49,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -60,6 +71,7 @@ import type { SessionWithUnread } from "@/hooks/use-sessions";
 import { signOut } from "@/lib/auth/actions";
 import type { Session as AuthSession } from "@/lib/session/types";
 import { formatRelativeTime } from "@/lib/format-relative-time";
+import { groupSessionsByProject } from "@/lib/sessions/group-projects";
 
 type InboxSidebarProps = {
   sessions: SessionWithUnread[];
@@ -741,7 +753,7 @@ export function InboxSidebar({
   onArchiveSession,
   onUnarchiveSession,
   onOpenNewSession,
-  onCreateSessionForRepo: _onCreateSessionForRepo,
+  onCreateSessionForRepo,
   onCreateSessionFromBranch,
   initialUser,
 }: InboxSidebarProps) {
@@ -749,6 +761,7 @@ export function InboxSidebar({
   const { session } = useSession();
   const { isMobile, setOpenMobile } = useSidebar();
   const [showArchived, setShowArchived] = useState(false);
+  const [importGithubOpen, setImportGithubOpen] = useState(false);
   const [archivedSessions, setArchivedSessions] = useState<SessionWithUnread[]>(
     [],
   );
@@ -856,7 +869,7 @@ export function InboxSidebar({
     (showArchived && archivedSessionsLoading && archivedSessions.length === 0);
   const sidebarUser = session?.user ?? initialUser;
   const filteredDisplayedSessions = useMemo(() => {
-    if (isMobile || !desktopSearchQuery.trim()) {
+    if (!desktopSearchQuery.trim()) {
       return displayedSessions;
     }
     const q = desktopSearchQuery.trim().toLowerCase();
@@ -871,7 +884,22 @@ export function InboxSidebar({
         prLabel.includes(q)
       );
     });
-  }, [desktopSearchQuery, displayedSessions, isMobile]);
+  }, [desktopSearchQuery, displayedSessions]);
+
+  const { projects: projectGroups, standaloneSessions } = useMemo(
+    () => groupSessionsByProject(filteredDisplayedSessions),
+    [filteredDisplayedSessions],
+  );
+
+  const handleImportRepo = useCallback(
+    async (owner: string, repo: string) => {
+      await onCreateSessionForRepo(owner, repo);
+      if (isMobile) {
+        setOpenMobile(false);
+      }
+    },
+    [isMobile, onCreateSessionForRepo, setOpenMobile],
+  );
 
   const handleSessionClick = useCallback(
     (session: SessionWithUnread) => {
@@ -986,7 +1014,7 @@ export function InboxSidebar({
   return (
     <>
       <div className="flex h-full min-h-0 flex-col bg-sidebar p-2 select-none">
-        {/* Authentic Header: Real EntryMark Logo + Active/Archive Switcher + New Button */}
+        {/* Authentic Header: Real EntryMark Logo + Active/Archive Switcher */}
         <div className="mb-2 flex items-center justify-between px-1 py-1">
           <div className="flex items-center gap-2">
             <EntryMark className="h-4 w-4 shrink-0 text-foreground" />
@@ -1027,20 +1055,58 @@ export function InboxSidebar({
               </button>
             </div>
           </div>
+        </div>
 
-          <Button
+        {/* New Chat Split Dropdown (Blank Chat + Import from GitHub) */}
+        <div className="mb-2 flex h-8 items-stretch overflow-hidden rounded-lg border border-border/70 bg-background/70">
+          <button
             type="button"
-            variant="ghost"
-            size="icon"
             onClick={() => {
               if (isMobile) setOpenMobile(false);
               onOpenNewSession();
             }}
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-            aria-label="New session"
+            className="flex min-w-0 flex-1 items-center justify-center gap-1.5 px-3 text-xs font-medium text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 cursor-pointer"
           >
-            <Plus className="h-4 w-4" strokeWidth={1.5} />
-          </Button>
+            <Plus className="h-3.5 w-3.5 shrink-0" strokeWidth={1.5} />
+            <span>New Chat</span>
+          </button>
+          <div className="w-px bg-border/70" />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex w-8 shrink-0 items-center justify-center text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground cursor-pointer"
+                aria-label="New chat options"
+              >
+                <ChevronDown className="h-3.5 w-3.5" strokeWidth={1.5} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
+                onClick={() => {
+                  if (isMobile) setOpenMobile(false);
+                  onOpenNewSession();
+                }}
+                className="gap-2 text-xs"
+              >
+                <PlusCircle
+                  className="h-4 w-4 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
+                <span>Blank Chat</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setImportGithubOpen(true)}
+                className="gap-2 text-xs"
+              >
+                <FolderGit2
+                  className="h-4 w-4 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
+                <span>Import from GitHub</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Borderless Filter Input */}
@@ -1113,6 +1179,58 @@ export function InboxSidebar({
                 </div>
               ) : null}
             </div>
+          ) : !showArchived && !desktopSearchQuery.trim() ? (
+            <>
+              <SidebarProjectsSection
+                projects={projectGroups}
+                activeSessionId={activeSessionId}
+                onOpenImportGithub={() => setImportGithubOpen(true)}
+                onCreateSessionForRepo={handleImportRepo}
+                renderSessionRow={(sessionItem) => (
+                  <SessionRow
+                    key={sessionItem.id}
+                    session={sessionItem}
+                    isActive={sessionItem.id === activeSessionId}
+                    isPending={sessionItem.id === pendingSessionId}
+                    onSessionClick={handleSessionClick}
+                    onSessionPrefetch={handleSessionPrefetch}
+                    onRenameSession={onRenameSession}
+                    onArchiveSession={handleArchiveSession}
+                    onUnarchiveSession={handleUnarchiveSession}
+                    onOpenBranchPicker={handleOpenBranchPicker}
+                  />
+                )}
+              />
+
+              {standaloneSessions.length > 0 ? (
+                <div className="space-y-0.5">
+                  <div className="flex items-center justify-between px-2 py-1">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Chats
+                    </span>
+                    <span className="font-mono text-[10px] tabular-nums text-muted-foreground/75">
+                      {standaloneSessions.length}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5 p-0.5">
+                    {standaloneSessions.map((sessionItem) => (
+                      <SessionRow
+                        key={sessionItem.id}
+                        session={sessionItem}
+                        isActive={sessionItem.id === activeSessionId}
+                        isPending={sessionItem.id === pendingSessionId}
+                        onSessionClick={handleSessionClick}
+                        onSessionPrefetch={handleSessionPrefetch}
+                        onRenameSession={onRenameSession}
+                        onArchiveSession={handleArchiveSession}
+                        onUnarchiveSession={handleUnarchiveSession}
+                        onOpenBranchPicker={handleOpenBranchPicker}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </>
           ) : (
             <>
               <div className="space-y-0.5 p-0.5">
@@ -1355,6 +1473,12 @@ export function InboxSidebar({
       </div>
 
       <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
+
+      <GitHubImportDialog
+        open={importGithubOpen}
+        onOpenChange={setImportGithubOpen}
+        onImportRepo={handleImportRepo}
+      />
 
       {branchPickerRepo ? (
         <BranchPickerDialog
