@@ -8,6 +8,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useModelOptions } from "@/hooks/use-model-options";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { savePendingInitialPrompt } from "@/lib/chat/pending-initial-prompt";
+import { sanitizePromptToTitle } from "@/lib/random-city";
 import {
   ChatComposer,
   type BuiltComposerMessage,
@@ -56,7 +57,13 @@ export function SessionsIndexShell() {
       if (isCreating) return;
       setIsCreating(true);
       try {
+        const trimmedDisplayText = built.displayText.trim();
+        const initialTitle =
+          trimmedDisplayText.length > 0
+            ? sanitizePromptToTitle(trimmedDisplayText)
+            : undefined;
         const { session: createdSession, chat } = await createSession({
+          ...(initialTitle ? { title: initialTitle } : {}),
           isNewBranch: false,
           sandboxType: preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE,
           autoCommitPush: preferences?.autoCommitPush ?? false,
@@ -108,13 +115,10 @@ export function SessionsIndexShell() {
 
       <div className="flex flex-1 flex-col items-center justify-center px-3 py-6 sm:px-6">
         <div className="w-full max-w-3xl space-y-6">
-          <div className="space-y-1.5 text-center">
+          <div className="text-center">
             <h1 className="text-2xl font-medium tracking-tight text-foreground sm:text-3xl">
               What do you want to build?
             </h1>
-            <p className="text-sm text-muted-foreground">
-              Send a prompt or attach files to start a new workspace.
-            </p>
           </div>
 
           <ChatComposer

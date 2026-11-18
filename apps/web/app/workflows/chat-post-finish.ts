@@ -486,14 +486,24 @@ export async function claimActiveStream(
     attempt++
   ) {
     try {
-      const { claimChatActiveStreamId, setChatRunStatus } =
+      const { claimChatActiveStreamId, getChatById, setChatRunStatus } =
         await import("@/lib/db/sessions");
+      const currentChat = await getChatById(chatId).catch(() => null);
+      if (currentChat?.status === "cancelled") {
+        console.warn(
+          "[workflow] Chat was cancelled before workflow claimed activeStreamId; aborting startup:",
+          { chatId, workflowRunId },
+        );
+        return "conflict";
+      }
       const ok = await claimChatActiveStreamId(chatId, workflowRunId);
       if (ok) {
         // The run owns this chat from here on. Committing "running"
         // alongside activeStreamId means a viewer never sees a claimed
         // stream with no lifecycle state.
-        await setChatRunStatus(chatId, "running").catch(() => {});
+        await setChatRunStatus(chatId, "running", {
+          onlyIfActiveStreamId: workflowRunId,
+        }).catch(() => {});
       }
       if (!ok) {
         console.warn(

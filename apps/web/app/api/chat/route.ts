@@ -380,8 +380,8 @@ async function persistLatestUserMessage(
       return;
     }
 
-    const title =
-      textContent.length > 80 ? `${textContent.slice(0, 80)}...` : textContent;
+    const { sanitizePromptToTitle } = await import("@/lib/random-city");
+    const title = sanitizePromptToTitle(textContent);
     await updateChat(chatId, { title });
   } catch (error) {
     console.error("Failed to persist user message:", error);
