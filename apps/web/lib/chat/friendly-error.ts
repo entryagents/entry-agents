@@ -111,7 +111,17 @@ const CATEGORY_MESSAGES: Record<ChatErrorCategory, string> = {
 export function classifyChatError(error: unknown): ChatErrorCategory {
   const signal = extractErrorSignal(error);
 
-  if (matchesAny(signal, ["abort", "cancelled", "canceled", "stopped"])) {
+  if (
+    matchesAny(signal, [
+      "abort",
+      "cancelled",
+      "canceled",
+      "stopped",
+      "premature close",
+      "client disconnected",
+      "stream closed",
+    ])
+  ) {
     return "aborted";
   }
 

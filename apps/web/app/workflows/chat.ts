@@ -111,21 +111,15 @@ import {
 import {
   createSandboxCheckpointStep,
   deleteSandboxCheckpointStep,
-  exposeSandboxPortStep,
-  forkSandboxStep,
   getSandboxEnvStep,
   getSandboxLogsStep,
   killSandboxProcessStep,
   listSandboxCheckpointsStep,
-  listSandboxPortsStep,
   listSandboxProcessesStep,
-  resizeSandboxStep,
   restoreSandboxCheckpointStep,
   serveSandboxStep,
-  setSandboxEgressAllowStep,
   setSandboxEnvStep,
   stopServeSandboxStep,
-  unexposeSandboxPortStep,
 } from "./chat-sandbox-control";
 
 type AuthSessionContext = Pick<AuthSession, "authProvider" | "user"> | null;
@@ -3435,7 +3429,7 @@ export async function runAgentWorkflow(options: Options) {
     // and the final thrown error (see the `if (caughtError)` block after
     // the try/finally) tell the user this looks deterministic rather
     // than a one-off, instead of the generic "please try again."
-    const errorCategory = classifyChatError(error);
+    const errorCategory = wasAborted ? "aborted" : classifyChatError(error);
     if (errorCategory !== "aborted") {
       isRepeatFailure = await checkIsRepeatFailureStep(
         options.chatId,
