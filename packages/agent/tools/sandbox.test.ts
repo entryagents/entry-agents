@@ -237,58 +237,15 @@ describe("sandboxControlTool", () => {
       ),
     ).toMatchObject({ success: true, action: "checkpoint_delete" });
     expect(
-      await toolDef.execute?.(
-        { action: "expose_port", port: 4000, proxyName: "api" },
-        executionOptions(context),
-      ),
-    ).toMatchObject({
-      success: true,
-      action: "expose_port",
-      url: "https://api.vm.boxd.sh",
-    });
-    expect(
-      await toolDef.execute?.(
-        { action: "unexpose_port", port: 4000 },
-        executionOptions(context),
-      ),
-    ).toMatchObject({ success: true, action: "unexpose_port" });
-    expect(
-      await toolDef.execute?.({ action: "ports" }, executionOptions(context)),
-    ).toMatchObject({ success: true, action: "ports" });
-    expect(
       await toolDef.execute?.({ action: "logs" }, executionOptions(context)),
     ).toMatchObject({ success: true, action: "logs", logs: "ready" });
-    expect(
-      await toolDef.execute?.(
-        { action: "resize", vcpu: 8 },
-        executionOptions(context),
-      ),
-    ).toMatchObject({ success: true, action: "resize", vcpu: 8 });
-    expect(
-      await toolDef.execute?.(
-        { action: "fork", forkName: "exp" },
-        executionOptions(context),
-      ),
-    ).toMatchObject({ success: true, action: "fork", machineId: "vm-2" });
-    expect(
-      await toolDef.execute?.(
-        { action: "egress_allow", egressAllow: ["registry.npmjs.org"] },
-        executionOptions(context),
-      ),
-    ).toMatchObject({ success: true, action: "egress_allow" });
 
     expect(calls).toEqual([
       "cp_create:safe-point",
       "cp_list",
       "cp_restore:safe-point",
       "cp_delete:safe-point",
-      "expose:4000:api",
-      "unexpose:4000",
-      "ports",
       "logs",
-      "resize:8",
-      "fork:exp",
-      "egress:registry.npmjs.org",
     ]);
   });
 

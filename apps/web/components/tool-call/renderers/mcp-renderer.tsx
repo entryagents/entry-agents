@@ -78,6 +78,86 @@ function stringifyForPre(value: unknown): string | null {
   }
 }
 
+const SERVER_DISPLAY_NAMES: Record<string, string> = {
+  gmail: "Gmail",
+  github: "GitHub",
+  vercel: "Vercel",
+  slack: "Slack",
+  linear: "Linear",
+  notion: "Notion",
+  googlecalendar: "Google Calendar",
+  google_calendar: "Google Calendar",
+  googledrive: "Google Drive",
+  google_drive: "Google Drive",
+  googledocs: "Google Docs",
+  google_docs: "Google Docs",
+  googlesheets: "Google Sheets",
+  google_sheets: "Google Sheets",
+  figma: "Figma",
+  jira: "Jira",
+  discord: "Discord",
+  stripe: "Stripe",
+  hubspot: "HubSpot",
+  airtable: "Airtable",
+  salesforce: "Salesforce",
+  twitter: "X",
+  x: "X",
+};
+
+const SLUG_ALIASES: Record<string, string> = {
+  google_calendar: "googlecalendar",
+  google_drive: "googledrive",
+  google_docs: "googledocs",
+  google_sheets: "googlesheets",
+  gcal: "googlecalendar",
+  gdrive: "googledrive",
+  gdocs: "googledocs",
+  gsheets: "googlesheets",
+};
+
+function normalizeToolkitSlug(raw: string): string {
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/^composio[-_]/, "")
+    .replace(/[-_]mcp$/, "")
+    .trim();
+  return SLUG_ALIASES[cleaned] ?? cleaned;
+}
+
+function formatHumanActionName(action: string, slug: string | null): string {
+  let cleaned = action.trim();
+  if (slug) {
+    const prefixRegex = new RegExp(`^${slug.replace(/_/g, "_?")}_+`, "i");
+    cleaned = cleaned.replace(prefixRegex, "");
+  }
+  const words = cleaned
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .split(/[_-]+/)
+    .filter(Boolean);
+  if (words.length === 0) return action;
+  return words
+    .map((w, idx) =>
+      idx === 0
+        ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+        : w.toLowerCase(),
+    )
+    .join(" ");
+}
+
+function resolveToolkitSlugForMcp(
+  server: string | null,
+  action: string,
+): string | null {
+  if (server && server.toLowerCase() !== "composio") {
+    return normalizeToolkitSlug(server);
+  }
+  const upperMatch = action.match(/^([A-Z][A-Z0-9]+)_/);
+  if (upperMatch) {
+    return normalizeToolkitSlug(upperMatch[1]);
+  }
+  return null;
+}
+
 export function resolveMcpToolDisplay(
   toolName: string,
   input: Record<string, unknown> | undefined,
@@ -106,7 +186,11 @@ export function resolveMcpToolDisplay(
         ? tools
             .map((t) => {
               const parsed = parseNamespacedMcpTool(t);
-              return parsed.server ? `${parsed.server}/${parsed.action}` : t;
+              const slug = resolveToolkitSlugForMcp(
+                parsed.server,
+                parsed.action,
+              );
+              return formatHumanActionName(parsed.action, slug);
             })
             .join(", ")
         : "...";
@@ -117,44 +201,65 @@ export function resolveMcpToolDisplay(
     };
   }
 
-  if (toolName === "tool_call") {
-    const targetTool = typeof inp.tool === "string" ? inp.tool : "";
-    const targetArgs =
-      inp.arguments && typeof inp.arguments === "object"
-        ? (inp.arguments as Record<string, unknown>)
-        : undefined;
-    const parsed = parseNamespacedMcpTool(targetTool);
-    const compactArgs = formatCompactArgs(targetArgs);
-    return {
-      kind: "mcp",
-      name: parsed.server ? `MCP · ${parsed.server}` : "MCP",
-      summary: compactArgs
-        ? `${parsed.action || "..."} (${compactArgs})`
-        : parsed.action || "...",
-    };
-  }
+  const targetTool =
+    toolName === "tool_call" && typeof inp.tool === "string"
+      ? inp.tool
+      : toolName;
+  const targetArgs =
+    toolName === "tool_call" &&
+    inp.arguments &&
+    typeof inp.arguments === "object"
+      ? (inp.arguments as Record<string, unknown>)
+      : inp;
 
-  const parsed = parseNamespacedMcpTool(toolName);
-  const compactArgs = formatCompactArgs(inp);
+  const parsed = parseNamespacedMcpTool(targetTool);
+  const slug = resolveToolkitSlugForMcp(parsed.server, parsed.action);
+  const displayServer = slug
+    ? (SERVER_DISPLAY_NAMES[slug] ??
+      slug.charAt(0).toUpperCase() + slug.slice(1))
+    : "MCP";
+  const humanAction = formatHumanActionName(parsed.action || "...", slug);
+  const compactArgs = formatCompactArgs(targetArgs);
+
   return {
     kind: "mcp",
-    name: parsed.server ? `MCP · ${parsed.server}` : "MCP",
-    summary: compactArgs ? `${parsed.action} (${compactArgs})` : parsed.action,
+    name: displayServer,
+    summary: compactArgs ? `${humanAction} · ${compactArgs}` : humanAction,
   };
 }
 
-function resolveToolkitSlugForMcp(
-  server: string | null,
-  action: string,
-): string | null {
-  if (server && server.toLowerCase() !== "composio") {
-    return server.toLowerCase();
+function extractReadableMcpOutput(output: unknown): {
+  text: string | null;
+  raw: string | null;
+} {
+  if (output === undefined || output === null) {
+    return { text: null, raw: null };
   }
-  const upperMatch = action.match(/^([A-Z][A-Z0-9]+)_/);
-  if (upperMatch) {
-    return upperMatch[1].toLowerCase();
+  const raw = stringifyForPre(output);
+
+  if (typeof output === "string") {
+    return { text: output, raw };
   }
-  return null;
+
+  if (typeof output === "object" && !Array.isArray(output)) {
+    const obj = output as Record<string, unknown>;
+    if (Array.isArray(obj.content)) {
+      const textParts = obj.content
+        .filter(
+          (item): item is { type?: string; text?: string } =>
+            Boolean(item) &&
+            typeof item === "object" &&
+            typeof (item as { text?: unknown }).text === "string",
+        )
+        .map((item) => item.text?.trim() ?? "")
+        .filter(Boolean);
+      if (textParts.length > 0) {
+        return { text: textParts.join("\n\n"), raw };
+      }
+    }
+  }
+
+  return { text: null, raw };
 }
 
 export function McpRenderer({
@@ -195,31 +300,38 @@ export function McpRenderer({
     "output" in part ? (part as { output?: unknown }).output : undefined;
 
   const inputText = stringifyForPre(input);
-  const outputText =
-    part.state === "output-available" ? stringifyForPre(output) : null;
+  const { text: readableOutput, raw: rawOutput } =
+    part.state === "output-available"
+      ? extractReadableMcpOutput(output)
+      : { text: null, raw: null };
 
   const expandedContent =
-    inputText || outputText ? (
-      <div className="space-y-2">
-        {inputText && (
+    inputText || readableOutput || rawOutput ? (
+      <div className="space-y-2.5">
+        {readableOutput && (
+          <div className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-background px-3 py-2 text-xs leading-relaxed text-foreground">
+            {readableOutput}
+          </div>
+        )}
+        {!readableOutput && rawOutput && (
           <div>
             <p className="mb-1 text-[11px] font-medium text-muted-foreground">
-              Parameters
+              Result
             </p>
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed text-foreground">
-              {inputText}
+            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed text-foreground">
+              {rawOutput}
             </pre>
           </div>
         )}
-        {outputText && (
-          <div>
-            <p className="mb-1 text-[11px] font-medium text-muted-foreground">
-              Response
-            </p>
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed text-foreground">
-              {outputText}
+        {inputText && (
+          <details className="group">
+            <summary className="cursor-pointer text-[11px] font-medium text-muted-foreground hover:text-foreground">
+              Parameters
+            </summary>
+            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed text-foreground">
+              {inputText}
             </pre>
-          </div>
+          </details>
         )}
       </div>
     ) : undefined;
@@ -230,7 +342,6 @@ export function McpRenderer({
     <ToolLayout
       name={name}
       summary={summary}
-      summaryClassName="font-mono"
       icon={icon}
       meta={meta}
       state={state}
