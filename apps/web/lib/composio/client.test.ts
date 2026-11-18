@@ -9,6 +9,7 @@ import type {
 } from "@/lib/db/schema";
 import {
   type ComposioSdkLike,
+  ComposioServiceError,
   createComposioAgentMetaTools,
   disconnectComposioAccount,
   initiateComposioConnection,
@@ -788,5 +789,127 @@ describe("Composio E2E Integration Lifecycle (Scenarios A-L, Security, Concurren
       "comp_test_secret_api_key_12345",
     );
     expect(rateLimitedExec.results[0]?.error).toContain("[REDACTED]");
+  });
+
+  test("ToolRouterV2_NoManagedAuth (4308): auto-discovers custom authConfig when available, otherwise throws 400 NO_MANAGED_AUTH and returns structured tool error", async () => {
+    let customAuthConfigs: Array<{
+      id: string;
+      status?: string;
+      isComposioManaged?: boolean;
+      toolkit?: { slug?: string };
+    }> = [];
+    let linkedWithAuthConfig: string | null = null;
+
+    const authorizeMock = async (toolkit: string) => {
+      if (toolkit === "twitter") {
+        throw new Error(
+          JSON.stringify({
+            error: {
+              message:
+                "Composio does not manage auth for toolkit twitter and no auth config without required fields is available.",
+              code: 4308,
+              slug: "ToolRouterV2_NoManagedAuth",
+              status: 400,
+            },
+          }),
+        );
+      }
+      return {
+        id: `conn_${toolkit}`,
+        status: "INITIATED",
+        redirectUrl: `https://connect.composio.dev/link/conn_${toolkit}`,
+      };
+    };
+
+    setComposioClientFactoryForTests(async () => ({
+      sessions: {
+        create: async (userId) => ({
+          sessionId: `sess_${userId}`,
+          authorize: authorizeMock,
+          toolkits: async () => ({ items: [] }),
+          search: async () => ({ success: true, error: null, results: [] }),
+          execute: async () => ({ data: {}, error: null }),
+        }),
+        use: async (sessionId) => ({
+          sessionId,
+          authorize: authorizeMock,
+          toolkits: async () => ({ items: [] }),
+          search: async () => ({ success: true, error: null, results: [] }),
+          execute: async () => ({ data: {}, error: null }),
+        }),
+      },
+      authConfigs: {
+        list: async () => ({ items: customAuthConfigs }),
+      },
+      connectedAccounts: {
+        list: async () => ({ items: [] }),
+        get: async (id) => ({ id, status: "INITIATED" }),
+        link: async (_userId, authConfigId) => {
+          linkedWithAuthConfig = authConfigId;
+          return {
+            id: "conn_twitter_custom",
+            status: "INITIATED",
+            redirectUrl:
+              "https://connect.composio.dev/link/conn_twitter_custom",
+          };
+        },
+        delete: async () => ({ deleted: true }),
+        refresh: async (id) => ({ id, status: "INITIATED", redirectUrl: null }),
+      },
+    }));
+
+    // Case 1: No custom authConfig exists -> throws clean 400 ComposioServiceError
+    let caught: unknown = null;
+    try {
+      await initiateComposioConnection({
+        userId: "user_twitter_1",
+        toolkitSlug: "twitter",
+        callbackBaseUrl: "https://entry.example.com",
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ComposioServiceError);
+    expect((caught as ComposioServiceError).statusCode).toBe(400);
+    expect((caught as ComposioServiceError).code).toBe("NO_MANAGED_AUTH");
+
+    // Case 2: Agent tool COMPOSIO_MANAGE_CONNECTIONS returns structured error instead of crashing
+    const runtime = await createComposioAgentMetaTools({
+      userId: "user_twitter_1",
+      callbackBaseUrl: "https://entry.example.com",
+    });
+    const toolResult =
+      (await runtime.tools.COMPOSIO_MANAGE_CONNECTIONS.execute?.(
+        { action: "connect", toolkit: "twitter" },
+        { toolCallId: "tc_twitter_err", messages: [] },
+      )) as {
+        action: string;
+        code?: string;
+        requiresCustomAuthConfig?: boolean;
+        message?: string;
+      };
+    expect(toolResult.action).toBe("error");
+    expect(toolResult.code).toBe("NO_MANAGED_AUTH");
+    expect(toolResult.requiresCustomAuthConfig).toBe(true);
+
+    // Case 3: Custom authConfig exists -> auto-discovers and links cleanly
+    customAuthConfigs = [
+      {
+        id: "ac_twitter_custom_123",
+        status: "ENABLED",
+        isComposioManaged: false,
+        toolkit: { slug: "twitter" },
+      },
+    ];
+    const linked = await initiateComposioConnection({
+      userId: "user_twitter_1",
+      toolkitSlug: "twitter",
+      callbackBaseUrl: "https://entry.example.com",
+    });
+    expect(linkedWithAuthConfig as string | null).toBe("ac_twitter_custom_123");
+    expect(linked.connectedAccountId).toBe("conn_twitter_custom");
+    expect(linked.redirectUrl).toBe(
+      "https://connect.composio.dev/link/conn_twitter_custom",
+    );
   });
 });

@@ -66,6 +66,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, account: updated });
     }
 
+    if (parsed.action === "reconnect" || parsed.action === "connect") {
+      const { getUserExternalIntegrationAccess } =
+        await import("@/lib/billing/integration-access-server");
+      const access = await getUserExternalIntegrationAccess(session.user.id);
+      if (!access.allowed) {
+        return NextResponse.json(
+          {
+            error:
+              access.reason ??
+              "External integrations require a paid plan. Upgrade to Plus or higher to connect apps.",
+            code: access.code ?? "PLAN_UPGRADE_REQUIRED",
+          },
+          { status: 403 },
+        );
+      }
+    }
+
     if (parsed.action === "reconnect") {
       if (!parsed.connectedAccountId) {
         return NextResponse.json(

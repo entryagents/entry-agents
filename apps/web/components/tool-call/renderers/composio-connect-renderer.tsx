@@ -80,14 +80,20 @@ export function ComposioToolRenderer({
   }
 
   if (toolName === "COMPOSIO_MANAGE_CONNECTIONS") {
+    const isErrorResult = output?.action === "error";
+    const errorMessage =
+      isErrorResult && typeof output?.message === "string"
+        ? output.message
+        : null;
     const connectLinkUrl =
       typeof output?.connectLinkUrl === "string" ? output.connectLinkUrl : null;
     const status =
       typeof output?.status === "string" ? output.status : "INITIATED";
     const alias = typeof output?.alias === "string" ? output.alias : null;
     const isConnected =
-      liveConnected ??
-      (output?.isConnected === true || status.toUpperCase() === "ACTIVE");
+      !isErrorResult &&
+      (liveConnected ??
+        (output?.isConnected === true || status.toUpperCase() === "ACTIVE"));
 
     const expandedContent = (
       <div className="mt-1 rounded-lg border border-border bg-card p-3.5 text-xs">
@@ -104,53 +110,64 @@ export function ComposioToolRenderer({
               ) : null}
               <span
                 className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${
-                  isConnected
-                    ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                    : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  isErrorResult
+                    ? "bg-destructive/10 text-destructive"
+                    : isConnected
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                 }`}
               >
-                {isConnected ? "Active" : status}
+                {isErrorResult
+                  ? "Setup required"
+                  : isConnected
+                    ? "Active"
+                    : status}
               </span>
             </div>
             <p className="text-muted-foreground">
-              {isConnected
-                ? `Your ${toolkit} account is connected and ready for tool execution.`
-                : `Authorize ${toolkit} via Composio to allow the agent to continue this task.`}
+              {isErrorResult
+                ? (errorMessage ??
+                  `Unable to connect ${toolkit}. Check your integration configuration.`)
+                : isConnected
+                  ? `Your ${toolkit} account is connected and ready for tool execution.`
+                  : `Authorize ${toolkit} via Composio to allow the agent to continue this task.`}
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {connectLinkUrl && !isConnected ? (
-              <a
-                href={connectLinkUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90"
-              >
-                <span>Connect {toolkit}</span>
-                <ExternalLink className="size-3.5" strokeWidth={1.5} />
-              </a>
-            ) : null}
-            {!isConnected ? (
-              <button
-                type="button"
-                onClick={handleVerifyConnection}
-                disabled={checkingStatus}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-              >
-                <RefreshCw
-                  className={`size-3.5 ${checkingStatus ? "animate-spin" : ""}`}
-                  strokeWidth={1.5}
-                />
-                <span>Verify</span>
-              </button>
-            ) : (
-              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
-                <span>Verified</span>
-              </span>
-            )}
-          </div>
+          {!isErrorResult ? (
+            <div className="flex items-center gap-2">
+              {connectLinkUrl && !isConnected ? (
+                <a
+                  href={connectLinkUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90"
+                >
+                  <span>Connect {toolkit}</span>
+                  <ExternalLink className="size-3.5" strokeWidth={1.5} />
+                </a>
+              ) : null}
+              {!isConnected ? (
+                <button
+                  type="button"
+                  onClick={handleVerifyConnection}
+                  disabled={checkingStatus}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                >
+                  <RefreshCw
+                    className={`size-3.5 ${checkingStatus ? "animate-spin" : ""}`}
+                    strokeWidth={1.5}
+                  />
+                  <span>Verify</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
+                  <span>Verified</span>
+                </span>
+              )}
+            </div>
+          ) : null}
         </div>
       </div>
     );
@@ -166,7 +183,13 @@ export function ComposioToolRenderer({
         }
         name="Connect"
         summary={`${toolkit}${alias ? ` (${alias})` : ""}`}
-        meta={isConnected ? "Connected" : "Action required"}
+        meta={
+          isErrorResult
+            ? "Setup required"
+            : isConnected
+              ? "Connected"
+              : "Action required"
+        }
         state={state}
         expandedContent={expandedContent}
         onApprove={onApprove}

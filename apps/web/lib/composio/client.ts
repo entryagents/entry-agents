@@ -311,6 +311,23 @@ export interface ComposioSdkLike {
       secret: string;
     }) => Promise<unknown>;
   };
+  authConfigs?: {
+    list?: (query?: {
+      toolkit?: string;
+      search?: string;
+      isComposioManaged?: boolean;
+      showDisabled?: boolean;
+      limit?: number;
+    }) => Promise<{
+      items?: Array<{
+        id: string;
+        name?: string;
+        status?: string;
+        isComposioManaged?: boolean;
+        toolkit?: { slug?: string; logo?: string };
+      }>;
+    }>;
+  };
 }
 
 export interface ComposioSessionLike {
@@ -936,6 +953,73 @@ export interface InitiateComposioConnectionResult {
   accountType: ComposioAccountType;
 }
 
+function extractComposioErrorDetails(error: unknown): {
+  statusCode?: number;
+  code?: number;
+  slug?: string;
+  message: string;
+} {
+  if (!error || typeof error !== "object") {
+    return { message: String(error ?? "Unknown Composio error") };
+  }
+
+  const record = error as Record<string, unknown>;
+  const nestedError =
+    record.error && typeof record.error === "object"
+      ? (record.error as Record<string, unknown>)
+      : null;
+
+  let parsedBodyError: Record<string, unknown> | null = null;
+  if (
+    typeof record.message === "string" &&
+    record.message.trim().startsWith("{")
+  ) {
+    try {
+      const parsed = JSON.parse(record.message) as Record<string, unknown>;
+      if (parsed.error && typeof parsed.error === "object") {
+        parsedBodyError = parsed.error as Record<string, unknown>;
+      } else {
+        parsedBodyError = parsed;
+      }
+    } catch {
+      // ignore non-JSON message
+    }
+  }
+
+  const source = nestedError ?? parsedBodyError ?? record;
+  const statusCode =
+    typeof source.status === "number"
+      ? source.status
+      : typeof record.statusCode === "number"
+        ? record.statusCode
+        : typeof record.status === "number"
+          ? record.status
+          : undefined;
+  const code = typeof source.code === "number" ? source.code : undefined;
+  const slug = typeof source.slug === "string" ? source.slug : undefined;
+  const message =
+    typeof source.message === "string"
+      ? source.message
+      : typeof record.message === "string"
+        ? record.message
+        : "Composio request failed";
+
+  return { statusCode, code, slug, message };
+}
+
+export function isNoManagedAuthError(error: unknown): boolean {
+  const details = extractComposioErrorDetails(error);
+  const rawMessage =
+    error instanceof Error ? error.message : String(error ?? "");
+  return (
+    details.code === 4308 ||
+    details.slug === "ToolRouterV2_NoManagedAuth" ||
+    details.message.includes("does not manage auth") ||
+    rawMessage.includes("ToolRouterV2_NoManagedAuth") ||
+    rawMessage.includes("does not manage auth")
+  );
+}
+
 /**
  * Initiates a new Composio OAuth connection or Connect Link for the authenticated Entry user.
  */
@@ -977,32 +1061,88 @@ export async function initiateComposioConnection(
   };
 
   const accountType: ComposioAccountType = input.accountType ?? "PRIVATE";
+  let resolvedAuthConfigId = input.authConfigId ?? null;
 
-  if (input.authConfigId && client.connectedAccounts.link) {
-    connectionReq = await client.connectedAccounts.link(
-      input.userId,
-      input.authConfigId,
-      {
-        callbackUrl,
-        ...(input.alias ? { alias: input.alias } : {}),
-        allowMultiple: input.allowMultiple ?? true,
-        ...(accountType === "SHARED"
-          ? {
-              experimental: {
-                accountType: "SHARED",
-                aclConfigForShared: {
-                  allowedUserIds: [input.userId],
-                },
-              },
-            }
-          : {}),
-      },
-    );
-  } else {
-    connectionReq = await session.authorize(normalizedSlug, {
+  const linkWithAuthConfig = async (authConfigId: string) =>
+    client.connectedAccounts.link(input.userId, authConfigId, {
       callbackUrl,
       ...(input.alias ? { alias: input.alias } : {}),
+      allowMultiple: input.allowMultiple ?? true,
+      ...(accountType === "SHARED"
+        ? {
+            experimental: {
+              accountType: "SHARED",
+              aclConfigForShared: {
+                allowedUserIds: [input.userId],
+              },
+            },
+          }
+        : {}),
     });
+
+  if (resolvedAuthConfigId) {
+    connectionReq = await linkWithAuthConfig(resolvedAuthConfigId);
+  } else {
+    try {
+      connectionReq = await session.authorize(normalizedSlug, {
+        callbackUrl,
+        ...(input.alias ? { alias: input.alias } : {}),
+      });
+    } catch (error) {
+      if (isNoManagedAuthError(error)) {
+        // Toolkits without Composio-managed OAuth (e.g. twitter) require a
+        // custom Auth Config (ac_...) in the Composio project. Auto-discover
+        // an enabled config for this toolkit before failing cleanly with 400.
+        let discoveredId: string | null = null;
+        if (client.authConfigs?.list) {
+          try {
+            const configs = await client.authConfigs.list({
+              toolkit: normalizedSlug,
+              showDisabled: false,
+              limit: 20,
+            });
+            const enabled = (configs.items ?? []).filter(
+              (item) =>
+                Boolean(item.id) &&
+                (!item.status || item.status.toUpperCase() === "ENABLED") &&
+                (!item.toolkit?.slug ||
+                  item.toolkit.slug.toLowerCase() === normalizedSlug),
+            );
+            const preferred =
+              enabled.find((item) => item.isComposioManaged === false) ??
+              enabled[0];
+            discoveredId = preferred?.id ?? null;
+          } catch {
+            // Fall through to structured NO_MANAGED_AUTH error
+          }
+        }
+
+        if (discoveredId) {
+          resolvedAuthConfigId = discoveredId;
+          connectionReq = await linkWithAuthConfig(discoveredId);
+        } else {
+          throw new ComposioServiceError(
+            `Composio does not provide managed auth for "${normalizedSlug}". Create a custom Auth Config for "${normalizedSlug}" in your Composio Dashboard (dashboard.composio.dev) or specify an authConfigId.`,
+            400,
+            "NO_MANAGED_AUTH",
+          );
+        }
+      } else {
+        const details = extractComposioErrorDetails(error);
+        if (
+          details.statusCode &&
+          details.statusCode >= 400 &&
+          details.statusCode < 500
+        ) {
+          throw new ComposioServiceError(
+            scrubSecretsFromText(details.message),
+            details.statusCode,
+            details.slug ?? "COMPOSIO_BAD_REQUEST",
+          );
+        }
+        throw error;
+      }
+    }
   }
 
   if (!connectionReq?.redirectUrl || !connectionReq?.id) {
@@ -1015,7 +1155,7 @@ export async function initiateComposioConnection(
 
   if (
     accountType === "SHARED" &&
-    !input.authConfigId &&
+    !resolvedAuthConfigId &&
     client.connectedAccounts.updateAcl
   ) {
     await client.connectedAccounts
@@ -1043,7 +1183,7 @@ export async function initiateComposioConnection(
     composioUserId: input.userId,
     connectedAccountId: connectionReq.id,
     toolkitSlug: normalizedSlug,
-    authConfigId: input.authConfigId ?? null,
+    authConfigId: resolvedAuthConfigId,
     alias: input.alias ?? null,
     accountType,
     status,
@@ -1966,47 +2106,61 @@ export async function createComposioAgentMetaTools(input: {
           };
         }
 
-        if (args.action === "reconnect" && args.connectedAccountId) {
-          const reconnected = await reconnectComposioAccount({
+        try {
+          if (args.action === "reconnect" && args.connectedAccountId) {
+            const reconnected = await reconnectComposioAccount({
+              userId: input.userId,
+              connectedAccountId: args.connectedAccountId,
+              callbackBaseUrl: baseUrl,
+            });
+            return {
+              action: "reconnect",
+              toolkit: slug,
+              connectedAccountId: reconnected.account.connectedAccountId,
+              status: reconnected.account.status,
+              connectLinkUrl: reconnected.redirectUrl,
+              message: reconnected.redirectUrl
+                ? `Please reconnect your ${slug} account using the Connect Link.`
+                : `Reconnected ${slug} account (${reconnected.account.status}).`,
+            };
+          }
+
+          const initiated = await initiateComposioConnection({
             userId: input.userId,
-            connectedAccountId: args.connectedAccountId,
+            toolkitSlug: slug,
             callbackBaseUrl: baseUrl,
+            alias: args.alias ?? null,
+            allowMultiple: true,
+            chatId: input.chatId ?? null,
+            sessionId: input.sessionId ?? null,
+            returnPath:
+              input.sessionId && input.chatId
+                ? `/sessions/${input.sessionId}/chats/${input.chatId}`
+                : "/settings/connections",
           });
+
           return {
-            action: "reconnect",
+            action: "connect",
             toolkit: slug,
-            connectedAccountId: reconnected.account.connectedAccountId,
-            status: reconnected.account.status,
-            connectLinkUrl: reconnected.redirectUrl,
-            message: reconnected.redirectUrl
-              ? `Please reconnect your ${slug} account using the Connect Link.`
-              : `Reconnected ${slug} account (${reconnected.account.status}).`,
+            status: initiated.status,
+            connectedAccountId: initiated.connectedAccountId,
+            connectLinkUrl: initiated.redirectUrl,
+            alias: initiated.alias,
+            message: `Connect your ${slug} account using the secure Composio Connect Link to continue.`,
           };
+        } catch (error) {
+          if (error instanceof ComposioServiceError) {
+            return {
+              action: "error",
+              toolkit: slug,
+              code: error.code,
+              requiresCustomAuthConfig: error.code === "NO_MANAGED_AUTH",
+              requiresUpgrade: error.code === "PLAN_UPGRADE_REQUIRED",
+              message: error.message,
+            };
+          }
+          throw error;
         }
-
-        const initiated = await initiateComposioConnection({
-          userId: input.userId,
-          toolkitSlug: slug,
-          callbackBaseUrl: baseUrl,
-          alias: args.alias ?? null,
-          allowMultiple: true,
-          chatId: input.chatId ?? null,
-          sessionId: input.sessionId ?? null,
-          returnPath:
-            input.sessionId && input.chatId
-              ? `/sessions/${input.sessionId}/chats/${input.chatId}`
-              : "/settings/connections",
-        });
-
-        return {
-          action: "connect",
-          toolkit: slug,
-          status: initiated.status,
-          connectedAccountId: initiated.connectedAccountId,
-          connectLinkUrl: initiated.redirectUrl,
-          alias: initiated.alias,
-          message: `Connect your ${slug} account using the secure Composio Connect Link to continue.`,
-        };
       },
     }),
 
