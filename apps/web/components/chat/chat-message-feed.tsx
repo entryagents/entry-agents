@@ -282,7 +282,19 @@ const ChatMessageRow = memo(function ChatMessageRow({
           m.role === "assistant" &&
           !m.parts
             .slice(group.index + 1)
-            .some((messagePart) => messagePart.type === "text");
+            .some(
+              (messagePart) =>
+                messagePart.type === "text" &&
+                messagePart.text.trim().length > 0,
+            );
+
+        if (
+          !isToolCallsExpanded &&
+          m.role === "assistant" &&
+          !isFinalAssistantTextPart
+        ) {
+          return null;
+        }
 
         return (
           <div
