@@ -3761,7 +3761,6 @@ const runAgentStep = async (
     | ReturnType<typeof createCoalescingStreamWriter<UIMessageChunk>>
     | undefined;
   let streamWriteFailed = false;
-  let hasEmittedStreamChunks = false;
   let responseMessage: WebAgentUIMessage | undefined;
   const streamedTextById = new Map<string, string>();
   const streamedTextOrder: string[] = [];
@@ -5103,15 +5102,6 @@ const runAgentStep = async (
               (streamedTextById.get(part.id) ?? "") + part.delta,
             );
           }
-          if (
-            part.type === "text-delta" ||
-            part.type === "reasoning-delta" ||
-            part.type === "tool-input-start" ||
-            part.type === "tool-input-available" ||
-            part.type === "tool-output-available"
-          ) {
-            hasEmittedStreamChunks = true;
-          }
           if (!streamWriteFailed) {
             try {
               coalescingWriter.write(part);
@@ -5561,15 +5551,7 @@ const runAgentStep = async (
     // retries entirely so a permanent, param-level failure fails once
     // and immediately instead of 4 times.
     //
-    // Additionally, if `hasEmittedStreamChunks` is true, this step has ALREADY
-    // written reasoning/text/tool chunks into the live `writable` stream under
-    // `messageId`. Letting the Workflow SDK retry `runAgentStep` would write
-    // a second copy of reasoning, text, and tool calls into the SAME message
-    // (causing the "two models working / repeating Thought + Bash" split bug).
-    if (
-      isNonRetryableApiCallError(errorWithStepTiming) ||
-      hasEmittedStreamChunks
-    ) {
+    if (isNonRetryableApiCallError(errorWithStepTiming)) {
       // FatalError's constructor only takes a message string (see
       // node_modules/workflow's own docs -- no options/cause param), so
       // stepTiming has to be reattached manually to keep the outer

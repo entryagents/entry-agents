@@ -400,9 +400,56 @@ export class AbortableChatTransport<
               response.status === 204 &&
               (startIndex > 0 || state.activeSendMessagesCount > 0)
             ) {
-              state.lastChunkAt = Date.now();
-              options.onCompletedSnapshotNeeded?.();
-              return createSyntheticFinishSseResponse();
+              const resolved = resolveBody(options?.body);
+              const sessionId =
+                typeof resolved?.sessionId === "string"
+                  ? resolved.sessionId
+                  : undefined;
+              const chatId =
+                typeof resolved?.chatId === "string"
+                  ? resolved.chatId
+                  : undefined;
+              if (sessionId && chatId) {
+                try {
+                  const snapshotRes = await outerFetch(
+                    `/api/sessions/${sessionId}/chats/${chatId}`,
+                    { cache: "no-store", signal: combinedSignal },
+                  );
+                  if (snapshotRes.ok) {
+                    const snapshot = (await snapshotRes.json()) as {
+                      status?: string;
+                      isStreaming?: boolean;
+                    };
+                    const isTerminal =
+                      !snapshot.isStreaming &&
+                      (snapshot.status === "completed" ||
+                        snapshot.status === "failed" ||
+                        snapshot.status === "cancelled" ||
+                        snapshot.status === "idle");
+                    if (isTerminal) {
+                      state.lastChunkAt = Date.now();
+                      options.onCompletedSnapshotNeeded?.();
+                      return createSyntheticFinishSseResponse();
+                    }
+                    if (Date.now() < deadline && !combinedSignal.aborted) {
+                      await waitForRetryOrOnline(
+                        STREAM_RECONNECT_RETRY_DELAY_MS,
+                        combinedSignal,
+                      );
+                      continue;
+                    }
+                  }
+                } catch {
+                  if (Date.now() < deadline && !combinedSignal.aborted) {
+                    await waitForRetryOrOnline(
+                      STREAM_RECONNECT_RETRY_DELAY_MS,
+                      combinedSignal,
+                    );
+                    continue;
+                  }
+                }
+              }
+              return response;
             }
 
             if (

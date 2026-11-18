@@ -104,6 +104,20 @@ export async function GET(request: Request, context: RouteContext) {
     (typeof startIndex === "number" && startIndex > 0) || isMidTurnHeader;
 
   if (!chat.activeStreamId) {
+    // If DB status shows a freshly started/active run whose workflow step
+    // hasn't claimed activeStreamId yet, tell the client to retry regardless
+    // of request headers instead of returning 204 and terminating the turn.
+    const isRecentlyActive =
+      ACTIVE_CHAT_RUN_STATUSES.some((s) => s === chat.status) &&
+      (!chat.runStatusUpdatedAt ||
+        Date.now() - new Date(chat.runStatusUpdatedAt).getTime() < 45_000);
+    if (isRecentlyActive) {
+      return new Response("Stream initializing", {
+        status: 503,
+        headers: { "Retry-After": "1" },
+      });
+    }
+
     // When a client was already reading a live stream (startIndex > 0 or active mid-turn)
     // and lost connectivity while the workflow finished and cleared activeStreamId,
     // replay the remaining chunks from the completed run so the client receives the
@@ -120,20 +134,6 @@ export async function GET(request: Request, context: RouteContext) {
         if (tailResponse) {
           return tailResponse;
         }
-      }
-
-      // If the client was mid-turn and DB status shows a freshly started run
-      // whose workflow step hasn't claimed activeStreamId yet, tell the client
-      // to retry briefly instead of sending 204 and terminating the turn early.
-      const isRecentlyActive =
-        ACTIVE_CHAT_RUN_STATUSES.some((s) => s === chat.status) &&
-        (!chat.runStatusUpdatedAt ||
-          Date.now() - new Date(chat.runStatusUpdatedAt).getTime() < 45_000);
-      if (isMidTurnHeader && isRecentlyActive) {
-        return new Response("Stream initializing", {
-          status: 503,
-          headers: { "Retry-After": "1" },
-        });
       }
     }
     return new Response(null, { status: 204 });
