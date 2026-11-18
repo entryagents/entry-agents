@@ -10,7 +10,29 @@ import {
 } from "./config.ts";
 import type { BoxdState } from "./state.ts";
 import { BoxdSandbox } from "./sandbox.ts";
+import { provisionBoxdMachineWithEviction } from "./eviction.ts";
 import { buildToolchainBootstrapScript } from "../toolchain.ts";
+
+function createBoxdMachine(
+  client: Boxd,
+  name: string,
+  options?: ConnectOptions,
+) {
+  return client.machines.create({
+    name,
+    image: options?.image ?? "ubuntu:24.04",
+    isolated: false,
+    restartPolicy: "never",
+    config: {
+      vcpu: BOXD_VCPU,
+      memory: BOXD_MEMORY,
+      disk: BOXD_DISK,
+      autoSuspendTimeout: 300,
+      autoDestroyTimeout: 0,
+      ssh: true,
+    },
+  });
+}
 
 function shellEscape(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -247,69 +269,21 @@ export async function connectBoxd(
 
   if (!machine) {
     try {
-      machine = await client.machines.create({
-        name,
-        image: options?.image ?? "ubuntu:24.04",
-        isolated: false,
-        restartPolicy: "never",
-        config: {
-          vcpu: BOXD_VCPU,
-          memory: BOXD_MEMORY,
-          disk: BOXD_DISK,
-          autoSuspendTimeout: 300,
-          autoDestroyTimeout: 0,
-          ssh: true,
-        },
+      machine = await provisionBoxdMachineWithEviction({
+        targetMachineName: name,
+        createMachine: () => createBoxdMachine(client, name, options),
+        listMachines: () => client.machines.list(),
+        deleteMachine: (machineId) => client.machines.delete(machineId),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (
-        message.toLowerCase().includes("limit reached") ||
-        message.toLowerCase().includes("destroy an org vm")
-      ) {
-        // Evict oldest inactive VMs to recover org capacity
-        try {
-          const allMachines = await client.machines.list().catch(() => []);
-          const inactive = allMachines
-            .filter((m) => m.name !== name && m.status !== "running")
-            .sort(
-              (a, b) =>
-                new Date(a.createdAt || 0).getTime() -
-                new Date(b.createdAt || 0).getTime(),
-            );
-          for (const victim of inactive.slice(0, 10)) {
-            await client.machines.delete(victim.id).catch(() => {});
-          }
-          // Retry create after cleanup
-          machine = await client.machines.create({
-            name,
-            image: options?.image ?? "ubuntu:24.04",
-            isolated: false,
-            restartPolicy: "never",
-            config: {
-              vcpu: BOXD_VCPU,
-              memory: BOXD_MEMORY,
-              disk: BOXD_DISK,
-              autoSuspendTimeout: 300,
-              autoDestroyTimeout: 0,
-              ssh: true,
-            },
-          });
-        } catch (retryErr) {
-          console.error("[boxd] Capacity eviction/recreate failed:", retryErr);
-        }
-      }
-
+      if (!message.toLowerCase().includes("already taken")) throw error;
+      machine = await client.machines.get(name).catch(() => null);
       if (!machine) {
-        if (!message.toLowerCase().includes("already taken")) throw error;
-        machine = await client.machines.get(name).catch(() => null);
-        if (!machine) {
-          const machines = await client.machines.list();
-          machine =
-            machines.find((candidate) => candidate.name === name) ?? null;
-        }
-        if (!machine) throw error;
+        const machines = await client.machines.list();
+        machine = machines.find((candidate) => candidate.name === name) ?? null;
       }
+      if (!machine) throw error;
     }
   } else if (machine.status === "stopped") {
     await client.machines.start(machine.id);
@@ -340,20 +314,7 @@ export async function connectBoxd(
         `[boxd] Machine ${machine.id} (${machine.name}) is hung/unhealthy: ${errorMsg}. Evicting and provisioning fresh VM.`,
       );
       await client.machines.delete(machine.id).catch(() => {});
-      machine = await client.machines.create({
-        name,
-        image: options?.image ?? "ubuntu:24.04",
-        isolated: false,
-        restartPolicy: "never",
-        config: {
-          vcpu: BOXD_VCPU,
-          memory: BOXD_MEMORY,
-          disk: BOXD_DISK,
-          autoSuspendTimeout: 300,
-          autoDestroyTimeout: 0,
-          ssh: true,
-        },
-      });
+      machine = await createBoxdMachine(client, name, options);
       await Promise.allSettled([
         client.machines.setAutoSuspendTimeout(machine.id, 300),
         client.machines.setAutoHibernateTimeout(machine.id, 1200),
