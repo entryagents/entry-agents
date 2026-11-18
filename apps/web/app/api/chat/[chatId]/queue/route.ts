@@ -1,17 +1,21 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chats } from "@/lib/db/schema";
+import { getChatById } from "@/lib/db/sessions";
 import {
+  type ChatRecord,
   requireAuthenticatedUser,
   requireOwnedChatById,
+  type SessionRecord,
 } from "@/app/api/chat/_lib/chat-context";
 
 /**
  * Server-backed composer queue.
  *
- * The queue is stored on the chat row, drained server-side at the end of a
- * workflow turn (or by the client when idle), so switching chats, reloading,
- * or closing the tab preserves queued prompts cleanly.
+ * The queue is stored on the chat row, drained durably on the server at the end
+ * of each workflow turn (via `startNextQueuedWorkflowStep`), so switching
+ * chats, reloading, or closing the tab preserves and executes queued prompts
+ * without depending on client connectivity.
  */
 
 const MAX_QUEUED_PROMPTS = 20;
@@ -94,9 +98,16 @@ async function withQueuedPrompts<T>(
   });
 }
 
-async function authorize(
-  context: RouteContext,
-): Promise<{ ok: true; chatId: string } | { ok: false; response: Response }> {
+async function authorize(context: RouteContext): Promise<
+  | {
+      ok: true;
+      chatId: string;
+      userId: string;
+      sessionRecord: SessionRecord;
+      chat: ChatRecord;
+    }
+  | { ok: false; response: Response }
+> {
   const authResult = await requireAuthenticatedUser();
   if (!authResult.ok) {
     return { ok: false, response: authResult.response };
@@ -111,7 +122,13 @@ async function authorize(
     return { ok: false, response: chatContext.response };
   }
 
-  return { ok: true, chatId };
+  return {
+    ok: true,
+    chatId,
+    userId: authResult.userId,
+    sessionRecord: chatContext.sessionRecord,
+    chat: chatContext.chat,
+  };
 }
 
 export async function GET(_req: Request, context: RouteContext) {
@@ -207,7 +224,41 @@ export async function POST(req: Request, context: RouteContext) {
     );
   }
 
-  return Response.json({ queued: outcome.queued });
+  let queued = outcome.queued;
+  let started = false;
+
+  const freshChat =
+    (await getChatById(auth.chatId).catch(() => null)) ?? auth.chat;
+  if (
+    freshChat.activeStreamId === null &&
+    (freshChat.status === "idle" ||
+      freshChat.status === "completed" ||
+      freshChat.status === "failed")
+  ) {
+    try {
+      const [{ startNextQueuedWorkflowInternal }, { getServerSession }] =
+        await Promise.all([
+          import("@/app/workflows/chat-post-finish"),
+          import("@/lib/session/get-server-session"),
+        ]);
+      const session = await getServerSession();
+      const startedRun = await startNextQueuedWorkflowInternal({
+        chatId: auth.chatId,
+        sessionId: auth.sessionRecord.id,
+        userId: auth.userId,
+        requestUrl: req.url,
+        authSession: session ?? null,
+      });
+      started = startedRun.started;
+      if (started) {
+        queued = await readQueue(auth.chatId).catch(() => outcome.queued);
+      }
+    } catch {
+      // Best-effort start; the prompt stays durably queued on the chat row.
+    }
+  }
+
+  return Response.json({ queued, ...(started ? { started: true } : {}) });
 }
 
 export async function PUT(req: Request, context: RouteContext) {

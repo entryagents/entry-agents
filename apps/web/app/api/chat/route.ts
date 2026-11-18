@@ -132,6 +132,13 @@ export async function POST(req: Request) {
     }
   }
 
+  const { setChatRunStatus } = await import("@/lib/db/sessions");
+  // Claim the pre-stream lifecycle slot before persisting messages or calling
+  // start() so concurrent stream probes never treat startup latency as idle.
+  await setChatRunStatus(chatId, "queued", {
+    onlyIfActiveStreamId: null,
+  }).catch(() => {});
+
   await Promise.all([
     persistLatestUserMessage(chatId, messages),
     persistAssistantMessagesWithToolResults(chatId, messages),
@@ -163,44 +170,44 @@ export async function POST(req: Request) {
       : undefined;
 
   // Start the durable workflow
-  const run = await start(
-    runAgentWorkflow,
-    [
+  let run: Awaited<ReturnType<typeof start>>;
+  try {
+    run = await start(
+      runAgentWorkflow,
+      [
+        {
+          messages,
+          chatId,
+          sessionId,
+          userId,
+          requestUrl: req.url,
+          authSession: session ?? null,
+          assistantId: generateId(),
+          maxSteps: isHobbyResourceProfile() ? 50 : 500,
+          ...(sanitizedTeamRoleModels
+            ? { teamRoleModels: sanitizedTeamRoleModels }
+            : {}),
+        },
+      ],
       {
-        messages,
-        chatId,
-        sessionId,
-        userId,
-        requestUrl: req.url,
-        authSession: session ?? null,
-        assistantId: generateId(),
-        maxSteps: isHobbyResourceProfile() ? 50 : 500,
-        ...(sanitizedTeamRoleModels
-          ? { teamRoleModels: sanitizedTeamRoleModels }
-          : {}),
+        attributes: {
+          chatId,
+          sessionId,
+          userId,
+        },
       },
-    ],
-    {
-      attributes: {
-        chatId,
-        sessionId,
-        userId,
-      },
-    },
-  );
+    );
+  } catch (error) {
+    await setChatRunStatus(chatId, "failed", {
+      onlyIfActiveStreamId: null,
+    }).catch(() => {});
+    throw error;
+  }
 
   // Idempotently claim the activeStreamId slot for the workflow we just
   // started. This succeeds both when the slot is still null and when the
   // workflow already self-claimed it from inside its first step.
   const claimed = await claimChatActiveStreamId(chatId, run.runId);
-
-  if (claimed) {
-    // Lifecycle: the run exists but has not started its first step yet.
-    // claimActiveStream flips it to "running"; a viewer reading "queued"
-    // in that window shows an honest "starting" rather than nothing.
-    const { setChatRunStatus } = await import("@/lib/db/sessions");
-    await setChatRunStatus(chatId, "queued").catch(() => {});
-  }
 
   if (!claimed) {
     // Another request or workflow run owns the slot — cancel our duplicate.

@@ -48,10 +48,10 @@ function reorder<T>(list: T[], fromIndex: number, toIndex: number): T[] {
 }
 
 /**
- * Shows prompts the user queued up while a turn was still running (see the
- * drain effect next to `sendMessageWithPendingState` in
- * session-chat-content.tsx). Sits directly above the composer, same visual
- * language as PinnedTodoPanel.
+ * Shows prompts the user queued up while a turn was still running. Drained
+ * durably on the server when the active workflow turn finalizes (via
+ * `startNextQueuedWorkflowStep`), and kept in sync while open in the browser.
+ * Sits directly above the composer, same visual language as PinnedTodoPanel.
  *
  * Each row supports:
  *  - click-to-edit the queued text in place (a queued prompt hasn't been

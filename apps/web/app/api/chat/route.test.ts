@@ -198,6 +198,13 @@ mock.module("@/lib/db/sessions", () => ({
   updateSession: async (_sessionId: string, patch: Record<string, unknown>) =>
     patch,
   upsertChatMessageScoped: async () => ({ status: "inserted" as const }),
+  setChatRunStatus: async (
+    _chatId: string,
+    status: string,
+    _opts?: { onlyIfActiveStreamId?: null },
+  ) => {
+    routeEvents.push(`status:${status}`);
+  },
 }));
 
 mock.module("@/lib/db/user-preferences", () => ({
@@ -361,7 +368,10 @@ describe("/api/chat route", () => {
       role: "user",
       parts: expect.objectContaining({ id: "user-1", role: "user" }),
     });
-    expect(routeEvents.indexOf("persist-user")).toBeGreaterThanOrEqual(0);
+    expect(routeEvents.indexOf("status:queued")).toBeGreaterThanOrEqual(0);
+    expect(routeEvents.indexOf("persist-user")).toBeGreaterThan(
+      routeEvents.indexOf("status:queued"),
+    );
     expect(routeEvents.indexOf("start-workflow")).toBeGreaterThan(
       routeEvents.indexOf("persist-user"),
     );

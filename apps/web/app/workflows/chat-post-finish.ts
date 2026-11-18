@@ -14,6 +14,7 @@ import type {
   WorkflowRunStatus,
   WorkflowRunStepTiming,
 } from "@/lib/db/workflow-runs";
+import type { Session as AuthSession } from "@/lib/session/types";
 
 const cachedInputTokensFor = (usage: LanguageModelUsage) =>
   usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
@@ -809,13 +810,62 @@ export interface DequeuedUserPrompt {
   message: WebAgentUIMessage;
   modelId?: string | null;
   reasoningEffort?: string | null;
+  rawItem?: unknown;
 }
 
-export async function dequeueNextQueuedUserMessageStep(
+export interface StartNextQueuedWorkflowParams {
+  chatId: string;
+  sessionId: string;
+  userId: string;
+  requestUrl: string;
+  authSession: Pick<AuthSession, "authProvider" | "user"> | null;
+  maxSteps?: number;
+  teamRoleModels?: Record<string, string>;
+  autoCommitEnabled?: boolean;
+  autoCreatePrEnabled?: boolean;
+}
+
+function normalizeStoredChatMessage(row: {
+  id: string;
+  role: string;
+  parts: unknown;
+  metadata?: unknown;
+}): WebAgentUIMessage {
+  const raw = row.parts as unknown;
+  const fallbackMetadata =
+    (row.metadata as WebAgentUIMessage["metadata"]) ?? undefined;
+  if (Array.isArray(raw)) {
+    return {
+      id: row.id,
+      role: row.role as WebAgentUIMessage["role"],
+      parts: raw,
+      ...(fallbackMetadata !== undefined ? { metadata: fallbackMetadata } : {}),
+    } as WebAgentUIMessage;
+  }
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    return {
+      ...obj,
+      id: typeof obj.id === "string" ? obj.id : row.id,
+      role: (typeof obj.role === "string"
+        ? obj.role
+        : row.role) as WebAgentUIMessage["role"],
+      parts: Array.isArray(obj.parts) ? obj.parts : [],
+      metadata:
+        (obj.metadata as WebAgentUIMessage["metadata"]) ?? fallbackMetadata,
+    } as WebAgentUIMessage;
+  }
+  return {
+    id: row.id,
+    role: row.role as WebAgentUIMessage["role"],
+    parts: [],
+    ...(fallbackMetadata !== undefined ? { metadata: fallbackMetadata } : {}),
+  } as WebAgentUIMessage;
+}
+
+export async function dequeueNextQueuedUserMessageInternal(
   chatId: string,
 ): Promise<DequeuedUserPrompt | null> {
-  "use step";
-
   try {
     const { eq } = await import("drizzle-orm");
     const { db } = await import("@/lib/db/client");
@@ -913,6 +963,7 @@ export async function dequeueNextQueuedUserMessageStep(
 
       return {
         message: userMessage,
+        rawItem: first,
         ...(queuedModelId ? { modelId: queuedModelId } : {}),
         ...(queuedReasoningEffort
           ? { reasoningEffort: queuedReasoningEffort }
@@ -930,6 +981,158 @@ export async function dequeueNextQueuedUserMessageStep(
     console.error("[workflow] Failed to dequeue next queued prompt:", error);
     return null;
   }
+}
+
+export async function dequeueNextQueuedUserMessageStep(
+  chatId: string,
+): Promise<DequeuedUserPrompt | null> {
+  "use step";
+
+  return dequeueNextQueuedUserMessageInternal(chatId);
+}
+
+/**
+ * Starts the next queued prompt as its own independent durable `runAgentWorkflow`
+ * run so each queued prompt receives a fresh step budget, fresh 1-hour turn
+ * timeout, isolated workflow event history, and full per-turn finalization
+ * (auto-commit / auto-PR / final assistant persist).
+ */
+export async function startNextQueuedWorkflowInternal(
+  params: StartNextQueuedWorkflowParams,
+): Promise<{ started: boolean; runId?: string }> {
+  try {
+    const {
+      claimChatActiveStreamId,
+      getChatById,
+      getChatMessages,
+      setChatRunStatus,
+    } = await import("@/lib/db/sessions");
+    const chat = await getChatById(params.chatId);
+    if (!chat || chat.status === "cancelled" || chat.activeStreamId !== null) {
+      return { started: false };
+    }
+
+    const dequeued = await dequeueNextQueuedUserMessageInternal(params.chatId);
+    if (!dequeued) {
+      return { started: false };
+    }
+
+    await setChatRunStatus(params.chatId, "queued", {
+      onlyIfActiveStreamId: null,
+    }).catch(() => {});
+
+    try {
+      const storedRows = await getChatMessages(params.chatId);
+      const messages = storedRows.map((row) => normalizeStoredChatMessage(row));
+      if (!messages.some((m) => m.id === dequeued.message.id)) {
+        messages.push(dequeued.message);
+      }
+
+      const { generateId } = await import("ai");
+      const { start, getRun } = await import("workflow/api");
+      const { runAgentWorkflow } = await import("./chat");
+      const { isHobbyResourceProfile } =
+        await import("@/lib/deployment/resource-profile");
+
+      const nextRun = await start(
+        runAgentWorkflow,
+        [
+          {
+            messages,
+            chatId: params.chatId,
+            sessionId: params.sessionId,
+            userId: params.userId,
+            requestUrl: params.requestUrl,
+            authSession: params.authSession,
+            assistantId: generateId(),
+            inputMessagesPersisted: true,
+            maxSteps: params.maxSteps ?? (isHobbyResourceProfile() ? 50 : 500),
+            ...(params.teamRoleModels &&
+            Object.keys(params.teamRoleModels).length > 0
+              ? { teamRoleModels: params.teamRoleModels }
+              : {}),
+            ...(params.autoCommitEnabled !== undefined
+              ? { autoCommitEnabled: params.autoCommitEnabled }
+              : {}),
+            ...(params.autoCreatePrEnabled !== undefined
+              ? { autoCreatePrEnabled: params.autoCreatePrEnabled }
+              : {}),
+            ...(dequeued.modelId !== undefined
+              ? { overrideModelId: dequeued.modelId }
+              : {}),
+            ...(dequeued.reasoningEffort !== undefined
+              ? { overrideReasoningEffort: dequeued.reasoningEffort }
+              : {}),
+          },
+        ],
+        {
+          attributes: {
+            chatId: params.chatId,
+            sessionId: params.sessionId,
+            userId: params.userId,
+          },
+        },
+      );
+
+      const claimed = await claimChatActiveStreamId(
+        params.chatId,
+        nextRun.runId,
+      );
+      if (!claimed) {
+        try {
+          await getRun(nextRun.runId).cancel();
+        } catch {
+          // Best-effort cleanup.
+        }
+        return { started: false };
+      }
+
+      return { started: true, runId: nextRun.runId };
+    } catch (error) {
+      // Restore the popped item to the front of queuedPrompts on workflow start failure.
+      if (dequeued.rawItem !== undefined) {
+        const { eq } = await import("drizzle-orm");
+        const { db } = await import("@/lib/db/client");
+        const { chats } = await import("@/lib/db/schema");
+        await db
+          .transaction(async (tx) => {
+            const rows = await tx
+              .select({ queuedPrompts: chats.queuedPrompts })
+              .from(chats)
+              .where(eq(chats.id, params.chatId))
+              .limit(1)
+              .for("update");
+            const current = Array.isArray(rows[0]?.queuedPrompts)
+              ? (rows[0].queuedPrompts as unknown[])
+              : [];
+            await tx
+              .update(chats)
+              .set({ queuedPrompts: [dequeued.rawItem, ...current] })
+              .where(eq(chats.id, params.chatId));
+          })
+          .catch(() => {});
+      }
+      await setChatRunStatus(params.chatId, "failed", {
+        onlyIfActiveStreamId: null,
+      }).catch(() => {});
+      console.error(
+        `[workflow] Failed to start next queued workflow for chat ${params.chatId}:`,
+        error,
+      );
+      return { started: false };
+    }
+  } catch (error) {
+    console.error("[workflow] startNextQueuedWorkflowInternal error:", error);
+    return { started: false };
+  }
+}
+
+export async function startNextQueuedWorkflowStep(
+  params: StartNextQueuedWorkflowParams,
+): Promise<{ started: boolean; runId?: string }> {
+  "use step";
+
+  return startNextQueuedWorkflowInternal(params);
 }
 
 export async function getUnreadInboxCountStep(

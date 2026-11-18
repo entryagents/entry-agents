@@ -159,6 +159,10 @@ const spies = {
       reasoningEffort?: string | null;
     } | null> => Promise.resolve(null),
   ),
+  startNextQueuedWorkflowStep: mock(
+    (): Promise<{ started: boolean; runId?: string }> =>
+      Promise.resolve({ started: false }),
+  ),
 };
 
 let testSessionRecord: {
@@ -1765,33 +1769,33 @@ describe("runAgentWorkflow", () => {
     expect(spies.runAutoCommitStep).not.toHaveBeenCalled();
   });
 
-  test("auto-drains queued user prompt on the server when turn finishes naturally", async () => {
-    spies.dequeueNextQueuedUserMessageStep
-      .mockImplementationOnce(() =>
-        Promise.resolve({
-          message: {
-            id: "queued-user-2",
-            role: "user" as const,
-            parts: [{ type: "text" as const, text: "Run the tests next" }],
-          },
-          modelId: null,
-          reasoningEffort: null,
-        } as unknown as never),
-      )
-      .mockImplementationOnce(() => Promise.resolve(null));
+  test("chains next queued prompt into a fresh durable workflow after turn finalization", async () => {
+    const callOrder: string[] = [];
+    spies.persistFinalAssistantMessage.mockImplementationOnce(async () => {
+      callOrder.push("persistFinalAssistantMessage");
+    });
+    spies.releaseUserBillingTurnStep.mockImplementationOnce(async () => {
+      callOrder.push("releaseUserBillingTurnStep");
+    });
+    spies.startNextQueuedWorkflowStep.mockImplementationOnce(async () => {
+      callOrder.push("startNextQueuedWorkflowStep");
+      return { started: true, runId: "wrun_queued-2" };
+    });
+    spies.closeStream.mockImplementationOnce(async (writable) => {
+      callOrder.push("closeStream");
+      await writable.close();
+    });
 
     await runAgentWorkflow(makeOptions({ maxSteps: 2 }));
 
-    expect(spies.dequeueNextQueuedUserMessageStep).toHaveBeenCalledTimes(1);
-    expect(spies.persistAssistantMessage).toHaveBeenCalledTimes(3);
+    expect(spies.startNextQueuedWorkflowStep).toHaveBeenCalledTimes(1);
     expect(spies.persistFinalAssistantMessage).toHaveBeenCalledTimes(1);
-    expect(
-      writtenChunks.filter(
-        (chunk) =>
-          chunk.type === "data-user-message" &&
-          (chunk as { data?: { id?: string } }).data?.id === "queued-user-2",
-      ),
-    ).toHaveLength(1);
+    expect(callOrder).toEqual([
+      "persistFinalAssistantMessage",
+      "releaseUserBillingTurnStep",
+      "startNextQueuedWorkflowStep",
+      "closeStream",
+    ]);
   });
 
   test("still clears stream and sends finish even on step error", async () => {
