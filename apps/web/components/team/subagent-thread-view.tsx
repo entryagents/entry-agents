@@ -82,9 +82,7 @@ export function buildSubagentThreadMessages(
 export interface SubagentThreadViewProps {
   subagentId: string;
   messages: WebAgentUIMessage[];
-  streamdownComponents?: React.ComponentProps<
-    typeof ChatMessageFeed
-  >["streamdownComponents"];
+  onOpenFile?: (filePath: string) => void;
   onClose: () => void;
   onStopRun?: () => void;
   onApproveTool?: (approvalId: string) => void;
@@ -94,7 +92,7 @@ export interface SubagentThreadViewProps {
 export function SubagentThreadView({
   subagentId,
   messages,
-  streamdownComponents,
+  onOpenFile,
   onClose,
   onStopRun: _onStopRun,
   onApproveTool,
@@ -183,7 +181,7 @@ export function SubagentThreadView({
               <ChatMessageFeed
                 messages={threadMessages}
                 isStreaming={isLive}
-                streamdownComponents={streamdownComponents}
+                onOpenFile={onOpenFile}
                 onApproveTool={onApproveTool}
                 onDenyTool={onDenyTool}
               />

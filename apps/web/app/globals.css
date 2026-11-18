@@ -1,8 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@source "../node_modules/streamdown/dist/*.js";
-
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -254,7 +252,6 @@
   pre code {
     white-space: pre !important;
   }
-  [data-streamdown="inline-code"],
   code:not(pre code) {
     font-family: var(--font-mono, monospace);
     font-size: 0.875em;

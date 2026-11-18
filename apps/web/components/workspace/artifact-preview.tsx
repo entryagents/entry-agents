@@ -10,14 +10,13 @@ import {
   Tablet,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Streamdown } from "streamdown";
+import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { streamdownPlugins } from "@/lib/streamdown-config";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -43,13 +42,7 @@ export function MarkdownArtifactPreview({ content }: { content: string }) {
   return (
     <div className="mx-auto w-full max-w-4xl px-8 py-8">
       <div className="prose prose-neutral dark:prose-invert max-w-none prose-headings:scroll-m-20 prose-headings:font-semibold prose-a:text-primary prose-a:underline-offset-4 hover:prose-a:underline prose-code:rounded prose-code:bg-muted prose-code:px-1.5 prose-code:py-0.5 prose-code:font-mono prose-code:text-xs prose-pre:rounded-lg prose-pre:border prose-pre:border-border prose-pre:bg-muted/40 prose-img:rounded-lg">
-        <Streamdown
-          mode="static"
-          isAnimating={false}
-          plugins={streamdownPlugins}
-        >
-          {cleanMarkdown}
-        </Streamdown>
+        <StreamingMarkdown content={cleanMarkdown} />
       </div>
     </div>
   );
