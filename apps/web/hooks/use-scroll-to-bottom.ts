@@ -71,6 +71,7 @@ export function useScrollToBottom<T extends HTMLElement>(
   const prevChatIdRef = useRef<string | undefined>(undefined);
   const touchStartYRef = useRef<number | null>(null);
   const lastScrollTopRef = useRef(initialCached?.scrollTop ?? 0);
+  const lastScrollHeightRef = useRef(0);
   const savedScrollTopRef = useRef<number | null>(
     initialCached ? initialCached.scrollTop : null,
   );
@@ -93,6 +94,7 @@ export function useScrollToBottom<T extends HTMLElement>(
     }
     container.scrollTop = container.scrollHeight;
     lastScrollTopRef.current = container.scrollTop;
+    lastScrollHeightRef.current = container.scrollHeight;
     savedScrollTopRef.current = container.scrollTop;
     setCachedScrollState(chatId, {
       scrollTop: container.scrollTop,
@@ -149,7 +151,9 @@ export function useScrollToBottom<T extends HTMLElement>(
     }
     const { scrollTop, scrollHeight, clientHeight } = container;
     const prevScrollTop = lastScrollTopRef.current;
+    const prevScrollHeight = lastScrollHeightRef.current;
     lastScrollTopRef.current = scrollTop;
+    lastScrollHeightRef.current = scrollHeight;
     savedScrollTopRef.current = scrollTop;
 
     const atBottom =
@@ -163,16 +167,18 @@ export function useScrollToBottom<T extends HTMLElement>(
     }
 
     // Only unpin when the user actively scrolled UP (or expressed upward
-    // wheel/touch/keyboard intent). Async content growth (markdown blocks,
-    // code syntax highlighting, tool cards, hydration) increases scrollHeight
-    // before ResizeObserver snaps scrollTop; ignore scroll-height growth alone.
-    const movedUpward = scrollTop < prevScrollTop - 2;
+    // wheel/touch/keyboard intent). Ignore scrollTop clamping caused when
+    // collapsible groups shrink scrollHeight on turn completion, as well as
+    // async content growth alone.
+    const scrollHeightShrank = scrollHeight < prevScrollHeight;
+    const movedUpward = !scrollHeightShrank && scrollTop < prevScrollTop - 2;
     if (userUpwardIntentRef.current || movedUpward) {
       setSticky(false);
       setCachedScrollState(chatId, { scrollTop, isAtBottom: false });
     } else if (isAtBottomRef.current) {
       container.scrollTop = container.scrollHeight;
       lastScrollTopRef.current = container.scrollTop;
+      lastScrollHeightRef.current = container.scrollHeight;
       savedScrollTopRef.current = container.scrollTop;
       setCachedScrollState(chatId, {
         scrollTop: container.scrollTop,
@@ -197,6 +203,7 @@ export function useScrollToBottom<T extends HTMLElement>(
 
     const cached = chatChanged ? getCachedScrollState(chatId) : undefined;
     if (chatChanged) {
+      lastScrollHeightRef.current = containerRef.current?.scrollHeight ?? 0;
       if (cached) {
         savedScrollTopRef.current = cached.scrollTop;
         lastScrollTopRef.current = cached.scrollTop;
@@ -223,6 +230,7 @@ export function useScrollToBottom<T extends HTMLElement>(
       ) {
         container.scrollTop = savedScrollTopRef.current;
         lastScrollTopRef.current = container.scrollTop;
+        lastScrollHeightRef.current = container.scrollHeight;
       }
     };
 
