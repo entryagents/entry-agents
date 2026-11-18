@@ -73,50 +73,81 @@ export function dedupeMessageReasoning<T extends WebAgentUIMessage>(
     return message;
   }
 
-  const seen = new Set<string>();
-  let hasDuplicates = false;
+  const reasoningEntries: Array<{
+    index: number;
+    itemId: string | undefined;
+    normalized: string;
+    isStreaming: boolean;
+    part: WebAgentUIMessage["parts"][number];
+  }> = [];
 
-  for (const part of message.parts) {
+  for (let i = 0; i < message.parts.length; i += 1) {
+    const part = message.parts[i];
     if (part.type !== "reasoning") continue;
-
-    const itemId = getReasoningItemId(part);
-    // Composite key: if itemId is present use that + text; if not present, use normalized text if non-empty
-    const key = itemId
-      ? `${itemId}\0${part.text}`
-      : normalizeText(part.text).length > 0
-        ? `noId\0${normalizeText(part.text)}`
-        : null;
-
-    if (!key) continue;
-
-    if (seen.has(key)) {
-      hasDuplicates = true;
-      break;
-    }
-    seen.add(key);
+    reasoningEntries.push({
+      index: i,
+      itemId: getReasoningItemId(part),
+      normalized: normalizeText(part.text),
+      isStreaming: (part as { state?: string }).state === "streaming",
+      part,
+    });
   }
 
-  if (!hasDuplicates) return message;
+  if (reasoningEntries.length <= 1) {
+    return message;
+  }
 
-  const deduped = new Set<string>();
-  const filteredParts = message.parts.filter((part) => {
-    if (part.type !== "reasoning") return true;
+  // Exact + prefix deduplication so a shorter DB checkpoint reasoning part
+  // merged with a longer local streamed reasoning part collapses cleanly,
+  // while distinct multi-summary parts (neither a prefix of the other) stay.
+  const dropIndices = new Set<number>();
 
-    const itemId = getReasoningItemId(part);
-    const key = itemId
-      ? `${itemId}\0${part.text}`
-      : normalizeText(part.text).length > 0
-        ? `noId\0${normalizeText(part.text)}`
-        : null;
+  for (let i = 0; i < reasoningEntries.length; i += 1) {
+    if (dropIndices.has(reasoningEntries[i].index)) continue;
+    for (let j = i + 1; j < reasoningEntries.length; j += 1) {
+      if (dropIndices.has(reasoningEntries[j].index)) continue;
+      const a = reasoningEntries[i];
+      const b = reasoningEntries[j];
+      if (!a.normalized || !b.normalized) continue;
 
-    if (!key) return true;
+      const sameBucket =
+        a.itemId !== undefined && b.itemId !== undefined
+          ? a.itemId === b.itemId
+          : a.itemId === undefined && b.itemId === undefined;
+      if (!sameBucket) continue;
 
-    if (deduped.has(key)) return false;
-    deduped.add(key);
-    return true;
-  });
+      const isExact = a.normalized === b.normalized;
+      const minLen = Math.min(a.normalized.length, b.normalized.length);
+      const isPrefix =
+        !isExact &&
+        (a.itemId !== undefined || minLen >= 12) &&
+        (b.normalized.startsWith(a.normalized) ||
+          a.normalized.startsWith(b.normalized));
 
-  return { ...message, parts: filteredParts };
+      if (!isExact && !isPrefix) continue;
+
+      // Keep whichever part has longer text (or non-streaming on tie).
+      const preferB =
+        b.normalized.length > a.normalized.length ||
+        (b.normalized.length === a.normalized.length &&
+          a.isStreaming &&
+          !b.isStreaming);
+      if (preferB) {
+        dropIndices.add(a.index);
+        break;
+      }
+      dropIndices.add(b.index);
+    }
+  }
+
+  if (dropIndices.size === 0) {
+    return message;
+  }
+
+  return {
+    ...message,
+    parts: message.parts.filter((_, index) => !dropIndices.has(index)),
+  };
 }
 
 /**

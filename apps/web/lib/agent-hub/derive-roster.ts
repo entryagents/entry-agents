@@ -116,12 +116,31 @@ function statusOf(part: RawToolPart): AgentHubStatus {
   }
 }
 
-export function deriveAgentHubRoster(messages: unknown): AgentHubEntry[] {
+export interface DeriveAgentHubRosterOptions {
+  /** Whether the parent chat run is currently streaming. When false, incomplete task parts reconcile to failed instead of staying stuck as running. */
+  isParentStreaming?: boolean;
+}
+
+export function deriveAgentHubRoster(
+  messages: unknown,
+  options?: DeriveAgentHubRosterOptions,
+): AgentHubEntry[] {
   if (!Array.isArray(messages)) return [];
   const entries: AgentHubEntry[] = [];
+  const rawMessages = messages as RawMessage[];
+  let lastAssistantIndex = -1;
+  for (let i = rawMessages.length - 1; i >= 0; i -= 1) {
+    if (rawMessages[i]?.role === "assistant") {
+      lastAssistantIndex = i;
+      break;
+    }
+  }
+  const isParentStreaming = options?.isParentStreaming ?? true;
 
-  for (const raw of messages as RawMessage[]) {
+  for (let msgIdx = 0; msgIdx < rawMessages.length; msgIdx += 1) {
+    const raw = rawMessages[msgIdx];
     if (!raw || raw.role !== "assistant" || !Array.isArray(raw.parts)) continue;
+    const isTurnActive = isParentStreaming && msgIdx === lastAssistantIndex;
     for (const part of raw.parts) {
       if (!isTaskPart(part)) continue;
       const input = asRecord(part.input);
@@ -137,6 +156,11 @@ export function deriveAgentHubRoster(messages: unknown): AgentHubEntry[] {
       const cacheWrite = extractCacheWriteTokens(
         usage as LanguageModelUsage | undefined,
       );
+      const rawStatus = statusOf(part);
+      const resolvedStatus: AgentHubStatus =
+        !isTurnActive && (rawStatus === "starting" || rawStatus === "running")
+          ? "failed"
+          : rawStatus;
 
       entries.push({
         id: part.toolCallId as string,
@@ -154,7 +178,7 @@ export function deriveAgentHubRoster(messages: unknown): AgentHubEntry[] {
             : "Spawning subagent",
         instructions:
           typeof input?.instructions === "string" ? input.instructions : "",
-        status: statusOf(part),
+        status: resolvedStatus,
         modelId: typeof output?.modelId === "string" ? output.modelId : null,
         startedAt: numberOrNull(output?.startedAt),
         toolCallCount: numberOrNull(output?.toolCallCount),

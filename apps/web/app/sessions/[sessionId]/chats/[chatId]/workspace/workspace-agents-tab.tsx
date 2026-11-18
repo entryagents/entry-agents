@@ -23,13 +23,18 @@ type FilterMode = "all" | "active" | "completed";
 
 export function WorkspaceAgentsTab({
   messages,
+  isParentStreaming,
   onSelectSubagent,
 }: {
   messages: unknown;
+  isParentStreaming?: boolean;
   onSelectSubagent: (id: string, title?: string, subagentType?: string) => void;
 }) {
   const [filterMode, setFilterMode] = useState<FilterMode>("all");
-  const roster = useMemo(() => deriveAgentHubRoster(messages), [messages]);
+  const roster = useMemo(
+    () => deriveAgentHubRoster(messages, { isParentStreaming }),
+    [messages, isParentStreaming],
+  );
   const totals = useMemo(() => summarizeAgentHub(roster), [roster]);
 
   const filteredRoster = useMemo(() => {

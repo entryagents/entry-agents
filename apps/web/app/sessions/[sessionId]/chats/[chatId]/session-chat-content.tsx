@@ -3244,6 +3244,7 @@ export function SessionChatContent({
         createPortal(
           <TeamStatusButton
             messages={messages}
+            isParentStreaming={effectiveStatus === "streaming"}
             onStopRun={handleStopStream}
             isDesktopTeamPaneOpen={teamPaneOpen}
             onToggleDesktopTeamPane={() => setTeamPaneOpen((prev) => !prev)}
@@ -3356,7 +3357,7 @@ export function SessionChatContent({
                       <div className="space-y-6">
                         <ChatMessageFeed
                           messages={renderMessages}
-                          isStreaming={isChatInFlight}
+                          isStreaming={effectiveStatus === "streaming"}
                           streamdownComponents={streamdownComponents}
                           onApproveTool={handleApproveTool}
                           onDenyTool={handleDenyTool}
@@ -3555,6 +3556,7 @@ export function SessionChatContent({
             <TeamWorkspace
               className="w-full"
               messages={messages}
+              isParentStreaming={effectiveStatus === "streaming"}
               defaultModelId={chatInfo.modelId}
               teamRoleModels={teamRoleModels}
               onUpdateRoleModel={updateTeamRoleModel}

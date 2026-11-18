@@ -35,6 +35,7 @@ export type TeamWorkspaceTab = "subagents" | "board" | "models";
 
 export interface TeamWorkspaceProps {
   messages: WebAgentUIMessage[];
+  isParentStreaming?: boolean;
   defaultModelId?: string | null;
   teamRoleModels?: Record<string, string>;
   onUpdateRoleModel?: (role: string, modelId: string | null) => void;
@@ -321,6 +322,7 @@ function ModelsTab({
 
 export function TeamWorkspace({
   messages,
+  isParentStreaming,
   defaultModelId,
   teamRoleModels,
   onUpdateRoleModel,
@@ -334,7 +336,10 @@ export function TeamWorkspace({
   className,
 }: TeamWorkspaceProps) {
   const [tab, setTab] = useState<TeamWorkspaceTab>("subagents");
-  const roster = useMemo(() => deriveAgentHubRoster(messages), [messages]);
+  const roster = useMemo(
+    () => deriveAgentHubRoster(messages, { isParentStreaming }),
+    [messages, isParentStreaming],
+  );
   const teamFeed = useMemo(() => deriveTeamFeed(messages), [messages]);
   const runningCount = useMemo(
     () => roster.filter((e) => isLiveStatus(e.status)).length,

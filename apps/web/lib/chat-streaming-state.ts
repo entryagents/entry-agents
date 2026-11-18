@@ -104,15 +104,11 @@ export function shouldKeepCollapsedReasoningStreaming(options: {
     hasRenderableContentAfterGroup,
   } = options;
 
-  if (!isMessageStreaming) {
+  if (!isMessageStreaming || hasRenderableContentAfterGroup) {
     return false;
   }
 
-  if (hasStreamingReasoningPart) {
-    return true;
-  }
-
-  return !hasRenderableContentAfterGroup;
+  return hasStreamingReasoningPart || !hasRenderableContentAfterGroup;
 }
 
 function getPendingGitActionLabel(action: "commit" | "pr"): string {
