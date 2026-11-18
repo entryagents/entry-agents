@@ -162,7 +162,68 @@ export async function finalizeArchivedSessionSandboxInline(
       return;
     }
 
+    const [
+      { getSessionsByUserId },
+      { isUserAdmin },
+      { getUserBillingState },
+      { getPlanDefinition },
+      { isSandboxSharedAcrossSessions },
+    ] = await Promise.all([
+      import("@/lib/db/sessions"),
+      import("@/lib/db/users"),
+      import("@/lib/billing/credit-ledger"),
+      import("@/lib/billing/plans"),
+      import("@/lib/billing/sandbox-limits"),
+    ]);
+
+    const [userSessions, isAdmin] = await Promise.all([
+      getSessionsByUserId(archivedSession.userId).catch(() => []),
+      isUserAdmin(archivedSession.userId).catch(() => false),
+    ]);
+
+    const sharedWithActiveSibling = isSandboxSharedAcrossSessions(
+      sessionId,
+      archivedSession.sandboxState,
+      userSessions,
+      { activeOnly: true },
+    );
+
+    if (sharedWithActiveSibling) {
+      // Another active chat is using this shared sandbox; detach only.
+      await updateSession(sessionId, {
+        snapshotUrl: null,
+        snapshotCreatedAt: null,
+        sandboxState: clearSandboxState(archivedSession.sandboxState),
+        lifecycleState: "archived",
+        sandboxExpiresAt: null,
+        hibernateAfter: null,
+        lifecycleError: null,
+      });
+      return;
+    }
+
+    const billingState = await getUserBillingState(archivedSession.userId, {
+      isAdmin,
+    }).catch(() => null);
+    const isFreeUser =
+      !isAdmin && getPlanDefinition(billingState?.plan).id === "free";
+
     const sandbox = await connectSandbox(archivedSession.sandboxState);
+    if (isFreeUser) {
+      // Suspend (do not destroy) free-tier sandbox and keep its handle so a
+      // future chat can re-attach it instead of spinning up a new VM.
+      await sandbox.stop();
+      await updateSession(sessionId, {
+        snapshotUrl: null,
+        snapshotCreatedAt: null,
+        lifecycleState: "archived",
+        sandboxExpiresAt: null,
+        hibernateAfter: null,
+        lifecycleError: null,
+      });
+      return;
+    }
+
     if (sandbox.destroy) {
       await sandbox.destroy();
     } else {
