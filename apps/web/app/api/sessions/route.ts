@@ -244,6 +244,21 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid repository name" }, { status: 400 });
   }
 
+  const rawBody = body as CreateSessionRequest & {
+    prompt?: unknown;
+    uploadedFiles?: unknown;
+  };
+  const hasPrompt =
+    typeof rawBody.prompt === "string" && rawBody.prompt.trim().length > 0;
+  const hasFiles =
+    Array.isArray(rawBody.uploadedFiles) && rawBody.uploadedFiles.length > 0;
+  if (!hasPrompt && !hasFiles) {
+    return Response.json(
+      { error: "A prompt or attached file is required to start a session" },
+      { status: 400 },
+    );
+  }
+
   if (body.cloneUrl !== undefined) {
     if (typeof body.cloneUrl !== "string") {
       return Response.json({ error: "Invalid clone URL" }, { status: 400 });
