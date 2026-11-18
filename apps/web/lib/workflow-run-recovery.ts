@@ -66,10 +66,19 @@ export function isDefinitelyGoneRunError(error: unknown): boolean {
  */
 export type RunStateOutcome = "alive" | "gone" | "unknown";
 
+export type WorkflowTerminalStatus = "completed" | "failed" | "cancelled";
+
+export interface RunStateVerification {
+  outcome: RunStateOutcome;
+  terminalStatus?: WorkflowTerminalStatus;
+}
+
 const VERIFY_ATTEMPTS = 3;
 const VERIFY_RETRY_DELAYS_MS = [0, 150, 400];
 
-export async function verifyRunState(runId: string): Promise<RunStateOutcome> {
+export async function verifyRunStateWithStatus(
+  runId: string,
+): Promise<RunStateVerification> {
   let lastError: unknown = undefined;
 
   for (let attempt = 0; attempt < VERIFY_ATTEMPTS; attempt++) {
@@ -82,14 +91,22 @@ export async function verifyRunState(runId: string): Promise<RunStateOutcome> {
       const status = await getRun(runId).status;
 
       if (status === "pending" || status === "running") {
-        return "alive";
+        return { outcome: "alive" };
       }
 
       // completed | failed | cancelled: terminal -- the stored id is done.
-      return "gone";
+      return {
+        outcome: "gone",
+        terminalStatus:
+          status === "completed" ||
+          status === "failed" ||
+          status === "cancelled"
+            ? status
+            : undefined,
+      };
     } catch (error) {
       if (isDefinitelyGoneRunError(error)) {
-        return "gone";
+        return { outcome: "gone" };
       }
       lastError = error;
     }
@@ -99,5 +116,10 @@ export async function verifyRunState(runId: string): Promise<RunStateOutcome> {
     `[workflow-run-recovery] run state for ${runId} stayed unverifiable after ${VERIFY_ATTEMPTS} attempts:`,
     lastError instanceof Error ? lastError.message : lastError,
   );
-  return "unknown";
+  return { outcome: "unknown" };
+}
+
+export async function verifyRunState(runId: string): Promise<RunStateOutcome> {
+  const result = await verifyRunStateWithStatus(runId);
+  return result.outcome;
 }

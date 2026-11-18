@@ -2,6 +2,9 @@
   "functions": {
     "app/.well-known/workflow/v1/**": {
       "supportsCancellation": true
+    },
+    "app/api/chat/**": {
+      "supportsCancellation": true
     }
   },
   "crons": [
