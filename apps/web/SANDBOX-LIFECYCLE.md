@@ -6,7 +6,7 @@ This document describes how sandbox lifecycle management works, including automa
 
 | Constant | Test | Production | Purpose |
 |---|---|---|---|
-| `DEFAULT_SANDBOX_TIMEOUT_MS` | 3 min | 5 hours standard / 40 minutes hobby | Hard VM expiry from Vercel |
+| `DEFAULT_SANDBOX_TIMEOUT_MS` | 3 min | 5 hours standard / 40 minutes hobby | Hard runtime lifecycle ceiling |
 | `SANDBOX_INACTIVITY_TIMEOUT_MS` | 30 min | 30 min | Inactivity window before hibernate |
 
 Configured in `lib/sandbox/config.ts`. Set `OPEN_AGENTS_RESOURCE_PROFILE=hobby` to opt into the hobby profile; unset keeps standard behavior.

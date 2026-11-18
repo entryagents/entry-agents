@@ -1833,6 +1833,26 @@ export async function createComposioAgentMetaTools(input: {
       .describe("Optional wait timeout in milliseconds (default 15000)."),
   });
 
+  const boundComposioModelOutput = (
+    output: unknown,
+    label: string,
+    maxChars = 16_000,
+  ): { type: "text"; value: string } => {
+    const raw =
+      typeof output === "string"
+        ? output
+        : (JSON.stringify(output, null, 2) ?? String(output));
+    if (raw.length <= maxChars) {
+      return { type: "text", value: raw };
+    }
+    const head = Math.floor(maxChars * 0.65);
+    const tail = Math.max(200, maxChars - head - 140);
+    return {
+      type: "text",
+      value: `${raw.slice(0, head)}\n\n[... ${raw.length - head - tail} chars of ${label} omitted (${raw.length} total chars) ...]\n\n${raw.slice(-tail)}`,
+    };
+  };
+
   const tools: ToolSet = {
     COMPOSIO_SEARCH_TOOLS: createAiTool({
       description:
@@ -1866,6 +1886,8 @@ export async function createComposioAgentMetaTools(input: {
           })),
         };
       },
+      toModelOutput: ({ output }) =>
+        boundComposioModelOutput(output, "COMPOSIO_SEARCH_TOOLS output"),
     }),
 
     COMPOSIO_GET_TOOL_SCHEMAS: createAiTool({
@@ -1911,6 +1933,8 @@ export async function createComposioAgentMetaTools(input: {
         }
         return { schemas };
       },
+      toModelOutput: ({ output }) =>
+        boundComposioModelOutput(output, "COMPOSIO_GET_TOOL_SCHEMAS output"),
     }),
 
     COMPOSIO_MANAGE_CONNECTIONS: createAiTool({
@@ -2131,11 +2155,10 @@ export async function createComposioAgentMetaTools(input: {
           allSucceeded: executions.every((e) => e.success),
         };
       },
+      toModelOutput: ({ output }) =>
+        boundComposioModelOutput(output, "COMPOSIO_MULTI_EXECUTE_TOOL output"),
     }),
   };
-
-  // Alias COMPOSIO_MULTI_EXECUTE to COMPOSIO_MULTI_EXECUTE_TOOL for prompt compatibility
-  tools.COMPOSIO_MULTI_EXECUTE = tools.COMPOSIO_MULTI_EXECUTE_TOOL;
 
   return {
     tools,

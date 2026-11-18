@@ -40,7 +40,7 @@ const readInputSchema = z.object({
   limit: z
     .number()
     .optional()
-    .describe("Maximum number of lines to read. Default: 2000"),
+    .describe("Maximum number of lines to read. Default: 500"),
 });
 
 /** IANA media type for extensions we hand to the model as pixels. */
@@ -61,7 +61,7 @@ function imageMediaTypeForPath(path: string): string | undefined {
   return extension ? IMAGE_MEDIA_TYPES[extension.toLowerCase()] : undefined;
 }
 
-/** 4 MB of raw bytes ~= 5.3 MB once base64-encoded into the tool result. */
+/** 2 MB of raw bytes ~= 2.7 MB once base64-encoded into the tool result. */
 const MAX_IMAGE_RESULT_BYTES = 2 * 1024 * 1024;
 
 export const readFileTool = () =>
@@ -111,10 +111,10 @@ USAGE:
 - Use workspace-relative paths (e.g., "src/index.ts")
 - Paths are resolved from the workspace root
 - Reads both text files and visual images (.png, .jpg, .webp, .gif, .bmp, .avif). When reading an image file (e.g. screenshots from agent-browser), the actual visual pixels are attached directly to your vision context so you can see and visually verify UI layouts and styles.
-- By default reads up to 2000 lines starting from line 1
+- By default reads up to 500 lines starting from line 1 (pass a higher limit if you know you need more)
 - Use offset and limit for long files (both are line-based, 1-indexed)
 - Negative offset reads the tail: offset=-50 is the last 50 lines
-- Three ceilings protect the context window: 2000 lines, 128KB per read, and 2000 chars per line (over-long lines are clamped with a visible marker)
+- Ceilings protect the context window: 500-line default window (explicit limit allowed), 128KB per read, and 2000 chars per line (over-long lines are clamped with a visible marker)
 - If the file was cut, the result includes nextOffset — pass it as the next offset to resume exactly where it stopped
 - Re-reading the SAME range of an unchanged file returns a cheap "unchanged" notice instead of the full content; a different offset/limit always returns the requested lines
 - Results include line numbers starting at 1 in "N: content" format
@@ -129,7 +129,7 @@ EXAMPLES:
 - Read a slice of a long file: filePath: "logs/app.log", offset: 500, limit: 200`,
     inputSchema: readInputSchema,
     execute: async (
-      { filePath, offset = 1, limit = 2000 },
+      { filePath, offset = 1, limit = 500 },
       { experimental_context },
     ) => {
       let sandbox;

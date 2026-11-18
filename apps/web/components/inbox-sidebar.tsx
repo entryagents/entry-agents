@@ -1159,7 +1159,7 @@ export function InboxSidebar({
           )}
         </div>
 
-        {/* GOAT-only Usage Windows Telemetry + Clickable User Profile Popover & Balance Box */}
+        {/* Entry-only Usage Windows Telemetry + Clickable User Profile Popover & Balance Box */}
         {sidebarUser ? (
           <div className="mt-1.5 space-y-2 border-t border-border/60 pt-2">
             <DesktopCodexBillingStatus />

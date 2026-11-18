@@ -40,6 +40,9 @@ Usage is credit-based for model usage. Entry Agents does not charge a separate W
 - [AI coding agent](${SITE_URL}/ai-coding-agent): How the platform builds software with or without a repository.
 - [Pricing](${SITE_URL}/pricing): Credit-based plans.
 - [Models](${SITE_URL}/model): Supported models, prices and context windows.
+- [About](${SITE_URL}/about): Architecture principles and how sessions work.
+- [Privacy Policy](${SITE_URL}/privacy): Data isolation, OAuth permissions, and billing practices.
+- [Terms of Service](${SITE_URL}/terms): Terms governing workspace access, credits, and acceptable use.
 - [Sign in](${SITE_URL}/login): Sign in with Vercel, Google or GitHub.
 
 ## References

@@ -120,7 +120,7 @@ export function findSupersededReadToolCallKeys({
       let dedupSignature: string | undefined;
       if (toolName === "read" && filePath) {
         const offset = typeof input.offset === "number" ? input.offset : 1;
-        const limit = typeof input.limit === "number" ? input.limit : 2000;
+        const limit = typeof input.limit === "number" ? input.limit : 500;
         dedupSignature = `read:${filePath}:${offset}:${limit}`;
       } else if (toolName === "dir_list" && filePath) {
         dedupSignature = `dir_list:${filePath}`;

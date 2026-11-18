@@ -33,6 +33,13 @@ const fakeDb = {
           };
         };
       };
+      query: {
+        chatMessages: {
+          findFirst: (
+            config: unknown,
+          ) => Promise<typeof fakeInsertedMessage | null>;
+        };
+      };
       update: (table: unknown) => {
         set: (input: unknown) => {
           where: (condition: unknown) => {
@@ -51,6 +58,12 @@ const fakeDb = {
           }),
         }),
       }),
+      query: {
+        chatMessages: {
+          findFirst: async (_config: unknown) =>
+            upsertMode === "updated" ? fakeInsertedMessage : null,
+        },
+      },
       update: (_table: unknown) => ({
         set: (_input: unknown) => ({
           where: (_condition: unknown) => ({

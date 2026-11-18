@@ -1,6 +1,7 @@
 import { tool as createAiTool } from "ai";
 import { z } from "zod";
 import type { Sandbox } from "@entry-agents/sandbox";
+import { serializeBoundedForModel } from "./output-bounds";
 import { getSandbox } from "./utils";
 
 const pgxInputSchema = z.object({
@@ -77,7 +78,7 @@ export function createPgxTool(options?: {
 
       if (args.action === "mint") {
         const res = await runCmd(
-          `pgx branch ${template} ${branch} --ttl ${args.ttl ?? "2h"} 2>&1 || npx --yes pgxdb@latest branch ${template} ${branch} --ttl ${args.ttl ?? "2h"} 2>&1`,
+          `pgx branch ${template} ${branch} --ttl ${args.ttl ?? "2h"} 2>&1 || npx --yes pgxdb@0.1.0 branch ${template} ${branch} --ttl ${args.ttl ?? "2h"} 2>&1`,
         );
         const lines = res.stdout.split("\n").filter(Boolean);
         const databaseUrl =
@@ -150,5 +151,10 @@ export function createPgxTool(options?: {
         output: res.stdout || res.stderr,
       };
     },
+    toModelOutput: ({ output }) =>
+      serializeBoundedForModel(output, {
+        maxChars: 12_000,
+        label: "pgx output",
+      }),
   });
 }

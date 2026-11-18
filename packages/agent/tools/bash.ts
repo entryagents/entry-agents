@@ -89,7 +89,12 @@ interface ToolOptions {
 
 // Commands that should require approval
 const DANGEROUS_COMMAND_PATTERNS = [
-  /\bcurl\b/,
+  /\b(?:curl|wget)\b/,
+  /\b(?:nc|ncat|netcat|socat|scp|rsync|sftp)\b/,
+  /\bsudo\b/,
+  /\bchmod\s+(?:[^\n;&|]*\s)?(?:\+s|[0-7]*[4567][0-7]{3})\b/,
+  /\bgit\s+push\b/,
+  /\b(?:npm|pnpm|yarn|bun)\s+publish\b/,
   /\brm\s+(?:[^\n;&|]*\s)?(?:-[A-Za-z]*r[A-Za-z]*f|-[A-Za-z]*f[A-Za-z]*r|-r\s+-f|-f\s+-r|-{1,2}recursive\b.*-{1,2}force\b|-{1,2}force\b.*-{1,2}recursive\b)/,
   /\bfind\b[^\n;&|]*(?:-delete|-exec\s+rm\b)/,
   /\b(?:shred|mkfs|dd)\b/,
@@ -127,14 +132,27 @@ export function commandNeedsApproval(command: string): boolean {
  * - Truncates long inline data: URLs (e.g. data:text/javascript;base64,... from failed module imports).
  * - Truncates massive unbroken base64/hex token dumps (>256 characters) that flood LLM context.
  */
-const MAX_COMMAND_OUTPUT_CHARS = 32_000; // ~8,000 tokens
-const HEAD_KEEP_CHARS = 8_000;
-const TAIL_KEEP_CHARS = 16_000;
+const MAX_COMMAND_OUTPUT_CHARS = 12_000; // ~3,000 tokens
+const HEAD_KEEP_CHARS = 3_000;
+const TAIL_KEEP_CHARS = 8_000;
+// Strip ANSI OSC (hyperlinks/titles) and CSI sequences plus progress-spinner carriage-return overwrites.
+const ANSI_OSC_REGEX =
+  // eslint-disable-next-line no-control-regex -- intentionally stripping terminal OSC sequences
+  /\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)/g;
+const ANSI_ESCAPE_REGEX =
+  // eslint-disable-next-line no-control-regex -- intentionally stripping terminal ANSI sequences
+  /[\u001B\u009B][[()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><~]/g;
 
 export function sanitizeCommandOutput(text: string): string {
   if (!text) return text;
 
-  let sanitized = text.replace(
+  let sanitized = text
+    .replace(ANSI_OSC_REGEX, "")
+    .replace(ANSI_ESCAPE_REGEX, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/[^\n]*\r/g, "");
+
+  sanitized = sanitized.replace(
     /data:([^;,]+)?;base64,([A-Za-z0-9+/=]{80,})/g,
     (_match, mime, data) => {
       const mimeStr = mime ? `${mime};` : "";
@@ -199,7 +217,7 @@ USAGE:
 - NEVER prefix commands with "cd <working-directory> &&" or any path — this is the most common mistake and is always wrong
 - Use the cwd parameter ONLY with a workspace-relative subdirectory when you need to run in a different directory
 - Commands automatically timeout after ~2 minutes
-- Combined stdout/stderr output is truncated after ~50,000 characters
+- Combined stdout/stderr output is sanitized (ANSI stripped) and truncated above ~12,000 characters
 
 DO NOT USE FOR:
 - File reading (cat, head, tail) - use readFileTool instead

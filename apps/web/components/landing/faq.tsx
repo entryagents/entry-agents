@@ -14,7 +14,7 @@ const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "What do plans cost and how does 99% prompt caching work",
     answer:
-      "Paid plans start at $5/mo (Plus, $10 credit) and go up to $13/mo Goat ($50 credit, 3.8x value), $20/mo Pro ($100 credit), and $40/mo Max ($180 credit) with zero per-token markup. Prompt caching reuses repository context and workspace history across turns, cutting repeat token costs by up to 99%.",
+      "Paid plans start at $5/mo (Plus, $10 credit) and go up to $13/mo Entry ($50 credit, 3.8x value), $20/mo Pro ($100 credit), and $40/mo Max ($180 credit) with zero per-token markup. Prompt caching reuses repository context and workspace history across turns, cutting repeat token costs by up to 99%.",
   },
   {
     question: "What happens if I lose internet or close my browser mid-turn",

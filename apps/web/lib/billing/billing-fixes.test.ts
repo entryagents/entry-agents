@@ -98,7 +98,7 @@ describe("Billing Audit Fixes and Invariants", () => {
 
       // Paid plans get 0 trial allowance (grants come from subscription renewals)
       expect(computeTrialAllowance("plus", 100)).toBe(0);
-      expect(computeTrialAllowance("goat", 0)).toBe(0);
+      expect(computeTrialAllowance("entry", 0)).toBe(0);
     });
 
     it("calculates expired top-up credit accurately protecting trial and active top-ups", () => {

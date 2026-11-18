@@ -100,7 +100,7 @@ export const PLAN_STYLES: Record<
     card: "border-border/70 bg-muted/20",
     segmentActive: "bg-blue-400",
   },
-  goat: {
+  entry: {
     badge:
       "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400 border-emerald-500/25",
     card: "border-border/70 bg-muted/20",
@@ -197,7 +197,7 @@ export function SidebarBalancePill() {
 
 /**
  * Rounded-rectangle balance badge rendered on the right side of the desktop
- * profile footer row (e.g. "$5" or "$20"). Hidden for "goat" plan users since
+ * profile footer row (e.g. "$5" or "$20"). Hidden for "entry" plan users since
  * their balance and usage windows are displayed in DesktopCodexBillingStatus.
  */
 export function DesktopBalanceBox() {
@@ -205,7 +205,7 @@ export function DesktopBalanceBox() {
   const { isMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
 
-  if (isLoading || !data || data.plan === "goat") {
+  if (isLoading || !data || data.plan === "entry" || data.plan === "goat") {
     return null;
   }
 
@@ -235,7 +235,8 @@ export function SidebarPlanBadge({ showIcon = false }: { showIcon?: boolean }) {
     return null;
   }
 
-  const style = PLAN_STYLES[data.plan] ?? PLAN_STYLES.free;
+  const normalizedPlan = data.plan === "goat" ? "entry" : data.plan;
+  const style = PLAN_STYLES[normalizedPlan] ?? PLAN_STYLES.free;
 
   return (
     <span
@@ -252,7 +253,7 @@ export function SidebarPlanBadge({ showIcon = false }: { showIcon?: boolean }) {
 
 /**
  * Improved Method 1 Rolling Usage Windows Telemetry for the Desktop Sidebar.
- * Exclusively rendered when the user is on the "goat" (flagship Entry) plan.
+ * Exclusively rendered when the user is on the "entry" (Entry) plan.
  * Does not render a redundant plan badge or blinking indicator dot.
  */
 function getUsageWindowPercent(usedCents: number, limitCents: number): number {
@@ -268,7 +269,7 @@ export function DesktopCodexBillingStatus() {
   const { isMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
 
-  if (isLoading || !data || data.plan !== "goat") {
+  if (isLoading || !data || (data.plan !== "entry" && data.plan !== "goat")) {
     return null;
   }
 
@@ -301,7 +302,7 @@ export function DesktopCodexBillingStatus() {
       title="View detailed usage & balance"
       className={cn(
         "w-full text-left space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer hover:border-foreground/30",
-        PLAN_STYLES[data.plan]?.card ?? PLAN_STYLES.goat.card,
+        PLAN_STYLES.entry.card,
       )}
     >
       <div className="flex items-center justify-between gap-1.5 px-0.5">

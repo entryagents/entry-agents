@@ -5,23 +5,25 @@ import {
   computeRollingWindowBoundaries,
   findExceededUsageWindow,
   getPlanDefinition,
-  normalizeGoatWindowMode,
+  normalizeEntryWindowMode,
 } from "./plans";
 
-describe("GOAT plan usage window modes (rolling vs fixed)", () => {
+describe("Entry plan usage window modes (rolling vs fixed)", () => {
   const nowMs = new Date("2026-10-23T12:00:00.000Z").getTime();
   const anchorMs = new Date("2026-10-20T00:00:00.000Z").getTime();
 
-  test("normalizeGoatWindowMode defaults to rolling and recognizes fixed", () => {
-    expect(normalizeGoatWindowMode(undefined)).toBe("rolling");
-    expect(normalizeGoatWindowMode(null)).toBe("rolling");
-    expect(normalizeGoatWindowMode("rolling")).toBe("rolling");
-    expect(normalizeGoatWindowMode("fixed")).toBe("fixed");
-    expect(normalizeGoatWindowMode("other")).toBe("rolling");
+  test("normalizeEntryWindowMode defaults to rolling and recognizes fixed", () => {
+    expect(normalizeEntryWindowMode(undefined)).toBe("rolling");
+    expect(normalizeEntryWindowMode(null)).toBe("rolling");
+    expect(normalizeEntryWindowMode("rolling")).toBe("rolling");
+    expect(normalizeEntryWindowMode("fixed")).toBe("fixed");
+    expect(normalizeEntryWindowMode("other")).toBe("rolling");
   });
 
-  test("GOAT plan definition configures 5h, 7d, and 30d usage windows", () => {
-    const plan = getPlanDefinition("goat");
+  test("Entry plan definition configures 5h, 7d, and 30d usage windows (and legacy goat resolves to entry)", () => {
+    const plan = getPlanDefinition("entry");
+    expect(plan.id).toBe("entry");
+    expect(getPlanDefinition("goat").id).toBe("entry");
     expect(plan.usageWindows).toEqual({
       fiveHourLimitCents: 1_000,
       weeklyLimitCents: 2_500,
@@ -148,7 +150,7 @@ describe("GOAT plan usage window modes (rolling vs fixed)", () => {
   });
 
   test("findExceededUsageWindow enforces limits identically across rolling and fixed totals", () => {
-    const windows = getPlanDefinition("goat").usageWindows!;
+    const windows = getPlanDefinition("entry").usageWindows!;
     expect(
       findExceededUsageWindow(
         {

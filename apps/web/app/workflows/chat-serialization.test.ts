@@ -197,8 +197,10 @@ describe("durable execution workflow hygiene", () => {
     const nonWorkflowFiles = [
       "../../lib/db/client-impl.ts",
       "../../../../packages/sandbox/boxd/connect.ts",
+      "../../../../packages/sandbox/boxd/sandbox.ts",
+      "../../../../packages/sandbox/error-utils.ts",
       "../../../../packages/sandbox/local/sandbox.ts",
-      "../../../../packages/sandbox/modal/client.ts",
+      "../../../../packages/sandbox/registry.ts",
     ];
     for (const relPath of nonWorkflowFiles) {
       const text = await Bun.file(new URL(relPath, import.meta.url)).text();
@@ -211,12 +213,14 @@ describe("durable execution workflow hygiene", () => {
       "archive-sandbox-stop.ts",
       "sandbox-provisioning.ts",
       "chat-sandbox-runtime.ts",
+      "chat-sandbox-control.ts",
       "chat-post-finish.ts",
+      "chat-compaction.ts",
     ];
     for (const file of workflowFiles) {
       const text = await Bun.file(new URL(file, import.meta.url)).text();
       expect(text).not.toMatch(
-        /^import\s+(?!type\b).*from\s+["'](?:@\/lib\/db\/|@entry-agents\/sandbox|node:)/m,
+        /^import\s+(?!type\b).*from\s+["'](?:@\/lib\/db\/|@entry-agents\/sandbox|node:|@entry-agents\/agent)/m,
       );
     }
   });

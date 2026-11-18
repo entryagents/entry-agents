@@ -1,5 +1,5 @@
 import type { LanguageModel } from "ai";
-import { addCacheControl, maybeCompactMessages } from "../context-management";
+import { addCacheControl } from "../context-management";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { defaultModelLabel } from "../default-model";
 import { createInertPlaceholderModel, sharedProvider } from "../models";
@@ -8,11 +8,7 @@ import { bashTool } from "../tools/bash";
 import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
-import {
-  createReadFileState,
-  rebuildReadFileState,
-  type ReadFileState,
-} from "../tools/read-state";
+import { createReadFileState } from "../tools/read-state";
 import { editFileTool, writeFileTool } from "../tools/write";
 import { teamBoardTool } from "../tools/team";
 import type { SandboxExecutionContext } from "../types";
@@ -26,6 +22,7 @@ import {
   SUBAGENT_VALIDATE_RULES,
   SUBAGENT_WORKING_DIR,
 } from "./constants";
+import { prepareSubagentStep } from "./prepare-step";
 
 const DESIGN_SYSTEM_PROMPT = `You are a design agent — a specialized subagent that creates distinctive, production-grade frontend interfaces with exceptional design quality. You avoid generic "AI slop" aesthetics and implement real working code with extraordinary attention to aesthetic details and creative choices.
 
@@ -126,35 +123,15 @@ export const designSubagent = new ToolLoopAgent({
   tools: designTools,
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
-  prepareStep: ({ messages, model, experimental_context }) => {
-    const context = (experimental_context ?? {}) as {
-      readFileState?: unknown;
-      contextWindow?: number;
-      compactionThreshold?: number;
-    };
-    let readFileState: ReadFileState | undefined =
-      context.readFileState instanceof Map ? context.readFileState : undefined;
-    if (!readFileState) {
-      readFileState = createReadFileState();
-    }
-    rebuildReadFileState(messages, readFileState);
-
-    return {
-      messages: addCacheControl({
-        messages: maybeCompactMessages({
-          messages,
-          model,
-          contextWindowOverride: context.contextWindow,
-          compactionThresholdOverride: context.compactionThreshold,
-        }),
-        model,
-      }),
-      experimental_context: {
-        ...context,
-        readFileState,
-      },
-    };
-  },
+  prepareStep: ({ steps, stepNumber, messages, model, experimental_context }) =>
+    prepareSubagentStep({
+      steps,
+      stepNumber,
+      messages,
+      model,
+      experimental_context,
+      trackReadFileState: true,
+    }),
   prepareCall: ({ options, ...settings }) => {
     if (!options) {
       throw new Error("Design subagent requires task call options.");

@@ -15,7 +15,10 @@ import {
   type ProviderOptionsByProvider,
 } from "./models";
 import { defaultModelLabel } from "./default-model";
-import { applyToolDisclosure } from "./tools/tool-bridge";
+import {
+  applyToolDisclosure,
+  estimateToolSetTokens,
+} from "./tools/tool-bridge";
 import {
   createSecretRedactor,
   type RuntimeSecret,
@@ -55,7 +58,6 @@ import {
   processStatusTool,
   readFileTool,
   sandboxControlTool,
-  sendParentUpdateTool,
   skillTool,
   stopSubagentTool,
   taskTool,
@@ -187,6 +189,8 @@ const callOptionsSchema = z.object({
     })
     .optional(),
   subagentMessageHistory: z.record(z.string(), z.array(z.unknown())).optional(),
+  promptCacheKey: z.string().optional(),
+  lastKnownInputTokens: z.number().int().nonnegative().optional(),
 });
 
 export type OpenAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -230,9 +234,13 @@ function extractLatestTodos(messages: unknown[]): unknown[] {
           (part as { type?: string }).type === "tool-call" &&
           (part as { toolName?: string }).toolName === "todo_write"
         ) {
-          const args = (part as { args?: { todos?: unknown[] } }).args;
-          if (Array.isArray(args?.todos)) {
-            return args.todos;
+          const toolPart = part as {
+            input?: { todos?: unknown[] };
+            args?: { todos?: unknown[] };
+          };
+          const toolInput = toolPart.input ?? toolPart.args;
+          if (Array.isArray(toolInput?.todos)) {
+            return toolInput.todos;
           }
         }
       }
@@ -269,7 +277,6 @@ const tools = {
   visualize: visualizeTool,
   pgx: createPgxTool(),
   stop_subagent: stopSubagentTool,
-  send_parent_update: sendParentUpdateTool,
 } satisfies ToolSet;
 
 export const openAgent = new ToolLoopAgent({
@@ -293,6 +300,8 @@ export const openAgent = new ToolLoopAgent({
       readFileState?: unknown;
       contextWindow?: number;
       compactionThreshold?: number;
+      systemAndToolsTokens?: number;
+      lastKnownInputTokens?: number;
       teamId?: string;
       pluginRunner?: PluginRunner;
       pluginCompactionHints?: string[];
@@ -313,6 +322,8 @@ export const openAgent = new ToolLoopAgent({
           model,
           contextWindowOverride: context.contextWindow,
           compactionThresholdOverride: context.compactionThreshold,
+          systemAndToolsTokensOverride: context.systemAndToolsTokens,
+          lastKnownInputTokens: context.lastKnownInputTokens,
         }),
         model,
       }),
@@ -338,6 +349,7 @@ export const openAgent = new ToolLoopAgent({
 
     const callModel = sharedProvider(mainSelection.id, {
       providerOptionsOverrides: mainSelection.providerOptionsOverrides,
+      promptCacheKey: options.promptCacheKey,
       // Desktop (Phase 6): per-call transport/auth config — keeps the
       // session token out of the process environment entirely. Web hosts
       // omit it and keep the env-var path.
@@ -489,6 +501,11 @@ export const openAgent = new ToolLoopAgent({
       );
     })();
 
+    const systemAndToolsTokens =
+      Math.ceil(
+        (promptParts.staticCore.length + promptParts.dynamicContext.length) / 4,
+      ) + estimateToolSetTokens(resolvedTools as ToolSet);
+
     return {
       ...settings,
       model: callModel,
@@ -522,6 +539,10 @@ export const openAgent = new ToolLoopAgent({
           : {}),
         contextWindow: mainSelection.contextWindow,
         compactionThreshold: mainSelection.compactionThreshold,
+        systemAndToolsTokens,
+        ...(options.lastKnownInputTokens !== undefined
+          ? { lastKnownInputTokens: options.lastKnownInputTokens }
+          : {}),
         permissionMode: options.permissionMode ?? "ask",
         github: options.github,
         vercel: options.vercel,

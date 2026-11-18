@@ -111,7 +111,7 @@ export interface AdminUserLookupRow {
   totalOutputTokens: number;
   estimatedCostUsd: number;
   hasUnpricedUsage: boolean;
-  /** Current subscription tier ("free" | "plus" | "goat" | "pro" | "max") --
+  /** Current subscription tier ("free" | "plus" | "entry" | "pro" | "max") --
    * surfaced here because the admin Users search results were the only
    * place in the admin UI that told support "who this user is" without
    * showing what plan they're actually on, forcing a click-through to

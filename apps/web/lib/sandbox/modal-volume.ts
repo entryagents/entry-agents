@@ -1,17 +1,10 @@
 import "server-only";
 
 /**
- * Delete the Modal Volume backing an archived session.
- *
- * The sandbox package owns the only place Modal credentials are resolved
- * (`modal/client.ts`), so this thin wrapper is how the app asks for a
- * volume deletion without ever seeing a token. It is server-only by design:
- * a volume deletion is irreversible and must never be reachable from the
- * client bundle.
+ * Legacy cleanup hook for archived sessions that still carry a `modal` state row.
+ * Modal runtime/SDK support has been retired in favor of Boxd workspaces, so
+ * volume reclamation is now a safe no-op.
  */
-export async function deleteModalSessionVolume(volumeName: string) {
-  const { deleteModalVolume, createModalClient } =
-    await import("@entry-agents/sandbox");
-  const client = await createModalClient();
-  await deleteModalVolume(client, volumeName);
+export async function deleteModalSessionVolume(_volumeName: string) {
+  // No-op: Modal provider and SDK removed; legacy sessions automatically migrate to Boxd on resume.
 }

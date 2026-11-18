@@ -88,6 +88,7 @@ class SubagentSessionStore {
     toolCallCount: number;
     usage?: LanguageModelUsage;
     outcome?: string;
+    replaceHistory?: boolean;
   }): SubagentSession | undefined {
     // Refresh lastUsedAt before prune so long-running subagent runs aren't
     // evicted by idle TTL right as they finish.
@@ -95,7 +96,9 @@ class SubagentSessionStore {
     if (!existing) return undefined;
 
     existing.lastUsedAt = Date.now();
-    existing.messages = [...existing.messages, ...params.newMessages];
+    existing.messages = params.replaceHistory
+      ? [...params.newMessages]
+      : [...existing.messages, ...params.newMessages];
     existing.toolCallCount += params.toolCallCount;
     existing.totalUsage = sumLanguageModelUsage(
       existing.totalUsage,

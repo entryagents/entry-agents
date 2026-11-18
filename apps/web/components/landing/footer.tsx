@@ -45,6 +45,12 @@ export function LandingFooter() {
                   Models
                 </Link>
                 <Link
+                  href="/about"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
+                >
+                  About
+                </Link>
+                <Link
                   href="/login"
                   className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
                 >
@@ -61,6 +67,18 @@ export function LandingFooter() {
                   className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
                 >
                   App connections
+                </Link>
+                <Link
+                  href="/privacy"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
+                >
+                  Privacy
+                </Link>
+                <Link
+                  href="/terms"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
+                >
+                  Terms
                 </Link>
                 <a
                   href="https://ai-sdk.dev/"

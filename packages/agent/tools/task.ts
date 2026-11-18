@@ -29,9 +29,41 @@ import {
   type SubagentWorktree,
   type TeamBoardSnapshot,
 } from "../team";
+import { sanitizeDanglingSubagentToolCalls } from "../subagents/prepare-step";
+import {
+  buildFallbackSubagentSummary,
+  compactMessagesForOverflowRecovery,
+  extractAssistantText,
+  hasStructuredSubagentSummary,
+  isContextOverflowSubagentError,
+  isTransientSubagentError,
+  synthesizeSubagentFinalSummary,
+} from "../subagents/summary-synthesis";
 import { enrichUsageWithProviderCache, sumLanguageModelUsage } from "../usage";
 import { getSandbox, getSandboxContext, getSubagentModel } from "./utils";
 import type { AgentContext, SubagentBudgetGuard } from "../types";
+
+const MAX_CONTINUATION_RECOVERIES = 2;
+
+async function sleepWithAbort(ms: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  try {
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, ms);
+      }),
+      new Promise<void>((resolve) => {
+        onAbort = () => resolve();
+        signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    if (onAbort) signal.removeEventListener("abort", onAbort);
+  }
+}
 
 const subagentTypeSchema = z.enum(SUBAGENT_TYPES);
 
@@ -314,10 +346,53 @@ IMPORTANT:
       const contextWindow = parentContext?.contextWindow;
       const compactionThreshold = parentContext?.compactionThreshold;
 
-      let streamError: string | undefined;
-      let result: Awaited<ReturnType<typeof subagent.stream>> | undefined;
+      let pending: TaskPendingToolCall | undefined;
+      let usage: LanguageModelUsage | undefined;
+      const streamedTextChunks: string[] = [];
+      const executedTools: TaskExecutedTool[] = [];
+      let lastTextYieldTime = 0;
 
-      try {
+      let accumulatedMessages: ModelMessage[] = isFollowUp
+        ? [
+            ...existingSession.messages,
+            { role: "user", content: userPrompt } as ModelMessage,
+          ]
+        : [{ role: "user", content: userPrompt } as ModelMessage];
+      let turnGeneratedMessages: ModelMessage[] = [];
+      let didCompactInRun = false;
+      let repetitiveLoopDetected = false;
+      let streamError: string | undefined;
+      let recoveryAttempts = 0;
+
+      // Emit an initial state so UIs can show elapsed time from a stable timestamp.
+      yield {
+        toolCallCount,
+        startedAt,
+        modelId: subagentModelId,
+        sessionId: activeSessionId,
+        teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+        status: "starting",
+        depth: currentDepth + 1,
+        ...(worktreeBranch ? { worktreeBranch } : {}),
+      };
+
+      for (let attempt = 0; attempt <= MAX_CONTINUATION_RECOVERIES; attempt++) {
+        if (localAbort.signal.aborted || abortSignal?.aborted) {
+          if (!streamError && !budgetStopped) {
+            streamError = "Subagent execution stopped";
+          }
+          break;
+        }
+
+        let attemptError: string | undefined;
+        let attemptRawError: unknown;
+        let result: Awaited<ReturnType<typeof subagent.stream>> | undefined;
+        let consecutiveRepeatedCalls = 0;
+        let lastCallSignature = "";
+        let attemptHadStepUsage = false;
+        const attemptTextChunks: string[] = [];
+        const attemptCompletedTools: string[] = [];
+
         const sharedCallOptions = {
           task,
           instructions,
@@ -338,95 +413,175 @@ IMPORTANT:
         };
 
         const streamCallParams =
-          isFollowUp && existingSession
+          attempt === 0 && !isFollowUp
             ? {
-                messages: [
-                  ...existingSession.messages,
-                  { role: "user", content: userPrompt } as ModelMessage,
-                ],
+                prompt: userPrompt,
                 options: sharedCallOptions,
                 abortSignal: localAbort.signal,
               }
             : {
-                prompt: userPrompt,
+                messages: accumulatedMessages,
                 options: sharedCallOptions,
                 abortSignal: localAbort.signal,
               };
 
-        result = await subagent.stream(streamCallParams as never);
-      } catch (err) {
-        streamError = err instanceof Error ? err.message : String(err);
-      }
+        try {
+          result = await subagent.stream(streamCallParams as never);
+        } catch (err) {
+          attemptRawError = err;
+          attemptError = err instanceof Error ? err.message : String(err);
+        }
 
-      let pending: TaskPendingToolCall | undefined;
-      let usage: LanguageModelUsage | undefined;
-      let consecutiveRepeatedCalls = 0;
-      let lastCallSignature = "";
-      const streamedTextChunks: string[] = [];
-      const streamedToolCalls: { name: string; input: unknown }[] = [];
-      const executedTools: TaskExecutedTool[] = [];
-      let lastTextYieldTime = 0;
+        if (result) {
+          try {
+            for await (const part of result.fullStream) {
+              if (localAbort.signal.aborted || abortSignal?.aborted) {
+                if (!attemptError && !budgetStopped) {
+                  attemptError = "Subagent execution stopped";
+                }
+                break;
+              }
 
-      // Emit an initial state so UIs can show elapsed time from a stable timestamp.
-      yield {
-        toolCallCount,
-        startedAt,
-        modelId: subagentModelId,
-        sessionId: activeSessionId,
-        teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-        status: "starting",
-        depth: currentDepth + 1,
-        ...(worktreeBranch ? { worktreeBranch } : {}),
-      };
+              if (part.type === "error") {
+                attemptRawError = part.error;
+                attemptError =
+                  part.error instanceof Error
+                    ? part.error.message
+                    : String(part.error);
+              }
 
-      if (streamError || !result) {
-        const worktreeSummary = await finalizeWorktree();
-        const cleanError = (
-          streamError ?? "Failed to initialize subagent stream"
-        ).replace(/^Error:\s*/, "");
-        const errorMsg: ModelMessage[] = [
-          {
-            role: "assistant",
-            content: `**Subagent execution halted**: ${cleanError}`,
-          },
-        ];
-        yield {
-          final: errorMsg,
-          toolCallCount,
-          startedAt,
-          modelId: subagentModelId,
-          sessionId: activeSessionId,
-          teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-          status: "failed",
-          depth: currentDepth + 1,
-          ...(worktreeBranch ? { worktreeBranch } : {}),
-          ...(worktreeSummary ? { worktreeSummary } : {}),
-        };
-        return;
-      }
+              if (part.type === "text-delta") {
+                if (typeof part.text === "string" && part.text.length > 0) {
+                  attemptTextChunks.push(part.text);
+                  streamedTextChunks.push(part.text);
+                  const now = Date.now();
+                  if (
+                    now - lastTextYieldTime > 120 ||
+                    part.text.includes("\n")
+                  ) {
+                    lastTextYieldTime = now;
+                    yield {
+                      pending,
+                      toolCallCount,
+                      streamedText: streamedTextChunks.join(""),
+                      executedTools: [...executedTools],
+                      teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+                      status: "running",
+                      usage,
+                      startedAt,
+                      modelId: subagentModelId,
+                      sessionId: activeSessionId,
+                      depth: currentDepth + 1,
+                      ...(worktreeBranch ? { worktreeBranch } : {}),
+                    };
+                  }
+                }
+              }
 
-      try {
-        for await (const part of result.fullStream) {
-          if (localAbort.signal.aborted || abortSignal?.aborted) {
-            if (!streamError && !budgetStopped) {
-              streamError = "Subagent execution stopped";
-            }
-            break;
-          }
+              if (part.type === "tool-call") {
+                toolCallCount += 1;
+                const callId =
+                  (part as { toolCallId?: string }).toolCallId ||
+                  crypto.randomUUID();
+                pending = { name: part.toolName, input: part.input };
+                executedTools.push({
+                  toolCallId: callId,
+                  name: part.toolName,
+                  input: part.input,
+                  state: "running",
+                });
 
-          if (part.type === "error") {
-            streamError =
-              part.error instanceof Error
-                ? part.error.message
-                : String(part.error);
-          }
+                try {
+                  const signature = `${part.toolName}:${JSON.stringify(part.input)}`;
+                  if (signature === lastCallSignature) {
+                    consecutiveRepeatedCalls += 1;
+                    if (consecutiveRepeatedCalls >= 3) {
+                      repetitiveLoopDetected = true;
+                      attemptError = `Repetitive tool call loop detected: \`${part.toolName}\` was invoked 3 consecutive times with identical input without progress.`;
+                      localAbort.abort();
+                    }
+                  } else {
+                    consecutiveRepeatedCalls = 1;
+                    lastCallSignature = signature;
+                  }
+                } catch {
+                  // Ignore serialization errors
+                }
 
-          if (part.type === "text-delta") {
-            if (typeof part.text === "string" && part.text.length > 0) {
-              streamedTextChunks.push(part.text);
-              const now = Date.now();
-              if (now - lastTextYieldTime > 120 || part.text.includes("\n")) {
-                lastTextYieldTime = now;
+                yield {
+                  pending,
+                  toolCallCount,
+                  streamedText: streamedTextChunks.join(""),
+                  executedTools: [...executedTools],
+                  teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+                  status: "running",
+                  usage,
+                  startedAt,
+                  modelId: subagentModelId,
+                  sessionId: activeSessionId,
+                  depth: currentDepth + 1,
+                  ...(worktreeBranch ? { worktreeBranch } : {}),
+                };
+              }
+
+              if (part.type === "tool-result") {
+                const res = part as {
+                  toolCallId?: string;
+                  toolName?: string;
+                  result?: unknown;
+                };
+                const match =
+                  executedTools.find((t) => t.toolCallId === res.toolCallId) ??
+                  executedTools
+                    .slice()
+                    .toReversed()
+                    .find(
+                      (t) => t.name === res.toolName && t.state === "running",
+                    );
+                if (match) {
+                  match.output = res.result;
+                  match.state = "completed";
+                  attemptCompletedTools.push(match.name);
+                }
+                pending = undefined;
+
+                yield {
+                  pending,
+                  toolCallCount,
+                  streamedText: streamedTextChunks.join(""),
+                  executedTools: [...executedTools],
+                  teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+                  status: "running",
+                  usage,
+                  startedAt,
+                  modelId: subagentModelId,
+                  sessionId: activeSessionId,
+                  depth: currentDepth + 1,
+                  ...(worktreeBranch ? { worktreeBranch } : {}),
+                };
+              }
+
+              if (part.type === "finish-step") {
+                attemptHadStepUsage = true;
+                const stepUsage =
+                  enrichUsageWithProviderCache(
+                    part.usage,
+                    (part as { providerMetadata?: unknown }).providerMetadata,
+                  ) ?? part.usage;
+                usage = sumLanguageModelUsage(usage, stepUsage);
+                if (billingGuard) {
+                  subagentStepIndex += 1;
+                  const plan = billingGuard.noteSubagentStepUsage(
+                    subagentModelId,
+                    stepUsage,
+                    `${toolCallId}:${subagentStepIndex}`,
+                  );
+                  if (plan.stop) {
+                    budgetStopped = true;
+                    budgetStopReason = plan.reason;
+                    localAbort.abort();
+                  }
+                }
                 yield {
                   pending,
                   toolCallCount,
@@ -443,210 +598,201 @@ IMPORTANT:
                 };
               }
             }
+          } catch (err) {
+            attemptRawError = err;
+            attemptError = err instanceof Error ? err.message : String(err);
           }
 
-          if (part.type === "tool-call") {
-            toolCallCount += 1;
-            const callId =
-              (part as { toolCallId?: string }).toolCallId ||
-              crypto.randomUUID();
-            pending = { name: part.toolName, input: part.input };
-            streamedToolCalls.push({ name: part.toolName, input: part.input });
-            executedTools.push({
-              toolCallId: callId,
-              name: part.toolName,
-              input: part.input,
-              state: "running",
-            });
+          let response: Awaited<typeof result.response> | undefined;
+          try {
+            response = await result.response;
+          } catch (err) {
+            if (!attemptError) {
+              attemptRawError = err;
+              attemptError = err instanceof Error ? err.message : String(err);
+            }
+          }
 
+          if (!attemptHadStepUsage) {
             try {
-              const signature = `${part.toolName}:${JSON.stringify(part.input)}`;
-              if (signature === lastCallSignature) {
-                consecutiveRepeatedCalls += 1;
-                if (consecutiveRepeatedCalls >= 3) {
-                  streamError = `Repetitive tool call loop detected: \`${part.toolName}\` was invoked 3 consecutive times with identical input without progress.`;
-                  localAbort.abort();
-                }
-              } else {
-                consecutiveRepeatedCalls = 1;
-                lastCallSignature = signature;
-              }
+              const resolvedUsage = await result.usage;
+              const resolvedMetadata = await Promise.resolve(
+                (result as { providerMetadata?: unknown }).providerMetadata,
+              ).catch(() => undefined);
+              const attemptUsage =
+                enrichUsageWithProviderCache(resolvedUsage, resolvedMetadata) ??
+                resolvedUsage;
+              usage = sumLanguageModelUsage(usage, attemptUsage);
             } catch {
-              // Ignore serialization errors
+              // Usage unavailable on failed/aborted attempt
             }
-
-            yield {
-              pending,
-              toolCallCount,
-              streamedText: streamedTextChunks.join(""),
-              executedTools: [...executedTools],
-              teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-              status: "running",
-              usage,
-              startedAt,
-              modelId: subagentModelId,
-              sessionId: activeSessionId,
-              depth: currentDepth + 1,
-              ...(worktreeBranch ? { worktreeBranch } : {}),
-            };
           }
 
-          if (part.type === "tool-result") {
-            const res = part as {
-              toolCallId?: string;
-              toolName?: string;
-              result?: unknown;
-            };
-            const match =
-              executedTools.find((t) => t.toolCallId === res.toolCallId) ??
-              executedTools
-                .slice()
-                .toReversed()
-                .find((t) => t.name === res.toolName && t.state === "running");
-            if (match) {
-              match.output = res.result;
-              match.state = "completed";
+          let attemptGenerated: ModelMessage[] = response?.messages ?? [];
+          if (attemptGenerated.length === 0) {
+            const attemptText = attemptTextChunks.join("").trim();
+            if (attemptText.length > 0) {
+              attemptGenerated = [
+                {
+                  role: "assistant",
+                  content: attemptText,
+                } as ModelMessage,
+              ];
+            } else if (attemptCompletedTools.length > 0) {
+              attemptGenerated = [
+                {
+                  role: "assistant",
+                  content: `Executed tools: ${attemptCompletedTools.join(", ")}.`,
+                } as ModelMessage,
+              ];
             }
-            pending = undefined;
-
-            yield {
-              pending,
-              toolCallCount,
-              streamedText: streamedTextChunks.join(""),
-              executedTools: [...executedTools],
-              teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-              status: "running",
-              usage,
-              startedAt,
-              modelId: subagentModelId,
-              sessionId: activeSessionId,
-              depth: currentDepth + 1,
-              ...(worktreeBranch ? { worktreeBranch } : {}),
-            };
           }
 
-          if (part.type === "finish-step") {
-            const stepUsage =
-              enrichUsageWithProviderCache(
-                part.usage,
-                (part as { providerMetadata?: unknown }).providerMetadata,
-              ) ?? part.usage;
-            usage = sumLanguageModelUsage(usage, stepUsage);
-            if (billingGuard) {
-              subagentStepIndex += 1;
-              const plan = billingGuard.noteSubagentStepUsage(
-                subagentModelId,
-                stepUsage,
-                `${toolCallId}:${subagentStepIndex}`,
-              );
-              if (plan.stop) {
-                budgetStopped = true;
-                budgetStopReason = plan.reason;
-                localAbort.abort();
-              }
-            }
-            yield {
-              pending,
-              toolCallCount,
-              streamedText: streamedTextChunks.join(""),
-              executedTools: [...executedTools],
-              teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
-              status: "running",
-              usage,
-              startedAt,
-              modelId: subagentModelId,
-              sessionId: activeSessionId,
-              depth: currentDepth + 1,
-              ...(worktreeBranch ? { worktreeBranch } : {}),
-            };
+          if (attemptGenerated.length > 0) {
+            accumulatedMessages = sanitizeDanglingSubagentToolCalls([
+              ...accumulatedMessages,
+              ...attemptGenerated,
+            ]);
+            turnGeneratedMessages = sanitizeDanglingSubagentToolCalls([
+              ...turnGeneratedMessages,
+              ...attemptGenerated,
+            ]);
           }
         }
-      } catch (err) {
-        streamError = err instanceof Error ? err.message : String(err);
-      }
 
-      let response: Awaited<typeof result.response> | undefined;
-      try {
-        response = await result.response;
-      } catch (err) {
-        if (!streamError) {
-          streamError = err instanceof Error ? err.message : String(err);
+        if (!attemptError) {
+          streamError = undefined;
+          break;
         }
+
+        streamError = attemptError;
+        const canRecover =
+          !localAbort.signal.aborted &&
+          !abortSignal?.aborted &&
+          !budgetStopped &&
+          !repetitiveLoopDetected &&
+          recoveryAttempts < MAX_CONTINUATION_RECOVERIES;
+
+        if (
+          canRecover &&
+          isContextOverflowSubagentError(attemptRawError ?? attemptError)
+        ) {
+          recoveryAttempts += 1;
+          didCompactInRun = true;
+          accumulatedMessages =
+            compactMessagesForOverflowRecovery(accumulatedMessages);
+          accumulatedMessages.push({
+            role: "user",
+            content:
+              "Context limit encountered; earlier history has been compacted. Continue from your partial progress above without repeating completed steps, and emit **Summary** and **Answer** when finished.",
+          } as ModelMessage);
+          pending = undefined;
+          yield {
+            pending,
+            toolCallCount,
+            streamedText: streamedTextChunks.join(""),
+            executedTools: [...executedTools],
+            teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+            status: "running",
+            usage,
+            startedAt,
+            modelId: subagentModelId,
+            sessionId: activeSessionId,
+            depth: currentDepth + 1,
+            ...(worktreeBranch ? { worktreeBranch } : {}),
+          };
+          continue;
+        }
+
+        if (
+          canRecover &&
+          isTransientSubagentError(attemptRawError ?? attemptError)
+        ) {
+          recoveryAttempts += 1;
+          await sleepWithAbort(
+            recoveryAttempts === 1 ? 500 : 1500,
+            localAbort.signal,
+          );
+          if (localAbort.signal.aborted || abortSignal?.aborted) {
+            break;
+          }
+          accumulatedMessages =
+            sanitizeDanglingSubagentToolCalls(accumulatedMessages);
+          accumulatedMessages.push({
+            role: "user",
+            content: `Temporary interruption occurred (${attemptError.replace(/^Error:\s*/, "")}). Continue from your partial progress above without restarting completed work, and emit **Summary** and **Answer** when done.`,
+          } as ModelMessage);
+          pending = undefined;
+          yield {
+            pending,
+            toolCallCount,
+            streamedText: streamedTextChunks.join(""),
+            executedTools: [...executedTools],
+            teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
+            status: "running",
+            usage,
+            startedAt,
+            modelId: subagentModelId,
+            sessionId: activeSessionId,
+            depth: currentDepth + 1,
+            ...(worktreeBranch ? { worktreeBranch } : {}),
+          };
+          continue;
+        }
+
+        break;
       }
 
       let finalUsage = usage;
-      if (!finalUsage && result) {
-        try {
-          const resolvedUsage = await result.usage;
-          const resolvedMetadata = await Promise.resolve(
-            (result as { providerMetadata?: unknown }).providerMetadata,
-          ).catch(() => undefined);
-          finalUsage =
-            enrichUsageWithProviderCache(resolvedUsage, resolvedMetadata) ??
-            resolvedUsage;
-        } catch {
-          finalUsage = undefined;
-        }
-      }
-
-      let baseMessages: ModelMessage[] = response?.messages ?? [];
-      if (baseMessages.length === 0) {
-        const streamedText = streamedTextChunks.join("").trim();
-        if (streamedText.length > 0) {
-          baseMessages = [
-            {
-              role: "assistant",
-              content: streamedText,
-            } as ModelMessage,
-          ];
-        } else if (streamedToolCalls.length > 0) {
-          baseMessages = [
-            {
-              role: "assistant",
-              content: streamedToolCalls.map((call) => ({
-                type: "tool-call" as const,
-                toolCallId: "",
-                toolName: call.name,
-                input: call.input,
-              })),
-            } as unknown as ModelMessage,
-          ];
-        }
-      }
-
-      if (activeSessionId) {
-        subagentSessionStore.recordTaskCompletion({
-          id: activeSessionId,
-          task,
-          newMessages: [
-            { role: "user", content: userPrompt } as ModelMessage,
-            ...baseMessages,
-          ],
-          toolCallCount,
-          usage: finalUsage,
-          outcome: streamError
-            ? `error: ${streamError}`
-            : budgetStopped
-              ? "budget_stopped"
-              : "completed",
-        });
-      }
-
-      const worktreeSummary = await finalizeWorktree();
-      const completedAt = Date.now();
+      const combinedStreamed = streamedTextChunks.join("").trim();
+      const latestAssistantText =
+        extractAssistantText(turnGeneratedMessages) || combinedStreamed;
 
       if (streamError) {
         const cleanError = streamError.replace(/^Error:\s*/, "");
+        const fallbackSummary = buildFallbackSubagentSummary({
+          task,
+          subagentType,
+          outcome: "failed",
+          error: cleanError,
+          toolCallCount,
+          executedTools,
+          streamedText: latestAssistantText,
+        });
         const messagesWithError: ModelMessage[] = [
-          ...baseMessages,
+          ...turnGeneratedMessages,
           {
             role: "assistant",
-            content: `**Subagent execution halted**: ${cleanError}`,
-          },
+            content: fallbackSummary,
+          } as ModelMessage,
         ];
+        if (activeSessionId) {
+          subagentSessionStore.recordTaskCompletion({
+            id: activeSessionId,
+            task,
+            newMessages: didCompactInRun
+              ? [
+                  ...accumulatedMessages,
+                  {
+                    role: "assistant",
+                    content: fallbackSummary,
+                  } as ModelMessage,
+                ]
+              : [
+                  { role: "user", content: userPrompt } as ModelMessage,
+                  ...messagesWithError,
+                ],
+            toolCallCount,
+            usage: finalUsage,
+            outcome: `error: ${cleanError}`,
+            replaceHistory: didCompactInRun,
+          });
+        }
+        const worktreeSummary = await finalizeWorktree();
+        const completedAt = Date.now();
         yield {
           final: messagesWithError,
-          streamedText: streamedTextChunks.join(""),
+          streamedText: combinedStreamed || fallbackSummary,
           executedTools: [...executedTools],
           teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
           status: "failed",
@@ -664,22 +810,46 @@ IMPORTANT:
       }
 
       if (budgetStopped) {
-        const reasonText =
-          budgetStopReason === "window"
-            ? "usage window"
-            : budgetStopReason === "credit"
-              ? "credit balance"
-              : "usage limit";
+        const budgetSummary = buildFallbackSubagentSummary({
+          task,
+          subagentType,
+          outcome: "budget_stopped",
+          budgetReason: budgetStopReason,
+          toolCallCount,
+          executedTools,
+          streamedText: latestAssistantText,
+        });
         const truncated: ModelMessage[] = [
-          ...baseMessages,
+          ...turnGeneratedMessages,
           {
             role: "assistant",
-            content: `**Subagent limit reached**: Stopped by ${reasonText}. Partial progress preserved across ${toolCallCount} steps.`,
-          },
+            content: budgetSummary,
+          } as ModelMessage,
         ];
+        if (activeSessionId) {
+          subagentSessionStore.recordTaskCompletion({
+            id: activeSessionId,
+            task,
+            newMessages: didCompactInRun
+              ? [
+                  ...accumulatedMessages,
+                  { role: "assistant", content: budgetSummary } as ModelMessage,
+                ]
+              : [
+                  { role: "user", content: userPrompt } as ModelMessage,
+                  ...truncated,
+                ],
+            toolCallCount,
+            usage: finalUsage,
+            outcome: "budget_stopped",
+            replaceHistory: didCompactInRun,
+          });
+        }
+        const worktreeSummary = await finalizeWorktree();
+        const completedAt = Date.now();
         yield {
           final: truncated,
-          streamedText: streamedTextChunks.join(""),
+          streamedText: combinedStreamed || budgetSummary,
           executedTools: [...executedTools],
           teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
           status: "denied",
@@ -696,48 +866,82 @@ IMPORTANT:
         return;
       }
 
-      const hasAssistantText = baseMessages.some((msg) => {
-        if (msg.role !== "assistant") return false;
-        if (typeof msg.content === "string") {
-          return msg.content.trim().length > 0;
-        }
-        if (Array.isArray(msg.content)) {
-          return msg.content.some(
-            (part) =>
-              part &&
-              typeof part === "object" &&
-              (part as { type?: string }).type === "text" &&
-              typeof (part as { text?: unknown }).text === "string" &&
-              ((part as { text: string }).text ?? "").trim().length > 0,
-          );
-        }
-        return false;
-      });
-
-      const finalMessages: ModelMessage[] = hasAssistantText
-        ? baseMessages
-        : [
-            ...baseMessages,
-            {
+      if (!hasStructuredSubagentSummary(turnGeneratedMessages)) {
+        if (!abortSignal?.aborted && !localAbort.signal.aborted) {
+          const synthesized = await synthesizeSubagentFinalSummary({
+            model,
+            task,
+            subagentType,
+            messages: accumulatedMessages,
+            executedTools,
+            streamedText: latestAssistantText,
+            abortSignal: localAbort.signal,
+          });
+          if (synthesized) {
+            if (synthesized.usage) {
+              finalUsage = sumLanguageModelUsage(finalUsage, synthesized.usage);
+              if (billingGuard) {
+                billingGuard.noteSubagentStepUsage(
+                  subagentModelId,
+                  synthesized.usage,
+                  `${toolCallId}:summary-synthesis`,
+                );
+              }
+            }
+            const synthMessage: ModelMessage = {
               role: "assistant",
-              content:
-                streamedTextChunks.join("").trim() ||
-                `**Summary**: Completed subagent execution for "${task}" across ${toolCallCount} tool step(s)${
-                  executedTools.length > 0
-                    ? ` (${executedTools
-                        .slice(-5)
-                        .map((t) => t.name)
-                        .join(", ")})`
-                    : ""
-                }.`,
-            } as ModelMessage,
-          ];
+              content: synthesized.text,
+            };
+            turnGeneratedMessages = [...turnGeneratedMessages, synthMessage];
+            accumulatedMessages = [...accumulatedMessages, synthMessage];
+          }
+        }
+
+        if (!hasStructuredSubagentSummary(turnGeneratedMessages)) {
+          const fallbackSummary = buildFallbackSubagentSummary({
+            task,
+            subagentType,
+            outcome: "completed",
+            toolCallCount,
+            executedTools,
+            streamedText: latestAssistantText,
+          });
+          const fallbackMessage: ModelMessage = {
+            role: "assistant",
+            content: fallbackSummary,
+          };
+          turnGeneratedMessages = [...turnGeneratedMessages, fallbackMessage];
+          accumulatedMessages = [...accumulatedMessages, fallbackMessage];
+        }
+      }
+
+      if (activeSessionId) {
+        subagentSessionStore.recordTaskCompletion({
+          id: activeSessionId,
+          task,
+          newMessages: didCompactInRun
+            ? accumulatedMessages
+            : [
+                { role: "user", content: userPrompt } as ModelMessage,
+                ...turnGeneratedMessages,
+              ],
+          toolCallCount,
+          usage: finalUsage,
+          outcome: "completed",
+          replaceHistory: didCompactInRun,
+        });
+      }
+
+      const worktreeSummary = await finalizeWorktree();
+      const completedAt = Date.now();
+      const finalStreamedText =
+        extractAssistantText(turnGeneratedMessages) ||
+        combinedStreamed ||
+        `Completed "${task}" (${toolCallCount} step(s)).`;
 
       yield {
-        final: finalMessages,
-        streamedText:
-          streamedTextChunks.join("").trim() ||
-          `Completed "${task}" (${toolCallCount} step(s)).`,
+        final: turnGeneratedMessages,
+        streamedText: finalStreamedText,
         executedTools: [...executedTools],
         teamSnapshot: getOrCreateTeamBoard(teamId).snapshot(),
         status: "completed",

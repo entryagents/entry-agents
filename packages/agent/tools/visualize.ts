@@ -109,4 +109,13 @@ export const visualizeTool = tool({
       filePath,
     };
   },
+  toModelOutput: ({ output }) => {
+    const out = output as VisualizeToolOutput;
+    return {
+      type: "text",
+      value: out.filePath
+        ? `Rendered interactive ${out.kind} visualization "${out.title}" (saved to ${out.filePath}).`
+        : `Rendered interactive ${out.kind} visualization "${out.title}".`,
+    };
+  },
 });

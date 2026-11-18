@@ -53,6 +53,18 @@ export interface SandboxCapabilities {
   workspaceMigration: boolean;
   /** Hard ceiling on a single sandbox lifetime, in ms. `null` = uncapped. */
   maxTimeoutMs: number | null;
+  /** Supports fast in-place VM checkpoints (RAM + disk capture & restore). */
+  checkpoints: boolean;
+  /** Supports exposing raw TCP/UDP ports on the public proxy IP. */
+  rawPorts: boolean;
+  /** Supports resizing vCPU/memory class of the workspace VM. */
+  resize: boolean;
+  /** Supports forking/cloning a running workspace VM. */
+  fork: boolean;
+  /** Supports reading VM console logs. */
+  logs: boolean;
+  /** Supports configuring outbound egress host/CIDR allowlists. */
+  egressAllow: boolean;
 }
 
 export interface SandboxProviderMetadata {
@@ -102,6 +114,12 @@ export const MODAL_CAPABILITIES: SandboxCapabilities = {
   workspaceMigration: false,
   // Modal's documented hard ceiling on a single sandbox lifetime.
   maxTimeoutMs: 24 * 60 * 60 * 1000,
+  checkpoints: false,
+  rawPorts: false,
+  resize: false,
+  fork: false,
+  logs: false,
+  egressAllow: false,
 };
 
 /** Local directory + child_process. The desktop execution layer. */
@@ -117,6 +135,12 @@ export const BOXD_CAPABILITIES: SandboxCapabilities = {
   timeoutExtension: false,
   workspaceMigration: false,
   maxTimeoutMs: null,
+  checkpoints: true,
+  rawPorts: true,
+  resize: true,
+  fork: true,
+  logs: true,
+  egressAllow: true,
 };
 
 export const NOVITA_CAPABILITIES: SandboxCapabilities = {
@@ -130,6 +154,12 @@ export const NOVITA_CAPABILITIES: SandboxCapabilities = {
   timeoutExtension: false,
   workspaceMigration: false,
   maxTimeoutMs: 24 * 60 * 60 * 1000,
+  checkpoints: false,
+  rawPorts: false,
+  resize: false,
+  fork: false,
+  logs: false,
+  egressAllow: false,
 };
 
 export const LOCAL_CAPABILITIES: SandboxCapabilities = {
@@ -143,6 +173,12 @@ export const LOCAL_CAPABILITIES: SandboxCapabilities = {
   timeoutExtension: false,
   workspaceMigration: false,
   maxTimeoutMs: null,
+  checkpoints: false,
+  rawPorts: false,
+  resize: false,
+  fork: false,
+  logs: false,
+  egressAllow: false,
 };
 
 export const SANDBOX_PROVIDER_METADATA: Record<
@@ -277,6 +313,12 @@ export function getSandboxCapabilities(id: string): SandboxCapabilities {
       timeoutExtension: false,
       workspaceMigration: false,
       maxTimeoutMs: null,
+      checkpoints: false,
+      rawPorts: false,
+      resize: false,
+      fork: false,
+      logs: false,
+      egressAllow: false,
     }
   );
 }

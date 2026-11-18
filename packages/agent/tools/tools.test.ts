@@ -440,6 +440,13 @@ describe("tools execute behavior", () => {
     expect(commandNeedsApproval("custom-command --help")).toBe(false);
     expect(commandNeedsApproval("git reset --hard HEAD~1")).toBe(false);
     expect(commandNeedsApproval("curl -s https://example.com")).toBe(true);
+    expect(commandNeedsApproval("wget https://example.com/payload.sh")).toBe(
+      true,
+    );
+    expect(commandNeedsApproval("nc 10.0.0.1 4444")).toBe(true);
+    expect(commandNeedsApproval("sudo rm -rf /tmp/foo")).toBe(true);
+    expect(commandNeedsApproval("git push origin main")).toBe(true);
+    expect(commandNeedsApproval("pnpm publish --access public")).toBe(true);
     expect(commandNeedsApproval("bash -c 'curl https://example.com'")).toBe(
       true,
     );
@@ -542,6 +549,7 @@ describe("tools execute behavior", () => {
     );
 
     expect(executedCommand).toContain("curl");
+    expect(executedCommand).not.toContain(" -L ");
     expect(executedCommand).toContain(`head -c ${MAX_BODY_LENGTH}`);
     // The full body must be saved to a deterministic sandbox file
     // (upstream #781 / PR #813) and its path surfaced to the agent.
@@ -558,6 +566,45 @@ describe("tools execute behavior", () => {
         ? (result.body as string)
         : "";
     expect(body.length).toBe(MAX_BODY_LENGTH);
+  });
+
+  test("webFetchTool blocks redirects to private/internal targets", async () => {
+    const sandbox = {
+      workingDirectory: "/repo",
+      exec: async (command: string) => {
+        if (command.startsWith("getent ahosts")) {
+          return {
+            success: true,
+            exitCode: 0,
+            stdout: "93.184.216.34\n",
+            stderr: "",
+            truncated: false,
+          };
+        }
+
+        return {
+          success: true,
+          exitCode: 0,
+          stdout:
+            "\n__WEB_FETCH_REDIR__:http://169.254.169.254/latest/meta-data/\n302\n0",
+          stderr: "",
+          truncated: false,
+        };
+      },
+    };
+
+    const result = await webFetchTool.execute?.(
+      {
+        url: "https://example.com/redirect",
+        method: "GET",
+      },
+      executionOptions(createContext(sandbox)),
+    );
+
+    expect(result).toEqual({
+      success: false,
+      error: "Fetch failed: URL must use http(s) and a public host",
+    });
   });
 
   test("webFetchTool requires approval", async () => {
@@ -642,15 +689,28 @@ describe("tools execute behavior", () => {
       "http://localhost",
       "http://127.0.0.1",
       "http://10.0.0.1",
+      "http://100.64.0.1",
       "http://172.16.0.1",
+      "http://192.0.0.1",
+      "http://192.0.2.1",
+      "http://192.88.99.1",
       "http://192.168.0.1",
+      "http://198.18.0.1",
+      "http://198.51.100.1",
+      "http://203.0.113.1",
+      "http://224.0.0.1",
+      "http://240.0.0.1",
+      "http://255.255.255.255",
       "http://169.254.169.254",
       "http://0.0.0.0",
       "http://[::]",
       "http://[::1]",
       "http://[fc00::1]",
       "http://[fe80::1]",
+      "http://[ff02::1]",
+      "http://[2001:db8::1]",
       "http://[::ffff:127.0.0.1]",
+      "http://[::ffff:100.64.0.1]",
       "http://[::ffff:0a00:0001]",
       "http://[::ffff:c0a8:0001]",
       "http://[::ffff:ac10:0001]",

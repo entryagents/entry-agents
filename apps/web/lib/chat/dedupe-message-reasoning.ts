@@ -170,6 +170,70 @@ function getToolCallSignature(
   return `${toolName}:${rawInput}`;
 }
 
+function extractWordTrigrams(text: string): Set<string> {
+  const words = text
+    .toLowerCase()
+    .replaceAll(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 0);
+  const trigrams = new Set<string>();
+  if (words.length < 3) {
+    for (const w of words) trigrams.add(w);
+    return trigrams;
+  }
+  for (let i = 0; i <= words.length - 3; i += 1) {
+    trigrams.add(`${words[i]} ${words[i + 1]} ${words[i + 2]}`);
+  }
+  return trigrams;
+}
+
+function computeTrigramJaccard(a: string, b: string): number {
+  const setA = extractWordTrigrams(a);
+  const setB = extractWordTrigrams(b);
+  if (setA.size === 0 || setB.size === 0) return 0;
+  let intersection = 0;
+  for (const item of setA) {
+    if (setB.has(item)) intersection += 1;
+  }
+  const union = setA.size + setB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+function dedupeWithinSingleTextPart(text: string): string {
+  const paragraphs = text.split(/\n{2,}/);
+  if (paragraphs.length < 4) return text;
+
+  const kept: string[] = [];
+  const seenLargeParagraphs: string[] = [];
+  for (const rawParagraph of paragraphs) {
+    const trimmed = rawParagraph.trim();
+    if (!trimmed) continue;
+    if (trimmed.length >= 120) {
+      const isDuplicate = seenLargeParagraphs.some(
+        (prev) =>
+          prev === trimmed ||
+          (Math.min(prev.length, trimmed.length) /
+            Math.max(prev.length, trimmed.length) >=
+            0.55 &&
+            computeTrigramJaccard(prev, trimmed) >= 0.78),
+      );
+      if (isDuplicate) {
+        continue;
+      }
+      seenLargeParagraphs.push(trimmed);
+    }
+    kept.push(rawParagraph);
+  }
+  return kept.length === paragraphs.length ? text : kept.join("\n\n");
+}
+
+function isNearDuplicateProse(a: string, b: string): boolean {
+  if (a.length < 80 || b.length < 80) return false;
+  const ratio = Math.min(a.length, b.length) / Math.max(a.length, b.length);
+  if (ratio < 0.55) return false;
+  return computeTrigramJaccard(a, b) >= 0.72;
+}
+
 /**
  * Full message parts deduplication (reasoning, tool calls, dynamic tools,
  * and mid-message setup-error text splits).
@@ -313,7 +377,15 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
     }
 
     if (part.type === "text") {
-      const newText = (part.text ?? "").trim();
+      const cleanedInternal = dedupeWithinSingleTextPart(part.text ?? "");
+      const activePart =
+        cleanedInternal !== (part.text ?? "")
+          ? { ...part, text: cleanedInternal }
+          : part;
+      if (activePart !== part) {
+        hasToolDuplicates = true;
+      }
+      const newText = (activePart.text ?? "").trim();
       if (!newText) {
         continue;
       }
@@ -336,7 +408,7 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
           hasToolDuplicates = true;
           seenTextNormalized.delete(prevText);
           seenTextNormalized.set(newText, lastTextIndex);
-          filteredParts[lastTextIndex] = part;
+          filteredParts[lastTextIndex] = activePart;
           continue;
         }
         if (prevText.startsWith(newText)) {
@@ -345,41 +417,53 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
         }
       }
 
-      // Non-adjacent duplicate text (e.g. from multi-step replay or
-      // mergePreservingLocalWork combining [...server.parts, ...local.parts]).
+      // Non-adjacent duplicate or near-identical replayed text (e.g. from
+      // step replay or mergePreservingLocalWork).
       if (seenTextNormalized.has(newText)) {
         if (hasAnyReplaySignals || hasToolDuplicates || newText.length >= 20) {
           hasToolDuplicates = true;
           continue;
         }
-      } else if (hasAnyReplaySignals || hasToolDuplicates) {
-        let handledPrefix = false;
+      } else {
+        let handledReplayText = false;
         for (const [
           existingText,
           existingIdx,
         ] of seenTextNormalized.entries()) {
-          if (existingText.length >= 12 && newText.startsWith(existingText)) {
-            hasToolDuplicates = true;
-            seenTextNormalized.delete(existingText);
-            seenTextNormalized.set(newText, existingIdx);
-            filteredParts[existingIdx] = part;
-            handledPrefix = true;
-            break;
+          if (hasAnyReplaySignals || hasToolDuplicates) {
+            if (existingText.length >= 12 && newText.startsWith(existingText)) {
+              hasToolDuplicates = true;
+              seenTextNormalized.delete(existingText);
+              seenTextNormalized.set(newText, existingIdx);
+              filteredParts[existingIdx] = activePart;
+              handledReplayText = true;
+              break;
+            }
+            if (newText.length >= 12 && existingText.startsWith(newText)) {
+              hasToolDuplicates = true;
+              handledReplayText = true;
+              break;
+            }
           }
-          if (newText.length >= 12 && existingText.startsWith(newText)) {
+          if (isNearDuplicateProse(existingText, newText)) {
             hasToolDuplicates = true;
-            handledPrefix = true;
+            if (newText.length > existingText.length) {
+              seenTextNormalized.delete(existingText);
+              seenTextNormalized.set(newText, existingIdx);
+              filteredParts[existingIdx] = activePart;
+            }
+            handledReplayText = true;
             break;
           }
         }
-        if (handledPrefix) {
+        if (handledReplayText) {
           continue;
         }
       }
 
       lastTextIndex = filteredParts.length;
       seenTextNormalized.set(newText, lastTextIndex);
-      filteredParts.push(part);
+      filteredParts.push(activePart);
       continue;
     }
 

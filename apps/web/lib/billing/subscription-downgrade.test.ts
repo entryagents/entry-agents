@@ -14,13 +14,13 @@ describe("shouldDowngradeOnSubscriptionDisable", () => {
       shouldDowngradeOnSubscriptionDisable("plus", "SUB_77", "SUB_77"),
     ).toBe(true);
     expect(
-      shouldDowngradeOnSubscriptionDisable("goat", "SUB_77", "SUB_77"),
+      shouldDowngradeOnSubscriptionDisable("entry", "SUB_77", "SUB_77"),
     ).toBe(true);
   });
 
   test("disable for an OLD subscription never kicks a re-subscribed user", () => {
     expect(
-      shouldDowngradeOnSubscriptionDisable("goat", "SUB_NEW", "SUB_OLD"),
+      shouldDowngradeOnSubscriptionDisable("entry", "SUB_NEW", "SUB_OLD"),
     ).toBe(false);
   });
 

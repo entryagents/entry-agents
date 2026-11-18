@@ -19,6 +19,9 @@ const INDEXABLE_PATHS = [
   "/model",
   "/ai-coding-agent",
   "/guide",
+  "/about",
+  "/privacy",
+  "/terms",
   // Indexable sign-in page: listed so the "entry agents login" query and
   // the brand-result sitelink have a crawlable entry point.
   "/login",

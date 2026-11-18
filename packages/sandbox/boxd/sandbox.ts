@@ -7,8 +7,13 @@ import type { Dirent } from "node:fs";
 import type {
   ExecResult,
   Sandbox,
+  SandboxCheckpoint,
+  SandboxExposedPort,
   SandboxHooks,
+  SandboxInfo,
+  SandboxProxyRoute,
   SandboxStats,
+  SnapshotResult,
 } from "../interface.ts";
 import type { ConnectOptions } from "../factory.ts";
 import { BOXD_WORKING_DIRECTORY } from "./config.ts";
@@ -74,7 +79,7 @@ export class BoxdSandbox implements Sandbox {
     private readonly machineName: string,
     options?: ConnectOptions,
     private readonly baseDomain = "boxd.sh",
-    private readonly proxyPorts: ReadonlySet<number> = new Set(),
+    private readonly proxyPorts = new Set<number>(),
   ) {
     this.hooks = options?.hooks;
     this.env = options?.env;
@@ -150,7 +155,12 @@ export class BoxdSandbox implements Sandbox {
       throw new Error(result.stderr || `Path does not exist: ${path}`);
   }
 
-  async mkdir(path: string, _options?: { recursive?: boolean }): Promise<void> {
+  async mkdir(path: string, options?: { recursive?: boolean }): Promise<void> {
+    this.assertRunning();
+    if (options?.recursive === false) {
+      await this.client.machines.files.mkdir(this.machineId, path);
+      return;
+    }
     await this.client.machines.exec(this.machineId, {
       command: ["mkdir", "-p", path],
       cwd: BOXD_WORKING_DIRECTORY,
@@ -339,6 +349,281 @@ export class BoxdSandbox implements Sandbox {
       .setPort(this.machineId, port)
       .catch(() => undefined);
     return `https://${this.machineName}.${this.baseDomain}`;
+  }
+
+  async snapshot(): Promise<SnapshotResult> {
+    this.assertRunning();
+    const snapshotName = `snap-${this.machineName}-${Date.now()}`.slice(0, 63);
+    const created = await this.client.snapshots.create(
+      this.machineId,
+      snapshotName,
+    );
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const snap = await this.client.snapshots
+        .get(created.name)
+        .catch(() => null);
+      if (snap?.status === "ready") {
+        break;
+      }
+      if (snap?.status === "failed") {
+        throw new Error(`Boxd snapshot '${created.name}' failed`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    return { snapshotId: created.name || created.id };
+  }
+
+  async createCheckpoint(name: string): Promise<SandboxCheckpoint> {
+    this.assertRunning();
+    const safeName =
+      name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 63) || `cp-${Date.now()}`;
+    const created = await this.client.machines.checkpoints.create(
+      this.machineId,
+      safeName,
+    );
+    const deadline = Date.now() + 15_000;
+    let latest: SandboxCheckpoint = {
+      id: created.id,
+      name: created.name,
+      status: created.status,
+    };
+    while (Date.now() < deadline) {
+      const list = await this.client.machines.checkpoints
+        .list(this.machineId)
+        .catch(() => []);
+      const match = list.find(
+        (cp) => cp.name === created.name || cp.id === created.id,
+      );
+      if (match) {
+        latest = {
+          id: match.id,
+          name: match.name,
+          status: match.status,
+          sizeBytes: match.sizeBytes,
+          createdAt: match.createdAt.toISOString(),
+          available: match.available,
+        };
+        if (match.status === "ready" || match.status === "failed") {
+          break;
+        }
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    if (latest.status === "failed") {
+      throw new Error(`Checkpoint '${latest.name}' failed`);
+    }
+    return latest;
+  }
+
+  async listCheckpoints(): Promise<SandboxCheckpoint[]> {
+    this.assertRunning();
+    const list = await this.client.machines.checkpoints.list(this.machineId);
+    return list.map((cp) => ({
+      id: cp.id,
+      name: cp.name,
+      status: cp.status,
+      sizeBytes: cp.sizeBytes,
+      createdAt: cp.createdAt.toISOString(),
+      available: cp.available,
+    }));
+  }
+
+  async restoreCheckpoint(name: string): Promise<void> {
+    this.assertRunning();
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      const list = await this.client.machines.checkpoints
+        .list(this.machineId)
+        .catch(() => []);
+      const match = list.find((cp) => cp.name === name);
+      if (!match || match.status === "ready") {
+        break;
+      }
+      if (match.status === "failed") {
+        throw new Error(`Checkpoint '${name}' failed and cannot be restored`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    await this.client.machines.checkpoints.restore(this.machineId, name);
+    await this.client.machines.waitUntilReady(this.machineId);
+  }
+
+  async deleteCheckpoint(name: string): Promise<void> {
+    this.assertRunning();
+    await this.client.machines.checkpoints.delete(this.machineId, name);
+  }
+
+  async exposePort(
+    port: number,
+    protocol: "tcp" | "udp" | "both" = "tcp",
+  ): Promise<SandboxExposedPort> {
+    this.assertRunning();
+    const exposed = await this.client.machines.ports.expose(
+      this.machineId,
+      port,
+      { protocol },
+    );
+    return {
+      machinePort: exposed.machinePort,
+      publicPort: exposed.publicPort,
+      protocol: exposed.protocol,
+      dns: exposed.dns,
+    };
+  }
+
+  async unexposePort(port: number): Promise<void> {
+    this.assertRunning();
+    await this.client.machines.ports.unexpose(this.machineId, port);
+  }
+
+  async listExposedPorts(): Promise<SandboxExposedPort[]> {
+    this.assertRunning();
+    const ports = await this.client.machines.ports.list(this.machineId);
+    return ports.map((p) => ({
+      machinePort: p.machinePort,
+      publicPort: p.publicPort,
+      protocol: p.protocol,
+      dns: p.dns,
+    }));
+  }
+
+  async exposeProxy(
+    port: number | "auto",
+    name?: string,
+  ): Promise<{ url: string; port: number | "auto"; name?: string }> {
+    this.assertRunning();
+    if (port === "auto" || !name) {
+      await this.client.machines.proxies.setPort(this.machineId, port);
+      return {
+        url: `https://${this.machineName}.${this.baseDomain}`,
+        port,
+      };
+    }
+    const routeName =
+      name
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 63) || `p${port}`;
+    const existing = await this.client.machines.proxies
+      .list(this.machineId)
+      .catch(() => []);
+    const matched = existing.find((p) => p.name === routeName);
+    if (!matched) {
+      await this.client.machines.proxies.create(
+        this.machineId,
+        routeName,
+        port,
+      );
+    } else if (matched.port !== port) {
+      await this.client.machines.proxies.setPort(this.machineId, port, {
+        name: routeName,
+      });
+    }
+    this.proxyPorts.add(port);
+    return {
+      url: `https://${routeName}.${this.machineName}.${this.baseDomain}`,
+      port,
+      name: routeName,
+    };
+  }
+
+  async listProxies(): Promise<SandboxProxyRoute[]> {
+    this.assertRunning();
+    const proxies = await this.client.machines.proxies.list(this.machineId);
+    return proxies.map((p) => ({
+      name: p.name,
+      domain: p.domain,
+      port: p.port,
+      portMode: p.portMode,
+      isDefault: p.isDefault,
+    }));
+  }
+
+  async getLogs(maxChars = 12_000): Promise<string> {
+    this.assertRunning();
+    const decoder = new TextDecoder();
+    let collected = "";
+    for await (const chunk of this.client.machines.logs(this.machineId, {
+      follow: false,
+    })) {
+      collected += decoder.decode(chunk, { stream: true });
+      if (collected.length > maxChars * 4) {
+        collected = collected.slice(-(maxChars * 2));
+      }
+    }
+    collected += decoder.decode();
+    return collected.length > maxChars ? collected.slice(-maxChars) : collected;
+  }
+
+  async resize(params: {
+    vcpu?: number;
+    memory?: "4G" | "8G" | "16G" | "32G";
+  }): Promise<{ vcpu: number; memoryBytes: number; rebooted: boolean }> {
+    this.assertRunning();
+    const res = await this.client.machines.resize(this.machineId, params);
+    if (res.rebooted) {
+      await this.client.machines.waitUntilReady(this.machineId);
+    }
+    return {
+      vcpu: res.vcpu,
+      memoryBytes: res.memoryBytes,
+      rebooted: res.rebooted,
+    };
+  }
+
+  async fork(name?: string): Promise<{
+    machineId: string;
+    machineName: string;
+    url?: string;
+  }> {
+    this.assertRunning();
+    const safeName = name
+      ? name
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 63)
+      : undefined;
+    // Preserve east-west network isolation on every forked workspace VM.
+    const forked = await this.client.machines.fork(this.machineId, {
+      ...(safeName ? { name: safeName } : {}),
+      isolated: true,
+    });
+    return {
+      machineId: forked.id,
+      machineName: forked.name,
+      url: forked.access?.url,
+    };
+  }
+
+  async setEgressAllow(entries: string[]): Promise<string[]> {
+    this.assertRunning();
+    return await this.client.machines.setEgressAllow(this.machineId, entries);
+  }
+
+  async getInfo(): Promise<SandboxInfo> {
+    this.assertRunning();
+    const machine = await this.client.machines.get(this.machineId);
+    return {
+      status: machine.status,
+      vcpu: machine.resources.vcpu,
+      memoryBytes: machine.resources.memoryBytes,
+      diskBytes: machine.resources.diskBytes,
+      url: machine.access.url,
+      desktopUrl: machine.access.desktopUrl || undefined,
+      egressAllow: machine.egressAllow,
+      bootTimeMs: machine.bootTimeMs,
+      sshPort: machine.access.sshPort,
+    };
   }
 
   getState(): { type: "boxd"; machineId: string; machineName: string } {

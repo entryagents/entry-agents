@@ -9,19 +9,18 @@
  *   the trial credit hits zero, the user is hard-blocked (composer blurred,
  *   "Free tier ended, upgrade your account to use Entry") -- see
  *   resolveChatModelRuntime in app/workflows/chat.ts.
- * - GOAT (publicly named "Entry"; internal id "goat"): a $13/mo tier that
- *   grants $50 of credit per renewal with 5h / weekly / monthly usage
- *   windows in either sliding ("rolling") or fixed boundary ("fixed") mode,
- *   locked for the 1-month billing cycle.
- * - Plus/GOAT("Entry")/Pro/Max: paid, full access to every model in the live
+ * - Entry ($13/mo, id "entry"): grants $50 of credit per renewal with 5h /
+ *   weekly / monthly usage windows in either sliding ("rolling") or fixed
+ *   boundary ("fixed") mode, locked for the 1-month billing cycle.
+ * - Plus/Entry/Pro/Max: paid, full access to every model in the live
  *   catalog. Each subscription cycle lasts 1 calendar month from the Bachs
  *   charge anchor (matching Bachs billing_cycle: { interval: "month", frequency: 1 }).
  */
 
-export type PlanId = "free" | "plus" | "goat" | "pro" | "max";
+export type PlanId = "free" | "plus" | "entry" | "pro" | "max";
 
 /**
- * Usage windows -- exclusive to the "Entry" plan, id "goat".
+ * Usage windows -- exclusive to the "Entry" plan (id "entry").
  * A plan with usageWindows can spend at most fiveHourLimitCents in a 5-hour
  * window, weeklyLimitCents in a 7-day window, and monthlyLimitCents in a
  * 1-month cycle -- enforced at the pre-turn billing gate in
@@ -39,17 +38,21 @@ export interface PlanUsageWindows {
 export type ExceededUsageWindow = "fiveHour" | "weekly" | "monthly" | null;
 
 /**
- * GOAT ("Entry") window mode:
+ * Entry ($13/mo) window mode:
  * - "rolling": sliding trailing 5h / 7d / 1-month windows
  * - "fixed": fixed 5h / 7d / 1-month boundaries anchored to billingCycleAnchor
  */
-export type GoatWindowMode = "rolling" | "fixed";
+export type EntryWindowMode = "rolling" | "fixed";
 
-export function normalizeGoatWindowMode(
+export type GoatWindowMode = EntryWindowMode;
+
+export function normalizeEntryWindowMode(
   value: string | null | undefined,
-): GoatWindowMode {
+): EntryWindowMode {
   return value === "fixed" ? "fixed" : "rolling";
 }
+
+export const normalizeGoatWindowMode = normalizeEntryWindowMode;
 
 /**
  * Adds exactly 1 calendar month in UTC to the given anchor date, matching
@@ -225,7 +228,7 @@ export interface UsageWindowTotals {
   /** Total usage_debit spend in the current 1-month window, USD cents. */
   last30DaysCents: number;
   /** Whether the user selected sliding ("rolling") or fixed boundary ("fixed") refill mode. */
-  mode?: GoatWindowMode;
+  mode?: EntryWindowMode;
   resetsAt5h?: string | null;
   resetsAt7d?: string | null;
   resetsAt30d?: string | null;
@@ -328,11 +331,11 @@ export interface PlanDefinition {
   priceUsdCents: number;
   /** Credit granted on signup (free) or each successful renewal (paid), in USD cents. */
   creditGrantCents: number;
-  /** "luna-only" restricts to admin-configured free tier models; "all" is unrestricted. */
-  modelAccess: "luna-only" | "all";
+  /** "starter-only" restricts to admin-configured free tier models; "all" is unrestricted. */
+  modelAccess: "starter-only" | "all";
   /**
    * Optional usage windows (see PlanUsageWindows). Exclusive to the Entry
-   * plan (id "goat").
+   * plan (id "entry").
    */
   usageWindows?: PlanUsageWindows;
   /**
@@ -348,7 +351,7 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
     name: "Free",
     priceUsdCents: 0,
     creditGrantCents: 100, // $1 one-time trial
-    modelAccess: "luna-only",
+    modelAccess: "starter-only",
     bachsProductId: null,
   },
   plus: {
@@ -359,8 +362,8 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
     modelAccess: "all",
     bachsProductId: "prod_cf3431b0d90141368721",
   },
-  goat: {
-    id: "goat",
+  entry: {
+    id: "entry",
     name: "Entry",
     priceUsdCents: 1300, // $13/mo
     creditGrantCents: 5000, // $50 credit
@@ -391,6 +394,19 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
 };
 
 export const PLAN_IDS = Object.keys(PLAN_CATALOG) as PlanId[];
+
+/**
+ * Normalizes a persisted or incoming plan identifier, mapping legacy `"goat"`
+ * rows/payloads to `"entry"`.
+ */
+export function normalizePlanId(
+  planId: string | null | undefined,
+): PlanId | null {
+  if (!planId) return null;
+  if (planId === "goat") return "entry";
+  if (planId in PLAN_CATALOG) return planId as PlanId;
+  return null;
+}
 
 /**
  * Rates used to lock exact local-currency prices for ONE-TIME top-ups.
@@ -442,7 +458,11 @@ function environmentProductIds(): Record<string, string> | null {
 
 /** The product id to sell for a plan in the current environment. */
 export function resolveProductIdForPlan(plan: PlanDefinition): string | null {
-  return environmentProductIds()?.[plan.id] ?? plan.bachsProductId;
+  return (
+    environmentProductIds()?.[plan.id] ??
+    (plan.id === "entry" ? environmentProductIds()?.goat : undefined) ??
+    plan.bachsProductId
+  );
 }
 
 /** Reverse lookup, for resolving a webhook's product_id back to a plan. */
@@ -456,8 +476,11 @@ export function resolvePlanForProductId(
   const fromEnvironment = Object.entries(environmentProductIds() ?? {}).find(
     ([, id]) => id === productId,
   );
-  if (fromEnvironment && isPlanId(fromEnvironment[0])) {
-    return fromEnvironment[0];
+  if (fromEnvironment) {
+    const normalized = normalizePlanId(fromEnvironment[0]);
+    if (normalized) {
+      return normalized;
+    }
   }
 
   return (
@@ -470,10 +493,8 @@ export function resolvePlanForProductId(
 export function getPlanDefinition(
   planId: string | null | undefined,
 ): PlanDefinition {
-  if (planId && planId in PLAN_CATALOG) {
-    return PLAN_CATALOG[planId as PlanId];
-  }
-  return PLAN_CATALOG.free;
+  const normalized = normalizePlanId(planId);
+  return normalized ? PLAN_CATALOG[normalized] : PLAN_CATALOG.free;
 }
 
 export function isPlanId(value: string | null | undefined): value is PlanId {

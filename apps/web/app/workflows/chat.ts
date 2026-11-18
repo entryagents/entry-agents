@@ -102,6 +102,31 @@ import {
   persistImageAttachmentsToSandbox,
   resolveChatSandboxRuntime,
 } from "./chat-sandbox-runtime";
+import {
+  buildFallbackCompactionSummary,
+  compactAndCheckpointStep,
+  loadCompactionCheckpointStep,
+  stripDanglingToolCalls,
+} from "./chat-compaction";
+import {
+  createSandboxCheckpointStep,
+  deleteSandboxCheckpointStep,
+  exposeSandboxPortStep,
+  forkSandboxStep,
+  getSandboxEnvStep,
+  getSandboxLogsStep,
+  killSandboxProcessStep,
+  listSandboxCheckpointsStep,
+  listSandboxPortsStep,
+  listSandboxProcessesStep,
+  resizeSandboxStep,
+  restoreSandboxCheckpointStep,
+  serveSandboxStep,
+  setSandboxEgressAllowStep,
+  setSandboxEnvStep,
+  stopServeSandboxStep,
+  unexposeSandboxPortStep,
+} from "./chat-sandbox-control";
 
 type AuthSessionContext = Pick<AuthSession, "authProvider" | "user"> | null;
 
@@ -463,76 +488,47 @@ const convertMessages = async (
   return withoutUndefined(
     pruneMessages({
       messages: modelMessages,
+      reasoning: "before-last-message",
       emptyMessages: "remove",
     }),
   );
 };
 
-/**
- * Defensive guard against AI_MissingToolResultsError (real incident,
- * 2026-08-17: a chat's turn started failing identically on every retry --
- * "Tool result is missing for tool call X" -- 4 attempts in a row, same
- * toolCallId every time, then a fatal AI_NoOutputGeneratedError once the
- * Workflow SDK's step retries ran out). Root cause: `modelMessages` is
- * appended to directly across step iterations (see
- * `modelMessages.push(...result.responseMessages)` in the main loop
- * below) using the raw AI SDK response messages, which is NOT run back
- * through `convertMessages`'s `ignoreIncompleteToolCalls: true` --
- * that sanitization only ever runs once, on the turn's ORIGINAL history
- * from the DB. If a tool-call ends up in `response.messages` without a
- * matching tool-result (e.g. the step aborted mid tool-execution from
- * real-time credit-exhaustion/turn-spend-cap billing, or any other path
- * that stops generation between the tool-call and its result), that
- * broken pair then poisons every subsequent model call for the rest of
- * the turn -- and because the Workflow SDK retries the exact same step
- * input on transient failures, it fails the identical way every retry
- * until the whole turn dies with an empty response.
- *
- * Called right after every append to `modelMessages` so the array going
- * into the next `runAgentStep` call can never contain an orphaned
- * tool-call, regardless of which path produced it. Mutates the array
- * in place (via splice) since `modelMessages` is a `const` binding to a
- * shared array across the loop.
- */
-function stripDanglingToolCalls(messages: ModelMessage[]): void {
-  const resultedToolCallIds = new Set<string>();
-  for (const message of messages) {
-    if (message.role === "tool" && Array.isArray(message.content)) {
-      for (const part of message.content) {
-        if (part.type === "tool-result") {
-          resultedToolCallIds.add(part.toolCallId);
-        }
-      }
+function appendTurnDirectiveToUserMessage(
+  messages: ModelMessage[],
+  directiveText: string,
+): ModelMessage[] {
+  const trimmed = directiveText.trim();
+  if (!trimmed) {
+    return messages;
+  }
+  const suffix = `\n\n<turn-directive>\n${trimmed}\n</turn-directive>`;
+  const next = [...messages];
+  for (let i = next.length - 1; i >= 0; i--) {
+    const msg = next[i];
+    if (!msg || msg.role !== "user") continue;
+    if (typeof msg.content === "string") {
+      next[i] = {
+        ...msg,
+        content: `${msg.content}${suffix}`,
+      };
+      return next;
+    }
+    if (Array.isArray(msg.content)) {
+      next[i] = {
+        ...msg,
+        content: [...msg.content, { type: "text", text: suffix }],
+      };
+      return next;
     }
   }
-
-  const sanitized = messages
-    .map((message) => {
-      if (message.role !== "assistant" || !Array.isArray(message.content)) {
-        return message;
-      }
-      const filteredContent = message.content.filter(
-        (part) =>
-          part.type !== "tool-call" || resultedToolCallIds.has(part.toolCallId),
-      );
-      if (filteredContent.length === message.content.length) {
-        return message;
-      }
-      return { ...message, content: filteredContent };
-    })
-    .filter((message) => {
-      if (message.role !== "assistant") {
-        return true;
-      }
-      return !Array.isArray(message.content) || message.content.length > 0;
-    });
-
-  if (
-    sanitized.length !== messages.length ||
-    sanitized.some((message, index) => message !== messages[index])
-  ) {
-    messages.splice(0, messages.length, ...sanitized);
-  }
+  next.push({
+    role: "user",
+    content: [
+      { type: "text", text: `<turn-directive>\n${trimmed}\n</turn-directive>` },
+    ],
+  });
+  return next;
 }
 
 // Owner decision (2026-08-12): permission mode (ask / autoAccept /
@@ -717,7 +713,7 @@ async function resolveChatModelRuntime(params: {
     startingBalanceCents = balanceCents;
 
     // Free tier capacity gate: only applies to users on the free plan!
-    // Paid subscribers (Plus, Entry/GOAT, Pro, Max) must NEVER be locked out
+    // Paid subscribers (Plus, Entry, Pro, Max) must NEVER be locked out
     // when an admin toggles off the Free tier.
     if (plan.id === "free") {
       const { getFreeTierGateStatus } =
@@ -742,7 +738,7 @@ async function resolveChatModelRuntime(params: {
     const adminFreeTierModel = await getFreeTierModelId();
     const freeModelConfig = parseAdminFreeTierModels(adminFreeTierModel);
 
-    if (plan.modelAccess === "luna-only" && !freeModelConfig.allowAll) {
+    if (plan.modelAccess === "starter-only" && !freeModelConfig.allowAll) {
       freeAllowedModelIds = freeModelConfig.allowedModelIds;
       if (freeModelConfig.allowedModelIds.length === 0) {
         return {
@@ -770,7 +766,7 @@ async function resolveChatModelRuntime(params: {
       // thrice-retried run instead of simply telling the user to top up.
       return {
         blockedNotice:
-          plan.modelAccess === "luna-only"
+          plan.modelAccess === "starter-only"
             ? "Your free tier allowance has ended. Please upgrade your plan to continue using Entry."
             : "Your credit balance is exhausted. Please add credits or upgrade your plan to continue chatting.",
       };
@@ -1665,6 +1661,8 @@ async function getSandboxStatusStep(
   const { getSessionById } = await import("@/lib/db/sessions");
   const { hasResumableSandboxState, canOperateOnSandbox } =
     await import("@/lib/sandbox/utils");
+  const { getSandboxCapabilities } =
+    await import("@entry-agents/sandbox/registry.js");
 
   const session = await getSessionById(sessionId);
   if (!session) {
@@ -1672,6 +1670,7 @@ async function getSandboxStatusStep(
   }
 
   const state = session.sandboxState;
+  const capabilities = state ? getSandboxCapabilities(state.type) : undefined;
   return withoutUndefined({
     status: !state
       ? "missing"
@@ -1691,6 +1690,7 @@ async function getSandboxStatusStep(
     sandboxExpiresAt: session.sandboxExpiresAt?.toISOString() ?? null,
     hasRepo: Boolean(session.repoOwner && session.repoName),
     isArchived: session.status === "archived",
+    ...(capabilities ? { capabilities } : {}),
   });
 }
 
@@ -2443,39 +2443,83 @@ export async function runAgentWorkflow(options: Options) {
   // are image attachments do we need to wait on the sandbox first, since
   // they get written into it before conversion (see
   // extractPendingImageAttachments above).
-  const pendingImageAttachments = extractPendingImageAttachments(
-    options.messages,
-  );
-  const modelMessagesPromise: Promise<ModelMessage[]> =
-    pendingImageAttachments.length === 0
-      ? convertMessages(options.messages)
-      : runtimePromise.then(async (runtime) => {
-          if (!runtime?.workingDirectory) {
-            // No live workspace this turn (still provisioning, migrating, or
-            // failed) -- keep the attachments as they are rather than
-            // dropping them or blocking the turn on a VM. The model still
-            // gets a usable reply; the upload just happens next time it has
-            // a workspace to write into.
-            return convertMessages(options.messages);
-          }
-          try {
-            const paths = await persistImageAttachmentsToSandbox({
-              sandboxState: runtime.sandboxState,
-              images: pendingImageAttachments,
-            });
-            const messagesWithPaths = replaceImageAttachmentsWithPaths(
-              options.messages,
-              paths,
-            );
-            return convertMessages(messagesWithPaths);
-          } catch (err) {
-            console.warn(
-              "[workflow] Failed to persist image attachments to sandbox; falling back to direct conversion:",
-              err,
-            );
-            return convertMessages(options.messages);
-          }
-        });
+  const checkpointPromise = loadCompactionCheckpointStep(options.chatId);
+  const modelMessagesPromise: Promise<ModelMessage[]> = (async () => {
+    const checkpoint = await checkpointPromise;
+    let uiMessagesForConversion = options.messages;
+    let checkpointPrefix: ModelMessage | undefined;
+
+    if (
+      checkpoint &&
+      options.messages.length > checkpoint.compactedUpToMessageCount + 4
+    ) {
+      let baseIdx = checkpoint.compactedUpToMessageCount;
+      if (checkpoint.compactedUpToMessageId) {
+        const idIdx = options.messages.findIndex(
+          (m) => m.id === checkpoint.compactedUpToMessageId,
+        );
+        if (idIdx >= 0) {
+          baseIdx = idIdx + 1;
+        }
+      }
+      const maxStart = Math.max(0, options.messages.length - 4);
+      const sliceStart = Math.min(Math.max(0, baseIdx - 2), maxStart);
+      if (sliceStart > 0) {
+        uiMessagesForConversion = options.messages.slice(sliceStart);
+        checkpointPrefix = {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
+            },
+          ],
+        };
+      }
+    }
+
+    const pendingImageAttachments = extractPendingImageAttachments(
+      uiMessagesForConversion,
+    );
+    let converted: ModelMessage[];
+    if (pendingImageAttachments.length === 0) {
+      converted = await convertMessages(uiMessagesForConversion);
+    } else {
+      const runtime = await runtimePromise;
+      if (!runtime?.workingDirectory) {
+        converted = await convertMessages(uiMessagesForConversion);
+      } else {
+        try {
+          const paths = await persistImageAttachmentsToSandbox({
+            sandboxState: runtime.sandboxState,
+            images: pendingImageAttachments,
+          });
+          const messagesWithPaths = replaceImageAttachmentsWithPaths(
+            uiMessagesForConversion,
+            paths,
+          );
+          converted = await convertMessages(messagesWithPaths);
+        } catch (err) {
+          console.warn(
+            "[workflow] Failed to persist image attachments to sandbox; falling back to direct conversion:",
+            err,
+          );
+          converted = await convertMessages(uiMessagesForConversion);
+        }
+      }
+    }
+
+    if (checkpointPrefix) {
+      while (converted.length > 0 && converted[0]?.role === "tool") {
+        converted.shift();
+      }
+      const combined = [checkpointPrefix, ...converted];
+      stripDanglingToolCalls(combined);
+      return combined;
+    }
+
+    return converted;
+  })();
 
   // Self-register this workflow's runId onto the chat as the very first step.
   // The HTTP POST handler also writes this (via compareAndSetChatActiveStreamId
@@ -2496,6 +2540,7 @@ export async function runAgentWorkflow(options: Options) {
     // Exit before emitting chunks or persisting messages so only the owning
     // workflow can mutate this chat.
     await Promise.allSettled([
+      checkpointPromise,
       runtimePromise,
       modelMessagesPromise,
       inputMessagesPersistPromise,
@@ -2658,6 +2703,7 @@ export async function runAgentWorkflow(options: Options) {
     const agentOptions: WorkflowAgentOptions = {
       ...modelRuntime.agentOptions,
       ...options.agentOptions,
+      promptCacheKey: options.chatId,
       ...(Object.keys(initialSubagentHistory).length > 0
         ? { subagentMessageHistory: initialSubagentHistory }
         : {}),
@@ -2746,6 +2792,11 @@ export async function runAgentWorkflow(options: Options) {
     }
     sandboxState = runtime?.sandboxState;
 
+    const modelMeta =
+      typeof agentOptions.model === "object" && agentOptions.model !== null
+        ? agentOptions.model
+        : undefined;
+    let lastKnownInputTokens: number | undefined;
     const turnStartedAt = Date.now();
     const MAX_WORKFLOW_TURN_DURATION_MS = 60 * 60 * 1000; // 1 hour max
     let lastConsecutiveToolSignature: string | undefined;
@@ -2775,6 +2826,48 @@ export async function runAgentWorkflow(options: Options) {
       }
       let result: Awaited<ReturnType<typeof runAgentStep>>;
 
+      if (
+        modelMessages.length > 12 &&
+        (step === 0 ||
+          (lastKnownInputTokens !== undefined &&
+            lastKnownInputTokens >= 80_000) ||
+          (modelMessages.length >= 28 && step % 3 === 0))
+      ) {
+        const latestUiId = options.messages.at(-1)?.id;
+        const compacted = await compactAndCheckpointStep(
+          withoutUndefined({
+            messages: withoutUndefined(modelMessages),
+            modelId,
+            ...(modelMeta?.contextWindow !== undefined
+              ? { contextWindowOverride: modelMeta.contextWindow }
+              : {}),
+            ...(modelMeta?.compactionThreshold !== undefined
+              ? { compactionThresholdOverride: modelMeta.compactionThreshold }
+              : {}),
+            ...(lastKnownInputTokens !== undefined
+              ? { lastKnownInputTokens }
+              : {}),
+            chatId: options.chatId,
+            sessionId: options.sessionId,
+            userId: options.userId,
+            totalUiMessageCount: options.messages.length,
+            ...(latestUiId ? { lastUiMessageId: latestUiId } : {}),
+          }),
+        ).catch((err) => {
+          console.warn(
+            `[chat-workflow] Pre-step compaction check failed for chat ${options.chatId}:`,
+            err,
+          );
+          return null;
+        });
+        if (compacted?.changed && compacted.messages.length > 0) {
+          modelMessages.splice(0, modelMessages.length, ...compacted.messages);
+          if (compacted.didCheckpoint) {
+            lastKnownInputTokens = undefined;
+          }
+        }
+      }
+
       // Refresh permission mode fresh for this specific step -- see
       // resolveCurrentPermissionMode above. Everything else about
       // agentOptions (sandbox, model, skills) stays fixed for the turn;
@@ -2802,6 +2895,7 @@ export async function runAgentWorkflow(options: Options) {
         ...(Object.keys(stepSubagentHistory).length > 0
           ? { subagentMessageHistory: stepSubagentHistory }
           : {}),
+        ...(lastKnownInputTokens !== undefined ? { lastKnownInputTokens } : {}),
         permissionMode: livePermissionMode,
       });
 
@@ -2911,6 +3005,23 @@ export async function runAgentWorkflow(options: Options) {
           },
         );
       }
+
+      const prunedLoopMessages = withoutUndefined(
+        pruneMessages({
+          messages: modelMessages,
+          reasoning: "before-last-message",
+          emptyMessages: "remove",
+        }),
+      );
+      if (
+        prunedLoopMessages.length !== modelMessages.length ||
+        prunedLoopMessages.some(
+          (message, index) => message !== modelMessages[index],
+        )
+      ) {
+        modelMessages.splice(0, modelMessages.length, ...prunedLoopMessages);
+      }
+
       // See stripDanglingToolCalls's own comment above -- guards against
       // AI_MissingToolResultsError poisoning every subsequent step of
       // this same turn.
@@ -2927,6 +3038,12 @@ export async function runAgentWorkflow(options: Options) {
         totalUsage = totalUsage
           ? addLanguageModelUsage(totalUsage, result.stepUsage)
           : result.stepUsage;
+        if (
+          typeof result.stepUsage.inputTokens === "number" &&
+          result.stepUsage.inputTokens > 0
+        ) {
+          lastKnownInputTokens = result.stepUsage.inputTokens;
+        }
       }
 
       if (creditExhausted || windowExhausted || turnSpendCapped) {
@@ -2976,10 +3093,14 @@ export async function runAgentWorkflow(options: Options) {
               typeof part === "object" &&
               (part as { type?: string }).type === "tool-call"
             ) {
-              const tc = part as { toolName?: string; args?: unknown };
+              const tc = part as {
+                toolName?: string;
+                input?: unknown;
+                args?: unknown;
+              };
               try {
                 stepToolCallSignatures.push(
-                  `${tc.toolName ?? "unknown"}:${JSON.stringify(tc.args ?? {})}`,
+                  `${tc.toolName ?? "unknown"}:${JSON.stringify(tc.input ?? tc.args ?? {})}`,
                 );
               } catch {
                 stepToolCallSignatures.push(`${tc.toolName ?? "unknown"}`);
@@ -3651,11 +3772,18 @@ const runAgentStep = async (
     | ReturnType<typeof createCoalescingStreamWriter<UIMessageChunk>>
     | undefined;
   let streamWriteFailed = false;
+  let didWriteOutputToWritable = false;
+  let stepFinishedThisInvocation = false;
   let responseMessage: WebAgentUIMessage | undefined;
   const streamedTextById = new Map<string, string>();
   const streamedTextOrder: string[] = [];
+  const streamedReasoningById = new Map<string, string>();
+  const streamedReasoningOrder: string[] = [];
   let lastStepUsage: LanguageModelUsage | undefined;
   let lastStepCost: number | undefined;
+  let stepFinishReasons: WebAgentStepFinishMetadata[] = [];
+  let totalMessageUsage: LanguageModelUsage | undefined;
+  let totalMessageCost: number | undefined;
   let stepSecretRedactor: SecretRedactor | undefined;
   const usedSecretNames = new Set<string>();
   const triggeredPluginSlugs = new Set<string>();
@@ -3685,9 +3813,9 @@ const runAgentStep = async (
       lastOriginalMessage?.role === "assistant"
         ? [...(lastOriginalMessage.metadata?.stepBreakdown ?? [])]
         : [];
-    let stepFinishReasons = existingStepFinishReasons;
-    let totalMessageUsage = existingTotalMessageUsage;
-    let totalMessageCost = existingTotalMessageCost;
+    stepFinishReasons = existingStepFinishReasons;
+    totalMessageUsage = existingTotalMessageUsage;
+    totalMessageCost = existingTotalMessageCost;
     let liveTps: number | undefined;
     let liveStepBreakdown: WebAgentStepCostBreakdown[] = [
       ...existingStepBreakdown,
@@ -3906,6 +4034,87 @@ const runAgentStep = async (
             reconnect: () => reconnectSandboxStep(controlContext.sessionId),
             snapshot: () => snapshotSandboxStep(controlContext.sessionId),
             delete: () => deleteSandboxStep(controlContext.sessionId),
+            serve: (opts) =>
+              serveSandboxStep({
+                sessionId: controlContext.sessionId,
+                port: opts?.port ?? null,
+              }),
+            stop_serve: (opts) =>
+              stopServeSandboxStep({
+                sessionId: controlContext.sessionId,
+                port: opts?.port ?? null,
+              }),
+            ps: () => listSandboxProcessesStep(controlContext.sessionId),
+            kill_process: (opts) =>
+              killSandboxProcessStep({
+                sessionId: controlContext.sessionId,
+                processNameOrPid: opts?.processNameOrPid ?? null,
+                port: opts?.port ?? null,
+              }),
+            env_get: (opts) =>
+              getSandboxEnvStep({
+                sessionId: controlContext.sessionId,
+                key: opts?.key ?? null,
+              }),
+            env_set: (opts) =>
+              setSandboxEnvStep({
+                sessionId: controlContext.sessionId,
+                key: opts.key,
+                value: opts.value,
+              }),
+            checkpoint_create: (opts) =>
+              createSandboxCheckpointStep({
+                sessionId: controlContext.sessionId,
+                name: opts?.name ?? null,
+              }),
+            checkpoint_list: () =>
+              listSandboxCheckpointsStep(controlContext.sessionId),
+            checkpoint_restore: (opts) =>
+              restoreSandboxCheckpointStep({
+                sessionId: controlContext.sessionId,
+                name: opts.name,
+              }),
+            checkpoint_delete: (opts) =>
+              deleteSandboxCheckpointStep({
+                sessionId: controlContext.sessionId,
+                name: opts.name,
+              }),
+            expose_port: (opts) =>
+              exposeSandboxPortStep({
+                sessionId: controlContext.sessionId,
+                port: opts.port ?? null,
+                portAuto: opts.portAuto ?? false,
+                mode: opts.mode ?? "https",
+                protocol: opts.protocol ?? "tcp",
+                name: opts.name ?? null,
+              }),
+            unexpose_port: (opts) =>
+              unexposeSandboxPortStep({
+                sessionId: controlContext.sessionId,
+                port: opts.port,
+              }),
+            ports: () => listSandboxPortsStep(controlContext.sessionId),
+            logs: (opts) =>
+              getSandboxLogsStep({
+                sessionId: controlContext.sessionId,
+                maxChars: opts?.maxChars ?? null,
+              }),
+            resize: (opts) =>
+              resizeSandboxStep({
+                sessionId: controlContext.sessionId,
+                vcpu: opts.vcpu ?? null,
+                memory: opts.memory ?? null,
+              }),
+            fork: (opts) =>
+              forkSandboxStep({
+                sessionId: controlContext.sessionId,
+                name: opts?.name ?? null,
+              }),
+            egress_allow: (opts) =>
+              setSandboxEgressAllowStep({
+                sessionId: controlContext.sessionId,
+                entries: opts.entries,
+              }),
           }
         : undefined,
       // Rebuilt here for the same reason as commitAndPush above --
@@ -4373,6 +4582,8 @@ const runAgentStep = async (
       ),
     ];
 
+    const turnDirectives: string[] = [];
+
     if (teamOrSpecialistMatch?.[1]) {
       const target = teamOrSpecialistMatch[1].toLowerCase();
       const args = teamOrSpecialistMatch[2]?.trim();
@@ -4396,23 +4607,13 @@ const runAgentStep = async (
               .filter(Boolean)
               .join("\n");
 
-      fullAgentOptions.customInstructions = [
-        fullAgentOptions.customInstructions,
-        builtInDirective,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
+      turnDirectives.push(builtInDirective);
     } else if (inlineSpecialistTags.length > 0) {
       const tagDirective = inlineSpecialistTags.includes("team")
         ? '## Tagged Multi-Agent Team (@team)\nThe user tagged `@team` in their message. Coordinate specialist teammates (`architect`, `explorer`, `executor`, `design`, `reviewer`) across dependency waves: define Wave 0 `plan_tasks` (with non-overlapping `files` claims and `"parked"` deferral for skipped scope) and `contract` entries, run write-capable roles in `team/<role>-<shortId>` isolated worktrees via `task`, exchange `@authorRole -> @targetRole` `debate`/`challenge`/`handoff` notes, and close with a `reviewer` `verification` pass on `team_board`.'
         : `## Tagged Specialist Subagents (${inlineSpecialistTags.map((r) => `@${r}`).join(", ")})\nThe user explicitly tagged ${inlineSpecialistTags.map((r) => `\`@${r}\``).join(", ")}. Dispatch ${inlineSpecialistTags.length === 1 ? "that specialist subagent" : "those specialist subagents"} via \`task\` and coordinate their findings/handoffs on \`team_board\`.`;
 
-      fullAgentOptions.customInstructions = [
-        fullAgentOptions.customInstructions,
-        tagDirective,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
+      turnDirectives.push(tagDirective);
     }
 
     // Enabled Entry plugins (built-in toggles + custom JSON manifest plugins).
@@ -4446,12 +4647,7 @@ const runAgentStep = async (
               ]
                 .filter(Boolean)
                 .join("\n\n");
-              fullAgentOptions.customInstructions = [
-                fullAgentOptions.customInstructions,
-                commandInstruction,
-              ]
-                .filter(Boolean)
-                .join("\n\n");
+              turnDirectives.push(commandInstruction);
               break;
             }
           }
@@ -4544,7 +4740,10 @@ const runAgentStep = async (
 
         let stream: Awaited<ReturnType<typeof webAgent.stream>>;
         let streamAttempts = 0;
-        let currentMessages = compactImageVisionContext(messages);
+        let currentMessages = appendTurnDirectiveToUserMessage(
+          compactImageVisionContext(messages),
+          turnDirectives.join("\n\n"),
+        );
         let currentStreamOptions = spendCap.maxOutputTokens
           ? {
               ...fullAgentOptions,
@@ -4591,13 +4790,51 @@ const runAgentStep = async (
                 `[chat-workflow] Context window limit reached for model ${modelId}. Triggering auto-compaction recovery...`,
               );
               try {
-                const { maybeCompactMessages } =
-                  await import("@entry-agents/agent");
-                currentMessages = maybeCompactMessages({
+                const {
+                  estimateMessagesTokens,
+                  maybeCompactMessages,
+                  selectProtectedRecentStart,
+                } = await import("@entry-agents/agent");
+                const preCompactTokens =
+                  estimateMessagesTokens(currentMessages);
+                let recovered = maybeCompactMessages({
                   messages: currentMessages,
                   model: modelId,
-                  compactionThresholdOverride: 0.4,
+                  compactionThresholdOverride: 0.35,
                 });
+                if (
+                  estimateMessagesTokens(recovered) >= preCompactTokens * 0.9 &&
+                  recovered.length > 6
+                ) {
+                  const tailIdx = selectProtectedRecentStart(recovered);
+                  if (tailIdx > 1) {
+                    const fallbackSummary = buildFallbackCompactionSummary(
+                      recovered.slice(0, tailIdx),
+                    );
+                    const tail = recovered.slice(tailIdx);
+                    let offset = 0;
+                    while (
+                      offset < tail.length &&
+                      tail[offset]?.role === "tool"
+                    ) {
+                      offset++;
+                    }
+                    recovered = [
+                      {
+                        role: "user",
+                        content: [
+                          {
+                            type: "text",
+                            text: `<compaction-checkpoint>\n${fallbackSummary}\n</compaction-checkpoint>`,
+                          },
+                        ],
+                      },
+                      ...tail.slice(offset),
+                    ];
+                    stripDanglingToolCalls(recovered);
+                  }
+                }
+                currentMessages = recovered;
                 continue;
               } catch (compactErr) {
                 console.warn(
@@ -4991,6 +5228,38 @@ const runAgentStep = async (
               part.id,
               (streamedTextById.get(part.id) ?? "") + part.delta,
             );
+          } else if (
+            part.type === "reasoning-start" &&
+            typeof part.id === "string"
+          ) {
+            if (!streamedReasoningById.has(part.id)) {
+              streamedReasoningById.set(part.id, "");
+              streamedReasoningOrder.push(part.id);
+            }
+          } else if (
+            part.type === "reasoning-delta" &&
+            typeof part.id === "string" &&
+            typeof part.delta === "string"
+          ) {
+            if (!streamedReasoningById.has(part.id)) {
+              streamedReasoningById.set(part.id, "");
+              streamedReasoningOrder.push(part.id);
+            }
+            streamedReasoningById.set(
+              part.id,
+              (streamedReasoningById.get(part.id) ?? "") + part.delta,
+            );
+          }
+          if (
+            part.type === "text-delta" ||
+            part.type === "reasoning-delta" ||
+            part.type === "tool-input-start" ||
+            part.type === "tool-input-delta" ||
+            part.type === "tool-input-available" ||
+            part.type === "tool-output-available" ||
+            part.type === "tool-output-error"
+          ) {
+            didWriteOutputToWritable = true;
           }
           if (!streamWriteFailed) {
             try {
@@ -5026,17 +5295,35 @@ const runAgentStep = async (
           }
         }
 
-        // Reconcile any streamed text segments that onFinish omitted or truncated
+        // Reconcile any streamed text/reasoning segments that onFinish omitted or truncated
+        const combinedStreamedReasoning = streamedReasoningOrder
+          .map((id) => streamedReasoningById.get(id) ?? "")
+          .join("")
+          .trim();
         const combinedStreamedText = streamedTextOrder
           .map((id) => streamedTextById.get(id) ?? "")
           .join("")
           .trim();
-        if (combinedStreamedText.length > 0) {
+        if (
+          combinedStreamedText.length > 0 ||
+          combinedStreamedReasoning.length > 0 ||
+          stepFinishedThisInvocation
+        ) {
           if (responseMessage == null) {
+            const recoveredParts: WebAgentUIMessage["parts"] = [
+              ...streamedReasoningOrder
+                .map((id) => streamedReasoningById.get(id) ?? "")
+                .filter((text) => text.length > 0)
+                .map((text) => ({ type: "reasoning" as const, text })),
+              ...streamedTextOrder
+                .map((id) => streamedTextById.get(id) ?? "")
+                .filter((text) => text.length > 0)
+                .map((text) => ({ type: "text" as const, text })),
+            ];
             responseMessage = {
               id: messageId,
               role: "assistant",
-              parts: [{ type: "text", text: combinedStreamedText }],
+              parts: recoveredParts,
             } as WebAgentUIMessage;
           } else {
             const existingParts = Array.isArray(responseMessage.parts)
@@ -5053,7 +5340,10 @@ const runAgentStep = async (
               .map((p) => p.text)
               .join("")
               .trim();
-            if (existingText.length < combinedStreamedText.length) {
+            if (
+              combinedStreamedText.length > 0 &&
+              existingText.length < combinedStreamedText.length
+            ) {
               const nonTextParts = existingParts.filter(
                 (p) =>
                   p == null ||
@@ -5089,14 +5379,49 @@ const runAgentStep = async (
       ),
     };
 
-    const [rawStepUsage, finishReason, rawFinishReason, response, rawSteps] =
-      await Promise.all([
+    let rawStepUsage: LanguageModelUsage | undefined;
+    let finishReason: FinishReason =
+      stepFinishReasons.at(-1)?.finishReason ?? "stop";
+    let rawFinishReason: string | undefined =
+      stepFinishReasons.at(-1)?.rawFinishReason;
+    let response: { messages: ModelMessage[] } = { messages: [] };
+    let rawSteps: Awaited<typeof result.steps> = [];
+
+    try {
+      const resolved = await Promise.all([
         result.totalUsage,
         result.finishReason,
         result.rawFinishReason,
         result.response,
         result.steps,
       ]);
+      rawStepUsage = resolved[0];
+      finishReason = resolved[1];
+      rawFinishReason = resolved[2];
+      response = resolved[3] as { messages: ModelMessage[] };
+      rawSteps = resolved[4];
+    } catch (metadataError) {
+      if (!stepFinishedThisInvocation && !didWriteOutputToWritable) {
+        throw metadataError;
+      }
+      console.warn(
+        "[workflow] Stream metadata promises rejected after model output was streamed; recovering from live step state:",
+        metadataError,
+      );
+      rawStepUsage = totalMessageUsage ?? lastStepUsage;
+      const fallbackText = extractPlainText(responseMessage.parts).trim();
+      response = {
+        messages:
+          fallbackText.length > 0
+            ? [
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text: fallbackText }],
+                },
+              ]
+            : [],
+      };
+    }
 
     const steps = rawSteps.map((step) => ({
       ...step,
@@ -5377,30 +5702,54 @@ const runAgentStep = async (
     }
 
     // Persist any assistant text/parts already streamed to the client before
-    // rethrowing, so a page reload never loses the streamed reply.
+    // recovering or rethrowing, so a page reload never loses the streamed reply.
+    let partialMessage: WebAgentUIMessage | undefined;
     try {
-      const combinedStreamed = streamedTextOrder
+      const combinedStreamedText = streamedTextOrder
         .map((id) => streamedTextById.get(id) ?? "")
         .join("")
         .trim();
+      const combinedStreamedReasoning = streamedReasoningOrder
+        .map((id) => streamedReasoningById.get(id) ?? "")
+        .join("")
+        .trim();
+      const fallbackParts: WebAgentUIMessage["parts"] = [
+        ...(combinedStreamedReasoning.length > 0
+          ? streamedReasoningOrder
+              .map((id) => streamedReasoningById.get(id) ?? "")
+              .filter((text) => text.length > 0)
+              .map((text) => ({ type: "reasoning" as const, text }))
+          : []),
+        ...(combinedStreamedText.length > 0
+          ? streamedTextOrder
+              .map((id) => streamedTextById.get(id) ?? "")
+              .filter((text) => text.length > 0)
+              .map((text) => ({ type: "text" as const, text }))
+          : []),
+      ];
       const partialParts =
         responseMessage &&
         Array.isArray(responseMessage.parts) &&
         responseMessage.parts.length > 0
           ? responseMessage.parts
-          : combinedStreamed.length > 0
-            ? [{ type: "text" as const, text: combinedStreamed }]
-            : [];
+          : fallbackParts;
       if (partialParts.length > 0) {
-        let partialMessage: WebAgentUIMessage = {
+        const baseMeta = withModelMetadata(
+          responseMessage?.metadata,
+          selectedModelId,
+          modelId,
+        );
+        partialMessage = {
           id: messageId,
           role: "assistant",
           parts: partialParts,
-          metadata: withModelMetadata(
-            responseMessage?.metadata,
-            selectedModelId,
-            modelId,
-          ),
+          metadata: {
+            ...baseMeta,
+            ...(totalMessageUsage ? { totalMessageUsage } : {}),
+            ...(lastStepUsage ? { lastStepUsage } : {}),
+            ...(totalMessageCost !== undefined ? { totalMessageCost } : {}),
+            ...(lastStepCost !== undefined ? { lastStepCost } : {}),
+          },
         };
         if (stepSecretRedactor?.hasSecrets()) {
           partialMessage = stepSecretRedactor.redactUnknown(partialMessage);
@@ -5409,6 +5758,32 @@ const runAgentStep = async (
       }
     } catch {
       // Best-effort checkpoint; never mask the original step error.
+    }
+
+    if (stepFinishedThisInvocation && partialMessage) {
+      await Promise.allSettled(pendingDebits);
+      const recoveredFinishReason: FinishReason = "stop";
+      return withoutUndefined({
+        responseMessage: partialMessage,
+        responseMessages: [],
+        finishReason: recoveredFinishReason,
+        rawFinishReason: stepFinishReasons.at(-1)?.rawFinishReason,
+        stepUsage: lastStepUsage ?? totalMessageUsage,
+        stepCost: lastStepCost,
+        stepWasAborted: false,
+        failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
+        remainingBalanceCents,
+        remainingWindowBudgetCents,
+        creditExhausted,
+        windowExhausted,
+        turnSpendCapped,
+        stepTiming: buildStepTiming(
+          stepNumber,
+          stepStartedAt,
+          stepFinishedAt,
+          recoveredFinishReason,
+        ),
+      });
     }
 
     const errorWithStepTiming =
@@ -5429,19 +5804,16 @@ const runAgentStep = async (
     });
 
     // Real incident, 2026-08-17: a bad-param request (reasoning_effort
-    // "max" not accepted by the real upstream behind gpt-5.6-luna) threw
+    // "max" not accepted by the real upstream behind starter model) threw
     // an AI_APICallError that the AI SDK itself had already correctly
-    // flagged `isRetryable: false` -- but nothing here told the Workflow
-    // SDK's own step-retry layer that, so it retried the identical
-    // guaranteed-to-fail request 3 more times (4 attempts total) before
-    // finally giving up, needlessly delaying the failure and burning a
-    // model-call attempt each time for no chance of success. Any 4xx
-    // APICallError the AI SDK itself marks non-retryable is exactly the
-    // class of error `FatalError` exists for -- skips the Workflow SDK's
-    // retries entirely so a permanent, param-level failure fails once
-    // and immediately instead of 4 times.
-    //
-    if (isNonRetryableApiCallError(errorWithStepTiming)) {
+    // flagged `isRetryable: false` -- and whenever output chunks have ALREADY
+    // been written to the append-only workflow `writable`, retrying the step
+    // would concatenate a duplicate copy of the response onto the same stream.
+    // Use `FatalError` in both cases so Workflow SDK never replays output.
+    if (
+      isNonRetryableApiCallError(errorWithStepTiming) ||
+      didWriteOutputToWritable
+    ) {
       // FatalError's constructor only takes a message string (see
       // node_modules/workflow's own docs -- no options/cause param), so
       // stepTiming has to be reattached manually to keep the outer
@@ -5732,10 +6104,13 @@ async function sendTextMessage(writable: Writable, id: string, text: string) {
   }
 }
 
+const MAX_SUBAGENT_HISTORY_ENTRIES_PER_SESSION = 12;
+const MAX_SUBAGENT_SESSIONS_IN_HISTORY = 8;
+
 export function buildSubagentMessageHistory(
   messages: WebAgentUIMessage[],
 ): Record<string, unknown[]> {
-  const history: Record<string, unknown[]> = {};
+  const history = new Map<string, unknown[]>();
   for (const msg of messages) {
     if (msg.role !== "assistant" || !Array.isArray(msg.parts)) continue;
     for (const part of msg.parts) {
@@ -5756,7 +6131,10 @@ export function buildSubagentMessageHistory(
       ) {
         continue;
       }
-      const existing = history[out.sessionId] ?? [];
+      const existing = history.get(out.sessionId) ?? [];
+      if (history.has(out.sessionId)) {
+        history.delete(out.sessionId);
+      }
       const input =
         part.input && typeof part.input === "object"
           ? (part.input as { task?: unknown; instructions?: unknown })
@@ -5777,12 +6155,22 @@ export function buildSubagentMessageHistory(
           }
         : undefined;
       const sanitizedFinal = withoutUndefined(out.final) as unknown[];
-      history[out.sessionId] = [
+      const merged = [
         ...existing,
         ...(promptMsg && promptMsg.content.length > 0 ? [promptMsg] : []),
         ...sanitizedFinal,
       ];
+      history.set(
+        out.sessionId,
+        merged.slice(-MAX_SUBAGENT_HISTORY_ENTRIES_PER_SESSION),
+      );
+      if (history.size > MAX_SUBAGENT_SESSIONS_IN_HISTORY) {
+        const oldestKey = history.keys().next().value;
+        if (oldestKey !== undefined) {
+          history.delete(oldestKey);
+        }
+      }
     }
   }
-  return history;
+  return Object.fromEntries(history);
 }

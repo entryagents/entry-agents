@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { serializeBoundedForModel } from "./output-bounds";
 import { isAgentContext } from "./utils";
 import type { VercelApiResult } from "../types";
 
@@ -78,5 +79,10 @@ export function vercelApiTool() {
         };
       }
     },
+    toModelOutput: ({ output }) =>
+      serializeBoundedForModel(output, {
+        maxChars: 16_000,
+        label: "vercel_api response",
+      }),
   });
 }

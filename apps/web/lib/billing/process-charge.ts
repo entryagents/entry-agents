@@ -11,10 +11,10 @@ import {
 } from "@/lib/db/schema";
 import {
   getPlanDefinition,
-  isPlanId,
-  normalizeGoatWindowMode,
+  normalizeEntryWindowMode,
+  normalizePlanId,
   resolvePlanForProductId,
-  type GoatWindowMode,
+  type EntryWindowMode,
 } from "@/lib/billing/plans";
 import { findUserIdByBillingCustomerCode } from "@/lib/billing/credit-ledger";
 
@@ -26,7 +26,7 @@ export interface ChargeOutcome {
   metadataKind: string | null;
   metadataPlanId: string | null;
   metadataUsdAmountCents: number | null;
-  metadataWindowMode?: GoatWindowMode | string | null;
+  metadataWindowMode?: EntryWindowMode | string | null;
   productId: string | null;
   fallbackAmountCents: number | null;
 }
@@ -57,11 +57,7 @@ export async function processChargeSuccess(
   // upgrade (PATCH /v1/subscriptions/{id}) never reverts to a stale
   // metadata.planId copied from the original subscription creation.
   const planFromProduct = resolvePlanForProductId(outcome.productId);
-  const planId =
-    planFromProduct ??
-    (outcome.metadataPlanId && isPlanId(outcome.metadataPlanId)
-      ? outcome.metadataPlanId
-      : null);
+  const planId = planFromProduct ?? normalizePlanId(outcome.metadataPlanId);
 
   if (isTopup && (topupCents == null || topupCents <= 0)) {
     throw new Error(`Unpriced top-up charge ${outcome.reference}`);
@@ -118,24 +114,33 @@ export async function processChargeSuccess(
       if (!updated)
         throw new Error(`User ${userId} not found for subscription`);
 
-      if (plan.id === "goat") {
-        // Lock the GOAT window mode to this new 1-month billingCycleAnchor.
+      if (plan.id === "entry") {
+        // Lock the Entry window mode to this new 1-month billingCycleAnchor.
         // If metadata carried an explicit windowMode, apply it; otherwise
-        // preserve the user's existing mode and lock it to the new anchor.
-        const [existingModeRow] = await tx
+        // preserve the user's existing mode (checking legacy key too) and lock it.
+        const [entryModeRow] = await tx
           .select({ titleModelId: platformSettings.titleModelId })
           .from(platformSettings)
-          .where(eq(platformSettings.id, `goat_window_mode:${userId}`))
+          .where(eq(platformSettings.id, `entry_window_mode:${userId}`))
           .limit(1);
+        const existingModeRow =
+          entryModeRow ??
+          (
+            await tx
+              .select({ titleModelId: platformSettings.titleModelId })
+              .from(platformSettings)
+              .where(eq(platformSettings.id, `goat_window_mode:${userId}`))
+              .limit(1)
+          )[0];
         const modeToLock = outcome.metadataWindowMode
-          ? normalizeGoatWindowMode(outcome.metadataWindowMode)
-          : normalizeGoatWindowMode(existingModeRow?.titleModelId);
+          ? normalizeEntryWindowMode(outcome.metadataWindowMode)
+          : normalizeEntryWindowMode(existingModeRow?.titleModelId);
         const anchorIso = newAnchor.toISOString();
 
         await tx
           .insert(platformSettings)
           .values({
-            id: `goat_window_mode:${userId}`,
+            id: `entry_window_mode:${userId}`,
             titleModelId: modeToLock,
             disabledReason: anchorIso,
             updatedAt: newAnchor,

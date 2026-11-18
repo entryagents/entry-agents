@@ -7,10 +7,10 @@ export type SandboxType = "cloud";
 
 /**
  * Result of a successful snapshot operation.
- * Uses native Vercel snapshot IDs instead of blob URLs.
+ * Uses native provider snapshot IDs.
  */
 export interface SnapshotResult {
-  /** Native Vercel snapshot ID */
+  /** Native provider snapshot ID */
   snapshotId: string;
 }
 
@@ -244,12 +244,91 @@ export interface Sandbox {
   ): Promise<void>;
 
   /**
-   * Create a native Vercel snapshot of the sandbox filesystem.
+   * Create a native provider snapshot of the sandbox filesystem.
    */
   snapshot?(): Promise<SnapshotResult>;
+
+  /** Fast in-place checkpoint operations (RAM + disk capture & restore). */
+  createCheckpoint?(name: string): Promise<SandboxCheckpoint>;
+  listCheckpoints?(): Promise<SandboxCheckpoint[]>;
+  restoreCheckpoint?(name: string): Promise<void>;
+  deleteCheckpoint?(name: string): Promise<void>;
+
+  /** Raw TCP/UDP public port forwards. */
+  exposePort?(
+    port: number,
+    protocol?: "tcp" | "udp" | "both",
+  ): Promise<SandboxExposedPort>;
+  unexposePort?(port: number): Promise<void>;
+  listExposedPorts?(): Promise<SandboxExposedPort[]>;
+
+  /** HTTPS reverse-proxy route management (explicit port or `"auto"`). */
+  exposeProxy?(
+    port: number | "auto",
+    name?: string,
+  ): Promise<{ url: string; port: number | "auto"; name?: string }>;
+  listProxies?(): Promise<SandboxProxyRoute[]>;
+
+  /** Read VM console output (bounded). */
+  getLogs?(maxChars?: number): Promise<string>;
+
+  /** Resize VM compute resources (vCPU / memory). */
+  resize?(params: {
+    vcpu?: number;
+    memory?: "4G" | "8G" | "16G" | "32G";
+  }): Promise<{ vcpu: number; memoryBytes: number; rebooted: boolean }>;
+
+  /** Fork this running workspace VM into an independent isolated clone. */
+  fork?(name?: string): Promise<{
+    machineId: string;
+    machineName: string;
+    url?: string;
+  }>;
+
+  /** Update outbound internet egress allowlist for this VM. */
+  setEgressAllow?(entries: string[]): Promise<string[]>;
+
+  /** Inspect VM status, sizing, URLs, and egress policy. */
+  getInfo?(): Promise<SandboxInfo>;
 
   /**
    * Get the current state of the sandbox for persistence/restoration.
    */
   getState?(): unknown;
+}
+
+export interface SandboxCheckpoint {
+  id: string;
+  name: string;
+  status: string;
+  sizeBytes?: number;
+  createdAt?: string;
+  available?: boolean;
+}
+
+export interface SandboxExposedPort {
+  machinePort: number;
+  publicPort: number;
+  protocol: "tcp" | "udp" | "both";
+  dns: string;
+}
+
+export interface SandboxProxyRoute {
+  name: string | null;
+  domain: string;
+  port: number;
+  portMode: "locked" | "auto";
+  isDefault: boolean;
+}
+
+export interface SandboxInfo {
+  status?: string;
+  vcpu?: number;
+  memoryBytes?: number;
+  diskBytes?: number;
+  url?: string;
+  desktopUrl?: string;
+  egressAllow?: string[];
+  bootTimeMs?: number | null;
+  sshPort?: number | null;
 }

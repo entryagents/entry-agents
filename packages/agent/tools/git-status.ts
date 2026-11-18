@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { serializeBoundedForModel } from "./output-bounds";
 import { getSandboxForCommand } from "./utils";
 
 const gitStatusInputSchema = z.object({
@@ -119,4 +120,18 @@ WHEN NOT TO USE:
         };
       }
     },
+    toModelOutput: ({ output }) =>
+      serializeBoundedForModel(
+        output.summary
+          ? {
+              success: output.success,
+              branch: output.branch,
+              clean: output.clean,
+              changedFilesCount: output.changedFilesCount,
+              summary: output.summary,
+              error: output.error,
+            }
+          : output,
+        { maxChars: 12_000, label: "git_status output" },
+      ),
   });

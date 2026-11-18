@@ -59,4 +59,7 @@ apps/desktop-spike/*.tmp.*
 target/
 **/src-tauri/target/
 
+# Local screen recordings / binary videos
+*.mp4
+
 PLAN.md

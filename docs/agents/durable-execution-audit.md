@@ -81,9 +81,9 @@ To understand why Entry's previous implementation suffered durability failures, 
 - **Fix**: Added `wasTimedOut` tracking and appended a clear user-facing notice to the assistant message explaining that the turn hit the duration cap and recommending they prompt the agent to continue. Added `turnTimedOut?: boolean` to `WebAgentMessageMetadata`.
 
 ### Gap 8: Broken GitHub Actions CI Workflow
-- **Location**: `.github/workflows/ci.yml` (lines 86–92)
-- **Bug**: An unindented shell line at column 0 broke YAML parsing, causing GitHub Actions to fail immediately with zero jobs executed.
-- **Fix**: Restored YAML comment formatting and verified syntax with `oxfmt`.
+- **Location**: `.github/workflows/ci.yml`
+- **Bug**: An unindented shell line broke YAML parsing, `actions/checkout` referenced `github.event.pull_request.head.*` (null on `push` events), and Node/Bun versions drifted (`22` / `1.2.14` vs `24` / `1.3.12`).
+- **Fix**: Fixed YAML formatting, switched `actions/checkout@v4` to default push/PR ref resolution, updated Node (`24`) and Bun (`1.3.12`), and made the isolated workflow unit test job blocking. Note: keep running all checks locally until a live GitHub Actions run confirms execution.
 
 ---
 

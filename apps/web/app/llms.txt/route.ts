@@ -23,6 +23,9 @@ The extended version of this file, including the beginner navigation guide and p
 - [AI coding agent](${SITE_URL}/ai-coding-agent): How Entry Agents builds software with or without a repository.
 - [Pricing](${SITE_URL}/pricing): Credit-based plans for Entry Agents.
 - [Models](${SITE_URL}/model): Supported model prices and context windows.
+- [About](${SITE_URL}/about): Architecture principles and how sessions work.
+- [Privacy Policy](${SITE_URL}/privacy): Account, workspace, integration, and billing data practices.
+- [Terms of Service](${SITE_URL}/terms): Workspace access, credits, code ownership, and acceptable use.
 
 ## Product capabilities
 

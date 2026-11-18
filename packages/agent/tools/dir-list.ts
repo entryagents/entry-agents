@@ -234,4 +234,19 @@ USAGE:
         };
       }
     },
+    toModelOutput: ({ output }) => {
+      const out = output as DirListResult;
+      if (!out.success) {
+        return {
+          type: "text",
+          value: out.error ?? "Failed to list directory.",
+        };
+      }
+      return {
+        type: "text",
+        value:
+          out.formatted ??
+          `Directory listing for ${out.path ?? "."} (${out.totalCount ?? 0} entries).`,
+      };
+    },
   });

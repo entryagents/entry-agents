@@ -20,4 +20,19 @@ export {
   type SubagentTaskRecord,
   DEFAULT_SUBAGENT_SESSION_IDLE_TTL_MS,
 } from "./session-store";
+export {
+  compactSubagentHistoryFallback,
+  prepareSubagentStep,
+  sanitizeDanglingSubagentToolCalls,
+} from "./prepare-step";
+export {
+  buildFallbackSubagentSummary,
+  compactMessagesForOverflowRecovery,
+  extractAssistantText,
+  hasStructuredSubagentSummary,
+  isContextOverflowSubagentError,
+  isTransientSubagentError,
+  synthesizeSubagentFinalSummary,
+  type SubagentExecutedToolRecord,
+} from "./summary-synthesis";
 export type { SubagentMessageMetadata, SubagentUIMessage } from "./types";

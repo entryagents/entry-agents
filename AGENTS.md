@@ -29,16 +29,14 @@ Key env vars: `BETTER_AUTH_SECRET` (session signing), `NEXT_PUBLIC_VERCEL_APP_CL
 
 ## Sandbox provider
 
-Agents run in sandboxes provisioned by a provider **registry plugin** (`packages/sandbox`): each provider owns its adapter (`<provider>/connect.ts`, `state.ts`), registers itself in `registry.ts` + `registry-types.ts`, and declares what it can do via `SandboxCapabilities`. Nothing in the agent, workflows, or UI branches on a provider name — behaviour is read off capabilities.
+Agent orchestration (`ToolLoopAgent` and LLM gateway calls) runs on the workflow/web server host and executes workspace tools inside remote sandboxes provisioned by a provider **registry plugin** (`packages/sandbox`): each provider owns its adapter (`<provider>/connect.ts`, `state.ts`), registers itself in `registry.ts` + `registry-types.ts`, and declares what it can do via `SandboxCapabilities`. Nothing in the agent, workflows, or UI branches on a provider name — behaviour is read off capabilities.
 
-Registered providers: **boxd** (default), **modal**, and **local** (dev/test only). Vercel and Boat were removed; `isKnownSandboxType()` returns false for them, so a stale session row fails closed and re-provisions instead of erroring forever.
+Active runtime providers: **boxd** (default, hardware-isolated Linux workspaces) and **local** (dev/test/desktop). Vercel, Boat, Modal, and Novita runtimes were retired: `modal` and `novita` remain in `registry.ts` strictly as migration stubs that auto-upgrade legacy session rows to `boxd`, while `isKnownSandboxType()` returns false for `vercel` and `boat` so stale rows fail closed cleanly.
 
-Modal specifics that are easy to get wrong:
+Boxd specifics:
 
-- **Credentials** resolve in exactly one place, `packages/sandbox/modal/client.ts`, from `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET`. Never write a token to sandbox state, tool output, or logs; `setGitHubAuthToken` is per-exec env injection, never persisted.
-- **The workspace Volume** is mounted at `/workspace` (a symlink to `/__modal/volumes/<id>`) and **requires `OPEN_AGENTS_SANDBOX_DRIVE=true`**. Without it no volume is attached, and the "no migration needed" property silently does not hold.
-- **No workspace migration**: `MODAL_CAPABILITIES.workspaceMigration` is false because the Volume outlives any sandbox. Re-provisioning remounts the same bytes.
-- **No kill RPC**: `ContainerProcess` has only `wait()`, so commands are wrapped to echo a `__ENTRY_PID__` marker and `killCommand()` signals that PID in-sandbox. Reading that PID MUST be incremental (`getReader()`), never `readText()` — the latter only resolves at EOF, which a detached command never reaches.
+- **Per-session isolation**: `createBoxdMachine` passes `isolated: true` so user sandboxes cannot communicate east-west across the org network or access metadata endpoints.
+- **Credentials & tokens**: never write tokens to persisted sandbox state, tool output, or logs; `bootstrapWorkspace` passes temporary GitHub clone/fetch tokens via an ephemeral `0700` `GIT_ASKPASS` helper cleaned up immediately after the command, keeping `origin` free of embedded credentials.
 
 See `apps/web/.env.example` for the full environment variable list.
 
@@ -90,26 +88,11 @@ pnpm test:verbose path/to/file.test.ts             # Same verbose output for a s
 - Run project checks through package scripts (for example `pnpm run ci`, `pnpm --dir apps/web db:check`).
 - Prefer `pnpm <script>` over invoking tool binaries directly (`pnpm exec`, `tsc`, `eslint`, etc.) so local runs match CI behavior.
 
-**GitHub Actions CI is currently broken — always run the checks manually.**
+**GitHub Actions CI verification rule — always verify locally until live jobs are observed:**
 
-`.github/workflows/ci.yml` is invalid YAML (the `Workflow unit tests` step's `run:` value
-is written at column 0 instead of being indented, which makes the file unparseable), and its
-`actions/checkout` steps reference `github.event.pull_request.head.*`, which is null on
-`push` events. Every CI run therefore fails in 0s with "This run likely failed because of a
-workflow file issue" and **zero jobs** — including every push to `main`. No commit in this
-repo has ever been verified by CI.
+`.github/workflows/ci.yml` was updated to fix broken YAML, `push` checkout refs, and Node 24 / Bun 1.3.12 versions, but until a real GitHub Actions run executes and passes on `main`, **never rely solely on remote CI status**:
 
-Consequence for agents:
-
-- **Never treat a green or red GitHub Actions check as signal.** It is not running at all.
-- **Always run the checks yourself, manually, on the machine the agent is on** before claiming
-  a change works: `pnpm check`, `pnpm typecheck`, `pnpm test:isolated`, and the relevant
-  `bun test <file>` invocations. Do not rely on CI to catch a regression, and do not report a
-  change as "CI verified" — there is no CI to verify it.
-- If a PR shows `mergeStateStatus: UNSTABLE` with empty checks, that is this bug, not a real
-  failure of your change.
-- This rule stays in force until someone repairs `ci.yml` and confirms a real job actually
-  runs. Do not remove it just because the file looks plausible again — verify a job executes.
+- **Always run the checks yourself, manually, on the machine the agent is on** before claiming a change works: `pnpm check`, `pnpm typecheck`, `pnpm --dir apps/web db:check`, `pnpm test:isolated` (when Bun is available), and direct verification scripts.
 
 ## Git Commands
 

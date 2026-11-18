@@ -162,15 +162,23 @@ function isPrivateIpv4Address(hostname: string): boolean {
     return false;
   }
 
-  const [first, second] = octets;
+  const [first, second, third] = octets;
 
   return (
-    first === 0 ||
-    first === 10 ||
-    first === 127 ||
-    (first === 169 && second === 254) ||
-    (first === 172 && second >= 16 && second <= 31) ||
-    (first === 192 && second === 168)
+    first === 0 || // 0.0.0.0/8 ("this host on this network")
+    first === 10 || // 10.0.0.0/8 (RFC 1918)
+    (first === 100 && second >= 64 && second <= 127) || // 100.64.0.0/10 (CGNAT, RFC 6598)
+    first === 127 || // 127.0.0.0/8 (loopback)
+    (first === 169 && second === 254) || // 169.254.0.0/16 (link-local / cloud metadata)
+    (first === 172 && second >= 16 && second <= 31) || // 172.16.0.0/12 (RFC 1918)
+    (first === 192 && second === 0 && third === 0) || // 192.0.0.0/24 (IETF protocol assignments)
+    (first === 192 && second === 0 && third === 2) || // 192.0.2.0/24 (TEST-NET-1)
+    (first === 192 && second === 88 && third === 99) || // 192.88.99.0/24 (deprecated 6to4 relay)
+    (first === 192 && second === 168) || // 192.168.0.0/16 (RFC 1918)
+    (first === 198 && (second === 18 || second === 19)) || // 198.18.0.0/15 (benchmarking)
+    (first === 198 && second === 51 && third === 100) || // 198.51.100.0/24 (TEST-NET-2)
+    (first === 203 && second === 0 && third === 113) || // 203.0.113.0/24 (TEST-NET-3)
+    first >= 224 // 224.0.0.0/4 multicast + 240.0.0.0/4 reserved + 255.255.255.255 broadcast
   );
 }
 
@@ -182,6 +190,22 @@ function getIpv4MappedIpv6Address(groups: Ipv6Address): string | null {
     return null;
   }
 
+  return [
+    groups[6] >> 8,
+    groups[6] & 0xff,
+    groups[7] >> 8,
+    groups[7] & 0xff,
+  ].join(".");
+}
+
+function getIpv4CompatibleIpv6Address(groups: Ipv6Address): string | null {
+  const isCompatibleIpv4 = groups.slice(0, 6).every((group) => group === 0);
+  if (!isCompatibleIpv4) {
+    return null;
+  }
+  if (groups[6] === 0 && groups[7] <= 1) {
+    return null;
+  }
   return [
     groups[6] >> 8,
     groups[6] & 0xff,
@@ -203,13 +227,30 @@ function isPrivateIpv6Address(hostname: string): boolean {
     return isPrivateIpv4Address(ipv4MappedAddress);
   }
 
+  const ipv4CompatibleAddress = getIpv4CompatibleIpv6Address(groups);
+  if (ipv4CompatibleAddress && isPrivateIpv4Address(ipv4CompatibleAddress)) {
+    return true;
+  }
+
   const isUnspecified = groups.every((group) => group === 0);
   const isLoopback =
     groups.slice(0, 7).every((group) => group === 0) && groups[7] === 1;
   const isUniqueLocal = (groups[0] & 0xfe00) === 0xfc00;
   const isLinkLocal = (groups[0] & 0xffc0) === 0xfe80;
+  const isMulticast = (groups[0] & 0xff00) === 0xff00;
+  const isDocumentation = groups[0] === 0x2001 && groups[1] === 0x0db8;
+  const isDiscardOnly =
+    groups[0] === 0x0100 && groups.slice(1, 4).every((group) => group === 0);
 
-  return isUnspecified || isLoopback || isUniqueLocal || isLinkLocal;
+  return (
+    isUnspecified ||
+    isLoopback ||
+    isUniqueLocal ||
+    isLinkLocal ||
+    isMulticast ||
+    isDocumentation ||
+    isDiscardOnly
+  );
 }
 
 export function isPrivateHost(hostname: string): boolean {
@@ -311,6 +352,29 @@ const fetchOutputSchema = z.union([
   }),
 ]);
 
+const MAX_REDIRECTS = 5;
+const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
+const REDIRECT_MARKER_PREFIX = "__WEB_FETCH_REDIR__:";
+
+function stripCrossOriginAuthHeaders(
+  headers: Record<string, string> | undefined,
+): Record<string, string> | undefined {
+  if (!headers) return undefined;
+  const filtered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const lower = key.toLowerCase();
+    if (
+      lower === "authorization" ||
+      lower === "cookie" ||
+      lower === "proxy-authorization"
+    ) {
+      continue;
+    }
+    filtered[key] = value;
+  }
+  return Object.keys(filtered).length > 0 ? filtered : undefined;
+}
+
 export const webFetchTool = tool({
   needsApproval: async (_args, { experimental_context }) => {
     const mode = (
@@ -393,28 +457,6 @@ EXAMPLES:
       };
     }
 
-    if (!isAllowedWebUrl(resolvedUrl)) {
-      return {
-        success: false,
-        error: "Fetch failed: URL must use http(s) and a public host",
-      };
-    }
-
-    const parsedUrl = new URL(resolvedUrl);
-    const { isSafe, resolvedIps } = await resolveAndValidateHostAddresses({
-      hostname: parsedUrl.hostname,
-      sandbox,
-      workingDirectory,
-      abortSignal,
-    });
-
-    if (!isSafe || resolvedIps.length === 0) {
-      return {
-        success: false,
-        error: "Fetch failed: URL resolves to a private or internal host",
-      };
-    }
-
     // Configurable per-tool timeout (upstream #798):
     // TOOL_TIMEOUT_WEB_FETCH_MS overrides the 30s default.
     const timeoutMs = getToolTimeoutMs("web_fetch", DEFAULT_TIMEOUT_MS);
@@ -447,109 +489,201 @@ EXAMPLES:
       "};",
     ].join(" ");
 
-    const port =
-      parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80");
-    const args: string[] = [
-      "curl",
-      "-sS",
-      "-L",
-      "--max-redirs",
-      "5",
-      "--proto",
-      shellEscape("=http,https"),
-      "--proto-redir",
-      shellEscape("=http,https"),
-    ];
+    let currentUrl = resolvedUrl;
+    let currentMethod = method;
+    let currentHeaders = resolvedHeaders;
+    let currentBody = resolvedBody;
 
-    for (const ip of resolvedIps) {
-      args.push(
-        "--resolve",
-        shellEscape(`${parsedUrl.hostname}:${port}:${ip}`),
-      );
-    }
-
-    args.push(
-      "-X",
-      method,
-      "--max-time",
-      String(Math.ceil(timeoutMs / 1000)),
-      "-o",
-      shellEscape(bodyFilePath),
-      "-w",
-      shellEscape("%{http_code}"),
-    );
-
-    if (resolvedHeaders) {
-      for (const [key, value] of Object.entries(resolvedHeaders)) {
-        args.push("-H", shellEscape(`${key}: ${value}`));
-      }
-    }
-
-    if (method !== "GET" && method !== "HEAD" && resolvedBody) {
-      args.push("-d", shellEscape(resolvedBody));
-    }
-
-    args.push(shellEscape(resolvedUrl));
-
-    const command = [
-      ensureCurl,
-      `mkdir -p ${shellEscape(WEB_FETCH_BODY_DIR)}`,
-      `status=$(${args.join(" ")})`,
-      "curlExit=$?",
-      `size=$(wc -c < ${shellEscape(bodyFilePath)} 2>/dev/null || printf 0)`,
-      `head -c ${MAX_BODY_LENGTH} ${shellEscape(bodyFilePath)}`,
-      "printf '\\n%s' \"$status\"",
-      "printf '\\n%s' \"$size\"",
-      "exit $curlExit",
-    ].join("\n");
-
-    try {
-      const result = await sandbox.exec(
-        command,
-        workingDirectory,
-        timeoutMs + 5_000,
-        {
-          signal: abortSignal,
-        },
-      );
-
-      if (result.exitCode !== 0 && result.exitCode !== 23) {
+    for (
+      let redirectCount = 0;
+      redirectCount <= MAX_REDIRECTS;
+      redirectCount++
+    ) {
+      if (!isAllowedWebUrl(currentUrl)) {
         return {
           success: false,
-          error: redact(
-            `Fetch failed: ${result.stderr || result.stdout || "Unknown error"}`,
-          ),
+          error: "Fetch failed: URL must use http(s) and a public host",
         };
       }
 
-      const output = result.stdout ?? "";
-      // Output shape: [preview body]\n[status]\n[size]
-      const lines = output.split("\n");
-      const sizeText =
-        lines.length >= 1 ? (lines[lines.length - 1] ?? "").trim() : "";
-      const statusText =
-        lines.length >= 2 ? (lines[lines.length - 2] ?? "").trim() : "";
-      const responseBody =
-        lines.length >= 2 ? lines.slice(0, -2).join("\n") : output;
-      const status = /^\d+$/.test(statusText) ? parseInt(statusText, 10) : null;
-      const size = /^\d+$/.test(sizeText)
-        ? parseInt(sizeText, 10)
-        : responseBody.length;
-      const truncated = result.exitCode === 23 || size > MAX_BODY_LENGTH;
+      const parsedUrl = new URL(currentUrl);
+      const { isSafe, resolvedIps } = await resolveAndValidateHostAddresses({
+        hostname: parsedUrl.hostname,
+        sandbox,
+        workingDirectory,
+        abortSignal,
+      });
 
-      return {
-        success: true,
-        status,
-        body: redact(responseBody),
-        truncated,
-        ...(truncated ? { savedTo: redact(bodyFilePath) } : {}),
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        success: false,
-        error: redact(`Fetch failed: ${message}`),
-      };
+      if (!isSafe || resolvedIps.length === 0) {
+        return {
+          success: false,
+          error: "Fetch failed: URL resolves to a private or internal host",
+        };
+      }
+
+      const port =
+        parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80");
+      // Follow redirects explicitly in TS (not via `curl -L`) so every hop
+      // undergoes URL scheme validation, private-IP blocking, DNS resolution,
+      // and `--resolve` IP pinning before any packet is sent.
+      const args: string[] = [
+        "curl",
+        "-sS",
+        "--proto",
+        shellEscape("=http,https"),
+      ];
+
+      for (const ip of resolvedIps) {
+        args.push(
+          "--resolve",
+          shellEscape(`${parsedUrl.hostname}:${port}:${ip}`),
+        );
+      }
+
+      args.push(
+        "-X",
+        currentMethod,
+        "--max-time",
+        String(Math.ceil(timeoutMs / 1000)),
+        "-o",
+        shellEscape(bodyFilePath),
+        "-w",
+        shellEscape("%{http_code}\t%{redirect_url}"),
+      );
+
+      if (currentHeaders) {
+        for (const [key, value] of Object.entries(currentHeaders)) {
+          args.push("-H", shellEscape(`${key}: ${value}`));
+        }
+      }
+
+      if (currentMethod !== "GET" && currentMethod !== "HEAD" && currentBody) {
+        args.push("-d", shellEscape(currentBody));
+      }
+
+      args.push(shellEscape(currentUrl));
+
+      const command = [
+        ensureCurl,
+        `mkdir -p ${shellEscape(WEB_FETCH_BODY_DIR)}`,
+        `meta=$(${args.join(" ")})`,
+        "curlExit=$?",
+        'status=$(printf "%s" "$meta" | cut -f1)',
+        'redir=$(printf "%s" "$meta" | cut -f2-)',
+        `size=$(wc -c < ${shellEscape(bodyFilePath)} 2>/dev/null || printf 0)`,
+        `head -c ${MAX_BODY_LENGTH} ${shellEscape(bodyFilePath)}`,
+        `if [ -n "$redir" ]; then printf '\\n${REDIRECT_MARKER_PREFIX}%s' "$redir"; fi`,
+        "printf '\\n%s' \"$status\"",
+        "printf '\\n%s' \"$size\"",
+        "exit $curlExit",
+      ].join("\n");
+
+      try {
+        const result = await sandbox.exec(
+          command,
+          workingDirectory,
+          timeoutMs + 5_000,
+          {
+            signal: abortSignal,
+          },
+        );
+
+        if (result.exitCode !== 0 && result.exitCode !== 23) {
+          return {
+            success: false,
+            error: redact(
+              `Fetch failed: ${result.stderr || result.stdout || "Unknown error"}`,
+            ),
+          };
+        }
+
+        const output = result.stdout ?? "";
+        // Output shape: [preview body](\n__WEB_FETCH_REDIR__:url)?\n[status]\n[size]
+        const lines = output.split("\n");
+        const sizeText =
+          lines.length >= 1 ? (lines[lines.length - 1] ?? "").trim() : "";
+        const statusText =
+          lines.length >= 2 ? (lines[lines.length - 2] ?? "").trim() : "";
+        const maybeRedirLine =
+          lines.length >= 3 ? (lines[lines.length - 3] ?? "") : "";
+        const hasRedirMarker = maybeRedirLine.startsWith(
+          REDIRECT_MARKER_PREFIX,
+        );
+        const redirectTarget = hasRedirMarker
+          ? maybeRedirLine.slice(REDIRECT_MARKER_PREFIX.length).trim()
+          : "";
+        const bodyLinesEnd = hasRedirMarker ? -3 : -2;
+        const responseBody =
+          lines.length >= 2 ? lines.slice(0, bodyLinesEnd).join("\n") : output;
+        const status = /^\d+$/.test(statusText)
+          ? parseInt(statusText, 10)
+          : null;
+
+        if (
+          status !== null &&
+          REDIRECT_STATUS_CODES.has(status) &&
+          redirectTarget.length > 0
+        ) {
+          if (redirectCount >= MAX_REDIRECTS) {
+            return {
+              success: false,
+              error: "Fetch failed: Too many redirects",
+            };
+          }
+
+          let nextUrl: string;
+          try {
+            nextUrl = new URL(redirectTarget, currentUrl).toString();
+          } catch {
+            return {
+              success: false,
+              error: "Fetch failed: Invalid redirect URL",
+            };
+          }
+
+          const nextParsed = new URL(nextUrl);
+          if (nextParsed.origin !== parsedUrl.origin) {
+            currentHeaders = stripCrossOriginAuthHeaders(currentHeaders);
+          }
+
+          if (
+            status === 303 ||
+            ((status === 301 || status === 302) &&
+              currentMethod !== "GET" &&
+              currentMethod !== "HEAD")
+          ) {
+            currentMethod = "GET";
+            currentBody = undefined;
+          }
+
+          currentUrl = nextUrl;
+          continue;
+        }
+
+        const size = /^\d+$/.test(sizeText)
+          ? parseInt(sizeText, 10)
+          : responseBody.length;
+        const truncated = result.exitCode === 23 || size > MAX_BODY_LENGTH;
+
+        return {
+          success: true,
+          status,
+          body: redact(responseBody),
+          truncated,
+          ...(truncated ? { savedTo: redact(bodyFilePath) } : {}),
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+          success: false,
+          error: redact(`Fetch failed: ${message}`),
+        };
+      }
     }
+
+    return {
+      success: false,
+      error: "Fetch failed: Too many redirects",
+    };
   },
 });

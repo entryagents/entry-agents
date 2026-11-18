@@ -5,8 +5,8 @@ import { nanoid } from "nanoid";
 import { db } from "@/lib/db/client";
 import { billingUsageEvents, creditTransactions, users } from "@/lib/db/schema";
 import {
+  type EntryWindowMode,
   getPlanDefinition,
-  type GoatWindowMode,
   type PlanId,
   type UsageWindowTotals,
 } from "./plans";
@@ -119,8 +119,10 @@ export async function getUserBillingState(
     }
   }
 
+  const { normalizePlanId } = await import("@/lib/billing/plans");
+
   return {
-    plan: (row.plan as PlanId) ?? "free",
+    plan: normalizePlanId(row.plan) ?? "free",
     creditBalanceCents: row.creditBalanceCents,
     planGrantBalanceCents: row.planGrantBalanceCents,
     billingCycleAnchor: row.billingCycleAnchor,
@@ -273,24 +275,39 @@ async function applyLedgerEntry(
 // Heartbeat is emitted every 30s during active turns; 2 minutes is 4 missed heartbeats.
 const BILLING_TURN_LOCK_STALE_MS = 2 * 60 * 1000;
 
-export interface UserGoatWindowModeState {
-  mode: GoatWindowMode;
+export interface UserEntryWindowModeState {
+  mode: EntryWindowMode;
   lockedAnchorIso: string | null;
 }
 
-export async function getUserGoatWindowModeState(
+export type UserGoatWindowModeState = UserEntryWindowModeState;
+
+export async function getUserEntryWindowModeState(
   userId: string,
-): Promise<UserGoatWindowModeState> {
+): Promise<UserEntryWindowModeState> {
   try {
     const { platformSettings } = await import("@/lib/db/schema");
-    const [row] = await db
+    const [entryRow] = await db
       .select({
         titleModelId: platformSettings.titleModelId,
         disabledReason: platformSettings.disabledReason,
       })
       .from(platformSettings)
-      .where(eq(platformSettings.id, `goat_window_mode:${userId}`))
+      .where(eq(platformSettings.id, `entry_window_mode:${userId}`))
       .limit(1);
+
+    const row =
+      entryRow ??
+      (
+        await db
+          .select({
+            titleModelId: platformSettings.titleModelId,
+            disabledReason: platformSettings.disabledReason,
+          })
+          .from(platformSettings)
+          .where(eq(platformSettings.id, `goat_window_mode:${userId}`))
+          .limit(1)
+      )[0];
 
     return {
       mode: row?.titleModelId === "fixed" ? "fixed" : "rolling",
@@ -301,40 +318,44 @@ export async function getUserGoatWindowModeState(
   }
 }
 
-export async function getUserGoatWindowMode(
+export const getUserGoatWindowModeState = getUserEntryWindowModeState;
+
+export async function getUserEntryWindowMode(
   userId: string,
-): Promise<GoatWindowMode> {
-  const state = await getUserGoatWindowModeState(userId);
+): Promise<EntryWindowMode> {
+  const state = await getUserEntryWindowModeState(userId);
   return state.mode;
 }
 
+export const getUserGoatWindowMode = getUserEntryWindowMode;
+
 /**
- * Sets or locks the user's GOAT ("Entry") window mode ("rolling" vs "fixed").
+ * Sets or locks the user's Entry window mode ("rolling" vs "fixed").
  *
  * Permanent 1-month cycle lock policy:
- * Once a user is in an active 1-month GOAT subscription cycle (`plan === "goat"`
+ * Once a user is in an active 1-month Entry subscription cycle (`plan === "entry"`
  * and `billingCycleAnchor` not yet expired) and their mode is locked to that
  * `billingCycleAnchor`, the mode CANNOT be changed mid-cycle! It can only be
  * updated when a new subscription cycle starts (a new `billingCycleAnchor` is
- * passed on renewal/purchase) or when the user is not in an active locked GOAT cycle.
+ * passed on renewal/purchase) or when the user is not in an active locked cycle.
  */
-export async function setUserGoatWindowMode(
+export async function setUserEntryWindowMode(
   userId: string,
-  mode: GoatWindowMode,
+  mode: EntryWindowMode,
   billingCycleAnchor?: Date | null,
-): Promise<{ applied: boolean; mode: GoatWindowMode }> {
+): Promise<{ applied: boolean; mode: EntryWindowMode }> {
   const { platformSettings } = await import("@/lib/db/schema");
   const { shouldAutoRevertToFree } = await import("@/lib/billing/plans");
 
   const [billingState, currentModeState] = await Promise.all([
     getUserBillingState(userId),
-    getUserGoatWindowModeState(userId),
+    getUserEntryWindowModeState(userId),
   ]);
 
-  const activeGoatCycle =
-    billingState?.plan === "goat" &&
+  const activeEntryCycle =
+    billingState?.plan === "entry" &&
     billingState.billingCycleAnchor !== null &&
-    !shouldAutoRevertToFree("goat", billingState.billingCycleAnchor);
+    !shouldAutoRevertToFree("entry", billingState.billingCycleAnchor);
 
   const activeAnchorIso = billingState?.billingCycleAnchor
     ? billingState.billingCycleAnchor.toISOString()
@@ -343,11 +364,11 @@ export async function setUserGoatWindowMode(
     ? billingCycleAnchor.toISOString()
     : null;
 
-  // If the user is already in an active GOAT cycle and their mode is already
+  // If the user is already in an active Entry cycle and their mode is already
   // locked to this cycle's anchor, reject any attempt to flip the mode mid-cycle
   // (unless a brand-new cycle anchor is being granted on renewal).
   if (
-    activeGoatCycle &&
+    activeEntryCycle &&
     currentModeState.lockedAnchorIso !== null &&
     currentModeState.lockedAnchorIso === activeAnchorIso &&
     incomingAnchorIso === null
@@ -360,7 +381,7 @@ export async function setUserGoatWindowMode(
   await db
     .insert(platformSettings)
     .values({
-      id: `goat_window_mode:${userId}`,
+      id: `entry_window_mode:${userId}`,
       titleModelId: mode,
       disabledReason: anchorIsoToLock,
       updatedAt: new Date(),
@@ -377,11 +398,13 @@ export async function setUserGoatWindowMode(
   return { applied: true, mode };
 }
 
+export const setUserGoatWindowMode = setUserEntryWindowMode;
+
 export async function getUsageWindowTotals(
   userId: string,
 ): Promise<UsageWindowTotals> {
   const now = Date.now();
-  const mode = await getUserGoatWindowMode(userId);
+  const mode = await getUserEntryWindowMode(userId);
   const {
     addOneCalendarMonth: _addOneCalendarMonth,
     computeFixedWindowBoundaries,
@@ -880,12 +903,14 @@ export async function setBillingSubscriptionCode(
  */
 export async function syncSubscriptionPlan(
   userId: string,
-  planId: "free" | "plus" | "goat" | "pro" | "max",
+  planId: "free" | "plus" | "entry" | "pro" | "max" | "goat",
   subscriptionCode: string,
 ): Promise<void> {
+  const { normalizePlanId } = await import("@/lib/billing/plans");
+  const normalizedPlan = normalizePlanId(planId) ?? "free";
   await db
     .update(users)
-    .set({ plan: planId, billingSubscriptionCode: subscriptionCode })
+    .set({ plan: normalizedPlan, billingSubscriptionCode: subscriptionCode })
     .where(eq(users.id, userId));
 }
 

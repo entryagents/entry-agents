@@ -68,7 +68,7 @@ const MODEL_REASONING_LEVELS: Record<string, ReasoningEffortLevel[]> = {
   // AI_NoOutputGeneratedError after retries exhausted). Initially removed
   // "max" from all three GPT-5.6 ids on the assumption the family shares
   // one upstream route -- then ran a live probe
-  // (POST /api/admin/reasoning-probe) across all 6 levels x all 3 model
+  // (historical 2026-08-17 probe route, since removed) across all 6 levels x all 3 model
   // ids to check that assumption directly instead of guessing again: Sol
   // and Terra both return 200 with real reasoning content for "max", only
   // Luna 400s. So Luna genuinely has a narrower real vocabulary than its

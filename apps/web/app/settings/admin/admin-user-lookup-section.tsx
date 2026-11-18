@@ -35,6 +35,7 @@ function planBadgeClassName(planId: string): string {
   switch (planId) {
     case "plus":
       return "border-sky-500/30 bg-sky-500/10 text-sky-400";
+    case "entry":
     case "goat":
       return "border-emerald-500/30 bg-emerald-500/10 text-emerald-400";
     case "pro":

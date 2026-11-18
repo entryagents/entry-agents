@@ -9,6 +9,11 @@ import {
   createSecretRedactor,
   type SecretRedactor,
 } from "../lib/secret-redactor";
+import {
+  DEFAULT_TOOL_MODEL_OUTPUT_MAX_CHARS,
+  serializeBoundedForModel,
+  truncateMiddle,
+} from "./output-bounds";
 import { SandboxStdioMcpTransport } from "./mcp-stdio-sandbox";
 
 export type McpServerConfig =
@@ -97,6 +102,7 @@ type PermissionMode = "ask" | "autoAccept" | "fullAccess";
  */
 function wrapMcpTool<T extends Tool>(mcpTool: T, redactor: SecretRedactor): T {
   const originalExecute = mcpTool.execute;
+  const originalToModelOutput = mcpTool.toModelOutput;
   return {
     ...mcpTool,
     needsApproval: async (
@@ -130,6 +136,33 @@ function wrapMcpTool<T extends Tool>(mcpTool: T, redactor: SecretRedactor): T {
           },
         }
       : {}),
+    toModelOutput: async (
+      options: Parameters<NonNullable<Tool["toModelOutput"]>>[0],
+    ) => {
+      if (originalToModelOutput) {
+        const res = await originalToModelOutput(options as never);
+        if (
+          res &&
+          typeof res === "object" &&
+          "type" in res &&
+          res.type === "text" &&
+          typeof (res as { value?: unknown }).value === "string"
+        ) {
+          return {
+            ...res,
+            value: truncateMiddle(
+              (res as { value: string }).value,
+              DEFAULT_TOOL_MODEL_OUTPUT_MAX_CHARS,
+              "MCP tool output",
+            ),
+          };
+        }
+        return serializeBoundedForModel(res, { label: "MCP tool output" });
+      }
+      return serializeBoundedForModel(options.output, {
+        label: "MCP tool output",
+      });
+    },
   } as T;
 }
 

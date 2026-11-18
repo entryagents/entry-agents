@@ -1,30 +1,9 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { serializeBoundedForModel } from "./output-bounds";
 import { isAgentContext, getSandbox, shellEscape } from "./utils";
 import type { SandboxControlToolResult } from "../types";
 
-/**
- * The actions this tool exposes.
- *
- * Pruned from the original set: `migrate` and `extend`.
- *
- *   - migrate: the workspace lives on a persistent Modal Volume, so
- *     re-provisioning a sandbox remounts the same files and there is no
- *     workspace to migrate. `connect()` already re-provisions
- *     automatically when a recorded sandbox has expired, so an
- *     agent-callable migrate would be a no-op that only risks killing
- *     in-flight work for nothing.
- *   - extend: Modal accepts `timeout`/`idle_timeout` only at creation,
- *     both bounded by the 24h hard cap, so there is no way to stretch a
- *     running sandbox from outside. The action existed only to paper
- *     over providers that needed it.
- *
- * `status`, `provision` and `reconnect` remain because they are the ones
- * the agent genuinely needs: a lazily-provisioned workspace has to be
- * started, and "is it running / paused / missing" is what every other
- * decision is based on. `snapshot` and `delete` stay destructive-but-
- * genuine (the host implements both through the same code the UI uses).
- */
 const sandboxActionSchema = z.enum([
   "status",
   "provision",
@@ -37,17 +16,89 @@ const sandboxActionSchema = z.enum([
   "kill_process",
   "env_get",
   "env_set",
+  "checkpoint_create",
+  "checkpoint_list",
+  "checkpoint_restore",
+  "checkpoint_delete",
+  "expose_port",
+  "unexpose_port",
+  "ports",
+  "logs",
+  "resize",
+  "fork",
+  "egress_allow",
 ]);
 
 const sandboxControlInputSchema = z.object({
   action: sandboxActionSchema.describe(
-    "Which workspace operation to run: 'status' (read-only), 'serve' (start/check persistent dev server), 'stop_serve' (stop dev server), 'ps' (list processes), 'kill_process' (kill by PID or port), 'env_get'/'env_set' (session environment variables), 'provision', 'reconnect', 'snapshot', 'delete'.",
+    "Workspace operation: 'status', 'serve', 'stop_serve', 'ps', 'kill_process', 'env_get', 'env_set', 'checkpoint_create', 'checkpoint_list', 'checkpoint_restore', 'checkpoint_delete', 'expose_port', 'unexpose_port', 'ports', 'logs', 'resize', 'fork', 'egress_allow', 'provision', 'reconnect', 'snapshot', 'delete'.",
   ),
   port: z
     .number()
     .int()
+    .positive()
+    .max(65535)
     .optional()
-    .describe("Port number (for serve, stop_serve, kill_process)"),
+    .describe(
+      "Port number (for serve, stop_serve, kill_process, expose_port, unexpose_port)",
+    ),
+  portAuto: z
+    .boolean()
+    .optional()
+    .describe(
+      "Set true with expose_port (https mode) to auto-detect the listening port",
+    ),
+  exposeMode: z
+    .enum(["https", "raw"])
+    .optional()
+    .describe(
+      "Expose mode for expose_port: 'https' reverse proxy route (default) or 'raw' TCP/UDP forward",
+    ),
+  protocol: z
+    .enum(["tcp", "udp", "both"])
+    .optional()
+    .describe("Transport protocol when exposeMode is 'raw' (default: 'tcp')"),
+  proxyName: z
+    .string()
+    .optional()
+    .describe(
+      "Optional subdomain label for an HTTPS proxy route (e.g. 'api' or 'docs')",
+    ),
+  checkpointName: z
+    .string()
+    .optional()
+    .describe(
+      "Checkpoint name (for checkpoint_create, checkpoint_restore, checkpoint_delete)",
+    ),
+  vcpu: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe("Target vCPU count (for resize)"),
+  memory: z
+    .enum(["4G", "8G", "16G", "32G"])
+    .optional()
+    .describe("Target memory class: '4G', '8G', '16G', or '32G' (for resize)"),
+  forkName: z
+    .string()
+    .optional()
+    .describe("Optional name for the forked workspace VM (for fork)"),
+  egressAllow: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Outbound egress allowlist hostnames/CIDRs (empty array restores unrestricted egress)",
+    ),
+  maxChars: z
+    .number()
+    .int()
+    .positive()
+    .max(24_000)
+    .optional()
+    .describe(
+      "Maximum characters to return from VM console logs (default 12000)",
+    ),
   processNameOrPid: z
     .string()
     .optional()
@@ -64,30 +115,6 @@ const sandboxControlInputSchema = z.object({
 
 export type SandboxControlToolInput = z.infer<typeof sandboxControlInputSchema>;
 
-/**
- * Agent-facing control of this session's workspace (sandbox) lifecycle.
- *
- * WHY THIS EXISTS (owner request): agents had no way to act on the
- * workspace itself -- they could only react when a tool failed. Provisioning
- * a session that never got a workspace, migrating one that is about to hit
- * its hard duration cap, extending one that is about to expire mid-task, or
- * tearing one down when it is no longer needed were all things the *user*
- * had to do by hand from the UI.
- *
- * Everything destructive (provision, migrate, delete) is executed by the
- * host through the SAME code paths the UI and the scheduled lifecycle
- * workflow use -- this tool only chooses which one to run and reports the
- * outcome. There is no second implementation of provisioning or migration
- * here to drift out of sync.
- *
- * `status` never mutates anything and needs no special permission.
- */
-/**
- * Host results are spread FIRST and the tool's own envelope fields LAST.
- * The precedence matters: performSandboxMigration (and the provisioning
- * kick) return their own `action` field, which would otherwise overwrite
- * the action this tool reports and make the result unreadable to the model.
- */
 function hostResult(
   host: Record<string, unknown>,
   action: string,
@@ -95,30 +122,36 @@ function hostResult(
   return { ...host, success: true, action };
 }
 
+function unsupportedAction(action: string): SandboxControlToolResult {
+  return {
+    success: false,
+    action,
+    error: `Workspace action '${action}' is not supported by the current workspace provider.`,
+  };
+}
+
 export function sandboxControlTool() {
   return tool({
-    description: `Control this session's workspace (sandbox) lifecycle: check its state, start/provision it, resume a paused one, snapshot it, or delete it.
+    description: `Control this session's workspace (sandbox) lifecycle, runtime networking, checkpoints, sizing, and logs.
 
 ACTIONS:
-- status: read-only. Returns whether the workspace is running, paused, or missing, its lifecycle state, and when it expires. ALWAYS call this first -- most lifecycle decisions are wrong without it.
-- serve: start or get the persistent dev server for this session and returns its URL/port. Keeps running across steps so you can test/audit UI without needing rebuild cycles.
-- stop_serve: stops the persistent dev server.
-- ps: list running processes on the workspace to inspect resource usage or detect stuck servers.
-- kill_process: kill a process by port (e.g. port: 3111) or processNameOrPid. Kills the entire process group cleanly so no zombie child processes remain.
-- env_set: store a session-scoped environment variable or secret (key & value). Automatically loaded into all future bash tool calls.
-- env_get: retrieve stored session-scoped environment variables.
-- provision: start the workspace for this session. Use when status reports no workspace and the task needs file or shell access.
-- reconnect: resume a paused/stopped workspace from its persisted state. Use when status reports paused and the task needs the files back.
-- snapshot: capture a restorable snapshot of the workspace filesystem. Use before a risky change, or to preserve state you want to come back to.
-- delete: stop and tear down the workspace. This DESTROYS uncommitted work -- only use it when the user explicitly asks, or when the workspace is confirmed empty/disposable.
-
-The workspace is stored on a persistent volume, so it survives sandbox restarts and there is no migration or expiry extension to trigger -- a stopped sandbox is resumed with reconnect, and re-provisioning picks up the same files automatically.
-
-IMPORTANT:
-- These operations take effect for the whole session, not just your turn. Anything running in the workspace right now is interrupted.
-- 'delete' is irreversible. Never delete on a guess -- confirm with the user first unless they asked for it.
-- Provisioning is asynchronous: status may still report 'starting' immediately after you call it. Answer the user with what you know and let the workspace come up.`,
+- status: read-only. Returns running/paused/missing state, lifecycle state, expiry, and supported capabilities. Call first when unsure of state.
+- serve / stop_serve: start/inspect or stop a persistent dev server and return its public HTTPS (or localhost) URL + port.
+- ps / kill_process: list running processes or kill a process/group by port or PID/name.
+- env_get / env_set: read or store session-scoped environment variables loaded into future bash calls.
+- checkpoint_create / checkpoint_list / checkpoint_restore / checkpoint_delete: capture, list, restore in-place (RAM + disk), or delete fast local checkpoints before risky changes.
+- expose_port / unexpose_port / ports: manage public HTTPS proxy routes (explicit port or portAuto: true, optional proxyName) or raw TCP/UDP port forwards.
+- logs: inspect bounded VM boot/console logs when debugging startup or service crashes.
+- resize: resize VM vCPU and/or memory ('4G', '8G', '16G', '32G') when workloads need more compute (may reboot a running VM).
+- fork: clone the current running workspace into a new isolated VM for safe side experiments.
+- egress_allow: update outbound network allowlist entries (hostnames/CIDRs; empty array removes restrictions).
+- provision / reconnect / snapshot / delete: start, resume, create an account-level snapshot, or tear down the workspace ('delete' destroys uncommitted work; only use when explicitly asked).`,
     inputSchema: sandboxControlInputSchema,
+    toModelOutput: ({ output }) =>
+      serializeBoundedForModel(output, {
+        maxChars: 16_000,
+        label: "sandbox output",
+      }),
     execute: async (
       input,
       { experimental_context },
@@ -166,6 +199,9 @@ IMPORTANT:
             }
             const sandbox = await getSandbox(experimental_context, "sandbox");
             const targetPort = input.port ?? 3000;
+            const url = sandbox.domain
+              ? sandbox.domain(targetPort)
+              : `http://localhost:${targetPort}`;
             const probe = await sandbox.exec(
               `lsof -i :${targetPort} -sTCP:LISTEN -t 2>/dev/null || true`,
               sandbox.workingDirectory,
@@ -178,7 +214,7 @@ IMPORTANT:
                   running: true,
                   port: targetPort,
                   pid,
-                  url: `http://localhost:${targetPort}`,
+                  url,
                 },
                 input.action,
               );
@@ -193,7 +229,7 @@ IMPORTANT:
                   running: true,
                   port: targetPort,
                   commandId,
-                  url: `http://localhost:${targetPort}`,
+                  url,
                 },
                 input.action,
               );
@@ -306,6 +342,206 @@ IMPORTANT:
               10000,
             );
             return hostResult({ env: res.stdout }, input.action);
+          }
+          case "checkpoint_create": {
+            if (control.checkpoint_create) {
+              const res = await control.checkpoint_create({
+                name: input.checkpointName,
+              });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (!sandbox.createCheckpoint) {
+              return unsupportedAction(input.action);
+            }
+            const checkpoint = await sandbox.createCheckpoint(
+              input.checkpointName ?? `cp-${Date.now()}`,
+            );
+            return hostResult({ checkpoint }, input.action);
+          }
+          case "checkpoint_list": {
+            if (control.checkpoint_list) {
+              const res = await control.checkpoint_list();
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (!sandbox.listCheckpoints) {
+              return unsupportedAction(input.action);
+            }
+            const checkpoints = await sandbox.listCheckpoints();
+            return hostResult({ checkpoints }, input.action);
+          }
+          case "checkpoint_restore": {
+            if (!input.checkpointName) {
+              throw new Error(
+                "checkpointName is required for checkpoint_restore",
+              );
+            }
+            if (control.checkpoint_restore) {
+              const res = await control.checkpoint_restore({
+                name: input.checkpointName,
+              });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (!sandbox.restoreCheckpoint) {
+              return unsupportedAction(input.action);
+            }
+            await sandbox.restoreCheckpoint(input.checkpointName);
+            return hostResult(
+              { restored: true, checkpointName: input.checkpointName },
+              input.action,
+            );
+          }
+          case "checkpoint_delete": {
+            if (!input.checkpointName) {
+              throw new Error(
+                "checkpointName is required for checkpoint_delete",
+              );
+            }
+            if (control.checkpoint_delete) {
+              const res = await control.checkpoint_delete({
+                name: input.checkpointName,
+              });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (!sandbox.deleteCheckpoint) {
+              return unsupportedAction(input.action);
+            }
+            await sandbox.deleteCheckpoint(input.checkpointName);
+            return hostResult(
+              { deleted: true, checkpointName: input.checkpointName },
+              input.action,
+            );
+          }
+          case "expose_port": {
+            if (control.expose_port) {
+              const res = await control.expose_port({
+                port: input.port,
+                portAuto: input.portAuto,
+                mode: input.exposeMode,
+                protocol: input.protocol,
+                name: input.proxyName,
+              });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (input.exposeMode === "raw") {
+              if (!input.port) {
+                throw new Error("port is required when exposeMode is 'raw'");
+              }
+              if (!sandbox.exposePort) {
+                return unsupportedAction(input.action);
+              }
+              const exposed = await sandbox.exposePort(
+                input.port,
+                input.protocol ?? "tcp",
+              );
+              return hostResult({ mode: "raw", ...exposed }, input.action);
+            }
+            if (!sandbox.exposeProxy) {
+              return unsupportedAction(input.action);
+            }
+            const target: number | "auto" = input.portAuto
+              ? "auto"
+              : (input.port ?? 3000);
+            const route = await sandbox.exposeProxy(target, input.proxyName);
+            return hostResult({ mode: "https", ...route }, input.action);
+          }
+          case "unexpose_port": {
+            if (!input.port) {
+              throw new Error("port is required for unexpose_port");
+            }
+            if (control.unexpose_port) {
+              const res = await control.unexpose_port({ port: input.port });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (!sandbox.unexposePort) {
+              return unsupportedAction(input.action);
+            }
+            await sandbox.unexposePort(input.port);
+            return hostResult(
+              { unexposed: true, port: input.port },
+              input.action,
+            );
+          }
+          case "ports": {
+            if (control.ports) {
+              const res = await control.ports();
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            const proxies = sandbox.listProxies
+              ? await sandbox.listProxies()
+              : [];
+            const rawPorts = sandbox.listExposedPorts
+              ? await sandbox.listExposedPorts()
+              : [];
+            return hostResult({ proxies, rawPorts }, input.action);
+          }
+          case "logs": {
+            if (control.logs) {
+              const res = await control.logs({ maxChars: input.maxChars });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (!sandbox.getLogs) {
+              return unsupportedAction(input.action);
+            }
+            const logs = await sandbox.getLogs(input.maxChars ?? 12_000);
+            return hostResult({ logs }, input.action);
+          }
+          case "resize": {
+            if (!input.vcpu && !input.memory) {
+              throw new Error("Provide vcpu and/or memory for resize");
+            }
+            if (control.resize) {
+              const res = await control.resize({
+                vcpu: input.vcpu,
+                memory: input.memory,
+              });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (!sandbox.resize) {
+              return unsupportedAction(input.action);
+            }
+            const resized = await sandbox.resize({
+              ...(input.vcpu ? { vcpu: input.vcpu } : {}),
+              ...(input.memory ? { memory: input.memory } : {}),
+            });
+            return hostResult(resized, input.action);
+          }
+          case "fork": {
+            if (control.fork) {
+              const res = await control.fork({ name: input.forkName });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (!sandbox.fork) {
+              return unsupportedAction(input.action);
+            }
+            const forked = await sandbox.fork(input.forkName);
+            return hostResult(forked, input.action);
+          }
+          case "egress_allow": {
+            if (!Array.isArray(input.egressAllow)) {
+              throw new Error("egressAllow array is required for egress_allow");
+            }
+            if (control.egress_allow) {
+              const res = await control.egress_allow({
+                entries: input.egressAllow,
+              });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (!sandbox.setEgressAllow) {
+              return unsupportedAction(input.action);
+            }
+            const egressAllow = await sandbox.setEgressAllow(input.egressAllow);
+            return hostResult({ egressAllow }, input.action);
           }
         }
       } catch (error) {

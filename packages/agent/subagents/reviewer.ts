@@ -1,5 +1,5 @@
 import type { LanguageModel } from "ai";
-import { addCacheControl, maybeCompactMessages } from "../context-management";
+import { addCacheControl } from "../context-management";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { createInertPlaceholderModel, sharedProvider } from "../models";
 import { defaultModelLabel } from "../default-model";
@@ -17,6 +17,7 @@ import {
   SUBAGENT_STEP_LIMIT,
   SUBAGENT_WORKING_DIR,
 } from "./constants";
+import { prepareSubagentStep } from "./prepare-step";
 
 const REVIEWER_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
@@ -121,24 +122,14 @@ export const reviewerSubagent = new ToolLoopAgent({
   tools: reviewerTools,
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
-  prepareStep: ({ messages, model, experimental_context }) => {
-    const context = (experimental_context ?? {}) as {
-      contextWindow?: number;
-      compactionThreshold?: number;
-    };
-    return {
-      messages: addCacheControl({
-        messages: maybeCompactMessages({
-          messages,
-          model,
-          contextWindowOverride: context.contextWindow,
-          compactionThresholdOverride: context.compactionThreshold,
-        }),
-        model,
-      }),
-      experimental_context: context,
-    };
-  },
+  prepareStep: ({ steps, stepNumber, messages, model, experimental_context }) =>
+    prepareSubagentStep({
+      steps,
+      stepNumber,
+      messages,
+      model,
+      experimental_context,
+    }),
   prepareCall: ({ options, ...settings }) => {
     if (!options) {
       throw new Error("Reviewer subagent requires task call options.");

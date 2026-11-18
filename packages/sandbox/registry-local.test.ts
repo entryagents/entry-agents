@@ -67,6 +67,12 @@ describe("local provider discoverability", () => {
       timeoutExtension: false,
       workspaceMigration: false,
       maxTimeoutMs: null,
+      checkpoints: false,
+      rawPorts: false,
+      resize: false,
+      fork: false,
+      logs: false,
+      egressAllow: false,
     });
   });
 });

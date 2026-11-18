@@ -102,7 +102,11 @@ export type { CompactionEvent } from "./context-management/compaction-telemetry"
 export {
   AUTO_COMPACT_THRESHOLD,
   PROTECTED_RECENT_MESSAGES,
+  compactMessagesWithStats,
+  estimateMessagesTokens,
   maybeCompactMessages,
+  selectProtectedRecentStart,
+  type CompactionStatsResult,
 } from "./context-management/auto-compact";
 // Plugins exports
 export {

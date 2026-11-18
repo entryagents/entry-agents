@@ -104,8 +104,12 @@ describe("deriveSubagentTabData", () => {
     const data = deriveSubagentTabData(testMessages, "call_subagent_002");
     expect(data).not.toBeNull();
     expect(data?.status).toBe("completed");
-    expect(data?.completedParts).toHaveLength(1);
+    expect(data?.completedParts).toHaveLength(2);
     expect(data?.completedParts[0]?.type).toBe("tool-write");
+    expect(data?.completedParts[1]).toEqual({
+      type: "text",
+      text: "CSRF token validation added successfully.",
+    });
     expect(data?.finalText).toBe("CSRF token validation added successfully.");
   });
 

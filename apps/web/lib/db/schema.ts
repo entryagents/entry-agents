@@ -27,9 +27,9 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   lastLoginAt: timestamp("last_login_at").defaultNow().notNull(),
   // --- Billing (Bachs-backed credit plans) ---
-  // "free" | "plus" | "goat" | "pro" | "max" -- see lib/billing/plans.ts for the
+  // "free" | "plus" | "entry" | "pro" | "max" -- see lib/billing/plans.ts for the
   // catalog (price, credit grant, model access) each id maps to.
-  plan: text("plan", { enum: ["free", "plus", "goat", "pro", "max", "x"] })
+  plan: text("plan", { enum: ["free", "plus", "entry", "pro", "max", "x"] })
     .notNull()
     .default("free"),
   // Spendable balance, in USD cents, against the live model cost catalog.
@@ -1159,3 +1159,37 @@ export type ComposioSharedAccountGrantRow =
   typeof composioSharedAccountGrants.$inferSelect;
 export type NewComposioSharedAccountGrantRow =
   typeof composioSharedAccountGrants.$inferInsert;
+
+// Durable anchor summaries persisted across workflow turns and steps so
+// multi-turn conversations can resume from a compact verified checkpoint
+// instead of re-sending or re-summarizing stale history on every request.
+export const compactionCheckpoints = pgTable(
+  "compaction_checkpoints",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    sessionId: text("session_id").references(() => sessions.id, {
+      onDelete: "cascade",
+    }),
+    summaryText: text("summary_text").notNull(),
+    compactedUpToMessageCount: integer(
+      "compacted_up_to_message_count",
+    ).notNull(),
+    compactedUpToMessageId: text("compacted_up_to_message_id"),
+    preTokens: integer("pre_tokens").notNull(),
+    postTokens: integer("post_tokens").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("compaction_checkpoints_chat_created_idx").on(
+      table.chatId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type CompactionCheckpointRow = typeof compactionCheckpoints.$inferSelect;
+export type NewCompactionCheckpointRow =
+  typeof compactionCheckpoints.$inferInsert;

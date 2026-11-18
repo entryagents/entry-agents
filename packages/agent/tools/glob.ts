@@ -209,4 +209,31 @@ EXAMPLES:
         };
       }
     },
+    toModelOutput: ({ output }) => {
+      const out = output as {
+        success?: boolean;
+        error?: string;
+        pattern?: string;
+        baseDir?: string;
+        count?: number;
+        files?: Array<{ path: string }>;
+      };
+      if (!out.success) {
+        return {
+          type: "text",
+          value: out.error ?? "Glob failed.",
+        };
+      }
+      const files = out.files ?? [];
+      if (files.length === 0) {
+        return {
+          type: "text",
+          value: `No files matching "${out.pattern ?? ""}" under ${out.baseDir ?? "."}.`,
+        };
+      }
+      return {
+        type: "text",
+        value: `${out.count ?? files.length} file(s) matching "${out.pattern ?? ""}" (newest first):\n${files.map((f) => f.path).join("\n")}`,
+      };
+    },
   });

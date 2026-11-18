@@ -138,6 +138,12 @@ mock.module("@/lib/session/get-server-session", () => ({
   getServerSession: async () => currentSession,
 }));
 
+mock.module("server-only", () => ({}));
+
+mock.module("@/lib/models-with-context", () => ({
+  fetchAvailableLanguageModels: async () => [],
+}));
+
 const routeModulePromise = import("./route");
 
 function createContext(sessionId = "session-1", chatId = "chat-1") {

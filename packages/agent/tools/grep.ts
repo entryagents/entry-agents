@@ -219,4 +219,33 @@ EXAMPLES:
         };
       }
     },
+    toModelOutput: ({ output }) => {
+      const out = output as {
+        success?: boolean;
+        error?: string;
+        pattern?: string;
+        matchCount?: number;
+        filesWithMatches?: number;
+        matches?: GrepMatch[];
+        _debug?: { exitCode?: number };
+      };
+      if (!out.success) {
+        return {
+          type: "text",
+          value: out.error ?? "Grep failed.",
+        };
+      }
+      const matches = out.matches ?? [];
+      if (matches.length === 0) {
+        return {
+          type: "text",
+          value: `No matches for "${out.pattern ?? ""}" (exit ${out._debug?.exitCode ?? 1}).`,
+        };
+      }
+      const lines = matches.map((m) => `${m.file}:${m.line}: ${m.content}`);
+      return {
+        type: "text",
+        value: `${out.matchCount ?? matches.length} match(es) across ${out.filesWithMatches ?? 0} file(s) for "${out.pattern ?? ""}":\n${lines.join("\n")}`,
+      };
+    },
   });

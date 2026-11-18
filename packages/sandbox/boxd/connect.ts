@@ -21,7 +21,7 @@ function createBoxdMachine(
   return client.machines.create({
     name,
     image: options?.image ?? "ubuntu:24.04",
-    isolated: false,
+    isolated: true,
     restartPolicy: "never",
     config: {
       vcpu: BOXD_VCPU,
@@ -39,20 +39,33 @@ function shellEscape(value: string): string {
 }
 
 /**
- * Embeds a GitHub token in an https clone URL. The boxd exec API ignores the
- * `env` field (verified live: env vars never reach the machine), so the old
- * http.extraheader mechanism cloned anonymously. The token is scrubbed from
- * the stored remote immediately after clone/fetch by the caller.
+ * Wraps a git command so credentials travel via a short-lived, mode-0700
+ * `GIT_ASKPASS` helper (cleaned up by an `EXIT` trap) rather than appearing
+ * inside CLI URL arguments (`git clone https://x-access-token:...@...`) or
+ * persisted `.git/config` remotes.
  */
-function injectGitHubToken(repoUrl: string, token: string): string {
-  if (!repoUrl.startsWith("https://github.com/")) {
-    return repoUrl;
-  }
-  const encoded = encodeURIComponent(token);
-  return repoUrl.replace(
-    "https://github.com/",
-    `https://x-access-token:${encoded}@github.com/`,
-  );
+function wrapWithGitAskPass(gitCommand: string, token: string): string {
+  const b64Token = Buffer.from(token, "utf8").toString("base64");
+  const askPassVar = 'ASKPASS_SCRIPT="/tmp/.entry_git_askpass_$$.sh"';
+  const writeHelper = [
+    "(umask 077 && cat > \"$ASKPASS_SCRIPT\" <<'EOF_ASKPASS'",
+    "#!/bin/sh",
+    'case "$1" in',
+    '  *Username*|*username*) printf "%s\\n" "x-access-token" ;;',
+    `  *) printf "%s" ${shellEscape(b64Token)} | base64 -d ;;`,
+    "esac",
+    "EOF_ASKPASS",
+    ")",
+    'chmod 700 "$ASKPASS_SCRIPT"',
+  ].join("\n");
+  return [
+    askPassVar,
+    writeHelper,
+    `GIT_TERMINAL_PROMPT=0 GIT_ASKPASS="$ASKPASS_SCRIPT" ${gitCommand}`,
+    "gitExit=$?",
+    'rm -f "$ASKPASS_SCRIPT"',
+    "(exit $gitExit)",
+  ].join("\n");
 }
 
 async function bootstrapWorkspace(
@@ -65,14 +78,6 @@ async function bootstrapWorkspace(
   }
 
   const source = state.source;
-  // Plain `git`. The old http.extraheader mechanism is gone: the boxd exec
-  // API ignores the `env` field (verified live — env vars never reach the
-  // machine), so `${GITHUB_TOKEN:-}` always expanded to EMPTY and sent
-  // "Authorization: Bearer " — GitHub answers 401 on an empty auth header
-  // even for PUBLIC repos, which surfaced as
-  // "fatal: could not read Username for 'https://github.com'". Credentials
-  // now travel in the URL (injectGitHubToken) and are scrubbed from the
-  // stored remote right after clone/fetch.
   const git = "git";
 
   // The bare ubuntu image does not guarantee git. Provisioning failed in
@@ -120,15 +125,6 @@ async function bootstrapWorkspace(
   }
 
   if (source?.repo) {
-    // The boxd exec API does NOT apply the `env` field (verified against the
-    // live API: `echo TOKEN=$X` with env {X:...} prints empty). The old
-    // http.extraheader + ${GITHUB_TOKEN} mechanism therefore cloned
-    // anonymously and failed on private repos with
-    // "could not read Username for 'https://github.com'". Embed the token in
-    // the clone URL instead, then scrub it from the stored remote.
-    const authedRepoUrl = options?.githubToken
-      ? injectGitHubToken(source.repo, options.githubToken)
-      : source.repo;
     // Do not send a compound if/then/else shell program to the provider. The
     // boxd command runner has historically parsed that form inconsistently,
     // producing `/bin/sh: then: unexpected` and wedging reconnects. Probe the
@@ -143,21 +139,15 @@ async function bootstrapWorkspace(
       : "";
     if (hasRepository.success) {
       if (options?.githubToken) {
-        // The stored remote is the clean URL (scrubbed after the last
-        // clone/fetch). Point it at the authed URL for the fetch, then
-        // scrub again below — the credential never persists on the machine.
-        await sandbox.exec(
-          `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} remote set-url origin ${shellEscape(authedRepoUrl)}`,
-          BOXD_WORKING_DIRECTORY,
-          30_000,
-        );
+        const cleanRemoteCmd = `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} remote set-url origin ${shellEscape(source.repo)}`;
+        await sandbox.exec(cleanRemoteCmd, BOXD_WORKING_DIRECTORY, 30_000);
         const fetchCmd =
           `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} fetch --all --prune` +
           (source.branch
             ? ` && ${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} checkout ${shellEscape(source.branch)}`
             : "");
         const fetchRes = await sandbox.exec(
-          fetchCmd,
+          wrapWithGitAskPass(fetchCmd, options.githubToken),
           BOXD_WORKING_DIRECTORY,
           60_000,
         );
@@ -166,35 +156,18 @@ async function bootstrapWorkspace(
         }
       }
     } else {
-      const command = `${git} clone${branch} ${shellEscape(authedRepoUrl)} ${shellEscape(BOXD_WORKING_DIRECTORY)}`;
+      const cloneCmd = `${git} clone${branch} ${shellEscape(source.repo)} ${shellEscape(BOXD_WORKING_DIRECTORY)}`;
+      const command = options?.githubToken
+        ? wrapWithGitAskPass(cloneCmd, options.githubToken)
+        : cloneCmd;
       const result = await sandbox.exec(
         command,
         BOXD_WORKING_DIRECTORY,
         180_000,
       );
-      // Scrub immediately — before any error path — so the credentialed URL
-      // never outlives this bootstrap on the machine (process args are
-      // visible to other local processes while it sits in the remote).
-      if (options?.githubToken) {
-        await sandbox.exec(
-          `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} remote set-url origin ${shellEscape(source.repo)}`,
-          BOXD_WORKING_DIRECTORY,
-          30_000,
-        );
-      }
       if (!result.success) {
         throw new Error(`Failed to prepare workspace: ${result.stderr.trim()}`);
       }
-    }
-
-    // Scrub the credential from the stored remote regardless of which path
-    // ran, so a later `git remote -v` on the machine cannot leak it.
-    if (options?.githubToken) {
-      await sandbox.exec(
-        `${git} -C ${shellEscape(BOXD_WORKING_DIRECTORY)} remote set-url origin ${shellEscape(source.repo)}`,
-        BOXD_WORKING_DIRECTORY,
-        30_000,
-      );
     }
 
     if (source.newBranch) {

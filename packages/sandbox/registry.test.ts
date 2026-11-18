@@ -63,7 +63,7 @@ function stubConnect(
 }
 
 describe("sandbox provider registry", () => {
-  test("registers exactly modal (user-selectable) and local (dev-only)", () => {
+  test("registers boxd (user-selectable) and local (dev-only)", () => {
     const selectable = listUserSelectableSandboxProviders().map(
       (provider) => provider.id,
     );
@@ -80,7 +80,7 @@ describe("sandbox provider registry", () => {
     expect(isKnownSandboxType(undefined)).toBe(false);
   });
 
-  test("default provider is modal", () => {
+  test("default provider is boxd", () => {
     expect(DEFAULT_SANDBOX_PROVIDER).toBe("boxd");
     expect(listUserSelectableSandboxProviders()[0]?.id).toBe("boxd");
   });

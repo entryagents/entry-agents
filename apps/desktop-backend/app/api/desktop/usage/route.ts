@@ -82,16 +82,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  // Plan display names (goat is publicly named "Entry").
+  // Plan display names ("entry" is the $13/mo tier; map legacy "goat" to "entry").
   const planNames: Record<string, string> = {
     free: "Free",
     plus: "Plus",
+    entry: "Entry",
     goat: "Entry",
     pro: "Pro",
     max: "Max",
   };
 
-  let currentPlan = u.plan ?? "free";
+  const rawPlan: string = u.plan ?? "free";
+  let currentPlan = rawPlan === "goat" ? "entry" : rawPlan;
   if (currentPlan !== "free" && u.billingCycleAnchor) {
     const anchor = new Date(u.billingCycleAnchor);
     if (!Number.isNaN(anchor.getTime())) {
@@ -127,10 +129,10 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Rolling windows exist only on the goat/"Entry" plan: $10/5h, $25/week,
+  // Rolling windows exist only on the Entry ($13/mo) plan: $10/5h, $25/week,
   // $50/month (20% / 50% / 100% of the $50 grant).
   const windows = { fiveHour: 1000, weekly: 2500, monthly: 5000 };
-  const hasWindows = currentPlan === "goat";
+  const hasWindows = currentPlan === "entry";
 
   let usageWindows = null;
   if (hasWindows) {

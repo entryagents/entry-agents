@@ -179,6 +179,7 @@ export interface GatewayOptions {
   providerOptionsOverrides?: ProviderOptionsByProvider;
   appName?: string;
   appUrl?: string;
+  promptCacheKey?: string;
 }
 
 export type { LanguageModel, JSONValue };
@@ -194,6 +195,7 @@ function shouldApplyOpenAITextVerbosityDefaults(modelId: string): boolean {
 export function getProviderOptionsForModel(
   modelId: string,
   providerOptionsOverrides?: ProviderOptionsByProvider,
+  promptCacheKey?: string,
 ): ProviderOptionsByProvider {
   const defaultProviderOptions: ProviderOptionsByProvider = {};
 
@@ -230,6 +232,7 @@ export function getProviderOptionsForModel(
   if (modelId.startsWith("openai/")) {
     defaultProviderOptions.openai = toProviderOptionsRecord({
       store: false,
+      ...(promptCacheKey ? { promptCacheKey } : {}),
     } satisfies OpenAIResponsesProviderOptions);
   }
 
@@ -314,7 +317,8 @@ export function sharedProvider(
   modelId: SharedProviderModelId,
   options: GatewayOptions = {},
 ): LanguageModel {
-  const { config, providerOptionsOverrides, appName, appUrl } = options;
+  const { config, providerOptionsOverrides, appName, appUrl, promptCacheKey } =
+    options;
 
   const attributionHeaders = {
     "http-referer": appUrl ?? "https://entry-agents.dev",
@@ -407,6 +411,7 @@ export function sharedProvider(
   const providerOptions = getProviderOptionsForModel(
     modelId,
     providerOptionsOverrides,
+    promptCacheKey,
   );
 
   if (Object.keys(providerOptions).length > 0) {

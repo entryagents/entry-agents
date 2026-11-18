@@ -1056,7 +1056,7 @@ export function SessionChatContent({
   // same hard-lock overlay/composer treatment below -- only the message
   // text differs.
   const isPaidModelBlockedForFreeUser = useMemo(() => {
-    if (userPlan?.modelAccess !== "luna-only") return false;
+    if (userPlan?.modelAccess !== "starter-only") return false;
     const currentModel = chatInfo.modelId;
     if (!currentModel) return false;
     const isUnlockedByAdmin =
@@ -3309,7 +3309,7 @@ export function SessionChatContent({
             teamRoleModels={teamRoleModels}
             onUpdateRoleModel={updateTeamRoleModel}
             modelOptions={modelOptions}
-            isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
+            isFreeTierLocked={userPlan?.modelAccess === "starter-only"}
             freePlanModelId={freePlanModelId}
             freeTierAllowedModelIds={freeTierAllowedModelIds}
             onSelectSubagent={(subagentId, title, subagentType) =>
@@ -3543,7 +3543,7 @@ export function SessionChatContent({
                     reasoningEffort={chatInfo.reasoningEffort}
                     modelOptions={modelOptions}
                     modelOptionsLoading={modelOptionsLoading}
-                    isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
+                    isFreeTierLocked={userPlan?.modelAccess === "starter-only"}
                     freePlanModelId={freePlanModelId}
                     freeTierAllowedModelIds={freeTierAllowedModelIds}
                     onModelChange={handleModelChange}
@@ -3618,7 +3618,7 @@ export function SessionChatContent({
               teamRoleModels={teamRoleModels}
               onUpdateRoleModel={updateTeamRoleModel}
               modelOptions={modelOptions}
-              isFreeTierLocked={userPlan?.modelAccess === "luna-only"}
+              isFreeTierLocked={userPlan?.modelAccess === "starter-only"}
               freePlanModelId={freePlanModelId}
               freeTierAllowedModelIds={freeTierAllowedModelIds}
               onSelectSubagent={(subagentId, title, subagentType) =>

@@ -157,4 +157,208 @@ describe("sandboxControlTool", () => {
     );
     expect(envRes).toMatchObject({ success: true, action: "env_set" });
   });
+
+  test("capability actions route cleanly through host callbacks when provided", async () => {
+    const calls: string[] = [];
+    const context = {
+      ...contextWith({}),
+      sandboxControl: {
+        ...contextWith({}).sandboxControl,
+        checkpoint_create: async ({ name }: { name?: string } = {}) => {
+          calls.push(`cp_create:${name ?? ""}`);
+          return { checkpoint: { name: name ?? "auto", status: "ready" } };
+        },
+        checkpoint_list: async () => {
+          calls.push("cp_list");
+          return { checkpoints: [] };
+        },
+        checkpoint_restore: async ({ name }: { name: string }) => {
+          calls.push(`cp_restore:${name}`);
+          return { restored: true };
+        },
+        checkpoint_delete: async ({ name }: { name: string }) => {
+          calls.push(`cp_delete:${name}`);
+          return { deleted: true };
+        },
+        expose_port: async (opts: { port?: number; name?: string }) => {
+          calls.push(`expose:${opts.port ?? "auto"}:${opts.name ?? ""}`);
+          return { url: "https://api.vm.boxd.sh" };
+        },
+        unexpose_port: async ({ port }: { port: number }) => {
+          calls.push(`unexpose:${port}`);
+          return { unexposed: true };
+        },
+        ports: async () => {
+          calls.push("ports");
+          return { proxies: [], rawPorts: [] };
+        },
+        logs: async () => {
+          calls.push("logs");
+          return { logs: "ready" };
+        },
+        resize: async ({ vcpu }: { vcpu?: number }) => {
+          calls.push(`resize:${vcpu}`);
+          return { vcpu, rebooted: true };
+        },
+        fork: async ({ name }: { name?: string }) => {
+          calls.push(`fork:${name ?? ""}`);
+          return { machineId: "vm-2" };
+        },
+        egress_allow: async ({ entries }: { entries: string[] }) => {
+          calls.push(`egress:${entries.join(",")}`);
+          return { egressAllow: entries };
+        },
+      },
+    };
+
+    const toolDef = sandboxControlTool();
+    expect(
+      await toolDef.execute?.(
+        { action: "checkpoint_create", checkpointName: "safe-point" },
+        executionOptions(context),
+      ),
+    ).toMatchObject({ success: true, action: "checkpoint_create" });
+    expect(
+      await toolDef.execute?.(
+        { action: "checkpoint_list" },
+        executionOptions(context),
+      ),
+    ).toMatchObject({ success: true, action: "checkpoint_list" });
+    expect(
+      await toolDef.execute?.(
+        { action: "checkpoint_restore", checkpointName: "safe-point" },
+        executionOptions(context),
+      ),
+    ).toMatchObject({ success: true, action: "checkpoint_restore" });
+    expect(
+      await toolDef.execute?.(
+        { action: "checkpoint_delete", checkpointName: "safe-point" },
+        executionOptions(context),
+      ),
+    ).toMatchObject({ success: true, action: "checkpoint_delete" });
+    expect(
+      await toolDef.execute?.(
+        { action: "expose_port", port: 4000, proxyName: "api" },
+        executionOptions(context),
+      ),
+    ).toMatchObject({
+      success: true,
+      action: "expose_port",
+      url: "https://api.vm.boxd.sh",
+    });
+    expect(
+      await toolDef.execute?.(
+        { action: "unexpose_port", port: 4000 },
+        executionOptions(context),
+      ),
+    ).toMatchObject({ success: true, action: "unexpose_port" });
+    expect(
+      await toolDef.execute?.({ action: "ports" }, executionOptions(context)),
+    ).toMatchObject({ success: true, action: "ports" });
+    expect(
+      await toolDef.execute?.({ action: "logs" }, executionOptions(context)),
+    ).toMatchObject({ success: true, action: "logs", logs: "ready" });
+    expect(
+      await toolDef.execute?.(
+        { action: "resize", vcpu: 8 },
+        executionOptions(context),
+      ),
+    ).toMatchObject({ success: true, action: "resize", vcpu: 8 });
+    expect(
+      await toolDef.execute?.(
+        { action: "fork", forkName: "exp" },
+        executionOptions(context),
+      ),
+    ).toMatchObject({ success: true, action: "fork", machineId: "vm-2" });
+    expect(
+      await toolDef.execute?.(
+        { action: "egress_allow", egressAllow: ["registry.npmjs.org"] },
+        executionOptions(context),
+      ),
+    ).toMatchObject({ success: true, action: "egress_allow" });
+
+    expect(calls).toEqual([
+      "cp_create:safe-point",
+      "cp_list",
+      "cp_restore:safe-point",
+      "cp_delete:safe-point",
+      "expose:4000:api",
+      "unexpose:4000",
+      "ports",
+      "logs",
+      "resize:8",
+      "fork:exp",
+      "egress:registry.npmjs.org",
+    ]);
+  });
+
+  test("serve uses sandbox.domain() when direct sandbox fallback runs, and unsupported capabilities fail cleanly", async () => {
+    const fakeSandbox = {
+      type: "cloud" as const,
+      workingDirectory: "/workspace",
+      stat: async () => ({
+        isDirectory: () => true,
+        isFile: () => false,
+        size: 0,
+        mtimeMs: 0,
+      }),
+      domain: (port: number) => `https://p${port}.entry-test.boxd.sh`,
+      exec: async () => ({
+        success: true,
+        exitCode: 0,
+        stdout: "4242\n",
+        stderr: "",
+        truncated: false,
+      }),
+    };
+
+    const directContext = {
+      model: "test-model",
+      sandbox: fakeSandbox,
+      sandboxControl: {
+        status: async () => ({ status: "running" }),
+        provision: async () => ({ started: true }),
+        reconnect: async () => ({ reconnected: true }),
+        snapshot: async () => ({ snapshotId: "s1" }),
+        delete: async () => ({ deleted: true }),
+      },
+    };
+
+    const toolDef = sandboxControlTool();
+    const serveRes = await toolDef.execute?.(
+      { action: "serve", port: 5173 },
+      executionOptions(directContext),
+    );
+    expect(serveRes).toMatchObject({
+      success: true,
+      action: "serve",
+      url: "https://p5173.entry-test.boxd.sh",
+    });
+
+    const unsupportedRes = await toolDef.execute?.(
+      { action: "fork" },
+      executionOptions(directContext),
+    );
+    expect(unsupportedRes).toMatchObject({
+      success: false,
+      action: "fork",
+    });
+    expect((unsupportedRes as { error: string }).error).toContain(
+      "not supported by the current workspace provider",
+    );
+
+    const modelOut = await toolDef.toModelOutput?.({
+      toolCallId: "tc-1",
+      input: { action: "logs" },
+      output: {
+        success: true,
+        action: "logs",
+        logs: "x".repeat(30_000),
+      },
+    });
+    expect(modelOut?.type).toBe("text");
+    expect((modelOut as { value: string }).value.length).toBeLessThanOrEqual(
+      16_300,
+    );
+  });
 });

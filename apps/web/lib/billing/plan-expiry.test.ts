@@ -40,7 +40,7 @@ describe("addOneCalendarMonth / subtractOneCalendarMonth", () => {
 describe("shouldAutoRevertToFree (1 calendar month expiry matching Bachs)", () => {
   test("paid plan whose last renewal is older than 1 calendar month -> revert", () => {
     expect(shouldAutoRevertToFree("plus", ANCHOR, EXPIRES_AT + 1)).toBe(true);
-    expect(shouldAutoRevertToFree("goat", ANCHOR, EXPIRES_AT + 5 * DAY)).toBe(
+    expect(shouldAutoRevertToFree("entry", ANCHOR, EXPIRES_AT + 5 * DAY)).toBe(
       true,
     );
     expect(shouldAutoRevertToFree("max", ANCHOR, EXPIRES_AT + 1)).toBe(true);
@@ -74,7 +74,7 @@ describe("shouldAutoRevertToFree (1 calendar month expiry matching Bachs)", () =
 
   test("null anchor -> no-op (never saw a renewal charge; can't interpret)", () => {
     expect(shouldAutoRevertToFree("plus", null, EXPIRES_AT)).toBe(false);
-    expect(shouldAutoRevertToFree("goat", undefined, EXPIRES_AT)).toBe(false);
+    expect(shouldAutoRevertToFree("entry", undefined, EXPIRES_AT)).toBe(false);
   });
 
   test("unparseable anchor -> no-op, never crash", () => {

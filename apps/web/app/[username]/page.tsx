@@ -35,10 +35,7 @@ export async function generateMetadata({
   const profile = await getPublicUsageProfile(username, date);
 
   if (!profile) {
-    return {
-      title: "Public profile",
-      description: "Public usage profile on Entry Agents.",
-    };
+    notFound();
   }
 
   const displayName = profile.user.name?.trim() || profile.user.username;

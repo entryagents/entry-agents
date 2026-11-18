@@ -231,7 +231,7 @@ export default function SettingsUsagePage() {
         </div>
       </div>
 
-      {/* Windows Telemetry Card (For Entry / GOAT tier) */}
+      {/* Windows Telemetry Card (For Entry tier) */}
       {windows && (
         <div className="rounded-xl border border-border bg-card p-6">
           <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-4">

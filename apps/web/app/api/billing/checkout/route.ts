@@ -8,13 +8,13 @@ import {
 import { getUserBillingState } from "@/lib/billing/credit-ledger";
 import {
   PLAN_CATALOG,
-  isPlanId,
+  normalizePlanId,
   resolveProductIdForPlan,
   localCurrencyOptionsFor,
 } from "@/lib/billing/plans";
 
 interface CheckoutRequest {
-  /** One of "plus" | "goat" | "pro" | "max" for a subscription checkout. */
+  /** One of "plus" | "entry" | "pro" | "max" for a subscription checkout. */
   planId?: string;
   /** For a one-off wallet top-up instead of a subscription. $1 = $1, so this is the exact credit granted. */
   topupAmountCents?: number;
@@ -25,7 +25,7 @@ interface CheckoutRequest {
    * the customer is.
    */
   currency?: "NGN" | "GHS" | "KES";
-  /** For the GOAT ("goat") plan: user's chosen window refill method. */
+  /** For the Entry ("entry") plan: user's chosen window refill method. */
   windowMode?: "rolling" | "fixed";
 }
 
@@ -95,14 +95,15 @@ export async function POST(req: Request) {
       });
     }
 
-    if (!isPlanId(body.planId) || body.planId === "free") {
+    const normalizedPlanId = normalizePlanId(body.planId);
+    if (!normalizedPlanId || normalizedPlanId === "free") {
       return Response.json(
-        { error: "planId must be one of plus, goat, pro, max" },
+        { error: "planId must be one of plus, entry, pro, max" },
         { status: 400 },
       );
     }
 
-    const plan = PLAN_CATALOG[body.planId];
+    const plan = PLAN_CATALOG[normalizedPlanId];
     const productId = resolveProductIdForPlan(plan);
 
     // A subscription MUST ride a recurring product: Bachs has no
@@ -133,22 +134,22 @@ export async function POST(req: Request) {
     // future invoices).
     const billingState = await getUserBillingState(session.user.id);
     const chosenWindowMode =
-      plan.id === "goat" &&
+      plan.id === "entry" &&
       (body.windowMode === "rolling" || body.windowMode === "fixed")
         ? body.windowMode
         : undefined;
 
-    // Permanent 1-month cycle lock: if the user is ALREADY in an active GOAT
+    // Permanent 1-month cycle lock: if the user is ALREADY in an active Entry
     // cycle, they cannot use /api/billing/checkout to flip their windowMode
     // mid-cycle without paying.
-    if (plan.id === "goat" && billingState?.plan === "goat") {
+    if (plan.id === "entry" && billingState?.plan === "entry") {
       const { shouldAutoRevertToFree } = await import("@/lib/billing/plans");
-      const { getUserGoatWindowModeState } =
+      const { getUserEntryWindowModeState } =
         await import("@/lib/billing/credit-ledger");
-      const modeState = await getUserGoatWindowModeState(session.user.id);
+      const modeState = await getUserEntryWindowModeState(session.user.id);
       const isActiveCycle =
         billingState.billingCycleAnchor !== null &&
-        !shouldAutoRevertToFree("goat", billingState.billingCycleAnchor);
+        !shouldAutoRevertToFree("entry", billingState.billingCycleAnchor);
       if (
         isActiveCycle &&
         chosenWindowMode &&
@@ -184,15 +185,15 @@ export async function POST(req: Request) {
           metadata: subscriptionMetadata,
         });
 
-        const { syncSubscriptionPlan, setUserGoatWindowMode } =
+        const { syncSubscriptionPlan, setUserEntryWindowMode } =
           await import("@/lib/billing/credit-ledger");
         await syncSubscriptionPlan(
           session.user.id,
           plan.id,
           updated.id || existingSubscriptionId,
         );
-        if (plan.id === "goat" && chosenWindowMode) {
-          await setUserGoatWindowMode(
+        if (plan.id === "entry" && chosenWindowMode) {
+          await setUserEntryWindowMode(
             session.user.id,
             chosenWindowMode,
             billingState?.billingCycleAnchor ?? new Date(),

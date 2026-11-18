@@ -38,7 +38,7 @@ export async function GET(req: Request) {
     const freeModelConfig = parseAdminFreeTierModels(configuredFreeModelId);
 
     let creditGate: CreditGateStatus | null = null;
-    let userPlan: { id: string; modelAccess: "luna-only" | "all" } | null =
+    let userPlan: { id: string; modelAccess: "starter-only" | "all" } | null =
       null;
     if (session?.user?.id && !isAdminUser) {
       const billingState = await getUserBillingState(session.user.id).catch(
@@ -54,10 +54,10 @@ export async function GET(req: Request) {
         creditGate = {
           blocked: true,
           reason:
-            plan.modelAccess === "luna-only"
+            plan.modelAccess === "starter-only"
               ? "Free tier ended — upgrade your account to use Entry"
               : "You're out of credit — top up to keep chatting",
-          kind: plan.modelAccess === "luna-only" ? "free" : "paid",
+          kind: plan.modelAccess === "starter-only" ? "free" : "paid",
         };
       }
     }

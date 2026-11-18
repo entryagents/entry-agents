@@ -1,7 +1,7 @@
 import type { LanguageModel } from "ai";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { z } from "zod";
-import { addCacheControl, maybeCompactMessages } from "../context-management";
+import { addCacheControl } from "../context-management";
 import { defaultModelLabel } from "../default-model";
 import { createInertPlaceholderModel, sharedProvider } from "../models";
 import { bashTool } from "../tools/bash";
@@ -17,6 +17,7 @@ import {
   SUBAGENT_STEP_LIMIT,
   SUBAGENT_WORKING_DIR,
 } from "./constants";
+import { prepareSubagentStep } from "./prepare-step";
 
 const ARCHITECT_REMINDER = `## REMINDER
 - You CANNOT ask questions - no one will respond
@@ -81,24 +82,14 @@ export const architectSubagent = new ToolLoopAgent({
   tools: architectTools,
   stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
   callOptionsSchema,
-  prepareStep: ({ messages, model, experimental_context }) => {
-    const context = (experimental_context ?? {}) as {
-      contextWindow?: number;
-      compactionThreshold?: number;
-    };
-    return {
-      messages: addCacheControl({
-        messages: maybeCompactMessages({
-          messages,
-          model,
-          contextWindowOverride: context.contextWindow,
-          compactionThresholdOverride: context.compactionThreshold,
-        }),
-        model,
-      }),
-      experimental_context: context,
-    };
-  },
+  prepareStep: ({ steps, stepNumber, messages, model, experimental_context }) =>
+    prepareSubagentStep({
+      steps,
+      stepNumber,
+      messages,
+      model,
+      experimental_context,
+    }),
   prepareCall: ({ options, ...settings }) => {
     if (!options) {
       throw new Error("Architect subagent requires task call options.");

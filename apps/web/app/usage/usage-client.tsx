@@ -195,8 +195,8 @@ export function UsageClient() {
                   </div>
                 ) : (
                   <div className="mt-8 rounded-2xl border border-dashed border-(--l-border) p-6 text-center text-xs text-(--l-fg-3)">
-                    Usage windows apply to the Entry (Goat) plan. Your current
-                    plan uses standard balance metering.
+                    Usage windows apply to the Entry plan. Your current plan
+                    uses standard balance metering.
                   </div>
                 )}
               </div>

@@ -27,7 +27,7 @@ export interface CreditGateStatus {
 
 export interface UserPlanInfo {
   id: string;
-  modelAccess: "luna-only" | "all";
+  modelAccess: "starter-only" | "all";
 }
 
 interface ModelsResponse {

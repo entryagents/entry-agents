@@ -12,7 +12,7 @@ interface PlanRow {
   name: string;
   priceUsdCents: number;
   creditGrantCents: number;
-  modelAccess: "luna-only" | "all";
+  modelAccess: "starter-only" | "all";
 }
 
 interface WindowUsage {
@@ -26,7 +26,7 @@ interface BillingMeResponse {
   planName: string;
   creditBalanceCents: number;
   creditGrantCents: number;
-  /** Live window usage; non-null ONLY for plans with windows (the Entry/Goat plan). */
+  /** Live window usage; non-null ONLY for plans with windows (the Entry plan). */
   usageWindows: {
     mode?: "rolling" | "fixed";
     fiveHour: WindowUsage;
@@ -38,7 +38,8 @@ interface BillingMeResponse {
 const PLAN_BLURB: Record<string, string> = {
   free: "Try Entry with included starter models. $1 trial credit, no card required.",
   plus: "Full model access. $10 of credit every month.",
-  goat: "The flagship Entry plan. $13/mo grants $50 of usage credit (3.8x). Choose between continuous Sliding Windows or Fixed Window Refill cycles for your $10 / 5-hour, $25 / 7-day, and $50 / 30-day limits.",
+  entry:
+    "The flagship Entry plan. $13/mo grants $50 of usage credit (3.8x). Choose between continuous Sliding Windows or Fixed Window Refill cycles for your $10 / 5-hour, $25 / 7-day, and $50 / 30-day limits.",
   pro: "$100 of credit every month for heavy builders.",
   max: "$180 of credit. Our biggest monthly pool.",
 };
@@ -48,10 +49,10 @@ export function PlansCatalog() {
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [me, setMe] = useState<BillingMeResponse | null | undefined>(undefined);
-  const [goatModalOpen, setGoatModalOpen] = useState(false);
-  const [selectedGoatMode, setSelectedGoatMode] = useState<"rolling" | "fixed">(
-    "rolling",
-  );
+  const [entryModalOpen, setEntryModalOpen] = useState(false);
+  const [selectedEntryMode, setSelectedEntryMode] = useState<
+    "rolling" | "fixed"
+  >("rolling");
 
   useEffect(() => {
     fetch("/api/billing/plans")
@@ -74,11 +75,11 @@ export function PlansCatalog() {
     if (planId === "free") {
       return;
     }
-    if (planId === "goat" && !windowMode) {
-      setGoatModalOpen(true);
+    if (planId === "entry" && !windowMode) {
+      setEntryModalOpen(true);
       return;
     }
-    setGoatModalOpen(false);
+    setEntryModalOpen(false);
     setErrorMessage(null);
     setPendingPlan(planId);
     try {
@@ -167,7 +168,7 @@ export function PlansCatalog() {
             <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               {(plans ?? []).map((plan) => {
                 const isCurrentPlan = me?.plan === plan.id;
-                const isFlagship = plan.id === "goat";
+                const isFlagship = plan.id === "entry";
                 return (
                   <div
                     key={plan.id}
@@ -256,11 +257,11 @@ export function PlansCatalog() {
         </section>
       </div>
 
-      {goatModalOpen && (
+      {entryModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl border border-(--l-border) bg-(--l-bg) p-6 text-(--l-fg) shadow-2xl">
             <h2 className="text-lg font-semibold">
-              Choose your Entry (GOAT) window method
+              Choose your Entry window method
             </h2>
             <p className="mt-1.5 text-xs leading-relaxed text-(--l-fg-2)">
               Select how your 5-hour ($10), 7-day ($25), and 30-day ($50) usage
@@ -270,9 +271,9 @@ export function PlansCatalog() {
             <div className="mt-4 space-y-2.5">
               <button
                 type="button"
-                onClick={() => setSelectedGoatMode("rolling")}
+                onClick={() => setSelectedEntryMode("rolling")}
                 className={`w-full rounded-xl border p-3.5 text-left transition ${
-                  selectedGoatMode === "rolling"
+                  selectedEntryMode === "rolling"
                     ? "border-(--l-fg) bg-(--l-fg)/[0.06]"
                     : "border-(--l-border) hover:border-(--l-fg-3)"
                 }`}
@@ -293,9 +294,9 @@ export function PlansCatalog() {
 
               <button
                 type="button"
-                onClick={() => setSelectedGoatMode("fixed")}
+                onClick={() => setSelectedEntryMode("fixed")}
                 className={`w-full rounded-xl border p-3.5 text-left transition ${
-                  selectedGoatMode === "fixed"
+                  selectedEntryMode === "fixed"
                     ? "border-(--l-fg) bg-(--l-fg)/[0.06]"
                     : "border-(--l-border) hover:border-(--l-fg-3)"
                 }`}
@@ -322,14 +323,14 @@ export function PlansCatalog() {
             <div className="mt-5 flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setGoatModalOpen(false)}
+                onClick={() => setEntryModalOpen(false)}
                 className="rounded-lg border border-(--l-border) px-4 py-2 text-xs font-medium text-(--l-fg-2) hover:text-(--l-fg)"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={() => handleSubscribe("goat", selectedGoatMode)}
+                onClick={() => handleSubscribe("entry", selectedEntryMode)}
                 className="rounded-lg bg-(--l-btn-bg) px-5 py-2 text-xs font-semibold text-(--l-btn-fg)"
               >
                 Confirm &amp; Continue

@@ -3,8 +3,12 @@ export type {
   ActiveCommandInfo,
   ExecResult,
   Sandbox,
+  SandboxCheckpoint,
+  SandboxExposedPort,
   SandboxHook,
   SandboxHooks,
+  SandboxInfo,
+  SandboxProxyRoute,
   SandboxStats,
   SandboxType,
   SnapshotResult,
@@ -40,6 +44,7 @@ export {
   USER_SELECTABLE_SANDBOX_TYPES,
   CONTEXT_SANDBOX_TYPES,
   DEFAULT_SANDBOX_PROVIDER,
+  BOXD_CAPABILITIES,
   MODAL_CAPABILITIES,
   LOCAL_CAPABILITIES,
   NOVITA_CAPABILITIES,
@@ -102,28 +107,9 @@ export async function LocalSandboxLazy() {
 // Vercel was dropped; Modal volumes are drives too)
 export type { DriveMountConfig, DriveMountSpec } from "./types.ts";
 
-// Error-shape helper: the SDK keeps the real cause on .text/.json while
-// .message stays generic, so a bare `error.message` loses the diagnosis.
-export async function toErrorMessage(e: unknown) {
-  const m = await import("./modal/client.ts");
-  return m.toErrorMessage(e);
-}
-
-// Modal client + volume lifecycle, for server-side callers that need to
-// reclaim an archived session's workspace. The credential resolution stays
-// inside modal/client.ts; callers only ever see these functions.
-export async function createModalClient(
-  ...args: Parameters<(typeof import("./modal/client.ts"))["createModalClient"]>
-) {
-  const m = await import("./modal/client.ts");
-  return m.createModalClient(...args);
-}
-export async function deleteModalVolume(
-  ...args: Parameters<(typeof import("./modal/client.ts"))["deleteModalVolume"]>
-) {
-  const m = await import("./modal/client.ts");
-  return m.deleteModalVolume(...args);
-}
+// Error-shape helper: some HTTP/RPC SDKs keep details on .text/.json while
+// .message stays generic, so callers use toErrorMessage() instead of bare .message.
+export { toErrorMessage } from "./error-utils.ts";
 
 export async function listAllBoxdMachines(
   ...args: Parameters<
@@ -141,15 +127,6 @@ export async function deleteAllBoxdMachines(
   const m = await import("./boxd/connect.ts");
   return m.deleteAllBoxdMachines(...args);
 }
-
-// novita
-export async function NovitaSandboxLazy() {
-  const m = await import("./novita/sandbox.ts");
-  return m.NovitaSandbox;
-}
-export { connectNovita } from "./novita/connect.ts";
-export { isNovitaConfigured } from "./novita/config.ts";
-export type { NovitaState } from "./novita/state.ts";
 
 // durable background process registry & toolchain bootstrap
 export {

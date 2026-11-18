@@ -439,7 +439,9 @@ mock.module("@/lib/db/platform-settings", () => ({
   getFreeTierGateStatus: mock(() =>
     Promise.resolve({ enabled: true, reason: null }),
   ),
-  getFreeTierModelId: mock(() => Promise.resolve("openai/gpt-5.6-luna")),
+  getFreeTierModelId: mock(() =>
+    Promise.resolve("deepseek/deepseek-v4.1-flash"),
+  ),
   setFreeTierModelId: mock(() => Promise.resolve()),
 }));
 
@@ -528,6 +530,19 @@ mock.module("./chat-sandbox-runtime", () => ({
   ...realChatSandboxRuntime,
   resolveChatSandboxRuntime: spies.resolveChatSandboxRuntime,
   persistImageAttachmentsToSandbox: mock(() => Promise.resolve([])),
+}));
+
+const realChatCompaction = await import("./chat-compaction");
+mock.module("./chat-compaction", () => ({
+  ...realChatCompaction,
+  loadCompactionCheckpointStep: mock(() => Promise.resolve(null)),
+  compactAndCheckpointStep: mock(
+    async ({ messages }: { messages: unknown[] }) => ({
+      messages,
+      changed: false,
+      didCheckpoint: false,
+    }),
+  ),
 }));
 
 const { runAgentWorkflow } = await import("./chat");

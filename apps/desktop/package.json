@@ -9,12 +9,9 @@
     "url": "https://github.com/entryagents/entry-agents.git"
   },
   "type": "module",
-  "main": "./src/main.js",
   "scripts": {
-    "tauri": "npx --yes @tauri-apps/cli",
-    "build:tauri": "npx --yes @tauri-apps/cli build",
-    "pack": "electron-builder --dir",
-    "dist": "electron-builder",
+    "tauri": "npx --yes @tauri-apps/cli@2.0.0",
+    "build:tauri": "npx --yes @tauri-apps/cli@2.0.0 build",
     "release:beta": "bash scripts/release-beta.sh"
   },
   "dependencies": {

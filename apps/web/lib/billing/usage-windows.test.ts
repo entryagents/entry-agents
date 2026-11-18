@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   findExceededUsageWindow,
+  normalizePlanId,
   PLAN_CATALOG,
   type UsageWindowTotals,
 } from "@/lib/billing/plans";
@@ -13,7 +14,7 @@ const ZERO_TOTALS: UsageWindowTotals = {
 };
 
 describe("findExceededUsageWindow", () => {
-  const windows = PLAN_CATALOG.goat.usageWindows!;
+  const windows = PLAN_CATALOG.entry.usageWindows!;
 
   test("returns null when all windows are under their limits", () => {
     expect(
@@ -79,19 +80,20 @@ describe("findExceededUsageWindow", () => {
     ).toBe("monthly");
   });
 
-  test("GOAT windows are 20%/50%/100% of the $50 grant", () => {
+  test("Entry windows are 20%/50%/100% of the $50 grant", () => {
     expect(windows.fiveHourLimitCents).toBe(1000);
     expect(windows.weeklyLimitCents).toBe(2500);
     expect(windows.monthlyLimitCents).toBe(5000);
   });
 
-  test("the windowed plan is publicly named Entry (id stays goat)", () => {
-    expect(PLAN_CATALOG.goat.name).toBe("Entry");
+  test("the $13 windowed plan is named Entry with id entry (and normalizes legacy goat)", () => {
+    expect(PLAN_CATALOG.entry.name).toBe("Entry");
+    expect(normalizePlanId("goat")).toBe("entry");
   });
 
-  test("only the GOAT plan has usage windows", () => {
+  test("only the Entry plan has usage windows", () => {
     for (const [planId, plan] of Object.entries(PLAN_CATALOG)) {
-      if (planId === "goat") {
+      if (planId === "entry") {
         expect(plan.usageWindows).toBeDefined();
       } else {
         expect(plan.usageWindows).toBeUndefined();

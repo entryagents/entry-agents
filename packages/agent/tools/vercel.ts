@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { serializeBoundedForModel } from "./output-bounds";
 import { isAgentContext } from "./utils";
 import type { VercelCliToolResult } from "../types";
 
@@ -70,5 +71,10 @@ export function vercelCliTool() {
         };
       }
     },
+    toModelOutput: ({ output }) =>
+      serializeBoundedForModel(output, {
+        maxChars: 16_000,
+        label: "vercel_cli output",
+      }),
   });
 }

@@ -1,5 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { serializeBoundedForModel } from "./output-bounds";
 import { isAgentContext } from "./utils";
 import type { GithubCliToolResult } from "../types";
 
@@ -205,5 +206,10 @@ export function githubCliTool() {
         };
       }
     },
+    toModelOutput: ({ output }) =>
+      serializeBoundedForModel(output, {
+        maxChars: 16_000,
+        label: "github_cli output",
+      }),
   });
 }

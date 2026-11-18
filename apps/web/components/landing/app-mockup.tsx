@@ -397,7 +397,7 @@ export function AppMockup() {
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) px-4 py-3">
         <div className="flex min-w-0 items-center gap-2 text-xs">
           <span className="truncate font-medium text-(--l-panel-fg)">
-            entryagents/entry-agents
+            acme-labs/web-platform
           </span>
           <span className="text-(--l-panel-fg-4)">/</span>
           <span className="truncate font-mono text-xs text-(--l-panel-fg-2)">

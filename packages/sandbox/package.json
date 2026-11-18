@@ -15,8 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@boxd-sh/sdk": "^0.2.14",
-    "modal": "^0.11.0"
+    "@boxd-sh/sdk": "^0.2.14"
   },
   "devDependencies": {
     "@entry-agents/tsconfig": "workspace:*",
