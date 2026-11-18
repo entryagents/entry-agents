@@ -11,9 +11,9 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Streamdown } from "streamdown";
 import useSWR from "swr";
 import type { WorkspaceFileContentResponse } from "@/app/api/sessions/[sessionId]/files/content/route";
+import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,7 +31,6 @@ import { SelectionPopover } from "@/components/selection-popover";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getFileOptions } from "@/lib/diffs-config";
 import { useTheme } from "@/app/providers";
-import { streamdownPlugins } from "@/lib/streamdown-config";
 import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 
@@ -152,9 +151,7 @@ function stripMarkdownFrontmatter(content: string) {
 function PrettyMarkdown({ content }: { content: string }) {
   return (
     <div className="p-6">
-      <Streamdown mode="static" isAnimating={false} plugins={streamdownPlugins}>
-        {stripMarkdownFrontmatter(content)}
-      </Streamdown>
+      <StreamingMarkdown content={stripMarkdownFrontmatter(content)} />
     </div>
   );
 }

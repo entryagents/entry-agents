@@ -4,10 +4,6 @@ import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { ThinkingBlock } from "@/components/thinking-block";
 import { useSmoothedText } from "@/lib/chat/use-smoothed-text";
 
-type StreamdownComponents = Parameters<
-  typeof StreamingMarkdown
->[0]["components"];
-
 interface SmoothedAssistantMarkdownProps {
   /** Latest accumulated text for the part (full arrival so far). */
   content: string;
@@ -17,7 +13,7 @@ interface SmoothedAssistantMarkdownProps {
   streamKey: string;
   /** Passed through to StreamingMarkdown unchanged. */
   isStreaming: boolean;
-  components?: StreamdownComponents;
+  onOpenFile?: (filePath: string) => void;
 }
 
 /**
@@ -31,14 +27,14 @@ export function SmoothedAssistantMarkdown({
   active,
   streamKey,
   isStreaming,
-  components,
+  onOpenFile,
 }: SmoothedAssistantMarkdownProps) {
   const text = useSmoothedText(content, active, streamKey);
   return (
     <StreamingMarkdown
       content={text}
       isStreaming={isStreaming}
-      components={components}
+      onOpenFile={onOpenFile}
     />
   );
 }

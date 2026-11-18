@@ -41,10 +41,6 @@ import type {
   WebAgentUIMessage,
   WebAgentUIMessagePart,
 } from "@/app/types";
-import {
-  AssistantFileLink,
-  type AssistantFileLinkProps,
-} from "@/components/assistant-file-link";
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
 import { consumePendingInitialPrompt } from "@/lib/chat/pending-initial-prompt";
@@ -122,7 +118,6 @@ import {
 } from "./sandbox-create";
 import { SandboxCreateErrorBanner } from "./sandbox-create-error-banner";
 import { WorkspaceFileViewer } from "./workspace-file-viewer";
-import "streamdown/styles.css";
 
 const DiffViewer = dynamic(
   () => import("./diff-viewer").then((m) => m.DiffViewer),
@@ -1409,20 +1404,6 @@ export function SessionChatContent({
     isChatInFlight,
   ]);
   const latestTodos = useMemo(() => getLatestTodos(messages), [messages]);
-
-  const streamdownComponents = useMemo(
-    () => ({
-      a: (props: AssistantFileLinkProps) => (
-        <AssistantFileLink
-          {...props}
-          onOpenFile={(filePath) => {
-            openFileTab(filePath);
-          }}
-        />
-      ),
-    }),
-    [openFileTab],
-  );
   const pendingChatSettingsPromiseRef = useRef<Promise<void>>(
     Promise.resolve(),
   );
@@ -3415,7 +3396,7 @@ export function SessionChatContent({
               <SubagentThreadView
                 subagentId={activeSubagentId}
                 messages={messages}
-                streamdownComponents={streamdownComponents}
+                onOpenFile={openFileTab}
                 onClose={closeSubagentTab}
                 onStopRun={handleStopStream}
                 onApproveTool={handleApproveTool}
@@ -3439,7 +3420,7 @@ export function SessionChatContent({
                         <ChatMessageFeed
                           messages={renderMessages}
                           isStreaming={effectiveStatus === "streaming"}
-                          streamdownComponents={streamdownComponents}
+                          onOpenFile={openFileTab}
                           onApproveTool={handleApproveTool}
                           onDenyTool={handleDenyTool}
                           onOpenSubagentTab={openSubagentTab}

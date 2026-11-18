@@ -9,31 +9,21 @@ import {
   GitPullRequest,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
-import { Streamdown } from "streamdown";
 import type {
   WebAgentUIMessage,
   WebAgentUIMessagePart,
   WebAgentUIToolPart,
 } from "@/app/types";
-import {
-  AssistantFileLink,
-  type AssistantFileLinkProps,
-} from "@/components/assistant-file-link";
 import { AssistantMessageGroups } from "@/components/assistant-message-groups";
 import { SnippetChip } from "@/components/snippet-chip";
+import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { ThinkingBlock } from "@/components/thinking-block";
 import { ToolCall } from "@/components/tool-call";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import type { Chat } from "@/lib/db/schema";
-import {
-  chatStreamdownControls,
-  streamdownPlugins,
-} from "@/lib/streamdown-config";
 import { cn } from "@/lib/utils";
 import { SharedChatStatus } from "./shared-chat-status";
-import "streamdown/styles.css";
 
 export type MessageWithTiming = {
   message: WebAgentUIMessage;
@@ -364,13 +354,6 @@ function SharedMessage({
 
   flushReasoningGroup();
 
-  const streamdownComponents = useMemo(
-    () => ({
-      a: (props: AssistantFileLinkProps) => <AssistantFileLink {...props} />,
-    }),
-    [],
-  );
-
   const isUser = m.role === "user";
 
   const renderGroupElements = (isExpanded: boolean) =>
@@ -443,15 +426,7 @@ function SharedMessage({
               </div>
             ) : (
               <div className="min-w-0 w-full overflow-hidden">
-                <Streamdown
-                  mode="static"
-                  isAnimating={false}
-                  components={streamdownComponents}
-                  plugins={streamdownPlugins}
-                  controls={chatStreamdownControls}
-                >
-                  {p.text}
-                </Streamdown>
+                <StreamingMarkdown content={p.text} />
               </div>
             )}
           </div>

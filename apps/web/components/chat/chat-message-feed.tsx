@@ -22,7 +22,6 @@ import { AssistantMessageGroups } from "@/components/assistant-message-groups";
 import { MessageAttachmentChip } from "@/components/message-attachment-chip";
 import { MessageModelPill } from "@/components/message-model-pill";
 import { SnippetChip } from "@/components/snippet-chip";
-import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { ToolCall } from "@/components/tool-call/tool-call";
 import {
   hasRenderableAssistantPart,
@@ -116,7 +115,7 @@ function getToolPartName(part: WebAgentUIMessagePart): string | undefined {
 export interface ChatMessageFeedProps {
   messages: WebAgentUIMessage[];
   isStreaming?: boolean;
-  streamdownComponents?: Parameters<typeof StreamingMarkdown>[0]["components"];
+  onOpenFile?: (filePath: string) => void;
   activeApprovalId?: string | null;
   onApproveTool?: (id: string) => void;
   onDenyTool?: (id: string, reason?: string) => void;
@@ -154,7 +153,7 @@ interface ChatMessageRowProps {
   message: WebAgentUIMessage;
   groups: MessageRenderGroup[];
   isMessageStreaming: boolean;
-  streamdownComponents?: Parameters<typeof StreamingMarkdown>[0]["components"];
+  onOpenFile?: (filePath: string) => void;
   activeApprovalId: string | null;
   onApproveTool?: (id: string) => void;
   onDenyTool?: (id: string, reason?: string) => void;
@@ -189,7 +188,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   message: m,
   groups,
   isMessageStreaming,
-  streamdownComponents,
+  onOpenFile,
   activeApprovalId,
   onApproveTool,
   onDenyTool,
@@ -425,7 +424,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                         .slice(group.index + 1)
                         .some(hasRenderableAssistantPart)
                     }
-                    components={streamdownComponents}
+                    onOpenFile={onOpenFile}
                   />
                 </div>
               </div>
@@ -656,7 +655,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
 export const ChatMessageFeed = memo(function ChatMessageFeed({
   messages,
   isStreaming = false,
-  streamdownComponents,
+  onOpenFile,
   activeApprovalId = null,
   onApproveTool,
   onDenyTool,
@@ -771,7 +770,7 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
             message={m}
             groups={groups}
             isMessageStreaming={isMessageStreaming}
-            streamdownComponents={streamdownComponents}
+            onOpenFile={onOpenFile}
             activeApprovalId={activeApprovalId}
             onApproveTool={onApproveTool}
             onDenyTool={onDenyTool}
