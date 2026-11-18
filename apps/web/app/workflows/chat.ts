@@ -4364,6 +4364,12 @@ const runAgentStep = async (
       }
     }
 
+    const { getUserExternalIntegrationAccess } =
+      await import("@/lib/billing/integration-access-server");
+    const integrationAccess = await getUserExternalIntegrationAccess(
+      userId,
+    ).catch(() => ({ allowed: true }));
+
     // Self-serve MCP servers this user has configured (see
     // lib/db/mcp-servers.ts + packages/agent/tools/mcp.ts). Resolved
     // fresh every step -- there's no long-lived process to pool the
@@ -4372,210 +4378,223 @@ const runAgentStep = async (
     // why DB connections aren't cached across steps in this file.
     // Deliberately never blocks/fails the turn: a broken server is
     // logged and skipped, not surfaced as a step error.
-    try {
-      const [
-        { getEnabledMcpServersForRequest, recordMcpServerConnectionResult },
-        { getIntegrationProvider },
-        { prepareMcpServersForExecution },
-      ] = await Promise.all([
-        import("@/lib/db/mcp-servers"),
-        import("@/lib/integrations/registry"),
-        import("@/lib/mcp/resolve-server-config"),
-      ]);
-      const rawEnabledServers = await getEnabledMcpServersForRequest(userId);
-      const { resolvedServers: enabledServers, failures: prepFailures } =
-        await prepareMcpServersForExecution(
-          rawEnabledServers,
-          runtimeSecrets.secrets,
-          trackSecretUsed,
-        );
-
-      if (prepFailures.length > 0) {
-        console.warn(
-          `[workflow] Dropping ${prepFailures.length} MCP server(s) for user ${userId} during pre-connect template/SSRF validation.`,
-        );
-        await Promise.all(
-          prepFailures
-            .filter((failure) => Boolean(failure.id))
-            .map((failure) =>
-              recordMcpServerConnectionResult(
-                failure.id as string,
-                failure.error,
-              ).catch(() => {}),
-            ),
-        );
-      }
-
-      // Built-in integration gateway (Executor by default via registry plugin)
-      // resolved per user with OAuth auto-refresh or encrypted PAT fallback.
-      const integrationProvider = getIntegrationProvider();
-      const integrationMcp = await integrationProvider
-        .getMcpConfig(userId)
-        .catch((err) => {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (!msg.includes("POSTGRES_URL environment variable is required")) {
-            console.warn(
-              `[workflow] Failed to resolve integration MCP config for user ${userId}:`,
-              err,
-            );
-          }
-          return null;
-        });
-      const [integrationServer, connectedToolkits] = await Promise.all([
-        Promise.resolve(
-          integrationMcp
-            ? {
-                id: integrationProvider.id,
-                name: integrationProvider.id,
-                url: integrationMcp.url,
-                headers: integrationMcp.headers,
-                transport: "http" as const,
-              }
-            : null,
-        ),
-        integrationProvider
-          .listToolkits(userId, undefined, {
-            category: "connected",
-            limit: 120,
-          })
-          .then((res) =>
-            res.items.filter((item) => item.connected).map((item) => item.slug),
-          )
-          .catch(() => [] as string[]),
-      ]);
-      if (integrationServer) {
-        fullAgentOptions.mcpMetadata = {
-          composioConnectedToolkits: connectedToolkits,
-          connectedIntegrations: connectedToolkits,
-        };
-      }
-      const combinedServers = integrationServer
-        ? [...enabledServers, integrationServer]
-        : enabledServers;
-      if (combinedServers.length > 0) {
-        let stepMcpSandbox:
-          | Awaited<
-              ReturnType<typeof import("@entry-agents/sandbox").connectSandbox>
-            >
-          | undefined;
-        if (combinedServers.some((server) => server.transport === "stdio")) {
-          try {
-            const [{ getSessionById }, { connectSandbox }] = await Promise.all([
-              import("@/lib/db/sessions"),
-              import("@entry-agents/sandbox"),
-            ]);
-            const currentSession = await getSessionById(sessionId);
-            const targetState =
-              currentSession?.sandboxState ?? agentOptions.sandbox?.state;
-            if (targetState) {
-              stepMcpSandbox = await connectSandbox(targetState);
-            }
-          } catch (sandboxErr) {
-            console.warn(
-              `[workflow] Failed to connect sandbox for stdio MCP servers in session ${sessionId}:`,
-              sandboxErr,
-            );
-          }
-        }
-
-        const connectServers = stepMcpSandbox
-          ? combinedServers
-          : combinedServers.filter((server) => server.transport !== "stdio");
-
-        if (connectServers.length < combinedServers.length) {
-          console.info(
-            `[workflow] Deferring stdio MCP server connection until sandbox is active in session ${sessionId}.`,
+    if (integrationAccess.allowed) {
+      try {
+        const [
+          { getEnabledMcpServersForRequest, recordMcpServerConnectionResult },
+          { getIntegrationProvider },
+          { prepareMcpServersForExecution },
+        ] = await Promise.all([
+          import("@/lib/db/mcp-servers"),
+          import("@/lib/integrations/registry"),
+          import("@/lib/mcp/resolve-server-config"),
+        ]);
+        const rawEnabledServers = await getEnabledMcpServersForRequest(userId);
+        const { resolvedServers: enabledServers, failures: prepFailures } =
+          await prepareMcpServersForExecution(
+            rawEnabledServers,
+            runtimeSecrets.secrets,
+            trackSecretUsed,
           );
-        }
 
-        mcpToolSet =
-          connectServers.length > 0
-            ? await createMcpToolSet(connectServers, {
-                ...(stepMcpSandbox ? { sandbox: stepMcpSandbox } : {}),
-                ...(stepSecretRedactor
-                  ? { secretRedactor: stepSecretRedactor }
-                  : {}),
-              })
-            : undefined;
-        if (mcpToolSet && mcpToolSet.failures.length > 0) {
+        if (prepFailures.length > 0) {
           console.warn(
-            `[workflow] ${mcpToolSet.failures.length} MCP server(s) failed to connect for user ${userId}:`,
-            mcpToolSet.failures,
+            `[workflow] Dropping ${prepFailures.length} MCP server(s) for user ${userId} during pre-connect template/SSRF validation.`,
           );
           await Promise.all(
-            mcpToolSet.failures.map(async (failure) => {
-              const server = rawEnabledServers.find(
-                (s) => s.name === failure.name,
-              );
-              if (server) {
-                await recordMcpServerConnectionResult(
-                  server.id,
+            prepFailures
+              .filter((failure) => Boolean(failure.id))
+              .map((failure) =>
+                recordMcpServerConnectionResult(
+                  failure.id as string,
                   failure.error,
-                ).catch(() => {});
-              }
-            }),
+                ).catch(() => {}),
+              ),
           );
         }
-        if (stepNumber === 1 && mcpToolSet?.toolsByServer) {
-          await Promise.all(
-            Object.entries(mcpToolSet.toolsByServer).map(
-              async ([serverName, discovered]: [
-                string,
-                McpDiscoveredTool[],
-              ]) => {
-                const match = rawEnabledServers.find(
-                  (s) => s.name === serverName,
+
+        // Built-in integration gateway (Executor by default via registry plugin)
+        // resolved per user with OAuth auto-refresh or encrypted PAT fallback.
+        const integrationProvider = getIntegrationProvider();
+        const integrationMcp = await integrationProvider
+          .getMcpConfig(userId)
+          .catch((err) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (
+              !msg.includes("POSTGRES_URL environment variable is required")
+            ) {
+              console.warn(
+                `[workflow] Failed to resolve integration MCP config for user ${userId}:`,
+                err,
+              );
+            }
+            return null;
+          });
+        const [integrationServer, connectedToolkits] = await Promise.all([
+          Promise.resolve(
+            integrationMcp
+              ? {
+                  id: integrationProvider.id,
+                  name: integrationProvider.id,
+                  url: integrationMcp.url,
+                  headers: integrationMcp.headers,
+                  transport: "http" as const,
+                }
+              : null,
+          ),
+          integrationProvider
+            .listToolkits(userId, undefined, {
+              category: "connected",
+              limit: 120,
+            })
+            .then((res) =>
+              res.items
+                .filter((item) => item.connected)
+                .map((item) => item.slug),
+            )
+            .catch(() => [] as string[]),
+        ]);
+        if (integrationServer) {
+          fullAgentOptions.mcpMetadata = {
+            composioConnectedToolkits: connectedToolkits,
+            connectedIntegrations: connectedToolkits,
+          };
+        }
+        const combinedServers = integrationServer
+          ? [...enabledServers, integrationServer]
+          : enabledServers;
+        if (combinedServers.length > 0) {
+          let stepMcpSandbox:
+            | Awaited<
+                ReturnType<
+                  typeof import("@entry-agents/sandbox").connectSandbox
+                >
+              >
+            | undefined;
+          if (combinedServers.some((server) => server.transport === "stdio")) {
+            try {
+              const [{ getSessionById }, { connectSandbox }] =
+                await Promise.all([
+                  import("@/lib/db/sessions"),
+                  import("@entry-agents/sandbox"),
+                ]);
+              const currentSession = await getSessionById(sessionId);
+              const targetState =
+                currentSession?.sandboxState ?? agentOptions.sandbox?.state;
+              if (targetState) {
+                stepMcpSandbox = await connectSandbox(targetState);
+              }
+            } catch (sandboxErr) {
+              console.warn(
+                `[workflow] Failed to connect sandbox for stdio MCP servers in session ${sessionId}:`,
+                sandboxErr,
+              );
+            }
+          }
+
+          const connectServers = stepMcpSandbox
+            ? combinedServers
+            : combinedServers.filter((server) => server.transport !== "stdio");
+
+          if (connectServers.length < combinedServers.length) {
+            console.info(
+              `[workflow] Deferring stdio MCP server connection until sandbox is active in session ${sessionId}.`,
+            );
+          }
+
+          mcpToolSet =
+            connectServers.length > 0
+              ? await createMcpToolSet(connectServers, {
+                  ...(stepMcpSandbox ? { sandbox: stepMcpSandbox } : {}),
+                  ...(stepSecretRedactor
+                    ? { secretRedactor: stepSecretRedactor }
+                    : {}),
+                })
+              : undefined;
+          if (mcpToolSet && mcpToolSet.failures.length > 0) {
+            console.warn(
+              `[workflow] ${mcpToolSet.failures.length} MCP server(s) failed to connect for user ${userId}:`,
+              mcpToolSet.failures,
+            );
+            await Promise.all(
+              mcpToolSet.failures.map(async (failure) => {
+                const server = rawEnabledServers.find(
+                  (s) => s.name === failure.name,
                 );
-                if (match) {
+                if (server) {
                   await recordMcpServerConnectionResult(
-                    match.id,
-                    null,
-                    discovered.map((t) => ({
-                      name: t.name,
-                      ...(t.description ? { description: t.description } : {}),
-                    })),
+                    server.id,
+                    failure.error,
                   ).catch(() => {});
                 }
-              },
-            ),
+              }),
+            );
+          }
+          if (stepNumber === 1 && mcpToolSet?.toolsByServer) {
+            await Promise.all(
+              Object.entries(mcpToolSet.toolsByServer).map(
+                async ([serverName, discovered]: [
+                  string,
+                  McpDiscoveredTool[],
+                ]) => {
+                  const match = rawEnabledServers.find(
+                    (s) => s.name === serverName,
+                  );
+                  if (match) {
+                    await recordMcpServerConnectionResult(
+                      match.id,
+                      null,
+                      discovered.map((t) => ({
+                        name: t.name,
+                        ...(t.description
+                          ? { description: t.description }
+                          : {}),
+                      })),
+                    ).catch(() => {});
+                  }
+                },
+              ),
+            );
+          }
+        }
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        if (!msg.includes("POSTGRES_URL environment variable is required")) {
+          console.warn(
+            `[workflow] Failed to resolve MCP servers for user ${userId}, continuing without them:`,
+            error,
           );
         }
-      }
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      if (!msg.includes("POSTGRES_URL environment variable is required")) {
-        console.warn(
-          `[workflow] Failed to resolve MCP servers for user ${userId}, continuing without them:`,
-          error,
-        );
       }
     }
     let composioMetaTools: import("ai").ToolSet = {};
-    try {
-      const { createComposioAgentMetaTools } =
-        await import("@/lib/composio/client");
-      const composioRuntime = await createComposioAgentMetaTools({
-        userId,
-        chatId,
-        sessionId,
-      });
-      composioMetaTools = composioRuntime.tools;
-      if (composioRuntime.connectedToolkits.length > 0) {
-        const prevConnected =
-          fullAgentOptions.mcpMetadata?.composioConnectedToolkits ?? [];
-        const mergedConnected = Array.from(
-          new Set([...prevConnected, ...composioRuntime.connectedToolkits]),
+    if (integrationAccess.allowed) {
+      try {
+        const { createComposioAgentMetaTools } =
+          await import("@/lib/composio/client");
+        const composioRuntime = await createComposioAgentMetaTools({
+          userId,
+          chatId,
+          sessionId,
+        });
+        composioMetaTools = composioRuntime.tools;
+        if (composioRuntime.connectedToolkits.length > 0) {
+          const prevConnected =
+            fullAgentOptions.mcpMetadata?.composioConnectedToolkits ?? [];
+          const mergedConnected = Array.from(
+            new Set([...prevConnected, ...composioRuntime.connectedToolkits]),
+          );
+          fullAgentOptions.mcpMetadata = {
+            composioConnectedToolkits: mergedConnected,
+            connectedIntegrations: mergedConnected,
+          };
+        }
+      } catch (composioErr) {
+        console.warn(
+          `[workflow] Failed to initialize Composio session meta tools for user ${userId}:`,
+          composioErr,
         );
-        fullAgentOptions.mcpMetadata = {
-          composioConnectedToolkits: mergedConnected,
-          connectedIntegrations: mergedConnected,
-        };
       }
-    } catch (composioErr) {
-      console.warn(
-        `[workflow] Failed to initialize Composio session meta tools for user ${userId}:`,
-        composioErr,
-      );
     }
 
     const mergedExtraTools: import("ai").ToolSet = {

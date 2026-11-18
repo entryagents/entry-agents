@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ExternalLink,
   KeyRound,
+  Lock,
   Plus,
   RefreshCw,
   Search,
@@ -13,6 +14,7 @@ import {
   Trash2,
   Users,
 } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
@@ -28,6 +30,8 @@ interface ComposioToolkitsResponse {
   connectedCount: number;
   categoryCounts?: Record<string, number>;
   sharedAccounts: ComposioConnectedAccountSummary[];
+  planRestricted?: boolean;
+  upgradeReason?: string | null;
   error?: string;
 }
 
@@ -350,6 +354,32 @@ export function ComposioToolkitsSection() {
         </div>
       ) : null}
 
+      {data?.planRestricted ? (
+        <div className="flex flex-col gap-2.5 rounded-lg border border-border bg-muted/30 px-3.5 py-2.5 text-xs sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-2">
+            <Lock
+              className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+              strokeWidth={1.5}
+            />
+            <div>
+              <span className="font-medium text-foreground">
+                External integrations require a paid plan
+              </span>
+              <p className="mt-0.5 text-muted-foreground">
+                {data.upgradeReason ||
+                  "Upgrade to Plus or higher to connect apps and use external integrations."}
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/settings/billing"
+            className="inline-flex h-7 shrink-0 items-center justify-center rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90"
+          >
+            Upgrade plan
+          </Link>
+        </div>
+      ) : null}
+
       {activeBanner ? (
         <div
           className={`flex items-start gap-2 rounded-lg border px-3.5 py-2.5 text-xs ${
@@ -455,8 +485,9 @@ export function ComposioToolkitsSection() {
 
                   <button
                     type="button"
-                    disabled={isBusy}
+                    disabled={isBusy || Boolean(data?.planRestricted)}
                     onClick={() => {
+                      if (data?.planRestricted) return;
                       if (tk.accounts.length > 0) {
                         setAddingAccountFor(isAdding ? null : tk.slug);
                         setNewAlias("");
@@ -465,9 +496,14 @@ export function ComposioToolkitsSection() {
                         handleConnect(tk.slug);
                       }
                     }}
-                    className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                    className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-border bg-card px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {tk.accounts.length > 0 ? (
+                    {data?.planRestricted ? (
+                      <>
+                        <Lock className="size-3" strokeWidth={1.5} />
+                        <span>Paid plan</span>
+                      </>
+                    ) : tk.accounts.length > 0 ? (
                       <>
                         <Plus className="size-3" strokeWidth={1.5} />
                         <span>Add account</span>

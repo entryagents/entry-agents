@@ -17,11 +17,19 @@ export async function GET(req: Request) {
   const category = url.searchParams.get("category") ?? undefined;
 
   try {
-    const result = await listComposioToolkitsForUser(session.user.id, {
-      search,
-      category,
+    const [{ getUserExternalIntegrationAccess }, result] = await Promise.all([
+      import("@/lib/billing/integration-access-server"),
+      listComposioToolkitsForUser(session.user.id, {
+        search,
+        category,
+      }),
+    ]);
+    const access = await getUserExternalIntegrationAccess(session.user.id);
+    return NextResponse.json({
+      ...result,
+      planRestricted: !access.allowed,
+      upgradeReason: access.allowed ? null : (access.reason ?? null),
     });
-    return NextResponse.json(result);
   } catch (error) {
     const status =
       error instanceof ComposioServiceError ? error.statusCode : 500;

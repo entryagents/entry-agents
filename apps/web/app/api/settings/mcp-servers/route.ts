@@ -42,6 +42,21 @@ export async function POST(req: Request) {
     return Response.json({ error: "Not authenticated" }, { status: 401 });
   }
 
+  const { getUserExternalIntegrationAccess } =
+    await import("@/lib/billing/integration-access-server");
+  const access = await getUserExternalIntegrationAccess(session.user.id);
+  if (!access.allowed) {
+    return Response.json(
+      {
+        error:
+          access.reason ??
+          "Custom MCP servers require a paid plan. Upgrade to Plus or higher.",
+        code: access.code ?? "PLAN_UPGRADE_REQUIRED",
+      },
+      { status: 403 },
+    );
+  }
+
   let rawBody: unknown;
   try {
     rawBody = await req.json();
