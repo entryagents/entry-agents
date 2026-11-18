@@ -4,7 +4,9 @@ import {
   Archive,
   ChevronDown,
   CircleDashed,
+  Folder,
   FolderGit2,
+  FolderInput,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -69,12 +71,14 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { useSession } from "@/hooks/use-session";
 import type { SessionWithUnread } from "@/hooks/use-sessions";
 import { signOut } from "@/lib/auth/actions";
+import type { Project } from "@/lib/db/schema";
 import type { Session as AuthSession } from "@/lib/session/types";
 import { formatRelativeTime } from "@/lib/format-relative-time";
 import { groupSessionsByProject } from "@/lib/sessions/group-projects";
 
 type InboxSidebarProps = {
   sessions: SessionWithUnread[];
+  customProjects?: Project[];
   archivedCount: number;
   sessionsLoading: boolean;
   activeSessionId: string;
@@ -82,9 +86,17 @@ type InboxSidebarProps = {
   onSessionClick: (session: SessionWithUnread) => void;
   onSessionPrefetch: (session: SessionWithUnread) => void;
   onRenameSession?: (sessionId: string, title: string) => Promise<void>;
+  onMoveSessionToFolder?: (
+    sessionId: string,
+    projectId: string | null,
+  ) => Promise<void>;
   onArchiveSession: (sessionId: string) => Promise<void>;
   onUnarchiveSession: (sessionId: string) => Promise<void>;
   onOpenNewSession: () => void;
+  onCreateFolder?: (name: string) => Promise<void>;
+  onRenameFolder?: (projectId: string, name: string) => Promise<void>;
+  onDeleteFolder?: (projectId: string) => Promise<void>;
+  onStartChatInFolder?: (projectId: string) => void;
   onCreateSessionForRepo: (repoOwner: string, repoName: string) => void;
   onCreateSessionFromBranch: (
     repoOwner: string,
@@ -351,9 +363,14 @@ type SessionRowProps = {
   session: SessionWithUnread;
   isActive: boolean;
   isPending: boolean;
+  folders?: Project[];
   onSessionClick: (session: SessionWithUnread) => void;
   onSessionPrefetch: (session: SessionWithUnread) => void;
   onRenameSession?: (sessionId: string, title: string) => Promise<void>;
+  onMoveSessionToFolder?: (
+    sessionId: string,
+    projectId: string | null,
+  ) => Promise<void>;
   onArchiveSession: (session: SessionWithUnread) => void;
   onUnarchiveSession: (session: SessionWithUnread) => void;
   onOpenBranchPicker?: (owner: string, repo: string) => void;
@@ -363,9 +380,11 @@ const SessionRow = memo(function SessionRow({
   session,
   isActive,
   isPending,
+  folders,
   onSessionClick,
   onSessionPrefetch,
   onRenameSession,
+  onMoveSessionToFolder,
   onArchiveSession,
   onUnarchiveSession,
   onOpenBranchPicker,
@@ -524,6 +543,54 @@ const SessionRow = memo(function SessionRow({
             Rename session
           </TooltipContent>
         </Tooltip>
+      ) : null}
+      {folders && folders.length > 0 && onMoveSessionToFolder ? (
+        <DropdownMenu>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="rounded p-0.5 text-muted-foreground/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-muted-foreground"
+                  aria-label="Move to folder"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <FolderInput className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={4}>
+              Move to folder
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end" sideOffset={4} className="w-44">
+            {folders.map((folder) => {
+              const isCurrent = session.projectId === folder.id;
+              return (
+                <DropdownMenuItem
+                  key={folder.id}
+                  disabled={isCurrent}
+                  onSelect={() => {
+                    void onMoveSessionToFolder(session.id, folder.id);
+                  }}
+                >
+                  <Folder className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  <span className="truncate">{folder.name}</span>
+                </DropdownMenuItem>
+              );
+            })}
+            {session.projectId ? (
+              <DropdownMenuItem
+                onSelect={() => {
+                  void onMoveSessionToFolder(session.id, null);
+                }}
+              >
+                <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+                <span>Remove from folder</span>
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
       <Tooltip>
         <TooltipTrigger asChild>
@@ -732,6 +799,8 @@ function areSessionRowsEqual(
     prev.session.hasUnread === next.session.hasUnread &&
     prev.session.repoOwner === next.session.repoOwner &&
     prev.session.repoName === next.session.repoName &&
+    prev.session.projectId === next.session.projectId &&
+    prev.folders === next.folders &&
     prev.session.branch === next.session.branch &&
     prev.session.prNumber === next.session.prNumber &&
     prev.session.prStatus === next.session.prStatus &&
@@ -743,6 +812,7 @@ function areSessionRowsEqual(
 
 export function InboxSidebar({
   sessions,
+  customProjects = [],
   archivedCount,
   sessionsLoading,
   activeSessionId,
@@ -750,9 +820,14 @@ export function InboxSidebar({
   onSessionClick,
   onSessionPrefetch,
   onRenameSession,
+  onMoveSessionToFolder,
   onArchiveSession,
   onUnarchiveSession,
   onOpenNewSession,
+  onCreateFolder,
+  onRenameFolder,
+  onDeleteFolder,
+  onStartChatInFolder,
   onCreateSessionForRepo,
   onCreateSessionFromBranch,
   initialUser,
@@ -887,8 +962,8 @@ export function InboxSidebar({
   }, [desktopSearchQuery, displayedSessions]);
 
   const { projects: projectGroups, standaloneSessions } = useMemo(
-    () => groupSessionsByProject(filteredDisplayedSessions),
-    [filteredDisplayedSessions],
+    () => groupSessionsByProject(filteredDisplayedSessions, customProjects),
+    [customProjects, filteredDisplayedSessions],
   );
 
   const handleImportRepo = useCallback(
@@ -1159,32 +1234,21 @@ export function InboxSidebar({
                 </div>
               ))}
             </div>
-          ) : filteredDisplayedSessions.length === 0 ? (
-            <div className="px-3 py-12 text-center text-xs text-muted-foreground">
-              {desktopSearchQuery
-                ? "No matching sessions"
-                : showArchived
-                  ? (archivedSessionsError ?? "No archived sessions")
-                  : "No sessions yet"}
-              {showArchived && archivedSessionsError ? (
-                <div className="mt-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRetryArchivedSessions}
-                  >
-                    Retry
-                  </Button>
-                </div>
-              ) : null}
-            </div>
           ) : !showArchived && !desktopSearchQuery.trim() ? (
             <>
               <SidebarProjectsSection
                 projects={projectGroups}
                 activeSessionId={activeSessionId}
                 onOpenImportGithub={() => setImportGithubOpen(true)}
+                onCreateFolder={onCreateFolder ?? (async () => {})}
+                onRenameFolder={onRenameFolder ?? (async () => {})}
+                onDeleteFolder={onDeleteFolder ?? (async () => {})}
+                onStartChatInFolder={(projectId) => {
+                  if (isMobile) {
+                    setOpenMobile(false);
+                  }
+                  onStartChatInFolder?.(projectId);
+                }}
                 onCreateSessionForRepo={handleImportRepo}
                 renderSessionRow={(sessionItem) => (
                   <SessionRow
@@ -1192,9 +1256,11 @@ export function InboxSidebar({
                     session={sessionItem}
                     isActive={sessionItem.id === activeSessionId}
                     isPending={sessionItem.id === pendingSessionId}
+                    folders={customProjects}
                     onSessionClick={handleSessionClick}
                     onSessionPrefetch={handleSessionPrefetch}
                     onRenameSession={onRenameSession}
+                    onMoveSessionToFolder={onMoveSessionToFolder}
                     onArchiveSession={handleArchiveSession}
                     onUnarchiveSession={handleUnarchiveSession}
                     onOpenBranchPicker={handleOpenBranchPicker}
@@ -1219,9 +1285,11 @@ export function InboxSidebar({
                         session={sessionItem}
                         isActive={sessionItem.id === activeSessionId}
                         isPending={sessionItem.id === pendingSessionId}
+                        folders={customProjects}
                         onSessionClick={handleSessionClick}
                         onSessionPrefetch={handleSessionPrefetch}
                         onRenameSession={onRenameSession}
+                        onMoveSessionToFolder={onMoveSessionToFolder}
                         onArchiveSession={handleArchiveSession}
                         onUnarchiveSession={handleUnarchiveSession}
                         onOpenBranchPicker={handleOpenBranchPicker}
@@ -1229,8 +1297,30 @@ export function InboxSidebar({
                     ))}
                   </div>
                 </div>
+              ) : projectGroups.length === 0 ? (
+                <div className="px-3 py-8 text-center text-xs text-muted-foreground">
+                  No chats yet
+                </div>
               ) : null}
             </>
+          ) : filteredDisplayedSessions.length === 0 ? (
+            <div className="px-3 py-12 text-center text-xs text-muted-foreground">
+              {desktopSearchQuery
+                ? "No matching sessions"
+                : (archivedSessionsError ?? "No archived sessions")}
+              {showArchived && archivedSessionsError ? (
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRetryArchivedSessions}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <>
               <div className="space-y-0.5 p-0.5">

@@ -219,6 +219,7 @@ export async function countUserMessagesByUserId(
 type SessionSidebarFields = Pick<
   typeof sessions.$inferSelect,
   | "id"
+  | "projectId"
   | "title"
   | "status"
   | "repoOwner"
@@ -271,6 +272,7 @@ export async function getSessionsWithUnreadByUserId(
   const baseQuery = db
     .select({
       id: sessions.id,
+      projectId: sessions.projectId,
       title: sessions.title,
       status: sessions.status,
       repoOwner: sessions.repoOwner,

@@ -6,81 +6,78 @@ function makeSession(
   overrides: Partial<SessionWithUnread> & { id: string },
 ): SessionWithUnread {
   return {
-    userId: "user-1",
+    projectId: null,
     title: "Test session",
     status: "completed",
     repoOwner: null,
     repoName: null,
     branch: null,
-    cloneUrl: null,
-    vercelProjectId: null,
-    vercelProjectName: null,
-    vercelTeamId: null,
-    vercelTeamSlug: null,
-    isNewBranch: false,
-    autoCommitPushOverride: null,
-    autoCreatePrOverride: null,
-    autoApproveToolsOverride: null,
-    permissionModeOverride: null,
-    globalSkillRefs: [],
-    sandboxState: null,
-    lifecycleState: null,
-    lifecycleVersion: 0,
-    lastActivityAt: new Date("2026-11-18T10:00:00Z"),
-    sandboxExpiresAt: null,
-    hibernateAfter: null,
-    lifecycleRunId: null,
-    sandboxProvisioningRunId: null,
-    lifecycleError: null,
-    migrationFailureCount: 0,
-    activeBashCommand: null,
-    prNumber: null,
-    prStatus: null,
     linesAdded: null,
     linesRemoved: null,
+    prNumber: null,
+    prStatus: null,
     createdAt: new Date("2026-11-18T10:00:00Z"),
-    updatedAt: new Date("2026-11-18T10:00:00Z"),
+    lastActivityAt: new Date("2026-11-18T10:00:00Z"),
     hasUnread: false,
     hasStreaming: false,
+    latestChatId: "chat-1",
     ...overrides,
-  } as SessionWithUnread;
+  };
 }
 
 describe("groupSessionsByProject", () => {
-  it("groups repository sessions into projects sorted by latest activity and separates standalone chats", () => {
-    const older = makeSession({
-      id: "s1",
-      repoOwner: "acme",
-      repoName: "alpha",
-      lastActivityAt: new Date("2026-11-18T08:00:00Z"),
-    });
-    const newer = makeSession({
-      id: "s2",
-      repoOwner: "acme",
-      repoName: "beta",
-      lastActivityAt: new Date("2026-11-18T12:00:00Z"),
-      hasUnread: true,
-    });
-    const secondAlpha = makeSession({
-      id: "s3",
-      repoOwner: "acme",
-      repoName: "alpha",
-      lastActivityAt: new Date("2026-11-18T09:00:00Z"),
-    });
-    const blank = makeSession({
-      id: "s4",
-      repoOwner: null,
-      repoName: null,
-    });
+  it("includes empty custom folders and groups sessions into folders, repos, and standalone", () => {
+    const customProjects = [
+      {
+        id: "proj-empty",
+        name: "Empty Folder",
+        createdAt: new Date("2026-11-18T08:00:00Z"),
+        updatedAt: new Date("2026-11-18T08:00:00Z"),
+      },
+      {
+        id: "proj-work",
+        name: "Work Notes",
+        createdAt: new Date("2026-11-18T09:00:00Z"),
+        updatedAt: new Date("2026-11-18T09:00:00Z"),
+      },
+    ];
 
-    const result = groupSessionsByProject([older, newer, secondAlpha, blank]);
+    const sessions = [
+      makeSession({
+        id: "s-folder",
+        projectId: "proj-work",
+        lastActivityAt: new Date("2026-11-18T12:00:00Z"),
+      }),
+      makeSession({
+        id: "s-github",
+        repoOwner: "acme",
+        repoName: "web",
+        lastActivityAt: new Date("2026-11-18T11:00:00Z"),
+      }),
+      makeSession({
+        id: "s-standalone",
+        lastActivityAt: new Date("2026-11-18T13:00:00Z"),
+      }),
+    ];
 
-    expect(result.standaloneSessions.map((s) => s.id)).toEqual(["s4"]);
-    expect(result.projects.map((p) => p.key)).toEqual([
-      "acme/beta",
-      "acme/alpha",
+    const result = groupSessionsByProject(sessions, customProjects);
+
+    expect(result.standaloneSessions.map((s) => s.id)).toEqual([
+      "s-standalone",
     ]);
-    expect(result.projects[0]?.hasUnread).toBe(true);
-    expect(result.projects[1]?.sessions.map((s) => s.id)).toEqual(["s1", "s3"]);
+    expect(result.projects).toHaveLength(3);
+    expect(result.projects.map((p) => p.key)).toEqual([
+      "folder:proj-work",
+      "github:acme/web",
+      "folder:proj-empty",
+    ]);
+
+    const workFolder = result.projects[0];
+    expect(workFolder?.kind).toBe("folder");
+    expect(workFolder?.sessions.map((s) => s.id)).toEqual(["s-folder"]);
+
+    const emptyFolder = result.projects[2];
+    expect(emptyFolder?.kind).toBe("folder");
+    expect(emptyFolder?.sessions).toHaveLength(0);
   });
 });

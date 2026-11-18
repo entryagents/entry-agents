@@ -3,6 +3,7 @@ import {
   getSessionById,
   updateSession,
 } from "@/lib/db/sessions";
+import { getProjectById } from "@/lib/db/projects";
 import { archiveSession } from "@/lib/sandbox/archive-session";
 import { hasRuntimeSandboxState } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
@@ -10,6 +11,7 @@ import { isUserAdmin } from "@/lib/db/users";
 
 interface UpdateSessionRequest {
   title?: string;
+  projectId?: string | null;
   status?: "running" | "completed" | "failed" | "archived";
   linesAdded?: number;
   linesRemoved?: number;
@@ -105,6 +107,16 @@ export async function PATCH(
       },
       { status: 409 },
     );
+  }
+
+  if (body.projectId !== undefined && body.projectId !== null) {
+    if (typeof body.projectId !== "string" || !body.projectId.trim()) {
+      return Response.json({ error: "Invalid folder ID" }, { status: 400 });
+    }
+    const targetProject = await getProjectById(body.projectId.trim());
+    if (!targetProject || targetProject.userId !== existingSession.userId) {
+      return Response.json({ error: "Folder not found" }, { status: 404 });
+    }
   }
 
   const updatePayload: UpdateSessionRequest &
