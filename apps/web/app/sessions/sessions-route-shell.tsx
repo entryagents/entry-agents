@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useBackgroundChatNotifications } from "@/hooks/use-background-chat-notifications";
 import { useSessions, type SessionWithUnread } from "@/hooks/use-sessions";
+import { useProjects } from "@/hooks/use-projects";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { DEFAULT_SANDBOX_TYPE } from "@/components/sandbox-selector-compact";
 import type { Session as AuthSession } from "@/lib/session/types";
@@ -71,6 +72,7 @@ export function SessionsRouteShell({
     loading: sessionsLoading,
     createSession,
     renameSession,
+    moveSessionToProject,
     archiveSession,
     unarchiveSession,
   } = useSessions({
@@ -78,6 +80,13 @@ export function SessionsRouteShell({
     includeArchived: false,
     initialData: initialSessionsData,
   });
+
+  const {
+    projects: customProjects,
+    createProject,
+    renameProject,
+    deleteProject,
+  } = useProjects({ enabled: true });
 
   const getSessionHref = useCallback((targetSession: SessionWithUnread) => {
     if (targetSession.latestChatId) {
@@ -253,6 +262,18 @@ export function SessionsRouteShell({
     [createSession, openNewSessionDialog],
   );
 
+  const handleStartChatInFolder = useCallback(
+    (projectId: string) => {
+      setOptimisticActiveSessionId(null);
+      startNavigationTransition(() => {
+        router.push(`/sessions?projectId=${encodeURIComponent(projectId)}`, {
+          scroll: false,
+        });
+      });
+    },
+    [router, startNavigationTransition],
+  );
+
   return (
     <SessionsShellProvider value={shellContextValue}>
       <SidebarProvider
@@ -267,6 +288,7 @@ export function SessionsRouteShell({
           <SidebarContent className="bg-muted/20">
             <InboxSidebar
               sessions={sessions}
+              customProjects={customProjects}
               archivedCount={archivedCount}
               sessionsLoading={sessionsLoading}
               activeSessionId={activeSessionId}
@@ -274,9 +296,20 @@ export function SessionsRouteShell({
               onSessionClick={handleSessionClick}
               onSessionPrefetch={handleSessionPrefetch}
               onRenameSession={handleRenameSession}
+              onMoveSessionToFolder={async (sessionId, projectId) => {
+                await moveSessionToProject(sessionId, projectId);
+              }}
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}
               onOpenNewSession={openNewSessionDialog}
+              onCreateFolder={async (name) => {
+                await createProject(name);
+              }}
+              onRenameFolder={async (projectId, name) => {
+                await renameProject(projectId, name);
+              }}
+              onDeleteFolder={deleteProject}
+              onStartChatInFolder={handleStartChatInFolder}
               onCreateSessionForRepo={handleCreateSessionForRepo}
               onCreateSessionFromBranch={handleCreateSessionFromBranch}
               initialUser={currentUser}

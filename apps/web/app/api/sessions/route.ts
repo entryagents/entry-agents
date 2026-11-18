@@ -11,6 +11,7 @@ import {
   getSessionsWithUnreadByUserId,
   getUsedSessionTitles,
 } from "@/lib/db/sessions";
+import { getProjectById } from "@/lib/db/projects";
 import {
   getVercelProjectLinkByRepo,
   upsertVercelProjectLink,
@@ -38,6 +39,7 @@ import {
 
 interface CreateSessionRequest {
   title?: string;
+  projectId?: string | null;
   repoOwner?: string;
   repoName?: string;
   branch?: string;
@@ -279,6 +281,7 @@ export async function POST(req: Request) {
   }
 
   const {
+    projectId: rawProjectId,
     repoOwner,
     repoName,
     branch,
@@ -288,6 +291,15 @@ export async function POST(req: Request) {
     autoCommitPush,
     autoCreatePr,
   } = body;
+
+  let verifiedProjectId: string | null = null;
+  if (typeof rawProjectId === "string" && rawProjectId.trim()) {
+    const project = await getProjectById(rawProjectId.trim());
+    if (!project || project.userId !== session.user.id) {
+      return Response.json({ error: "Folder not found" }, { status: 404 });
+    }
+    verifiedProjectId = project.id;
+  }
 
   let finalBranch = branch;
   if (isNewBranch) {
@@ -361,6 +373,7 @@ export async function POST(req: Request) {
       session: {
         id: nanoid(),
         userId: session.user.id,
+        projectId: verifiedProjectId,
         title,
         status: "running",
         repoOwner,

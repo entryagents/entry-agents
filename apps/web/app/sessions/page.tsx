@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { SessionsIndexShell } from "./sessions-index-shell";
 
 export const metadata: Metadata = {
@@ -7,5 +8,9 @@ export const metadata: Metadata = {
 };
 
 export default function SessionsPage() {
-  return <SessionsIndexShell />;
+  return (
+    <Suspense>
+      <SessionsIndexShell />
+    </Suspense>
+  );
 }

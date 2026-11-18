@@ -11,6 +11,7 @@ import { fetcher } from "@/lib/swr";
 export type SessionWithUnread = Pick<
   Session,
   | "id"
+  | "projectId"
   | "title"
   | "status"
   | "repoOwner"
@@ -30,6 +31,7 @@ export type SessionWithUnread = Pick<
 
 export interface CreateSessionInput {
   title?: string;
+  projectId?: string | null;
   repoOwner?: string;
   repoName?: string;
   branch?: string;
@@ -70,6 +72,7 @@ function mergeSessionWithSummary(
 ): SessionWithUnread {
   return {
     id: updatedSession.id,
+    projectId: updatedSession.projectId,
     title: updatedSession.title,
     status: updatedSession.status,
     repoOwner: updatedSession.repoOwner,
@@ -265,6 +268,80 @@ export function useSessions(options?: {
           void mutate();
         }
 
+        throw error;
+      }
+    },
+    [data, mutate],
+  );
+
+  const moveSessionToProject = useCallback(
+    async (sessionId: string, projectId: string | null) => {
+      const previousData = cloneSessionsResponse(data);
+
+      await mutate(
+        (current) => {
+          const source = current ?? previousData;
+          if (!source) {
+            return source;
+          }
+
+          return {
+            ...source,
+            sessions: source.sessions.map((session) =>
+              session.id === sessionId ? { ...session, projectId } : session,
+            ),
+          };
+        },
+        { revalidate: false },
+      );
+
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ projectId }),
+        });
+
+        const responseData = (await res.json()) as {
+          session?: Session;
+          error?: string;
+        };
+
+        if (!res.ok || !responseData.session) {
+          throw new Error(responseData.error ?? "Failed to move session");
+        }
+
+        const updatedSession = responseData.session;
+
+        await mutate(
+          (current) => {
+            if (!current) {
+              return current;
+            }
+
+            return {
+              ...current,
+              sessions: current.sessions.map((session) =>
+                session.id === sessionId
+                  ? mergeSessionWithSummary(session, updatedSession)
+                  : session,
+              ),
+            };
+          },
+          { revalidate: false },
+        );
+
+        return updatedSession;
+      } catch (error) {
+        if (previousData) {
+          await mutate(previousData, { revalidate: false });
+        } else {
+          void mutate();
+        }
+
+        const message =
+          error instanceof Error ? error.message : "Failed to move session";
+        toast.error(message);
         throw error;
       }
     },
@@ -495,6 +572,7 @@ export function useSessions(options?: {
     error,
     createSession,
     renameSession,
+    moveSessionToProject,
     archiveSession,
     unarchiveSession,
     refreshSessions: mutate,

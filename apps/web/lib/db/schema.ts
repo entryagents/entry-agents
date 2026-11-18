@@ -169,6 +169,25 @@ export const vercelProjectLinks = pgTable(
   ],
 );
 
+export const projects = pgTable(
+  "projects",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("projects_user_created_idx").on(table.userId, table.createdAt),
+  ],
+);
+
+export type Project = typeof projects.$inferSelect;
+export type NewProject = typeof projects.$inferInsert;
+
 export const sessions = pgTable(
   "sessions",
   {
@@ -176,6 +195,9 @@ export const sessions = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
     title: text("title").notNull(),
     status: text("status", {
       enum: ["running", "completed", "failed", "archived"],

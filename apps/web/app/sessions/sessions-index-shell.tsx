@@ -1,11 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { Folder, X } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { DEFAULT_SANDBOX_TYPE } from "@/components/sandbox-selector-compact";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useModelOptions } from "@/hooks/use-model-options";
+import { useProjects } from "@/hooks/use-projects";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { savePendingInitialPrompt } from "@/lib/chat/pending-initial-prompt";
 import { sanitizePromptToTitle } from "@/lib/random-city";
@@ -17,7 +19,13 @@ import { useSessionsShell } from "./sessions-shell-context";
 
 export function SessionsIndexShell() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedProjectId = searchParams.get("projectId");
   const { createSession } = useSessionsShell();
+  const { projects } = useProjects({ enabled: Boolean(selectedProjectId) });
+  const selectedFolder = selectedProjectId
+    ? (projects.find((p) => p.id === selectedProjectId) ?? null)
+    : null;
   const { preferences } = useUserPreferences();
   const {
     modelOptions,
@@ -64,6 +72,7 @@ export function SessionsIndexShell() {
             : undefined;
         const { session: createdSession, chat } = await createSession({
           ...(initialTitle ? { title: initialTitle } : {}),
+          ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
           isNewBranch: false,
           sandboxType: preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE,
           autoCommitPush: preferences?.autoCommitPush ?? false,
@@ -101,6 +110,7 @@ export function SessionsIndexShell() {
       preferences?.defaultModelId,
       preferences?.defaultSandboxType,
       router,
+      selectedProjectId,
     ],
   );
 
@@ -110,6 +120,20 @@ export function SessionsIndexShell() {
         <div className="flex min-h-8 items-center gap-2">
           <SidebarTrigger className="shrink-0" />
           <span className="text-sm font-medium text-foreground">New chat</span>
+          {selectedFolder ? (
+            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
+              <Folder className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+              <span className="max-w-40 truncate">{selectedFolder.name}</span>
+              <button
+                type="button"
+                onClick={() => router.replace("/sessions", { scroll: false })}
+                className="ml-0.5 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+                aria-label="Clear folder selection"
+              >
+                <X className="h-3 w-3" strokeWidth={1.5} />
+              </button>
+            </span>
+          ) : null}
         </div>
       </header>
 
