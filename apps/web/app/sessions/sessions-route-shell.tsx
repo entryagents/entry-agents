@@ -90,8 +90,13 @@ export function SessionsRouteShell({
   const { preferences } = useUserPreferences();
 
   const openNewSessionDialog = useCallback(() => {
-    setNewSessionOpen(true);
-  }, []);
+    setOptimisticActiveSessionId(null);
+    if (routeSessionId) {
+      startNavigationTransition(() => {
+        router.push("/sessions", { scroll: false });
+      });
+    }
+  }, [routeSessionId, router, startNavigationTransition]);
 
   const handleSessionClick = useCallback(
     (targetSession: SessionWithUnread) => {
@@ -243,8 +248,9 @@ export function SessionsRouteShell({
   const shellContextValue = useMemo(
     () => ({
       openNewSessionDialog,
+      createSession,
     }),
-    [openNewSessionDialog],
+    [createSession, openNewSessionDialog],
   );
 
   return (

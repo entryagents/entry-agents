@@ -1770,6 +1770,28 @@ export function SessionChatContent({
     [chatInfo.id, sendMessage, setChatStreaming, setMessages],
   );
 
+  const consumedPendingPromptChatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (consumedPendingPromptChatIdRef.current === chatInfo.id) {
+      return;
+    }
+    consumedPendingPromptChatIdRef.current = chatInfo.id;
+
+    let cancelled = false;
+    void import("@/lib/chat/pending-initial-prompt").then(
+      ({ consumePendingInitialPrompt }) => {
+        if (cancelled) return;
+        const pending = consumePendingInitialPrompt(chatInfo.id);
+        if (!pending) return;
+        void sendMessageWithPendingState(pending.payload);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatInfo.id, sendMessageWithPendingState]);
+
   // --- Prompt queue -----------------------------------------------------
   // Lets the user keep typing and hitting send/Enter while a turn is still
   // running instead of the message just being dropped. Each queued prompt

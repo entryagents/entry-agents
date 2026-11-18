@@ -3,8 +3,13 @@
 import type { ReactNode } from "react";
 import { createContext, useContext } from "react";
 
+import type { CreateSessionInput } from "@/hooks/use-sessions";
+
 type SessionsShellContextValue = {
   openNewSessionDialog: () => void;
+  createSession: (
+    input: CreateSessionInput,
+  ) => Promise<{ session: { id: string }; chat: { id: string } }>;
 };
 
 const SessionsShellContext = createContext<
