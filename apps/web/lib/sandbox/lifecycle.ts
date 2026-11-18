@@ -36,6 +36,7 @@ export type SandboxLifecycleReason =
   | "timeout-extended"
   | "snapshot-restored"
   | "reconnect"
+  | "turn-finished"
   | "manual-stop"
   | "status-check-overdue";
 

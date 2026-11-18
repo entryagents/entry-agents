@@ -132,6 +132,7 @@ const spies = {
     Promise.resolve(),
   ),
   refreshLifecycleActivity: mock(() => Promise.resolve()),
+  kickSandboxLifecycleStep: mock(() => Promise.resolve()),
   hasAutoCommitChangesStep: mock(() => Promise.resolve(true)),
   runAutoCommitStep: mock(() =>
     Promise.resolve({ committed: false, pushed: false }),

@@ -307,6 +307,26 @@ export async function refreshLifecycleActivity(
   }
 }
 
+export async function kickSandboxLifecycleStep(
+  sessionId: string,
+): Promise<void> {
+  "use step";
+
+  try {
+    const { runKickSandboxLifecycleWorkflow } =
+      await import("@/lib/sandbox/lifecycle-kick");
+    await runKickSandboxLifecycleWorkflow({
+      sessionId,
+      reason: "turn-finished",
+    });
+  } catch (error) {
+    console.error(
+      "[workflow] Failed to kick sandbox lifecycle workflow:",
+      error,
+    );
+  }
+}
+
 export async function persistSandboxState(
   sessionId: string,
   sandboxState: SandboxState,
