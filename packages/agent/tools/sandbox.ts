@@ -20,18 +20,12 @@ const sandboxActionSchema = z.enum([
   "checkpoint_list",
   "checkpoint_restore",
   "checkpoint_delete",
-  "expose_port",
-  "unexpose_port",
-  "ports",
   "logs",
-  "resize",
-  "fork",
-  "egress_allow",
 ]);
 
 const sandboxControlInputSchema = z.object({
   action: sandboxActionSchema.describe(
-    "Workspace operation: 'status', 'serve', 'stop_serve', 'ps', 'kill_process', 'env_get', 'env_set', 'checkpoint_create', 'checkpoint_list', 'checkpoint_restore', 'checkpoint_delete', 'expose_port', 'unexpose_port', 'ports', 'logs', 'resize', 'fork', 'egress_allow', 'provision', 'reconnect', 'snapshot', 'delete'.",
+    "Workspace operation: 'status', 'info', 'serve', 'stop_serve', 'ps', 'kill_process', 'env_get', 'env_set', 'checkpoint_create', 'checkpoint_list', 'checkpoint_restore', 'checkpoint_delete', 'logs', 'provision', 'reconnect', 'snapshot', 'delete'.",
   ),
   port: z
     .number()
@@ -39,56 +33,12 @@ const sandboxControlInputSchema = z.object({
     .positive()
     .max(65535)
     .optional()
-    .describe(
-      "Port number (for serve, stop_serve, kill_process, expose_port, unexpose_port)",
-    ),
-  portAuto: z
-    .boolean()
-    .optional()
-    .describe(
-      "Set true with expose_port (https mode) to auto-detect the listening port",
-    ),
-  exposeMode: z
-    .enum(["https", "raw"])
-    .optional()
-    .describe(
-      "Expose mode for expose_port: 'https' reverse proxy route (default) or 'raw' TCP/UDP forward",
-    ),
-  protocol: z
-    .enum(["tcp", "udp", "both"])
-    .optional()
-    .describe("Transport protocol when exposeMode is 'raw' (default: 'tcp')"),
-  proxyName: z
-    .string()
-    .optional()
-    .describe(
-      "Optional subdomain label for an HTTPS proxy route (e.g. 'api' or 'docs')",
-    ),
+    .describe("Port number (for serve, stop_serve, kill_process)"),
   checkpointName: z
     .string()
     .optional()
     .describe(
       "Checkpoint name (for checkpoint_create, checkpoint_restore, checkpoint_delete)",
-    ),
-  vcpu: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe("Target vCPU count (for resize)"),
-  memory: z
-    .enum(["4G", "8G", "16G", "32G"])
-    .optional()
-    .describe("Target memory class: '4G', '8G', '16G', or '32G' (for resize)"),
-  forkName: z
-    .string()
-    .optional()
-    .describe("Optional name for the forked workspace VM (for fork)"),
-  egressAllow: z
-    .array(z.string())
-    .optional()
-    .describe(
-      "Outbound egress allowlist hostnames/CIDRs (empty array restores unrestricted egress)",
     ),
   maxChars: z
     .number()
@@ -415,72 +365,6 @@ ACTIONS:
               input.action,
             );
           }
-          case "expose_port": {
-            if (control.expose_port) {
-              const res = await control.expose_port({
-                port: input.port,
-                portAuto: input.portAuto,
-                mode: input.exposeMode,
-                protocol: input.protocol,
-                name: input.proxyName,
-              });
-              return hostResult(res, input.action);
-            }
-            const sandbox = await getSandbox(experimental_context, "sandbox");
-            if (input.exposeMode === "raw") {
-              if (!input.port) {
-                throw new Error("port is required when exposeMode is 'raw'");
-              }
-              if (!sandbox.exposePort) {
-                return unsupportedAction(input.action);
-              }
-              const exposed = await sandbox.exposePort(
-                input.port,
-                input.protocol ?? "tcp",
-              );
-              return hostResult({ mode: "raw", ...exposed }, input.action);
-            }
-            if (!sandbox.exposeProxy) {
-              return unsupportedAction(input.action);
-            }
-            const target: number | "auto" = input.portAuto
-              ? "auto"
-              : (input.port ?? 3000);
-            const route = await sandbox.exposeProxy(target, input.proxyName);
-            return hostResult({ mode: "https", ...route }, input.action);
-          }
-          case "unexpose_port": {
-            if (!input.port) {
-              throw new Error("port is required for unexpose_port");
-            }
-            if (control.unexpose_port) {
-              const res = await control.unexpose_port({ port: input.port });
-              return hostResult(res, input.action);
-            }
-            const sandbox = await getSandbox(experimental_context, "sandbox");
-            if (!sandbox.unexposePort) {
-              return unsupportedAction(input.action);
-            }
-            await sandbox.unexposePort(input.port);
-            return hostResult(
-              { unexposed: true, port: input.port },
-              input.action,
-            );
-          }
-          case "ports": {
-            if (control.ports) {
-              const res = await control.ports();
-              return hostResult(res, input.action);
-            }
-            const sandbox = await getSandbox(experimental_context, "sandbox");
-            const proxies = sandbox.listProxies
-              ? await sandbox.listProxies()
-              : [];
-            const rawPorts = sandbox.listExposedPorts
-              ? await sandbox.listExposedPorts()
-              : [];
-            return hostResult({ proxies, rawPorts }, input.action);
-          }
           case "logs": {
             if (control.logs) {
               const res = await control.logs({ maxChars: input.maxChars });
@@ -492,56 +376,6 @@ ACTIONS:
             }
             const logs = await sandbox.getLogs(input.maxChars ?? 12_000);
             return hostResult({ logs }, input.action);
-          }
-          case "resize": {
-            if (!input.vcpu && !input.memory) {
-              throw new Error("Provide vcpu and/or memory for resize");
-            }
-            if (control.resize) {
-              const res = await control.resize({
-                vcpu: input.vcpu,
-                memory: input.memory,
-              });
-              return hostResult(res, input.action);
-            }
-            const sandbox = await getSandbox(experimental_context, "sandbox");
-            if (!sandbox.resize) {
-              return unsupportedAction(input.action);
-            }
-            const resized = await sandbox.resize({
-              ...(input.vcpu ? { vcpu: input.vcpu } : {}),
-              ...(input.memory ? { memory: input.memory } : {}),
-            });
-            return hostResult(resized, input.action);
-          }
-          case "fork": {
-            if (control.fork) {
-              const res = await control.fork({ name: input.forkName });
-              return hostResult(res, input.action);
-            }
-            const sandbox = await getSandbox(experimental_context, "sandbox");
-            if (!sandbox.fork) {
-              return unsupportedAction(input.action);
-            }
-            const forked = await sandbox.fork(input.forkName);
-            return hostResult(forked, input.action);
-          }
-          case "egress_allow": {
-            if (!Array.isArray(input.egressAllow)) {
-              throw new Error("egressAllow array is required for egress_allow");
-            }
-            if (control.egress_allow) {
-              const res = await control.egress_allow({
-                entries: input.egressAllow,
-              });
-              return hostResult(res, input.action);
-            }
-            const sandbox = await getSandbox(experimental_context, "sandbox");
-            if (!sandbox.setEgressAllow) {
-              return unsupportedAction(input.action);
-            }
-            const egressAllow = await sandbox.setEgressAllow(input.egressAllow);
-            return hostResult({ egressAllow }, input.action);
           }
         }
       } catch (error) {

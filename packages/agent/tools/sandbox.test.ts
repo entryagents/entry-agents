@@ -336,12 +336,12 @@ describe("sandboxControlTool", () => {
     });
 
     const unsupportedRes = await toolDef.execute?.(
-      { action: "fork" },
+      { action: "checkpoint_list" },
       executionOptions(directContext),
     );
     expect(unsupportedRes).toMatchObject({
       success: false,
-      action: "fork",
+      action: "checkpoint_list",
     });
     expect((unsupportedRes as { error: string }).error).toContain(
       "not supported by the current workspace provider",

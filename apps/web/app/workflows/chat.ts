@@ -4079,41 +4079,10 @@ const runAgentStep = async (
                 sessionId: controlContext.sessionId,
                 name: opts.name,
               }),
-            expose_port: (opts) =>
-              exposeSandboxPortStep({
-                sessionId: controlContext.sessionId,
-                port: opts.port ?? null,
-                portAuto: opts.portAuto ?? false,
-                mode: opts.mode ?? "https",
-                protocol: opts.protocol ?? "tcp",
-                name: opts.name ?? null,
-              }),
-            unexpose_port: (opts) =>
-              unexposeSandboxPortStep({
-                sessionId: controlContext.sessionId,
-                port: opts.port,
-              }),
-            ports: () => listSandboxPortsStep(controlContext.sessionId),
             logs: (opts) =>
               getSandboxLogsStep({
                 sessionId: controlContext.sessionId,
                 maxChars: opts?.maxChars ?? null,
-              }),
-            resize: (opts) =>
-              resizeSandboxStep({
-                sessionId: controlContext.sessionId,
-                vcpu: opts.vcpu ?? null,
-                memory: opts.memory ?? null,
-              }),
-            fork: (opts) =>
-              forkSandboxStep({
-                sessionId: controlContext.sessionId,
-                name: opts?.name ?? null,
-              }),
-            egress_allow: (opts) =>
-              setSandboxEgressAllowStep({
-                sessionId: controlContext.sessionId,
-                entries: opts.entries,
               }),
           }
         : undefined,

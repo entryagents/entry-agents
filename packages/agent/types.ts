@@ -126,26 +126,7 @@ export interface SandboxControlContext {
   checkpoint_delete?: (options: {
     name: string;
   }) => Promise<Record<string, unknown>>;
-  expose_port?: (options: {
-    port?: number;
-    portAuto?: boolean;
-    mode?: "https" | "raw";
-    protocol?: "tcp" | "udp" | "both";
-    name?: string;
-  }) => Promise<Record<string, unknown>>;
-  unexpose_port?: (options: {
-    port: number;
-  }) => Promise<Record<string, unknown>>;
-  ports?: () => Promise<Record<string, unknown>>;
   logs?: (options?: { maxChars?: number }) => Promise<Record<string, unknown>>;
-  resize?: (options: {
-    vcpu?: number;
-    memory?: "4G" | "8G" | "16G" | "32G";
-  }) => Promise<Record<string, unknown>>;
-  fork?: (options?: { name?: string }) => Promise<Record<string, unknown>>;
-  egress_allow?: (options: {
-    entries: string[];
-  }) => Promise<Record<string, unknown>>;
 }
 
 export type SandboxControlToolResult = Record<string, unknown> &
