@@ -61,7 +61,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   // 1. Durably mark the chat as cancelled in the database FIRST.
   // This serves as an immediate cooperative stop signal picked up
-  // by startStopMonitor and step loops within 150ms. Guarded on the run
+  // by startStopMonitor and step loops within ~1000ms. Guarded on the run
   // that owned the stream pointer when the chat row was read: if a newer
   // run has taken over the slot since, this must not cancel it.
   await setChatRunStatus(chatId, "cancelled", {

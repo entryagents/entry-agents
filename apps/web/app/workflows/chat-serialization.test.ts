@@ -230,7 +230,7 @@ describe("durable execution workflow hygiene", () => {
     );
   });
 
-  test("vercel.json enables supportsCancellation on the workflow v1 webhook route", async () => {
+  test("vercel.json enables supportsCancellation on the workflow v1 webhook and chat routes", async () => {
     const vercelConfig = (await Bun.file(
       new URL("../../vercel.json", import.meta.url),
     ).json()) as {
@@ -239,6 +239,9 @@ describe("durable execution workflow hygiene", () => {
     expect(
       vercelConfig.functions?.["app/.well-known/workflow/v1/**"]
         ?.supportsCancellation,
+    ).toBe(true);
+    expect(
+      vercelConfig.functions?.["app/api/chat/**"]?.supportsCancellation,
     ).toBe(true);
   });
 });

@@ -9,11 +9,10 @@ import {
   getChatMessages,
   getChatsBySessionId,
   updateChat,
-  updateChatActiveStreamId,
   setChatRunStatus,
   ACTIVE_CHAT_RUN_STATUSES,
 } from "@/lib/db/sessions";
-import { verifyRunState } from "@/lib/workflow-run-recovery";
+import { verifyRunStateWithStatus } from "@/lib/workflow-run-recovery";
 import { sanitizeSelectedModelIdForSession } from "@/lib/model-access";
 import {
   reasoningEffortSchema,
@@ -117,15 +116,25 @@ export async function GET(req: Request, context: RouteContext) {
   let isStreaming = activeStreamId !== null;
 
   if (activeStreamId) {
-    const outcome = await verifyRunState(activeStreamId);
+    const { outcome, terminalStatus } =
+      await verifyRunStateWithStatus(activeStreamId);
     if (outcome === "gone") {
-      await compareAndSetChatActiveStreamId(chatId, activeStreamId, null).catch(
-        () => updateChatActiveStreamId(chatId, null),
-      );
-      await setChatRunStatus(chatId, "idle");
-      activeStreamId = null;
-      chatStatus = "idle";
-      isStreaming = false;
+      const cleared = await compareAndSetChatActiveStreamId(
+        chatId,
+        activeStreamId,
+        null,
+      ).catch(() => false);
+      if (cleared) {
+        activeStreamId = null;
+        isStreaming = false;
+        if (ACTIVE_CHAT_RUN_STATUSES.some((s) => s === chatStatus)) {
+          const nextStatus = terminalStatus ?? "idle";
+          await setChatRunStatus(chatId, nextStatus, {
+            onlyIfActiveStreamId: null,
+          });
+          chatStatus = nextStatus;
+        }
+      }
     }
   } else if (
     ACTIVE_CHAT_RUN_STATUSES.some((s) => s === chatStatus) &&
@@ -133,7 +142,7 @@ export async function GET(req: Request, context: RouteContext) {
     Date.now() - new Date(chatContext.chat.runStatusUpdatedAt).getTime() >
       120_000
   ) {
-    await setChatRunStatus(chatId, "idle");
+    await setChatRunStatus(chatId, "idle", { onlyIfActiveStreamId: null });
     chatStatus = "idle";
     isStreaming = false;
   }
