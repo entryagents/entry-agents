@@ -23,9 +23,18 @@ export interface SubagentSession {
 
 /** Default in-memory session idle TTL: 15 minutes. */
 export const DEFAULT_SUBAGENT_SESSION_IDLE_TTL_MS = 15 * 60 * 1000;
+const MAX_SUBAGENT_SESSIONS = 200;
 
 class SubagentSessionStore {
   private sessions = new Map<string, SubagentSession>();
+
+  private enforceCapacity(): void {
+    while (this.sessions.size > MAX_SUBAGENT_SESSIONS) {
+      const oldestKey = this.sessions.keys().next().value;
+      if (!oldestKey) break;
+      this.sessions.delete(oldestKey);
+    }
+  }
 
   get(
     id: string,
@@ -46,6 +55,7 @@ class SubagentSessionStore {
     parentSessionId?: string;
     initialMessages?: ModelMessage[];
   }): SubagentSession {
+    this.prune();
     const id = params.id || crypto.randomUUID();
     const now = Date.now();
     const session: SubagentSession = {
@@ -60,12 +70,15 @@ class SubagentSessionStore {
       taskHistory: [],
     };
     this.sessions.set(id, session);
+    this.enforceCapacity();
     return session;
   }
 
   save(session: SubagentSession): void {
+    this.prune();
     session.lastUsedAt = Date.now();
     this.sessions.set(session.id, session);
+    this.enforceCapacity();
   }
 
   recordTaskCompletion(params: {
@@ -76,25 +89,27 @@ class SubagentSessionStore {
     usage?: LanguageModelUsage;
     outcome?: string;
   }): SubagentSession | undefined {
-    const session = this.get(params.id);
-    if (!session) return undefined;
+    // Refresh lastUsedAt before prune so long-running subagent runs aren't
+    // evicted by idle TTL right as they finish.
+    const existing = this.sessions.get(params.id);
+    if (!existing) return undefined;
 
-    session.messages = [...session.messages, ...params.newMessages];
-    session.toolCallCount += params.toolCallCount;
-    session.totalUsage = sumLanguageModelUsage(
-      session.totalUsage,
+    existing.lastUsedAt = Date.now();
+    existing.messages = [...existing.messages, ...params.newMessages];
+    existing.toolCallCount += params.toolCallCount;
+    existing.totalUsage = sumLanguageModelUsage(
+      existing.totalUsage,
       params.usage,
     );
-    session.lastUsedAt = Date.now();
-    session.taskHistory.push({
+    existing.taskHistory.push({
       task: params.task,
-      timestamp: Date.now(),
+      timestamp: existing.lastUsedAt,
       toolCallCount: params.toolCallCount,
       outcome: params.outcome,
     });
 
-    this.sessions.set(session.id, session);
-    return session;
+    this.sessions.set(existing.id, existing);
+    return existing;
   }
 
   delete(id: string): boolean {
@@ -161,7 +176,7 @@ export function unregisterActiveSubagent(
   sessionId?: string,
 ): void {
   activeSubagents.delete(subagentId);
-  if (sessionId) {
+  if (sessionId && activeSubagents.get(sessionId)?.subagentId === subagentId) {
     activeSubagents.delete(sessionId);
   }
 }

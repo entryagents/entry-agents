@@ -166,16 +166,15 @@ IMPORTANT:
     const subagent = SUBAGENT_REGISTRY[subagentType].agent;
 
     // Resumable subagent session handling: look up existing session, hydrate from
-    // durable persisted history if the worker restarted, or create fresh.
+    // durable persisted history if the worker restarted, or create fresh so
+    // recordTaskCompletion persists initial turns for follow-up calls too.
     const activeSessionId = sessionId?.trim() || crypto.randomUUID();
-    let existingSession = sessionId
-      ? subagentSessionStore.get(sessionId.trim())
-      : undefined;
+    let existingSession = subagentSessionStore.get(activeSessionId);
     const durableHistory = sessionId
       ? (experimental_context as AgentContext | undefined)
           ?.subagentMessageHistory?.[activeSessionId]
       : undefined;
-    if (sessionId && !existingSession) {
+    if (!existingSession) {
       existingSession = subagentSessionStore.create({
         id: activeSessionId,
         subagentType,
@@ -183,7 +182,6 @@ IMPORTANT:
       });
     }
     if (
-      existingSession &&
       existingSession.messages.length === 0 &&
       Array.isArray(durableHistory) &&
       durableHistory.length > 0
@@ -192,9 +190,7 @@ IMPORTANT:
         ...(durableHistory as typeof existingSession.messages),
       );
     }
-    const isFollowUp = Boolean(
-      existingSession && existingSession.messages.length > 0,
-    );
+    const isFollowUp = existingSession.messages.length > 0;
 
     // Real-time subagent budget enforcement (host-injected billing
     // guard, 2026-09-15): subagent usage previously landed in the
@@ -411,6 +407,13 @@ IMPORTANT:
 
       try {
         for await (const part of result.fullStream) {
+          if (localAbort.signal.aborted || abortSignal?.aborted) {
+            if (!streamError && !budgetStopped) {
+              streamError = "Subagent execution stopped";
+            }
+            break;
+          }
+
           if (part.type === "error") {
             streamError =
               part.error instanceof Error

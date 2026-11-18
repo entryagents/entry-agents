@@ -90,6 +90,26 @@ describe("Subagent Session Store & Multi-Turn Resumption", () => {
     expect(subagentSessionStore.get("old-session")).toBeUndefined();
     expect(subagentSessionStore.size()).toBe(0);
   });
+
+  test("records completion without losing a long-running session to idle TTL", () => {
+    const session = subagentSessionStore.create({
+      id: "long-running-session",
+      subagentType: "executor",
+    });
+    session.lastUsedAt = Date.now() - 20 * 60 * 1000;
+
+    const updated = subagentSessionStore.recordTaskCompletion({
+      id: "long-running-session",
+      task: "Long build",
+      newMessages: [{ role: "assistant", content: "Done" } as never],
+      toolCallCount: 4,
+      outcome: "completed",
+    });
+
+    expect(updated).toBeDefined();
+    expect(updated?.messages).toHaveLength(1);
+    expect(subagentSessionStore.get("long-running-session")).toBeDefined();
+  });
 });
 
 describe("Hierarchical Depth Gating", () => {

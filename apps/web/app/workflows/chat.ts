@@ -2650,37 +2650,15 @@ export async function runAgentWorkflow(options: Options) {
       ...modelRuntime.agentOptions.teamRoleModels,
       ...options.agentOptions?.teamRoleModels,
     };
-    const subagentMessageHistory: Record<string, unknown[]> = {};
-    for (const msg of options.messages) {
-      if (msg.role !== "assistant" || !Array.isArray(msg.parts)) continue;
-      for (const part of msg.parts) {
-        if (!isToolUIPart(part)) continue;
-        const toolName = part.type.startsWith("tool-")
-          ? part.type.slice(5)
-          : undefined;
-        if (toolName !== "task" || part.state !== "output-available") continue;
-        const out = part.output as
-          | { sessionId?: unknown; final?: unknown }
-          | undefined;
-        if (
-          out &&
-          typeof out.sessionId === "string" &&
-          out.sessionId.length > 0 &&
-          Array.isArray(out.final) &&
-          out.final.length > 0
-        ) {
-          subagentMessageHistory[out.sessionId] = withoutUndefined(
-            out.final,
-          ) as unknown[];
-        }
-      }
-    }
+    const initialSubagentHistory = buildSubagentMessageHistory(
+      options.messages,
+    );
 
     const agentOptions: WorkflowAgentOptions = {
       ...modelRuntime.agentOptions,
       ...options.agentOptions,
-      ...(Object.keys(subagentMessageHistory).length > 0
-        ? { subagentMessageHistory }
+      ...(Object.keys(initialSubagentHistory).length > 0
+        ? { subagentMessageHistory: initialSubagentHistory }
         : {}),
       // The gateway's live catalog is the single runtime source of truth
       // for model context windows. Pass it into the agent selection so
@@ -2813,8 +2791,16 @@ export async function runAgentWorkflow(options: Options) {
       // nested in here (skills' frontmatter options, optional model fields,
       // optional sandbox/github context) fails the run just as hard as an
       // undefined return value would.
+      const stepSubagentHistory = buildSubagentMessageHistory(
+        pendingAssistantResponse
+          ? [...options.messages, pendingAssistantResponse]
+          : options.messages,
+      );
       const stepAgentOptions: WorkflowAgentOptions = withoutUndefined({
         ...agentOptions,
+        ...(Object.keys(stepSubagentHistory).length > 0
+          ? { subagentMessageHistory: stepSubagentHistory }
+          : {}),
         permissionMode: livePermissionMode,
       });
 
@@ -5740,4 +5726,59 @@ async function sendTextMessage(writable: Writable, id: string, text: string) {
   } finally {
     writer.releaseLock();
   }
+}
+
+export function buildSubagentMessageHistory(
+  messages: WebAgentUIMessage[],
+): Record<string, unknown[]> {
+  const history: Record<string, unknown[]> = {};
+  for (const msg of messages) {
+    if (msg.role !== "assistant" || !Array.isArray(msg.parts)) continue;
+    for (const part of msg.parts) {
+      if (!isToolUIPart(part)) continue;
+      const toolName = part.type.startsWith("tool-")
+        ? part.type.slice(5)
+        : undefined;
+      if (toolName !== "task" || part.state !== "output-available") continue;
+      const out = part.output as
+        | { sessionId?: unknown; final?: unknown }
+        | undefined;
+      if (
+        !out ||
+        typeof out.sessionId !== "string" ||
+        out.sessionId.length === 0 ||
+        !Array.isArray(out.final) ||
+        out.final.length === 0
+      ) {
+        continue;
+      }
+      const existing = history[out.sessionId] ?? [];
+      const input =
+        part.input && typeof part.input === "object"
+          ? (part.input as { task?: unknown; instructions?: unknown })
+          : undefined;
+      const hasTaskPrompt =
+        typeof input?.task === "string" ||
+        typeof input?.instructions === "string";
+      const promptMsg = hasTaskPrompt
+        ? {
+            role: "user",
+            content:
+              `Task: ${typeof input?.task === "string" ? input.task : ""}${
+                typeof input?.instructions === "string" &&
+                input.instructions.trim().length > 0
+                  ? `\n\nInstructions:\n${input.instructions}`
+                  : ""
+              }`.trim(),
+          }
+        : undefined;
+      const sanitizedFinal = withoutUndefined(out.final) as unknown[];
+      history[out.sessionId] = [
+        ...existing,
+        ...(promptMsg && promptMsg.content.length > 0 ? [promptMsg] : []),
+        ...sanitizedFinal,
+      ];
+    }
+  }
+  return history;
 }
