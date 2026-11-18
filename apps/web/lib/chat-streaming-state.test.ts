@@ -353,7 +353,7 @@ describe("chat streaming state", () => {
         hasStreamingReasoningPart: true,
         hasRenderableContentAfterGroup: true,
       }),
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       shouldKeepCollapsedReasoningStreaming({

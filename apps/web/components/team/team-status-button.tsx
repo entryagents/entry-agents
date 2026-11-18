@@ -21,6 +21,7 @@ import { TeamWorkspace } from "./team-workspace";
 
 export interface TeamStatusButtonProps {
   messages: WebAgentUIMessage[];
+  isParentStreaming?: boolean;
   defaultModelId?: string | null;
   teamRoleModels?: Record<string, string>;
   onUpdateRoleModel?: (role: string, modelId: string | null) => void;
@@ -40,6 +41,7 @@ export interface TeamStatusButtonProps {
 
 export function TeamStatusButton({
   messages,
+  isParentStreaming,
   defaultModelId,
   teamRoleModels,
   onUpdateRoleModel,
@@ -54,7 +56,10 @@ export function TeamStatusButton({
 }: TeamStatusButtonProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const roster = useMemo(() => deriveAgentHubRoster(messages), [messages]);
+  const roster = useMemo(
+    () => deriveAgentHubRoster(messages, { isParentStreaming }),
+    [messages, isParentStreaming],
+  );
   const runningCount = useMemo(
     () => roster.filter((entry) => isLiveStatus(entry.status)).length,
     [roster],
@@ -132,6 +137,7 @@ export function TeamStatusButton({
           </SheetHeader>
           <TeamWorkspace
             messages={messages}
+            isParentStreaming={isParentStreaming}
             defaultModelId={defaultModelId}
             teamRoleModels={teamRoleModels}
             onUpdateRoleModel={onUpdateRoleModel}
