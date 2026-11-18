@@ -1084,6 +1084,7 @@ export function SessionChatContent({
     stopChatStream,
     retryChatStream,
     getLastChunkReceivedAt,
+    hasActiveSendMessages,
     isReconnecting,
     workspaceStatus,
     hadInitialMessages,
@@ -1667,6 +1668,7 @@ export function SessionChatContent({
     hasPendingTurn,
     retryChatStream,
     getLastChunkReceivedAt,
+    hasActiveSendMessages,
     onReconcileSnapshot: refreshCurrentChatSnapshot,
   });
 

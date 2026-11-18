@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ChatUiStatus } from "@/lib/chat-streaming-state";
 import {
+  SUBMITTED_PROBE_GRACE_MS,
   getStreamRecoveryDecision,
   getStreamRecoveryDelayMs,
   isChatStreamingProbeResponse,
@@ -32,6 +33,7 @@ type UseStreamRecoveryParams = {
   hasPendingTurn?: boolean;
   retryChatStream: RetryChatStream;
   getLastChunkReceivedAt?: () => number;
+  hasActiveSendMessages?: () => boolean;
   onReconcileSnapshot?: () => Promise<void> | void;
 };
 
@@ -44,6 +46,7 @@ export function useStreamRecovery({
   hasPendingTurn = false,
   retryChatStream,
   getLastChunkReceivedAt,
+  hasActiveSendMessages,
   onReconcileSnapshot,
 }: UseStreamRecoveryParams): void {
   const inFlightStartedAtRef = useRef<number | null>(null);
@@ -85,6 +88,7 @@ export function useStreamRecovery({
       inFlightStartedAt: inFlightStartedAtRef.current,
       isProbeInFlight: streamRecoveryProbeInFlightRef.current,
       isVisibilityRecovery: Boolean(opts?.isVisibilityRecovery || opts?.isPoll),
+      hasActiveSendMessages: hasActiveSendMessages?.() ?? false,
       minIntervalMs: 2_000,
     });
 
@@ -135,6 +139,17 @@ export function useStreamRecovery({
         };
 
         if (!serverChat?.isStreaming) {
+          // Never interrupt a local POST /api/chat request that is still
+          // persisting the user message / claiming activeStreamId.
+          if (
+            hasActiveSendMessages?.() ||
+            (status === "submitted" &&
+              inFlightStartedAtRef.current !== null &&
+              Date.now() - inFlightStartedAtRef.current <
+                SUBMITTED_PROBE_GRACE_MS)
+          ) {
+            return;
+          }
           // If the client thinks the chat is in flight, or the server completed/updated
           // a turn while this tab was backgrounded/offline/idle (including before mount),
           // reconcile immediately so the user never has to reload the page to see latest results.
@@ -248,13 +263,7 @@ export function useStreamRecovery({
       window.removeEventListener("online", onOnline);
       window.clearInterval(recoveryPoll);
     };
-  }, [
-    maybeRecoverStream,
-    maybeRecoverStreamOnPoll,
-    maybeRecoverStreamOnVisibility,
-    isChatInFlight,
-    retryChatStream,
-  ]);
+  }, [maybeRecoverStreamOnPoll, maybeRecoverStreamOnVisibility]);
 
   useEffect(() => {
     const isDocumentVisible =

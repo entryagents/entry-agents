@@ -4,6 +4,7 @@ import { isFriendlyChatErrorText } from "@/lib/chat/friendly-error";
 
 export const STREAM_RECOVERY_STALL_MS = 4_000;
 export const STREAM_RECOVERY_MIN_INTERVAL_MS = 8_000;
+export const SUBMITTED_PROBE_GRACE_MS = 15_000;
 
 export type ChatStreamingProbeResponse = {
   chats: {
@@ -32,6 +33,7 @@ export function getStreamRecoveryDecision(options: {
   inFlightStartedAt: number | null;
   isProbeInFlight: boolean;
   isVisibilityRecovery?: boolean;
+  hasActiveSendMessages?: boolean;
   minIntervalMs?: number;
   stallMs?: number;
 }): StreamRecoveryDecision {
@@ -39,8 +41,10 @@ export function getStreamRecoveryDecision(options: {
     now,
     lastRecoveryAt,
     status,
+    inFlightStartedAt,
     isProbeInFlight,
     isVisibilityRecovery = false,
+    hasActiveSendMessages = false,
     minIntervalMs = STREAM_RECOVERY_MIN_INTERVAL_MS,
   } = options;
 
@@ -56,6 +60,17 @@ export function getStreamRecoveryDecision(options: {
   // runs, probe the server to check if a workflow is running or finished.
   if (isVisibilityRecovery) {
     if (isProbeInFlight) {
+      return "none";
+    }
+    // Never probe during the initial POST /api/chat submission window before
+    // persistLatestUserMessage / claimChatActiveStreamId completes, otherwise
+    // seeing isStreaming: false would abort the active submit and wipe the prompt.
+    if (
+      status === "submitted" &&
+      (hasActiveSendMessages ||
+        (inFlightStartedAt !== null &&
+          now - inFlightStartedAt < SUBMITTED_PROBE_GRACE_MS))
+    ) {
       return "none";
     }
     return "probe";

@@ -461,6 +461,10 @@ export class AbortableChatTransport<
     return this._state.lastChunkAt;
   }
 
+  hasActiveSendMessages(): boolean {
+    return this._state.activeSendMessagesCount > 0;
+  }
+
   override async sendMessages(
     options: Parameters<WorkflowChatTransport<UI_MESSAGE>["sendMessages"]>[0],
   ) {
