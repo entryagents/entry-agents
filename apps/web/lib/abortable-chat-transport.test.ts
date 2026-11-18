@@ -233,4 +233,52 @@ describe("AbortableChatTransport durability", () => {
       expect(chunks).toEqual([]);
     }
   });
+
+  test("reconnectToStream sends x-entry-mid-turn header and waits on 204 while snapshot reports queued", async () => {
+    let streamAttempts = 0;
+    let sawMidTurnHeader = false;
+    let snapshotCalls = 0;
+
+    const mockFetch = asFetch(async (input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url.startsWith("/api/chat/chat_reload/stream")) {
+        streamAttempts += 1;
+        const headers = new Headers(init?.headers);
+        if (headers.get("x-entry-mid-turn") === "1") {
+          sawMidTurnHeader = true;
+        }
+        if (streamAttempts === 1) {
+          return new Response(null, { status: 204 });
+        }
+        return makeSseResponse([
+          { type: "start", messageId: "msg_reload" },
+          { type: "finish" },
+        ]);
+      }
+      if (url === "/api/sessions/sess_1/chats/chat_reload") {
+        snapshotCalls += 1;
+        return Response.json({
+          status: "queued",
+          isStreaming: true,
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const transport = new AbortableChatTransport<UIMessage>({
+      api: "/api/chat",
+      fetch: mockFetch,
+      body: { sessionId: "sess_1", chatId: "chat_reload" },
+    });
+
+    const stream = await transport.reconnectToStream({
+      chatId: "chat_reload",
+    });
+    expect(stream).not.toBeNull();
+    const chunks = await readAllChunks(stream!);
+    expect(sawMidTurnHeader).toBe(true);
+    expect(snapshotCalls).toBe(1);
+    expect(streamAttempts).toBe(2);
+    expect(chunks.some((c) => c.type === "finish")).toBe(true);
+  });
 });

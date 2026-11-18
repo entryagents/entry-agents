@@ -195,6 +195,7 @@ export class AbortableChatTransport<
     controller: AbortController;
     lastChunkAt: number;
     activeSendMessagesCount: number;
+    activeReconnectCount: number;
   };
 
   constructor(options: AbortableWorkflowChatTransportOptions<UI_MESSAGE>) {
@@ -202,6 +203,7 @@ export class AbortableChatTransport<
       controller: new AbortController(),
       lastChunkAt: 0,
       activeSendMessagesCount: 0,
+      activeReconnectCount: 0,
     };
     const outerFetch: FetchFunction = options?.fetch ?? globalThis.fetch;
 
@@ -238,6 +240,12 @@ export class AbortableChatTransport<
       },
       signal: AbortSignal,
     ): Promise<Response | null> => {
+      const activeRunStatuses = new Set([
+        "queued",
+        "running",
+        "sleeping",
+        "resuming",
+      ]);
       try {
         const snapshotRes = await outerFetch(
           `/api/sessions/${identifiers.sessionId}/chats/${identifiers.chatId}`,
@@ -250,18 +258,33 @@ export class AbortableChatTransport<
           chat?: { activeStreamId?: string | null };
           messages?: Array<{ id?: string; role?: string }>;
         };
-        if (snapshot.isStreaming || snapshot.chat?.activeStreamId) {
-          const streamRes = await outerFetch(
-            `/api/chat/${identifiers.chatId}/stream?startIndex=0`,
-            {
-              headers: { "x-entry-mid-turn": "1" },
-              cache: "no-store",
-              signal,
-            },
-          );
-          if (streamRes.ok && streamRes.body) {
-            options.onReconnectNeeded?.();
-            return tapSseResponse(streamRes);
+        const isActiveOnServer =
+          Boolean(snapshot.isStreaming) ||
+          Boolean(snapshot.chat?.activeStreamId) ||
+          (typeof snapshot.status === "string" &&
+            activeRunStatuses.has(snapshot.status));
+
+        if (isActiveOnServer) {
+          // Try attaching directly to the live stream endpoint. If it returns
+          // 503 ("Stream initializing"), wait briefly and retry so we attach
+          // without firing a duplicate POST /api/chat.
+          for (let attempt = 0; attempt < 10; attempt++) {
+            const streamRes = await outerFetch(
+              `/api/chat/${identifiers.chatId}/stream?startIndex=0`,
+              {
+                headers: { "x-entry-mid-turn": "1" },
+                cache: "no-store",
+                signal,
+              },
+            );
+            if (streamRes.ok && streamRes.body) {
+              options.onReconnectNeeded?.();
+              return tapSseResponse(streamRes);
+            }
+            if (!TRANSIENT_HTTP_STATUSES.has(streamRes.status)) {
+              break;
+            }
+            await waitForRetryOrOnline(STREAM_RECONNECT_RETRY_DELAY_MS, signal);
           }
         }
         // If server already persisted and completed this turn while the POST
@@ -386,7 +409,11 @@ export class AbortableChatTransport<
 
           try {
             const headers = new Headers(init?.headers);
-            if (state.activeSendMessagesCount > 0) {
+            const isMidTurnContext =
+              state.activeSendMessagesCount > 0 ||
+              state.activeReconnectCount > 0 ||
+              startIndex > 0;
+            if (isMidTurnContext) {
               headers.set("x-entry-mid-turn", "1");
             }
             const response = await outerFetch(input, {
@@ -396,10 +423,7 @@ export class AbortableChatTransport<
               signal: combinedSignal,
             });
 
-            if (
-              response.status === 204 &&
-              (startIndex > 0 || state.activeSendMessagesCount > 0)
-            ) {
+            if (response.status === 204 && isMidTurnContext) {
               const resolved = resolveBody(options?.body);
               const sessionId =
                 typeof resolved?.sessionId === "string"
@@ -569,20 +593,30 @@ export class AbortableChatTransport<
       WorkflowChatTransport<UI_MESSAGE>["reconnectToStream"]
     >[0],
   ) {
+    const state = this._state;
+    state.activeReconnectCount += 1;
+    let decremented = false;
+    const decrementOnce = () => {
+      if (decremented) return;
+      decremented = true;
+      state.activeReconnectCount = Math.max(0, state.activeReconnectCount - 1);
+    };
+
     try {
       const stream = await super.reconnectToStream(options);
       if (!stream) {
+        decrementOnce();
         return null;
       }
 
       const reader = stream.getReader();
-      const state = this._state;
 
       return new ReadableStream({
         async pull(controller) {
           try {
             const next = await reader.read();
             if (next.done) {
+              decrementOnce();
               try {
                 reader.releaseLock();
               } catch {
@@ -594,6 +628,7 @@ export class AbortableChatTransport<
               controller.enqueue(next.value);
             }
           } catch (err) {
+            decrementOnce();
             try {
               reader.releaseLock();
             } catch {
@@ -610,6 +645,7 @@ export class AbortableChatTransport<
           }
         },
         async cancel(reason) {
+          decrementOnce();
           await reader.cancel(reason).catch(() => {});
           try {
             reader.releaseLock();
@@ -619,6 +655,7 @@ export class AbortableChatTransport<
         },
       });
     } catch (error) {
+      decrementOnce();
       if (
         error instanceof Error &&
         error.message.startsWith("Failed to fetch chat: 204")
