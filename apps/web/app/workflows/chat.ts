@@ -25,7 +25,11 @@ import {
   type VercelApiResult,
   type VercelCliToolResult,
 } from "@entry-agents/agent";
-import { FatalError, getWorkflowMetadata, getWritable } from "workflow";
+import { FatalError, getWorkflowMetadata, getWritable, sleep } from "workflow";
+import {
+  isRecoverableStepError,
+  WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS,
+} from "@/lib/chat/recoverable-step-error";
 
 import { getRun } from "workflow/api";
 import { assistantFileLinkPrompt } from "@/lib/assistant-file-links";
@@ -2796,6 +2800,7 @@ export async function runAgentWorkflow(options: Options) {
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
+    let consecutiveStepRecoveries = 0;
 
     for (
       let step = 0;
@@ -2959,6 +2964,30 @@ export async function runAgentWorkflow(options: Options) {
         if (isStepTimingError(error)) {
           stepTimings.push(error.stepTiming);
         }
+        if (
+          isRecoverableStepError(error) &&
+          consecutiveStepRecoveries <
+            WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length
+        ) {
+          if (await checkChatCancelledStep(options.chatId, workflowRunId)) {
+            wasAborted = true;
+            break;
+          }
+          const backoffSeconds =
+            WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS[consecutiveStepRecoveries] ??
+            24;
+          consecutiveStepRecoveries++;
+          console.warn(
+            `[chat-workflow] Recoverable step error on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length})`,
+          );
+          await setChatRunStatusStep(options.chatId, "sleeping").catch(
+            () => {},
+          );
+          await sleep(`${backoffSeconds}s`);
+          await setChatRunStatusStep(options.chatId, "running").catch(() => {});
+          step--;
+          continue;
+        }
         throw error;
       }
 
@@ -2970,6 +2999,41 @@ export async function runAgentWorkflow(options: Options) {
         shouldRefreshDiffCacheForParts(pendingAssistantResponse.parts);
       originalMessagesForStep = [pendingAssistantResponse];
       modelMessages.push(...result.responseMessages);
+
+      if ("recoverableStepError" in result && result.recoverableStepError) {
+        if (pendingAssistantResponse) {
+          await persistAssistantMessage(
+            options.chatId,
+            pendingAssistantResponse,
+          );
+        }
+        if (
+          consecutiveStepRecoveries <
+          WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length
+        ) {
+          if (await checkChatCancelledStep(options.chatId, workflowRunId)) {
+            wasAborted = true;
+            break;
+          }
+          const backoffSeconds =
+            WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS[consecutiveStepRecoveries] ??
+            24;
+          consecutiveStepRecoveries++;
+          console.warn(
+            `[chat-workflow] Mid-stream recoverable error on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length})`,
+          );
+          await setChatRunStatusStep(options.chatId, "sleeping").catch(
+            () => {},
+          );
+          await sleep(`${backoffSeconds}s`);
+          await setChatRunStatusStep(options.chatId, "running").catch(() => {});
+          step--;
+          continue;
+        }
+        throw new Error(result.recoverableStepError);
+      }
+
+      consecutiveStepRecoveries = 0;
 
       // Durable mid-turn checkpoint.
       //
@@ -5772,6 +5836,40 @@ const runAgentStep = async (
     // flagged `isRetryable: false` -- and whenever output chunks have ALREADY
     // been written to the append-only workflow `writable`, retrying the step
     // would concatenate a duplicate copy of the response onto the same stream.
+    // For transient mid-stream errors, return a recoverable step result so
+    // `runAgentWorkflow` can durably `sleep()` and continue from the
+    // checkpointed partial message instead of failing the whole turn.
+    if (
+      didWriteOutputToWritable &&
+      !isNonRetryableApiCallError(errorWithStepTiming) &&
+      isRecoverableStepError(errorWithStepTiming)
+    ) {
+      await Promise.allSettled(pendingDebits);
+      return withoutUndefined({
+        responseMessage: partialMessage,
+        responseMessages: [],
+        finishReason: "error" as FinishReason,
+        rawFinishReason: undefined,
+        stepUsage: lastStepUsage ?? totalMessageUsage,
+        stepCost: lastStepCost,
+        stepWasAborted: false,
+        recoverableStepError: errorWithStepTiming.message,
+        failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
+        remainingBalanceCents,
+        remainingWindowBudgetCents,
+        creditExhausted,
+        windowExhausted,
+        turnSpendCapped,
+        stepTiming: buildStepTiming(
+          stepNumber,
+          stepStartedAt,
+          stepFinishedAt,
+          "error",
+          errorWithStepTiming.name,
+        ),
+      });
+    }
+
     // Use `FatalError` in both cases so Workflow SDK never replays output.
     if (
       isNonRetryableApiCallError(errorWithStepTiming) ||
@@ -5889,6 +5987,19 @@ async function checkChatCancelledStep(
   }
 
   return false;
+}
+
+async function setChatRunStatusStep(
+  chatId: string,
+  status: "running" | "sleeping",
+): Promise<void> {
+  "use step";
+  try {
+    const { setChatRunStatus } = await import("@/lib/db/sessions");
+    await setChatRunStatus(chatId, status);
+  } catch {
+    // Best-effort status update
+  }
 }
 
 function startStopMonitor(
