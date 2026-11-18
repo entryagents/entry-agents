@@ -146,6 +146,50 @@ describe("getStreamRecoveryDecision", () => {
 
     expect(decision).toBe("none");
   });
+
+  test("ignores visibility/poll probe while status is submitted during initial POST grace window", () => {
+    const decision = getStreamRecoveryDecision({
+      now,
+      lastRecoveryAt: now - STREAM_RECOVERY_MIN_INTERVAL_MS,
+      status: "submitted",
+      hasAssistantRenderableContent: false,
+      inFlightStartedAt: now - 500,
+      isProbeInFlight: false,
+      isVisibilityRecovery: true,
+    });
+
+    expect(decision).toBe("none");
+  });
+
+  test("ignores visibility/poll probe while status is submitted with an active POST request", () => {
+    const decision = getStreamRecoveryDecision({
+      now,
+      lastRecoveryAt: now - STREAM_RECOVERY_MIN_INTERVAL_MS,
+      status: "submitted",
+      hasAssistantRenderableContent: false,
+      inFlightStartedAt: now - 30_000,
+      isProbeInFlight: false,
+      isVisibilityRecovery: true,
+      hasActiveSendMessages: true,
+    });
+
+    expect(decision).toBe("none");
+  });
+
+  test("allows visibility probe once submitted grace window expires and no active POST exists", () => {
+    const decision = getStreamRecoveryDecision({
+      now,
+      lastRecoveryAt: now - STREAM_RECOVERY_MIN_INTERVAL_MS,
+      status: "submitted",
+      hasAssistantRenderableContent: false,
+      inFlightStartedAt: now - 20_000,
+      isProbeInFlight: false,
+      isVisibilityRecovery: true,
+      hasActiveSendMessages: false,
+    });
+
+    expect(decision).toBe("probe");
+  });
 });
 
 describe("shouldScheduleStallRecovery", () => {

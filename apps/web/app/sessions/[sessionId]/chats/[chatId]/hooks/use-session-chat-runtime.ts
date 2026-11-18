@@ -58,6 +58,7 @@ type UseSessionChatRuntimeReturn = {
   stopChatStream: () => void;
   retryChatStream: (opts?: RetryChatStreamOptions) => void;
   getLastChunkReceivedAt: () => number;
+  hasActiveSendMessages: () => boolean;
   isReconnecting: boolean;
   workspaceStatus: WebAgentWorkspaceStatusData | null;
   clearWorkspaceStatus: () => void;
@@ -359,6 +360,13 @@ export function useSessionChatRuntime({
 
           if (serverKnownStreaming === false && serverSnapshotData) {
             if (
+              strategy === "soft" &&
+              (chatInstance.status === "submitted" ||
+                transport.hasActiveSendMessages())
+            ) {
+              return;
+            }
+            if (
               chatInstance.status === "streaming" ||
               chatInstance.status === "submitted"
             ) {
@@ -592,7 +600,7 @@ export function useSessionChatRuntime({
         }
       })();
     },
-    [chat, chatId, chatInstance, sessionId],
+    [chat, chatId, chatInstance, sessionId, transport],
   );
 
   // Reset the user-stopped flag when a new message is sent so that
@@ -761,11 +769,17 @@ export function useSessionChatRuntime({
     [transport],
   );
 
+  const hasActiveSendMessages = useCallback(
+    () => transport.hasActiveSendMessages(),
+    [transport],
+  );
+
   return {
     chat,
     stopChatStream,
     retryChatStream,
     getLastChunkReceivedAt,
+    hasActiveSendMessages,
     isReconnecting,
     workspaceStatus,
     clearWorkspaceStatus,
