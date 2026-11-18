@@ -2980,11 +2980,21 @@ export async function runAgentWorkflow(options: Options) {
           console.warn(
             `[chat-workflow] Recoverable step error on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length})`,
           );
-          await setChatRunStatusStep(options.chatId, "sleeping").catch(
-            () => {},
-          );
+          await setChatRunStatusStep(
+            options.chatId,
+            "sleeping",
+            workflowRunId,
+          ).catch(() => {});
           await sleep(`${backoffSeconds}s`);
-          await setChatRunStatusStep(options.chatId, "running").catch(() => {});
+          if (await checkChatCancelledStep(options.chatId, workflowRunId)) {
+            wasAborted = true;
+            break;
+          }
+          await setChatRunStatusStep(
+            options.chatId,
+            "running",
+            workflowRunId,
+          ).catch(() => {});
           step--;
           continue;
         }
@@ -3022,11 +3032,21 @@ export async function runAgentWorkflow(options: Options) {
           console.warn(
             `[chat-workflow] Mid-stream recoverable error on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length})`,
           );
-          await setChatRunStatusStep(options.chatId, "sleeping").catch(
-            () => {},
-          );
+          await setChatRunStatusStep(
+            options.chatId,
+            "sleeping",
+            workflowRunId,
+          ).catch(() => {});
           await sleep(`${backoffSeconds}s`);
-          await setChatRunStatusStep(options.chatId, "running").catch(() => {});
+          if (await checkChatCancelledStep(options.chatId, workflowRunId)) {
+            wasAborted = true;
+            break;
+          }
+          await setChatRunStatusStep(
+            options.chatId,
+            "running",
+            workflowRunId,
+          ).catch(() => {});
           step--;
           continue;
         }
@@ -5707,7 +5727,7 @@ const runAgentStep = async (
   } catch (error) {
     const stepFinishedAt = new Date();
 
-    if (isAbortError(error)) {
+    if (abortController.signal.aborted || isAbortError(error)) {
       await Promise.allSettled(pendingDebits);
       const abortedFinishReason: FinishReason = "stop";
       // Deliberately `withoutUndefined`: this branch sets optional fields to
@@ -6011,11 +6031,16 @@ async function checkChatCancelledStep(
 async function setChatRunStatusStep(
   chatId: string,
   status: "running" | "sleeping",
+  workflowRunId?: string,
 ): Promise<void> {
   "use step";
   try {
     const { setChatRunStatus } = await import("@/lib/db/sessions");
-    await setChatRunStatus(chatId, status);
+    await setChatRunStatus(
+      chatId,
+      status,
+      workflowRunId ? { onlyIfActiveStreamId: workflowRunId } : undefined,
+    );
   } catch {
     // Best-effort status update
   }
@@ -6028,6 +6053,7 @@ function startStopMonitor(
   chatId: string,
 ) {
   let shouldStop = false;
+  const monitorStopController = new AbortController();
 
   const done = (async () => {
     const run = getRun(runId);
@@ -6131,26 +6157,55 @@ function startStopMonitor(
         }
       }
 
-      await delay(1000);
+      await delay(1000, monitorStopController.signal);
     }
   })();
 
   return {
     stop() {
       shouldStop = true;
+      monitorStopController.abort();
     },
     done,
   };
 }
 
-function delay(ms: number) {
-  return new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
+function delay(ms: number, signal?: AbortSignal) {
+  if (signal?.aborted) {
+    return Promise.resolve();
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  if (!signal) {
+    return timeoutPromise;
+  }
+  const abortPromise = new Promise<void>((resolve) => {
+    signal.addEventListener("abort", () => resolve(), { once: true });
+  });
+  return Promise.race([timeoutPromise, abortPromise]).finally(() => {
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
   });
 }
 
-function isAbortError(error: unknown) {
-  return error instanceof Error && error.name === "AbortError";
+function isAbortError(error: unknown, depth = 0): boolean {
+  if (!(error instanceof Error) || depth > 5) {
+    return false;
+  }
+  if (
+    error.name === "AbortError" ||
+    error.name === "ResponseAborted" ||
+    error.name === "APIUserAbortError"
+  ) {
+    return true;
+  }
+  if ("cause" in error && error.cause !== undefined && error.cause !== error) {
+    return isAbortError(error.cause, depth + 1);
+  }
+  return false;
 }
 
 /**

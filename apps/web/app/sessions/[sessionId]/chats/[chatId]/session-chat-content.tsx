@@ -47,6 +47,7 @@ import {
 } from "@/components/assistant-file-link";
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
+import { consumePendingInitialPrompt } from "@/lib/chat/pending-initial-prompt";
 import { SubagentThreadView } from "@/components/team/subagent-thread-view";
 import { TeamStatusButton } from "@/components/team/team-status-button";
 import { TeamWorkspace } from "@/components/team/team-workspace";
@@ -1775,22 +1776,17 @@ export function SessionChatContent({
     if (consumedPendingPromptChatIdRef.current === chatInfo.id) {
       return;
     }
+
+    const pending = consumePendingInitialPrompt(chatInfo.id);
+    if (!pending) return;
+
     consumedPendingPromptChatIdRef.current = chatInfo.id;
-
-    let cancelled = false;
-    void import("@/lib/chat/pending-initial-prompt").then(
-      ({ consumePendingInitialPrompt }) => {
-        if (cancelled) return;
-        const pending = consumePendingInitialPrompt(chatInfo.id);
-        if (!pending) return;
-        void sendMessageWithPendingState(pending.payload);
-      },
-    );
-
-    return () => {
-      cancelled = true;
-    };
-  }, [chatInfo.id, sendMessageWithPendingState]);
+    void submitBuiltMessage({
+      payload: pending.payload,
+      displayText: pending.displayText,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per chatId on mount to flush deferred initial prompt
+  }, [chatInfo.id]);
 
   // --- Prompt queue -----------------------------------------------------
   // Lets the user keep typing and hitting send/Enter while a turn is still
@@ -1859,14 +1855,13 @@ export function SessionChatContent({
     const { payload: messagePayload, displayText: messageText } = built;
 
     const isFirstChatInSession = initialIsOnlyChatInSession;
-    const shouldSetOptimisticTitle =
-      isFirstChatInSession && !hadInitialMessages && messages.length === 0;
+    const isFirstMessageInChat = !hadInitialMessages && messages.length === 0;
     const trimmedText = messageText.trim();
-    const shouldGenerateSessionTitle =
-      shouldSetOptimisticTitle &&
+    const shouldGenerateTitle =
+      isFirstMessageInChat &&
       trimmedText.length > 0 &&
       !hasRequestedSessionTitleGenerationRef.current;
-    if (shouldSetOptimisticTitle && trimmedText.length > 0) {
+    if (isFirstMessageInChat && trimmedText.length > 0) {
       const nextTitle =
         trimmedText.length > 80
           ? `${trimmedText.slice(0, 80)}...`
@@ -1874,7 +1869,7 @@ export function SessionChatContent({
       pendingOptimisticTitleChatIdRef.current = chatInfo.id;
       void setChatTitle(chatInfo.id, nextTitle);
 
-      if (shouldGenerateSessionTitle) {
+      if (shouldGenerateTitle) {
         hasRequestedSessionTitleGenerationRef.current = true;
         const generatedTitlePromise = fetch("/api/generate-title", {
           method: "POST",
@@ -1903,14 +1898,21 @@ export function SessionChatContent({
               (nextTitle.length > 50
                 ? `${nextTitle.slice(0, 50)}...`
                 : nextTitle);
-            return updateSessionTitle(finalTitle);
+            void setChatTitle(chatInfo.id, finalTitle);
+            if (isFirstChatInSession) {
+              return updateSessionTitle(finalTitle);
+            }
+            return undefined;
           })
           .catch(() => {
             const fallbackTitle =
               nextTitle.length > 50
                 ? `${nextTitle.slice(0, 50)}...`
                 : nextTitle;
-            void updateSessionTitle(fallbackTitle).catch(() => {});
+            void setChatTitle(chatInfo.id, fallbackTitle);
+            if (isFirstChatInSession) {
+              void updateSessionTitle(fallbackTitle).catch(() => {});
+            }
           });
       }
     }
@@ -3415,7 +3417,7 @@ export function SessionChatContent({
                 messages={messages}
                 streamdownComponents={streamdownComponents}
                 onClose={closeSubagentTab}
-                onStopRun={() => void stopChatStream()}
+                onStopRun={handleStopStream}
                 onApproveTool={handleApproveTool}
                 onDenyTool={handleDenyTool}
               />

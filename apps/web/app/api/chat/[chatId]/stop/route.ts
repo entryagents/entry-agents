@@ -111,14 +111,12 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   // 4. Cancel the workflow run at the next suspension point
-  let cancelError: unknown = null;
   try {
     const run = getRun(activeStreamId);
     await run.cancel();
   } catch (error) {
-    cancelError = error;
-    console.error(
-      `[workflow] Failed to cancel workflow run for chat ${chatId}:`,
+    console.warn(
+      `[workflow] run.cancel() failed for chat ${chatId} (DB already marked cancelled):`,
       error,
     );
   } finally {
@@ -132,13 +130,6 @@ export async function POST(request: Request, context: RouteContext) {
     } catch {
       // Non-fatal
     }
-  }
-
-  if (cancelError) {
-    return Response.json(
-      { error: "Failed to cancel workflow run" },
-      { status: 500 },
-    );
   }
 
   return Response.json({ success: true });
