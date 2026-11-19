@@ -332,7 +332,16 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
     setGitPanelOpen(true);
   }, []);
 
-  const openFileTab = openAgentFileTab;
+  const openFileTab = useCallback(
+    (filePath: string) => {
+      if (isMobile) {
+        openAgentFileTab(filePath);
+        return;
+      }
+      openWorkspaceFile(filePath);
+    },
+    [isMobile, openAgentFileTab, openWorkspaceFile],
+  );
 
   const value = useMemo(
     () => ({

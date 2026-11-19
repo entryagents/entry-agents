@@ -668,7 +668,7 @@ export const ChatComposer = memo(
                         "Free tier ended — upgrade your account to use Entry"
                       : showInlineQuestion
                         ? inlineQuestion.placeholder
-                        : "Request changes, type / to invoke a skill or subagent, or @ to reference files..."
+                        : ""
                   }
                   rows={1}
                   onFocus={handleTextareaFocus}
