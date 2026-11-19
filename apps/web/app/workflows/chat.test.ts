@@ -496,7 +496,19 @@ mock.module("@/lib/vercel/token", () => ({
 // which isn't configured in tests. Already caught/defaulted to [] on
 // failure so this was harmless, just noisy; mocked cleanly instead.
 mock.module("@/lib/models-with-context", () => ({
-  fetchAvailableLanguageModels: mock(() => Promise.resolve([])),
+  fetchAvailableLanguageModels: mock(() =>
+    Promise.resolve([
+      {
+        id: "gateway/latest-model",
+        name: "Latest Gateway Model",
+        modelType: "language",
+        isLatest: true,
+      },
+    ]),
+  ),
+  resolveLatestGatewayModelId: mock(() =>
+    Promise.resolve("gateway/latest-model"),
+  ),
   // fetchModelCostCatalogStep switched to the unfiltered pricing catalog
   // on 2026-09-15 (PERF + 2026-08-17 pricing lesson).
   fetchModelCostCatalog: mock(() => Promise.resolve([])),

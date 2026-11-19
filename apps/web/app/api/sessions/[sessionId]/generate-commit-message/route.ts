@@ -1,7 +1,7 @@
 import { connectSandbox } from "@entry-agents/sandbox";
 import { generateText } from "ai";
 import { gateway } from "@entry-agents/agent";
-import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { resolveLatestGatewayModelId } from "@/lib/models-with-context";
 import { checkBotProtection } from "@/lib/botid";
 import { getSessionById } from "@/lib/db/sessions";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
@@ -58,8 +58,13 @@ export async function POST(
     return Response.json({ message: "chore: update repository changes" });
   }
 
+  const modelId = await resolveLatestGatewayModelId();
+  if (!modelId) {
+    return Response.json({ message: "chore: update repository changes" });
+  }
+
   const result = await generateText({
-    model: gateway(APP_DEFAULT_MODEL_ID),
+    model: gateway(modelId),
     prompt: `Generate a concise git commit message for these changes. Use conventional commit format (e.g., "feat:", "fix:", "refactor:"). One line only, max 72 characters.
 
 Session context: ${dbSession.title}

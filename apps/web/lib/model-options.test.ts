@@ -124,35 +124,37 @@ describe("model options", () => {
     expect(withMissingModelOption(original, null)).toBe(original);
   });
 
-  test("getDefaultModelOptionId prefers repository default model when present", () => {
+  test("getDefaultModelOptionId selects latest model by isLatest/created and falls back to first option", () => {
     const options = [
+      {
+        id: "openai/gpt-5",
+        label: "GPT-5",
+        shortLabel: "GPT-5",
+        provider: "openai",
+        created: 1700000000,
+      },
       {
         id: "openai/gpt-5.4",
         label: "GPT-5.4",
         shortLabel: "GPT-5.4",
-        provider: "anthropic",
-      },
-      {
-        id: "openai/gpt-5",
-        label: "GPT-5",
-        shortLabel: "GPT-5",
         provider: "openai",
+        created: 1800000000,
       },
     ];
 
     expect(getDefaultModelOptionId(options)).toBe("openai/gpt-5.4");
-  });
-
-  test("getDefaultModelOptionId falls back to first option when default is missing", () => {
-    const options = [
-      {
-        id: "openai/gpt-5",
-        label: "GPT-5",
-        shortLabel: "GPT-5",
-        provider: "openai",
-      },
-    ];
-
-    expect(getDefaultModelOptionId(options)).toBe("openai/gpt-5");
+    expect(
+      getDefaultModelOptionId([
+        ...options,
+        {
+          id: "anthropic/claude-latest",
+          label: "Claude Latest",
+          shortLabel: "Claude Latest",
+          provider: "anthropic",
+          isLatest: true,
+        },
+      ]),
+    ).toBe("anthropic/claude-latest");
+    expect(getDefaultModelOptionId([])).toBeNull();
   });
 });

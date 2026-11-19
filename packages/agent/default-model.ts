@@ -20,4 +20,4 @@
  * FREE_PLAN_MODEL_ID -- that constant is the real gate, this is only the
  * display/placeholder label.
  */
-export const defaultModelLabel = "step-5-preview" as const;
+export const defaultModelLabel = "gateway/latest" as const;

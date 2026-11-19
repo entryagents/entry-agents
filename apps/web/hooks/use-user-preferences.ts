@@ -8,7 +8,7 @@ import type { GlobalSkillRef } from "@/lib/skills/global-skill-refs";
 export type DiffMode = "unified" | "split";
 
 export interface UserPreferences {
-  defaultModelId: string;
+  defaultModelId: string | null;
   defaultSubagentModelId: string | null;
   defaultSandboxType: SandboxType;
   defaultDiffMode: DiffMode;

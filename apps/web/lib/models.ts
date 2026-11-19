@@ -47,8 +47,6 @@
 // FREE_PLAN_MODEL_ID in lib/billing/plans.ts is qwen3.8-flash:free by
 // deliberate business design (it's Entry's only $0-cost model) and matches
 // the gateway's own freePlanModelId.
-export const DEFAULT_MODEL_ID = "step-5-preview";
-export const APP_DEFAULT_MODEL_ID = "step-5-preview";
 export const DEFAULT_CONTEXT_LIMIT = 200_000;
 const TOKENS_PER_MILLION = 1_000_000;
 
@@ -110,6 +108,100 @@ export interface GatewayAvailableModel {
   defaultReasoningEffort?: string;
   /** Explicit boolean from gateway indicating whether reasoning effort is supported. */
   supportsReasoningEffort?: boolean;
+  /** Unix timestamp (seconds or ms) advertised by the gateway for model creation/release. */
+  created?: number;
+  /** ISO timestamp advertised by the gateway for model release date. */
+  releasedAt?: string;
+  /** Explicit flag from the gateway marking this as the latest model. */
+  isLatest?: boolean;
+  /** Explicit flag from the gateway marking this as the default model. */
+  isDefault?: boolean;
+}
+
+export interface LatestGatewayModelCandidate {
+  id: string;
+  created?: number;
+  releasedAt?: string;
+  isLatest?: boolean;
+  isDefault?: boolean;
+}
+
+function getModelReleaseTimestampMs(
+  model: LatestGatewayModelCandidate,
+): number {
+  if (model.releasedAt) {
+    const parsed = Date.parse(model.releasedAt);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  if (
+    typeof model.created === "number" &&
+    Number.isFinite(model.created) &&
+    model.created > 0
+  ) {
+    return model.created > 1e12 ? model.created : model.created * 1000;
+  }
+  return 0;
+}
+
+/**
+ * Selects the latest live model advertised by entry-gateway without any
+ * hardcoded fallback ID.
+ *
+ * Precedence:
+ * 1. Explicitly flagged `isLatest` models (newest timestamp first, array order tie-break)
+ * 2. Model with the newest `releasedAt` / `created` timestamp (only when timestamps differ)
+ * 3. Explicitly flagged `isDefault` model
+ * 4. First model in gateway response order
+ */
+export function selectLatestGatewayModel<T extends LatestGatewayModelCandidate>(
+  models: readonly T[],
+): T | null {
+  if (models.length === 0) {
+    return null;
+  }
+
+  const latestTagged = models.filter((model) => model.isLatest === true);
+  if (latestTagged.length > 0) {
+    let best = latestTagged[0]!;
+    let bestTs = getModelReleaseTimestampMs(best);
+    for (let i = 1; i < latestTagged.length; i += 1) {
+      const candidate = latestTagged[i]!;
+      const ts = getModelReleaseTimestampMs(candidate);
+      if (ts > bestTs) {
+        best = candidate;
+        bestTs = ts;
+      }
+    }
+    return best;
+  }
+
+  let newest = models[0]!;
+  let newestTs = getModelReleaseTimestampMs(newest);
+  let hasDistinctTimestamps = false;
+  for (let i = 1; i < models.length; i += 1) {
+    const candidate = models[i]!;
+    const ts = getModelReleaseTimestampMs(candidate);
+    if (ts !== newestTs && (ts > 0 || newestTs > 0)) {
+      hasDistinctTimestamps = true;
+    }
+    if (ts > newestTs) {
+      newest = candidate;
+      newestTs = ts;
+    }
+  }
+  if (hasDistinctTimestamps && newestTs > 0) {
+    return newest;
+  }
+
+  return models.find((model) => model.isDefault === true) ?? models[0] ?? null;
+}
+
+export function selectLatestGatewayModelId(
+  models: readonly LatestGatewayModelCandidate[],
+): string | null {
+  return selectLatestGatewayModel(models)?.id ?? null;
 }
 
 export interface AvailableModelCostTier {

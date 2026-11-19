@@ -1,6 +1,6 @@
 import type { Sandbox } from "@entry-agents/sandbox";
 import { gateway } from "@entry-agents/agent";
-import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { resolveLatestGatewayModelId } from "@/lib/models-with-context";
 import { generateText, NoObjectGeneratedError, Output } from "ai";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -301,8 +301,13 @@ export async function generatePullRequestContentFromSandbox(
 
   let prContent: z.infer<typeof prContentSchema>;
   try {
+    const modelId = await resolveLatestGatewayModelId();
+    if (!modelId) {
+      throw new Error("No live entry-gateway model available");
+    }
+
     const { output } = await generateText({
-      model: gateway(APP_DEFAULT_MODEL_ID),
+      model: gateway(modelId),
       output: Output.object({
         schema: prContentSchema,
       }),

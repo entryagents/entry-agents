@@ -3,11 +3,12 @@ import "server-only";
 import { fetch as workflowFetch } from "workflow";
 import { z } from "zod";
 import { filterDisabledModels } from "./model-availability";
-import type {
-  AvailableModel,
-  AvailableModelCost,
-  AvailableModelCostTier,
-  GatewayAvailableModel,
+import {
+  selectLatestGatewayModelId,
+  type AvailableModel,
+  type AvailableModelCost,
+  type AvailableModelCostTier,
+  type GatewayAvailableModel,
 } from "./models";
 
 // Kept for the (currently unused, best-effort) models.dev context-window
@@ -328,6 +329,13 @@ const gatewayModelsResponseSchema = z.object({
         description: z.string().nullish(),
         modelType: z.string().nullish(),
         capabilities: z.array(z.string()).optional(),
+        created: z.number().finite().optional(),
+        released_at: z.string().optional(),
+        releasedAt: z.string().optional(),
+        is_latest: z.boolean().optional(),
+        isLatest: z.boolean().optional(),
+        is_default: z.boolean().optional(),
+        isDefault: z.boolean().optional(),
         reasoning_efforts: z.array(gatewayReasoningEffortItemSchema).optional(),
         reasoning_levels: z.array(gatewayReasoningEffortItemSchema).optional(),
         supported_reasoning_efforts: z
@@ -512,9 +520,16 @@ async function fetchGatewayModelsUncached(): Promise<GatewayModel[]> {
             ? reasoningEffortLevels.length > 0
             : undefined;
 
+    const releasedAt = model.releasedAt ?? model.released_at;
+    const isLatest = model.isLatest ?? model.is_latest;
+    const isDefault = model.isDefault ?? model.is_default;
+
     const {
       reasoningEffortLevels: _rawEffortLevels,
       defaultReasoningEffort: _rawDefaultReasoningEffort,
+      released_at: _rawReleasedAt,
+      is_latest: _rawIsLatest,
+      is_default: _rawIsDefault,
       ...modelRest
     } = model;
 
@@ -534,6 +549,9 @@ async function fetchGatewayModelsUncached(): Promise<GatewayModel[]> {
       ...(supportsReasoningEffort !== undefined
         ? { supportsReasoningEffort }
         : {}),
+      ...(releasedAt ? { releasedAt } : {}),
+      ...(isLatest !== undefined ? { isLatest } : {}),
+      ...(isDefault !== undefined ? { isDefault } : {}),
       modelType: model.modelType ?? "language",
       name: model.name ?? model.id,
       // Workspace access is provided by Entry's agent runtime for every
@@ -553,6 +571,15 @@ export async function fetchAvailableLanguageModels(): Promise<
   return filterDisabledModels(
     models.filter((model) => model.modelType === "language"),
   );
+}
+
+/**
+ * Resolves the latest live language model directly from entry-gateway with no
+ * hardcoded fallback ID.
+ */
+export async function resolveLatestGatewayModelId(): Promise<string | null> {
+  const liveModels = await fetchAvailableLanguageModels().catch(() => []);
+  return selectLatestGatewayModelId(liveModels);
 }
 
 /**

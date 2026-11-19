@@ -7,6 +7,9 @@ mock.module("server-only", () => ({}));
 mock.module("@/lib/db/platform-settings", () => ({
   getTitleModelId: async () => null,
 }));
+mock.module("@/lib/models-with-context", () => ({
+  resolveLatestGatewayModelId: async () => "latest-gateway-model",
+}));
 
 const generateTextCalls: Array<{
   prompt: string;
@@ -138,7 +141,7 @@ describe("/api/generate-title", () => {
     // qwen3.8-flash model (api.b.ai via gateway), NOT the app default
     // -- and always with a hard abort signal so a hung upstream call
     // can never pin a serverless slot.
-    expect(generateTextCalls[0]?.model).toBe("step-5-preview");
+    expect(generateTextCalls[0]?.model).toBe("latest-gateway-model");
     expect(generateTextCalls[0]?.hasAbortSignal).toBe(true);
   });
 

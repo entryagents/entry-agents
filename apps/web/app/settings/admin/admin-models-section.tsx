@@ -298,10 +298,10 @@ export function AdminModelsSection() {
           <div className="min-w-0 max-w-xl">
             <p className="text-sm font-semibold">Chat title model</p>
             <p className="text-xs text-muted-foreground">
-              Names new chats only. Defaults to step-5-preview when unset.
-              Applies to the next chat with no deploy, so a title model whose
-              gateway route disappears can be swapped immediately instead of
-              silently breaking title generation.
+              Names new chats only. Defaults to the latest live gateway model
+              when unset. Applies to the next chat with no deploy, so a title
+              model whose gateway route disappears can be swapped immediately
+              instead of silently breaking title generation.
             </p>
           </div>
           <Select
@@ -314,7 +314,7 @@ export function AdminModelsSection() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__default__">
-                Default (step-5-preview)
+                Default (latest gateway model)
               </SelectItem>
               {(data ?? []).map((row) => (
                 <SelectItem key={row.id} value={row.id}>

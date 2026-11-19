@@ -1,6 +1,6 @@
 import { generateText } from "ai";
 import { gateway } from "@entry-agents/agent";
-import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { resolveLatestGatewayModelId } from "@/lib/models-with-context";
 
 export const SAFE_BRANCH_PATTERN = /^[\w\-/.]+$/;
 
@@ -57,8 +57,11 @@ export async function generateCommitMessage(
   if (!diff.trim()) return fallback;
 
   try {
+    const modelId = await resolveLatestGatewayModelId();
+    if (!modelId) return fallback;
+
     const result = await generateText({
-      model: gateway(APP_DEFAULT_MODEL_ID),
+      model: gateway(modelId),
       prompt: `Generate a concise git commit message for these changes. Use conventional commit format (e.g., "feat:", "fix:", "refactor:"). One line only, max 72 characters.
 
 Session context: ${sessionTitle}

@@ -42,7 +42,12 @@ export async function GET(req: Request, context: RouteContext) {
     session,
     req.url,
   );
-  return Response.json({ chats, defaultModelId: preferences.defaultModelId });
+  const defaultModelId =
+    preferences.defaultModelId ??
+    (await (
+      await import("@/lib/models-with-context")
+    ).resolveLatestGatewayModelId());
+  return Response.json({ chats, defaultModelId });
 }
 
 export async function POST(req: Request, context: RouteContext) {
@@ -99,7 +104,11 @@ export async function POST(req: Request, context: RouteContext) {
     id: requestedChatId ?? nanoid(),
     sessionId,
     title: "New chat",
-    modelId: preferences.defaultModelId,
+    modelId:
+      preferences.defaultModelId ??
+      (await (
+        await import("@/lib/models-with-context")
+      ).resolveLatestGatewayModelId()),
   });
 
   return Response.json({ chat });

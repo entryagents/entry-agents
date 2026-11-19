@@ -5,7 +5,7 @@ import {
   toReasoningProviderOptions,
 } from "@/lib/model-reasoning";
 import { toSafeChatError } from "@/lib/chat/friendly-error";
-import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { selectLatestGatewayModelId } from "@/lib/models";
 
 interface ResolveChatModelSelectionParams {
   selectedModelId: string | null | undefined;
@@ -15,17 +15,11 @@ interface ResolveChatModelSelectionParams {
 
 /**
  * Returns a model id that is live on the gateway RIGHT NOW, derived from
- * the gateway's own routed list (never a hardcoded free model).
+ * the gateway's own routed list (never a hardcoded fallback model).
  *
- * Changed 2026-10-25 (owner): "remove hardcoded free models asap and this
- * should never show again" -- the old behaviour threw `Selected model
- * "qwen3.8-flash:free" is currently unavailable` whenever a chat was
- * still pinned to a route the gateway had dropped. Chats now self-heal:
- * if the requested model is unavailable we move to the healthiest live
- * model (APP_DEFAULT_MODEL_ID when it is live, otherwise the first live
- * gateway model). The caller persists the swap on the chat row so the
- * picker shows the model that is actually running -- this is visible,
- * not silent. We only error when the gateway has zero live models.
+ * If no model is requested or the requested model is unavailable/disabled,
+ * resolves automatically to the latest live model advertised by entry-gateway.
+ * We only error when the gateway has zero live models.
  */
 export async function resolveLiveModelId(
   requestedModelId: string | null | undefined,
@@ -37,26 +31,21 @@ export async function resolveLiveModelId(
   const { fetchAvailableLanguageModels } =
     await import("@/lib/models-with-context");
   const live = await fetchAvailableLanguageModels().catch(() => []);
-  const liveIds = live.map((m) => m.id);
-  if (liveIds.includes(APP_DEFAULT_MODEL_ID)) {
-    return APP_DEFAULT_MODEL_ID;
-  }
-  return liveIds[0] ?? null;
+  return selectLatestGatewayModelId(live);
 }
 
 /**
  * Resolves a user's requested model into the concrete selection the agent
- * runtime should use. Unavailable models are healed to a live gateway
- * model (see resolveLiveModelId); only a fully-empty gateway errors.
+ * runtime should use. Unavailable or unset models resolve to the latest live
+ * entry-gateway model (see resolveLiveModelId); only a fully-empty gateway
+ * errors.
  */
 export async function resolveChatModelSelection({
   selectedModelId,
   reasoningEffort,
   missingModelLabel,
 }: ResolveChatModelSelectionParams): Promise<AgentModelSelection> {
-  const resolvedModelId = await resolveLiveModelId(
-    selectedModelId ?? APP_DEFAULT_MODEL_ID,
-  );
+  const resolvedModelId = await resolveLiveModelId(selectedModelId ?? null);
 
   if (!resolvedModelId) {
     throw toSafeChatError(

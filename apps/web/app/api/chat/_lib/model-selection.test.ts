@@ -10,7 +10,6 @@ mock.module("@/lib/db/model-overrides", () => ({
   getDisabledModelIdSet: mock(async () => new Set<string>()),
 }));
 
-const { APP_DEFAULT_MODEL_ID } = await import("@/lib/models");
 const { resolveChatModelSelection } = await import("./model-selection");
 
 describe("resolveChatModelSelection", () => {
@@ -56,14 +55,14 @@ describe("resolveChatModelSelection", () => {
     });
   });
 
-  test("self-heals to a live model when the requested model is hard-blocked", async () => {
+  test("self-heals to the latest live gateway model when the requested model is hard-blocked", async () => {
     const { fetchAvailableLanguageModels } =
       await import("@/lib/models-with-context");
     (
       fetchAvailableLanguageModels as unknown as ReturnType<typeof mock>
     ).mockImplementationOnce(async () => [
-      { id: APP_DEFAULT_MODEL_ID },
-      { id: "openai/gpt-5" },
+      { id: "older-model", created: 1700000000 },
+      { id: "openai/gpt-5", created: 1800000000 },
     ]);
 
     const selection = await resolveChatModelSelection({
@@ -73,11 +72,11 @@ describe("resolveChatModelSelection", () => {
     });
 
     expect(selection).toEqual({
-      id: APP_DEFAULT_MODEL_ID,
+      id: "openai/gpt-5",
     });
   });
 
-  test("uses the default model when no model id is provided", async () => {
+  test("resolves to the latest live gateway model when no model id is provided", async () => {
     const selection = await resolveChatModelSelection({
       selectedModelId: null,
       reasoningEffort: null,
@@ -85,7 +84,7 @@ describe("resolveChatModelSelection", () => {
     });
 
     expect(selection).toEqual({
-      id: APP_DEFAULT_MODEL_ID,
+      id: "anthropic/claude-sonnet-4.6",
     });
   });
 

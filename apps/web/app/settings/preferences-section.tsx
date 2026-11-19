@@ -228,7 +228,7 @@ function usePreferencesSectionState() {
   const [copiedPublicProfile, setCopiedPublicProfile] = useState(false);
 
   const selectedDefaultModelId =
-    preferences?.defaultModelId ?? getDefaultModelOptionId(modelOptions);
+    preferences?.defaultModelId ?? getDefaultModelOptionId(modelOptions) ?? "";
   const selectedSubagentModelId = preferences?.defaultSubagentModelId ?? "auto";
   const publicProfilePath = session?.user?.username
     ? `/u/${session.user.username}`

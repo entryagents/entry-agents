@@ -13,7 +13,7 @@ import {
 } from "@/lib/skills/global-skill-refs";
 
 interface UpdatePreferencesRequest {
-  defaultModelId?: string;
+  defaultModelId?: string | null;
   defaultSubagentModelId?: string | null;
   defaultSandboxType?: SandboxType;
   defaultDiffMode?: DiffMode;
@@ -76,7 +76,10 @@ export async function PATCH(req: Request) {
   }
 
   if (body.defaultModelId !== undefined) {
-    if (typeof body.defaultModelId !== "string") {
+    if (
+      body.defaultModelId !== null &&
+      typeof body.defaultModelId !== "string"
+    ) {
       return Response.json(
         { error: "Invalid defaultModelId" },
         { status: 400 },
