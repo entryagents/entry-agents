@@ -74,8 +74,56 @@ async function getReadySessionSandbox(params: {
     throw new Error("Session is archived");
   }
 
-  if (isSandboxActive(session.sandboxState)) {
-    return { session, didSetupWorkspace: false, liveSandbox: true };
+  let activeSession = session;
+  if (isSandboxActive(activeSession.sandboxState)) {
+    const [
+      { getSessionsByUserId },
+      { isUserAdmin },
+      { getUserBillingState },
+      { getPlanDefinition },
+      { isSandboxSharedAcrossSessions },
+    ] = await Promise.all([
+      import("@/lib/db/sessions"),
+      import("@/lib/db/users"),
+      import("@/lib/billing/credit-ledger"),
+      import("@/lib/billing/plans"),
+      import("@/lib/billing/sandbox-limits"),
+    ]);
+
+    const [isAdmin, userSessions] = await Promise.all([
+      isUserAdmin(params.userId).catch(() => false),
+      getSessionsByUserId(params.userId).catch(() => []),
+    ]);
+    const billingState = await getUserBillingState(params.userId, {
+      isAdmin,
+    }).catch(() => null);
+    const isFreeUser =
+      !isAdmin && getPlanDefinition(billingState?.plan).id === "free";
+
+    if (
+      !isFreeUser &&
+      isSandboxSharedAcrossSessions(
+        activeSession.id,
+        activeSession.sandboxState,
+        userSessions,
+      )
+    ) {
+      const { reconcileUserSandboxesOnPlanUpgrade } =
+        await import("@/lib/sandbox/upgrade-reconcile");
+      await reconcileUserSandboxesOnPlanUpgrade(params.userId).catch(() => {});
+      const refreshed = await getSessionById(params.sessionId);
+      if (refreshed) {
+        activeSession = refreshed;
+      }
+    }
+
+    if (isSandboxActive(activeSession.sandboxState)) {
+      return {
+        session: activeSession,
+        didSetupWorkspace: false,
+        liveSandbox: true,
+      };
+    }
   }
 
   // Migration owns the workspace while the old sandbox is packed and
@@ -97,7 +145,11 @@ async function getReadySessionSandbox(params: {
     );
   });
 
-  return { session, didSetupWorkspace: true, liveSandbox: false };
+  return {
+    session: activeSession,
+    didSetupWorkspace: true,
+    liveSandbox: false,
+  };
 }
 
 /**

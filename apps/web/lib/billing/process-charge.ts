@@ -66,7 +66,7 @@ export async function processChargeSuccess(
     throw new Error(`Unresolved subscription plan for ${outcome.reference}`);
   }
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({ id: billingWebhookEvents.id })
       .from(billingWebhookEvents)
@@ -175,4 +175,17 @@ export async function processChargeSuccess(
 
     return { credited: true, alreadyProcessed: false };
   });
+
+  if (result.credited && !isTopup && planId && planId !== "free") {
+    const { reconcileUserSandboxesOnPlanUpgrade } =
+      await import("@/lib/sandbox/upgrade-reconcile");
+    await reconcileUserSandboxesOnPlanUpgrade(userId).catch((err) => {
+      console.warn(
+        "[billing] Best-effort reconcileUserSandboxesOnPlanUpgrade failed:",
+        err,
+      );
+    });
+  }
+
+  return result;
 }
