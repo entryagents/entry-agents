@@ -72,13 +72,17 @@ export function WorkspaceFileTree({
   diffFiles = [],
   activeFilePath,
   onOpenFile,
+  onPrefetchFile,
   onCloseSidebar,
+  className,
 }: {
   files: FileSuggestion[] | null | undefined;
   diffFiles?: DiffFile[];
   activeFilePath?: string | null;
   onOpenFile: (filePath: string) => void;
+  onPrefetchFile?: (filePath: string) => void;
   onCloseSidebar?: () => void;
+  className?: string;
 }) {
   const [search, setSearch] = useState("");
   const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(
@@ -167,9 +171,11 @@ export function WorkspaceFileTree({
           key={child.path}
           type="button"
           onClick={() => onOpenFile(child.path)}
+          onMouseEnter={() => onPrefetchFile?.(child.path)}
+          onFocus={() => onPrefetchFile?.(child.path)}
           style={{ paddingLeft: `${depth * 12 + 20}px` }}
           className={cn(
-            "flex w-full items-center justify-between py-1 pr-2 text-xs transition-colors select-none text-left rounded-sm group cursor-pointer",
+            "flex w-full items-center justify-between py-1 pr-2 text-xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] select-none text-left rounded-sm group cursor-pointer",
             isActive
               ? "bg-primary/10 text-primary font-medium"
               : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
@@ -184,7 +190,7 @@ export function WorkspaceFileTree({
           {status && (
             <span
               className={cn(
-                "ml-1 flex h-3.5 px-1 shrink-0 items-center justify-center rounded text-[9px] font-bold",
+                "ml-1 flex h-3.5 px-1 shrink-0 items-center justify-center rounded text-[10px] font-medium tabular-nums",
                 status === "added" &&
                   "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
                 status === "modified" &&
@@ -202,22 +208,25 @@ export function WorkspaceFileTree({
   };
 
   return (
-    <div className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-background select-none">
+    <div
+      className={cn(
+        "flex h-full w-60 shrink-0 flex-col border-r border-border bg-background select-none",
+        className,
+      )}
+    >
       {/* Explorer Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
-        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-          Explorer
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">Files</span>
         {onCloseSidebar && (
           <Button
             type="button"
             variant="ghost"
             size="icon"
             onClick={onCloseSidebar}
-            className="h-5 w-5 text-muted-foreground hover:text-foreground cursor-pointer"
-            aria-label="Collapse explorer sidebar"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
+            aria-label="Close file explorer"
           >
-            <X className="h-3 w-3" />
+            <X className="h-3.5 w-3.5" strokeWidth={1.5} />
           </Button>
         )}
       </div>
@@ -225,20 +234,24 @@ export function WorkspaceFileTree({
       {/* Search Input */}
       <div className="p-2 border-b border-border/60">
         <div className="relative">
-          <Search className="absolute left-2 top-2 h-3 w-3 text-muted-foreground" />
+          <Search
+            className="absolute left-2 top-2 h-3 w-3 text-muted-foreground"
+            strokeWidth={1.5}
+          />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search files..."
+            placeholder="Filter files"
             className="pl-6 h-7 text-xs font-mono"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch("")}
-              className="absolute right-2 top-2 text-muted-foreground hover:text-foreground"
+              className="absolute right-2 top-2 text-muted-foreground hover:text-foreground cursor-pointer"
+              aria-label="Clear file filter"
             >
-              <X className="h-3 w-3" />
+              <X className="h-3 w-3" strokeWidth={1.5} />
             </button>
           )}
         </div>
@@ -250,7 +263,7 @@ export function WorkspaceFileTree({
           <div className="flex flex-col gap-0.5">
             {searchResults.length === 0 ? (
               <div className="p-4 text-center text-xs text-muted-foreground">
-                No files found
+                No matching files
               </div>
             ) : (
               searchResults.map((f) => {
@@ -261,8 +274,10 @@ export function WorkspaceFileTree({
                     key={f.value}
                     type="button"
                     onClick={() => onOpenFile(f.value)}
+                    onMouseEnter={() => onPrefetchFile?.(f.value)}
+                    onFocus={() => onPrefetchFile?.(f.value)}
                     className={cn(
-                      "flex w-full items-center justify-between px-2 py-1 text-xs rounded transition-colors text-left cursor-pointer",
+                      "flex w-full items-center justify-between px-2 py-1 text-xs rounded transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] text-left cursor-pointer",
                       isActive
                         ? "bg-primary/10 text-primary font-medium"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",

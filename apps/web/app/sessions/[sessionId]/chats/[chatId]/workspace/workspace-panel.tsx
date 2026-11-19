@@ -14,7 +14,9 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { preload } from "swr";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
+import { fetcher } from "@/lib/swr";
 import { FileTypeIcon } from "@/components/file-type-icons";
 import { Button } from "@/components/ui/button";
 import {
@@ -108,6 +110,34 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState("");
+  const [visitedToolTabs, setVisitedToolTabs] = useState<Set<string>>(
+    () => new Set(),
+  );
+
+  useEffect(() => {
+    if (
+      activeWorkspaceTab === "review" ||
+      activeWorkspaceTab === "preview" ||
+      activeWorkspaceTab === "terminal"
+    ) {
+      setVisitedToolTabs((prev) => {
+        if (prev.has(activeWorkspaceTab)) return prev;
+        return new Set([...prev, activeWorkspaceTab]);
+      });
+    }
+  }, [activeWorkspaceTab]);
+
+  const handlePrefetchFile = useCallback(
+    (filePath: string) => {
+      if (!filePath || !session?.id) return;
+      const params = new URLSearchParams({ path: filePath });
+      void preload(
+        `/api/sessions/${session.id}/files/content?${params.toString()}`,
+        fetcher,
+      );
+    },
+    [session?.id],
+  );
 
   const isDevServerReady = devServer.state.status === "ready";
 
@@ -255,37 +285,33 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-2 py-1 gap-1">
         {/* Dynamic Tab Strip */}
         <div className="flex items-center gap-1 overflow-x-auto min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {/* Desktop File Explorer Toggle */}
-          {!isMobile && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsSidebarOpen((prev) => !prev)}
-                  className={cn(
-                    "h-6 w-6 rounded-md text-muted-foreground hover:text-foreground cursor-pointer shrink-0 mr-0.5",
-                    isSidebarOpen && "bg-muted text-foreground font-semibold",
-                  )}
-                  aria-label={
-                    isSidebarOpen
-                      ? "Collapse file explorer sidebar"
-                      : "Expand file explorer sidebar"
-                  }
-                >
-                  {isSidebarOpen ? (
-                    <PanelLeftClose className="h-3.5 w-3.5" />
-                  ) : (
-                    <PanelLeft className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {isSidebarOpen ? "Collapse file tree" : "Open file tree"}
-              </TooltipContent>
-            </Tooltip>
-          )}
+          {/* File Explorer Toggle (Desktop & Mobile) */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsSidebarOpen((prev) => !prev)}
+                className={cn(
+                  "h-7 w-7 rounded-md text-muted-foreground hover:text-foreground cursor-pointer shrink-0 mr-0.5",
+                  isSidebarOpen && "bg-muted text-foreground",
+                )}
+                aria-label={
+                  isSidebarOpen ? "Close file tree" : "Open file tree"
+                }
+              >
+                {isSidebarOpen ? (
+                  <PanelLeftClose className="h-3.5 w-3.5" strokeWidth={1.5} />
+                ) : (
+                  <PanelLeft className="h-3.5 w-3.5" strokeWidth={1.5} />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {isSidebarOpen ? "Close file tree" : "Open file tree"}
+            </TooltipContent>
+          </Tooltip>
 
           {tabList.map((tab) => {
             const isActive = activeWorkspaceTab === tab.id;
@@ -313,30 +339,30 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                   }
                 }}
                 className={cn(
-                  "group flex items-center gap-1.5 rounded-md font-medium transition-colors cursor-pointer shrink-0 select-none",
+                  "group flex items-center gap-1.5 rounded-md font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer shrink-0 select-none",
                   isMobile
-                    ? "px-3 py-1.5 text-xs min-h-[34px]"
+                    ? "px-2.5 py-1.5 text-xs min-h-[32px]"
                     : "px-2.5 py-1 text-xs",
-                  isFile && "font-mono max-w-[190px]",
+                  isFile && "font-mono max-w-[180px]",
                   isActive
-                    ? "bg-background text-foreground shadow-2xs font-semibold border border-border/80"
+                    ? "bg-background text-foreground border border-border/80"
                     : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                 )}
                 title={tab.id}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
                 <span className="truncate">{tab.label}</span>
-                {tab.badge && (
+                {tab.badge ? (
                   <span
                     className={cn(
-                      "rounded-full px-1.5 py-0.2 text-[10px] font-semibold leading-tight",
+                      "rounded-full px-1.5 py-0.5 text-[10px] font-medium tabular-nums leading-none",
                       tab.badgeColor ?? "bg-muted text-foreground",
                     )}
                   >
                     {tab.badge}
                   </span>
-                )}
-                {tab.closeable && (
+                ) : null}
+                {tab.closeable ? (
                   <button
                     type="button"
                     aria-label={`Close ${tab.label}`}
@@ -345,11 +371,11 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                       if (isFile) closeWorkspaceFile(tab.id);
                       else closeToolTab(tab.id);
                     }}
-                    className="rounded p-0.5 text-muted-foreground opacity-40 hover:opacity-100 hover:bg-muted hover:text-foreground transition-opacity ml-0.5 cursor-pointer"
+                    className="rounded p-0.5 text-muted-foreground opacity-50 hover:opacity-100 hover:bg-muted hover:text-foreground transition-opacity duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] ml-0.5 cursor-pointer"
                   >
-                    <X className="h-3 w-3" />
+                    <X className="h-3 w-3" strokeWidth={1.5} />
                   </button>
-                )}
+                ) : null}
               </div>
             );
           })}
@@ -470,9 +496,9 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         </div>
       </div>
 
-      {/* Body: Left Sidebar (Desktop Only) + Tab Panels */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {!isMobile && isSidebarOpen && (
+      {/* Body: Left Sidebar (Desktop) + Mobile Drawer + Tab Panels */}
+      <div className="relative flex flex-1 min-h-0 overflow-hidden">
+        {isSidebarOpen ? (
           <WorkspaceFileTree
             files={files}
             diffFiles={gitPanelProps.diffFiles ?? undefined}
@@ -481,10 +507,21 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 ? activeWorkspaceTab
                 : undefined
             }
-            onOpenFile={openWorkspaceFile}
+            onOpenFile={(fp) => {
+              openWorkspaceFile(fp);
+              if (isMobile) {
+                setIsSidebarOpen(false);
+              }
+            }}
+            onPrefetchFile={handlePrefetchFile}
             onCloseSidebar={() => setIsSidebarOpen(false)}
+            className={
+              isMobile
+                ? "absolute inset-y-0 left-0 z-20 w-72 max-w-[85vw] shadow-lg"
+                : undefined
+            }
           />
-        )}
+        ) : null}
 
         {/* Tab Panels with State Preservation (block/hidden keeps terminal & dev server iframes live) */}
         <div className="relative flex-1 min-h-0 overflow-hidden">
@@ -501,35 +538,41 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             />
           </div>
 
-          {/* Live Preview Tab */}
-          <div
-            className={cn(
-              "h-full w-full overflow-hidden",
-              activeWorkspaceTab === "preview" ? "block" : "hidden",
-            )}
-          >
-            <WorkspacePreviewTab
-              devServer={devServer}
-              sessionId={session.id}
-              previewDeploymentTargetUrl={gitPanelProps.prDeploymentUrl}
-              isDeploymentStale={gitPanelProps.isDeploymentStale}
-              isDeploymentFailed={gitPanelProps.isDeploymentFailed}
-              canRun={gitPanelProps.hasSandbox}
-            />
-          </div>
+          {/* Live Preview Tab (lazy-mounted on first visit) */}
+          {visitedToolTabs.has("preview") ||
+          activeWorkspaceTab === "preview" ? (
+            <div
+              className={cn(
+                "h-full w-full overflow-hidden",
+                activeWorkspaceTab === "preview" ? "block" : "hidden",
+              )}
+            >
+              <WorkspacePreviewTab
+                devServer={devServer}
+                sessionId={session.id}
+                previewDeploymentTargetUrl={gitPanelProps.prDeploymentUrl}
+                isDeploymentStale={gitPanelProps.isDeploymentStale}
+                isDeploymentFailed={gitPanelProps.isDeploymentFailed}
+                canRun={gitPanelProps.hasSandbox}
+              />
+            </div>
+          ) : null}
 
-          {/* Terminal Tab */}
-          <div
-            className={cn(
-              "h-full w-full overflow-hidden",
-              activeWorkspaceTab === "terminal" ? "block" : "hidden",
-            )}
-          >
-            <WorkspaceTerminalTab
-              sessionId={session.id}
-              canRun={gitPanelProps.hasSandbox}
-            />
-          </div>
+          {/* Terminal Tab (lazy-mounted on first visit) */}
+          {visitedToolTabs.has("terminal") ||
+          activeWorkspaceTab === "terminal" ? (
+            <div
+              className={cn(
+                "h-full w-full overflow-hidden",
+                activeWorkspaceTab === "terminal" ? "block" : "hidden",
+              )}
+            >
+              <WorkspaceTerminalTab
+                sessionId={session.id}
+                canRun={gitPanelProps.hasSandbox}
+              />
+            </div>
+          ) : null}
 
           {/* Dynamic File Viewer Tabs */}
           {openFiles.map((filePath) => (
@@ -555,17 +598,18 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       <Dialog open={fileSearchOpen} onOpenChange={setFileSearchOpen}>
         <DialogContent className="max-w-lg p-0 overflow-hidden gap-0">
           <DialogHeader className="p-3 border-b border-border">
-            <DialogTitle className="text-sm font-medium">
-              Open File in Workspace
-            </DialogTitle>
+            <DialogTitle className="text-sm font-medium">Open file</DialogTitle>
           </DialogHeader>
           <div className="p-3 border-b border-border bg-muted/20">
             <div className="relative">
-              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Search
+                className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground"
+                strokeWidth={1.5}
+              />
               <Input
                 value={fileSearchQuery}
                 onChange={(e) => setFileSearchQuery(e.target.value)}
-                placeholder="Search files by path..."
+                placeholder="Search files by path"
                 className="pl-8 h-8 text-xs font-mono"
                 autoFocus
               />
@@ -574,18 +618,20 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           <div className="max-h-72 overflow-y-auto p-1.5 divide-y divide-border/40">
             {filteredFiles.length === 0 ? (
               <div className="p-6 text-center text-xs text-muted-foreground">
-                No matching files found
+                No matching files
               </div>
             ) : (
               filteredFiles.map((f) => (
                 <button
                   key={f.value}
                   type="button"
+                  onMouseEnter={() => handlePrefetchFile(f.value)}
+                  onFocus={() => handlePrefetchFile(f.value)}
                   onClick={() => {
                     openWorkspaceFile(f.value);
                     setFileSearchOpen(false);
                   }}
-                  className="flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-left rounded hover:bg-muted/60 transition-colors cursor-pointer group"
+                  className="flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-left rounded hover:bg-muted/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer group"
                 >
                   <FileTypeIcon
                     path={f.value}

@@ -12,7 +12,6 @@ import {
   Tablet,
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
-import type { DevServerControls } from "../hooks/use-dev-server";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -20,6 +19,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import type { DevServerControls } from "../hooks/use-dev-server";
 
 type ViewportMode = "desktop" | "tablet" | "mobile";
 
@@ -51,6 +51,8 @@ export function WorkspacePreviewTab({
   const isDevServerStarting = devServer.state.status === "starting";
   const devServerUrl =
     devServer.state.status === "ready" ? devServer.state.info.url : null;
+  const devServerPort =
+    devServer.state.status === "ready" ? devServer.state.info.port : null;
 
   const currentPreviewUrl =
     activeSource === "vercel" && previewDeploymentTargetUrl
@@ -70,73 +72,77 @@ export function WorkspacePreviewTab({
   return (
     <div className="flex h-full flex-col overflow-hidden bg-background">
       {/* Browser Bar */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border bg-muted/40 px-3 py-1.5 gap-2">
-        {/* Left: Navigation & Reload */}
-        <div className="flex items-center gap-1">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-1.5">
+        {/* Left: Reload & Source Switch */}
+        <div className="flex shrink-0 items-center gap-1">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
                 onClick={handleReload}
                 disabled={!currentPreviewUrl}
                 aria-label="Reload preview"
               >
-                <RotateCcw className="h-3.5 w-3.5" />
+                <RotateCcw className="h-3.5 w-3.5" strokeWidth={1.5} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">Reload preview</TooltipContent>
           </Tooltip>
 
-          {/* Dev server source toggle vs Vercel preview (if linked) */}
-          {previewDeploymentTargetUrl && (
+          {previewDeploymentTargetUrl ? (
             <div className="flex items-center rounded-md border border-border p-0.5 text-xs">
               <button
                 type="button"
                 onClick={() => setActiveSource("dev-server")}
                 className={cn(
-                  "rounded px-2 py-0.5 font-medium transition-colors",
+                  "rounded px-2 py-0.5 font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
                   activeSource === "dev-server"
-                    ? "bg-secondary text-foreground font-semibold"
+                    ? "bg-secondary text-foreground"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                Dev Server
+                Dev server
               </button>
               <button
                 type="button"
                 onClick={() => setActiveSource("vercel")}
                 className={cn(
-                  "rounded px-2 py-0.5 font-medium transition-colors",
+                  "rounded px-2 py-0.5 font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
                   activeSource === "vercel"
-                    ? "bg-secondary text-foreground font-semibold"
+                    ? "bg-secondary text-foreground"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 Vercel
               </button>
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* Center: Address Bar Display */}
-        <div className="flex flex-1 max-w-md items-center rounded-md border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground font-mono truncate">
-          <Globe className="mr-1.5 h-3.5 w-3.5 shrink-0 opacity-60" />
+        <div className="flex min-w-0 flex-1 max-w-md items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground font-mono">
+          <Globe
+            className="h-3.5 w-3.5 shrink-0 opacity-60"
+            strokeWidth={1.5}
+          />
           <span className="truncate">
-            {currentPreviewUrl || "http://localhost:3000"}
+            {currentPreviewUrl ??
+              (isDevServerStarting
+                ? "Starting server..."
+                : "No server running")}
           </span>
-          {isDevServerReady && (
-            <span className="ml-auto flex items-center gap-1 pl-2 text-[10px] text-emerald-500 font-semibold shrink-0">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              Live
+          {isDevServerReady ? (
+            <span className="ml-auto flex shrink-0 items-center gap-1.5 pl-2 text-[11px] font-sans font-medium tabular-nums text-emerald-600 dark:text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              {devServerPort ? `:${devServerPort}` : "Live"}
             </span>
-          )}
+          ) : null}
         </div>
 
-        {/* Right: Viewport mode switcher & External open */}
-        <div className="flex items-center gap-1">
-          {/* Viewport switchers */}
+        {/* Right: Viewport switcher, Server toggle & External open */}
+        <div className="flex shrink-0 items-center gap-1">
           <div className="hidden sm:flex items-center rounded-md border border-border p-0.5">
             <Tooltip>
               <TooltipTrigger asChild>
@@ -144,14 +150,14 @@ export function WorkspacePreviewTab({
                   type="button"
                   onClick={() => setViewport("desktop")}
                   className={cn(
-                    "rounded p-1 transition-colors",
+                    "rounded p-1 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
                     viewport === "desktop"
                       ? "bg-secondary text-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
                   aria-label="Desktop view"
                 >
-                  <Monitor className="h-3.5 w-3.5" />
+                  <Monitor className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Desktop</TooltipContent>
@@ -162,14 +168,14 @@ export function WorkspacePreviewTab({
                   type="button"
                   onClick={() => setViewport("tablet")}
                   className={cn(
-                    "rounded p-1 transition-colors",
+                    "rounded p-1 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
                     viewport === "tablet"
                       ? "bg-secondary text-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
-                  aria-label="Tablet view (768px)"
+                  aria-label="Tablet view"
                 >
-                  <Tablet className="h-3.5 w-3.5" />
+                  <Tablet className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Tablet (768px)</TooltipContent>
@@ -180,28 +186,27 @@ export function WorkspacePreviewTab({
                   type="button"
                   onClick={() => setViewport("mobile")}
                   className={cn(
-                    "rounded p-1 transition-colors",
+                    "rounded p-1 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
                     viewport === "mobile"
                       ? "bg-secondary text-foreground"
                       : "text-muted-foreground hover:text-foreground",
                   )}
-                  aria-label="Mobile view (375px)"
+                  aria-label="Mobile view"
                 >
-                  <Smartphone className="h-3.5 w-3.5" />
+                  <Smartphone className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Mobile (375px)</TooltipContent>
             </Tooltip>
           </div>
 
-          {/* Dev Server Start / Stop */}
-          {canRun && (
+          {canRun ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
                   onClick={() => {
                     if (isDevServerReady) {
                       void devServer.handleStopAction();
@@ -210,43 +215,55 @@ export function WorkspacePreviewTab({
                     }
                   }}
                   disabled={isDevServerStarting}
+                  aria-label={
+                    isDevServerStarting
+                      ? "Starting dev server"
+                      : isDevServerReady
+                        ? "Stop dev server"
+                        : "Start dev server"
+                  }
                 >
                   {isDevServerStarting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
                   ) : isDevServerReady ? (
-                    <Square className="h-3 w-3 fill-current text-red-500" />
+                    <Square
+                      className="h-3 w-3 fill-current text-rose-500"
+                      strokeWidth={1.5}
+                    />
                   ) : (
-                    <Play className="h-3.5 w-3.5 fill-current text-emerald-500" />
+                    <Play
+                      className="h-3.5 w-3.5 fill-current text-emerald-500"
+                      strokeWidth={1.5}
+                    />
                   )}
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {isDevServerStarting
-                  ? "Starting dev server..."
+                  ? "Starting dev server"
                   : isDevServerReady
                     ? "Stop dev server"
                     : "Start dev server"}
               </TooltipContent>
             </Tooltip>
-          )}
+          ) : null}
 
-          {/* Open External */}
-          {currentPreviewUrl && (
+          {currentPreviewUrl ? (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
                   onClick={openInNewTab}
                   aria-label="Open preview in new tab"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" />
+                  <ExternalLink className="h-3.5 w-3.5" strokeWidth={1.5} />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">Open in new tab</TooltipContent>
             </Tooltip>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -255,7 +272,7 @@ export function WorkspacePreviewTab({
         {currentPreviewUrl ? (
           <div
             className={cn(
-              "h-full overflow-hidden rounded-lg border border-border bg-background shadow-md transition-all duration-300",
+              "h-full overflow-hidden rounded-lg border border-border bg-background transition-[width] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
               viewport === "desktop" && "w-full",
               viewport === "tablet" && "w-[768px] max-w-full",
               viewport === "mobile" && "w-[375px] max-w-full",
@@ -266,7 +283,7 @@ export function WorkspacePreviewTab({
               key={iframeKey}
               ref={iframeRef}
               src={currentPreviewUrl}
-              title="Application Live Preview"
+              title="Application preview"
               className="h-full w-full border-0 bg-background"
               sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
             />
@@ -274,55 +291,53 @@ export function WorkspacePreviewTab({
           </div>
         ) : isDevServerStarting ? (
           <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
-            <div className="rounded-full bg-amber-500/10 p-4 text-amber-500">
-              <Loader2 className="h-8 w-8 animate-spin" />
-            </div>
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             <div>
-              <p className="font-semibold text-sm text-foreground">
-                Starting Development Server...
+              <p className="text-sm font-medium text-foreground">
+                Starting dev server
               </p>
-              <p className="mt-1 text-xs text-muted-foreground max-w-sm">
-                Booting project framework inside the sandbox environment. This
-                usually takes just a few seconds.
+              <p className="mt-1 max-w-xs text-xs text-muted-foreground">
+                Booting the application inside the sandbox
               </p>
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center gap-4 p-8 text-center max-w-md rounded-xl border border-dashed border-border bg-card">
-            <div className="rounded-full bg-primary/10 p-4 text-primary">
-              <Globe className="h-8 w-8" />
-            </div>
+          <div className="flex max-w-sm flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border bg-card p-6 text-center">
+            <Globe
+              className="h-6 w-6 text-muted-foreground"
+              strokeWidth={1.5}
+            />
             <div>
-              <h3 className="font-semibold text-sm text-foreground">
-                Application Preview Idle
+              <h3 className="text-sm font-medium text-foreground">
+                Application preview
               </h3>
               <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                Start the development server to preview and interact with the
-                application live inside your workspace.
+                Start the dev server to preview and interact with the app.
               </p>
             </div>
 
-            {canRun && (
+            {canRun ? (
               <Button
                 onClick={() => void devServer.handlePrimaryAction()}
-                className="gap-2 text-xs h-8"
+                size="sm"
+                className="h-8 gap-1.5 text-xs cursor-pointer"
               >
-                <Play className="h-3.5 w-3.5 fill-current" />
-                Start Development Server
+                <Play className="h-3.5 w-3.5 fill-current" strokeWidth={1.5} />
+                Start dev server
               </Button>
-            )}
+            ) : null}
 
-            {previewDeploymentTargetUrl && (
+            {previewDeploymentTargetUrl ? (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setActiveSource("vercel")}
-                className="gap-1.5 text-xs h-8"
+                className="h-8 gap-1.5 text-xs cursor-pointer"
               >
-                <Globe className="h-3.5 w-3.5 text-blue-500" />
-                View Vercel Deployment
+                <Globe className="h-3.5 w-3.5" strokeWidth={1.5} />
+                View Vercel deployment
               </Button>
-            )}
+            ) : null}
           </div>
         )}
       </div>
