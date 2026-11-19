@@ -6,7 +6,11 @@ const RECOVERABLE_ERROR_CATEGORIES = new Set([
   "network",
   "provider_unavailable",
   "no_output",
+  "context_overflow",
+  "invalid_prompt",
 ]);
+
+const AUTO_FIXABLE_CATEGORIES = new Set(["context_overflow", "invalid_prompt"]);
 
 const TRANSIENT_SIGNAL_PATTERNS = [
   "429",
@@ -30,13 +34,21 @@ const TRANSIENT_SIGNAL_PATTERNS = [
   "econnreset",
   "etimedout",
   "econnrefused",
+  "eai_again",
+  "enotfound",
+  "epipe",
   "socket hang up",
   "broken pipe",
   "overloaded",
   "at capacity",
   "no healthy upstream",
   "stream closed",
+  "connection closed",
+  "unexpected end of json",
   "terminated",
+  "agent stream finished without a response message",
+  "no output generated",
+  "empty response",
 ];
 
 /**
@@ -50,13 +62,20 @@ export function isRecoverableStepError(error: unknown): boolean {
     if (error.name === "AbortError" || error.name === "FatalError") {
       return false;
     }
+  }
+
+  const category = classifyChatError(error);
+  if (AUTO_FIXABLE_CATEGORIES.has(category)) {
+    return true;
+  }
+
+  if (error instanceof Error) {
     const isRetryableFlag = (error as { isRetryable?: unknown }).isRetryable;
     if (isRetryableFlag === false) {
       return false;
     }
   }
 
-  const category = classifyChatError(error);
   if (RECOVERABLE_ERROR_CATEGORIES.has(category)) {
     return true;
   }
@@ -69,4 +88,6 @@ export function isRecoverableStepError(error: unknown): boolean {
   return TRANSIENT_SIGNAL_PATTERNS.some((pattern) => message.includes(pattern));
 }
 
-export const WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS = [3, 6, 12, 24] as const;
+export const WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS = [
+  2, 4, 8, 15, 25, 40,
+] as const;

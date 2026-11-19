@@ -796,7 +796,7 @@ describe("runAgentWorkflow", () => {
           type: "text-delta",
           id: "setup-error",
           delta:
-            "Generation could not be completed cleanly. Retry to resume from the last checkpoint, or send another message. This error happened multiple times on this chat; inspect the tool output above or switch models before retrying.",
+            "The model request was interrupted before finishing. Send your next message or switch models if the issue persists.",
         },
       ]),
     );
