@@ -83,6 +83,7 @@ export async function POST(req: Request) {
     const existingStreamResolution = await reconcileExistingActiveStream(
       chatId,
       chat.activeStreamId,
+      chat.status,
     );
 
     if (existingStreamResolution.action === "resume") {
@@ -213,7 +214,9 @@ export async function POST(req: Request) {
     // Another request or workflow run owns the slot — cancel our duplicate.
     try {
       const { getRun } = await import("workflow/api");
-      getRun(run.runId).cancel();
+      await getRun(run.runId)
+        .cancel()
+        .catch(() => {});
     } catch {
       // Best-effort cleanup.
     }
@@ -221,6 +224,24 @@ export async function POST(req: Request) {
       { error: "Another workflow is already running for this chat" },
       { status: 409 },
     );
+  }
+
+  // If the user clicked Stop while start() was still in-flight (when
+  // activeStreamId was still null), cancel and release the slot immediately.
+  const latestChat = await getChatById(chatId).catch(() => null);
+  if (latestChat?.status === "cancelled") {
+    await compareAndSetChatActiveStreamId(chatId, run.runId, null).catch(
+      () => {},
+    );
+    try {
+      const { getRun } = await import("workflow/api");
+      await getRun(run.runId)
+        .cancel()
+        .catch(() => {});
+    } catch {
+      // Best-effort cleanup.
+    }
+    return Response.json({ error: "Chat run was stopped" }, { status: 409 });
   }
 
   const stream = createCancelableReadableStream(
@@ -251,11 +272,25 @@ type ExistingActiveStreamResolution =
 async function reconcileExistingActiveStream(
   chatId: string,
   activeStreamId: string,
+  chatStatus?: string | null,
 ): Promise<ExistingActiveStreamResolution> {
   const { getRun } = await import("workflow/api");
   let currentStreamId: string | null = activeStreamId;
+  let currentStatus: string | null | undefined = chatStatus;
 
   while (currentStreamId) {
+    if (currentStatus === "cancelled") {
+      await getRun(currentStreamId)
+        .cancel()
+        .catch(() => {});
+      await compareAndSetChatActiveStreamId(
+        chatId,
+        currentStreamId,
+        null,
+      ).catch(() => {});
+      return { action: "ready" };
+    }
+
     const outcome = await verifyRunState(currentStreamId);
 
     if (outcome === "alive") {
@@ -301,6 +336,7 @@ async function reconcileExistingActiveStream(
 
     const latestChat = await getChatById(chatId);
     currentStreamId = latestChat?.activeStreamId ?? null;
+    currentStatus = latestChat?.status;
   }
 
   return { action: "ready" };

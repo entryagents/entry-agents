@@ -35,8 +35,11 @@ import {
  * carries a real status the disjunct is redundant; it costs nothing.
  */
 const activeStreamOrLiveStatusSql = sql<boolean>`(
-  ${chats.activeStreamId} IS NOT NULL
-  OR ${chats.status} IN ('queued', 'running', 'sleeping', 'resuming')
+  ${chats.status} <> 'cancelled'
+  AND (
+    ${chats.activeStreamId} IS NOT NULL
+    OR ${chats.status} IN ('queued', 'running', 'sleeping', 'resuming')
+  )
 )`;
 
 /**
@@ -690,14 +693,23 @@ export async function setChatRunStatus(
         ? isNull(chats.activeStreamId)
         : eq(chats.activeStreamId, onlyIfActiveStreamId);
 
+  const protectCancelledGuard =
+    typeof onlyIfActiveStreamId === "string" && status !== "cancelled"
+      ? ne(chats.status, "cancelled")
+      : undefined;
+
+  const conditions = [eq(chats.id, chatId)];
+  if (streamGuard) {
+    conditions.push(streamGuard);
+  }
+  if (protectCancelledGuard) {
+    conditions.push(protectCancelledGuard);
+  }
+
   await db
     .update(chats)
     .set({ status, runStatusUpdatedAt: new Date() })
-    .where(
-      streamGuard
-        ? and(eq(chats.id, chatId), streamGuard)
-        : eq(chats.id, chatId),
-    );
+    .where(and(...conditions));
 }
 
 /**
@@ -1153,6 +1165,9 @@ export async function upsertChatMessageAndClearActiveStream(
           and(
             eq(chats.id, data.chatId),
             eq(chats.activeStreamId, workflowRunId),
+            ...(finalize && finalize !== "cancelled"
+              ? [ne(chats.status, "cancelled")]
+              : []),
           ),
         )
         .returning({ id: chats.id });

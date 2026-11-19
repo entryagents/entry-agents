@@ -203,6 +203,29 @@ describe("POST /api/chat/[chatId]/stop", () => {
 
     const body = await response.json();
     expect(body).toEqual({ error: "Failed to cancel workflow run" });
+    expect(spies.compareAndSetChatActiveStreamId).not.toHaveBeenCalled();
+    expect(spies.releaseUserBillingTurn).toHaveBeenCalledWith(
+      "user-1",
+      "wrun_active-123",
+    );
+  });
+
+  test("clears activeStreamId and returns 200 when workflow run is already gone", async () => {
+    spies.cancel.mockImplementationOnce(() => {
+      throw Object.assign(new Error("Workflow run not found"), {
+        name: "WorkflowRunNotFoundError",
+      });
+    });
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createStopRequest(), routeContext);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true });
+    expect(spies.compareAndSetChatActiveStreamId).toHaveBeenCalledWith(
+      "chat-1",
+      "wrun_active-123",
+      null,
+    );
     expect(spies.releaseUserBillingTurn).toHaveBeenCalledWith(
       "user-1",
       "wrun_active-123",

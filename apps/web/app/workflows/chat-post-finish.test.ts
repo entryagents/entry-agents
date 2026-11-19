@@ -127,6 +127,7 @@ const {
   refreshLifecycleActivity,
   persistSandboxState,
   clearActiveStream,
+  finalizeAbortedChatStep,
   refreshDiffCache,
   hasAutoCommitChangesStep,
   runAutoCommitStep,
@@ -632,5 +633,29 @@ describe("runAutoCreatePrStep", () => {
       repoName: "repo",
       sandboxState: { type: "vercel" } as never,
     });
+  });
+});
+
+describe("finalizeAbortedChatStep", () => {
+  test("marks chat cancelled for workflowRunId and CAS-clears activeStreamId", async () => {
+    await finalizeAbortedChatStep("chat-1", "wrun_abc");
+
+    expect(spies.setChatRunStatus).toHaveBeenCalledWith("chat-1", "cancelled", {
+      onlyIfActiveStreamId: "wrun_abc",
+    });
+    expect(spies.compareAndSetChatActiveStreamId).toHaveBeenCalledWith(
+      "chat-1",
+      "wrun_abc",
+      null,
+    );
+    expect(spies.failActiveChatRun).not.toHaveBeenCalled();
+  });
+
+  test("does not throw when DB update fails", async () => {
+    spies.setChatRunStatus.mockImplementationOnce(() =>
+      Promise.reject(new Error("DB down")),
+    );
+
+    await finalizeAbortedChatStep("chat-1", "wrun_abc");
   });
 });

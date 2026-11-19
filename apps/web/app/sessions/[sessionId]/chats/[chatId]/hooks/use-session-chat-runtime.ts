@@ -2,6 +2,7 @@
 
 import { type UseChatHelpers, useChat } from "@ai-sdk/react";
 import { isToolUIPart } from "ai";
+import { toast } from "sonner";
 import {
   useCallback,
   useEffect,
@@ -56,7 +57,7 @@ type UseSessionChatRuntimeParams = {
 
 type UseSessionChatRuntimeReturn = {
   chat: UseChatHelpers<WebAgentUIMessage>;
-  stopChatStream: () => void;
+  stopChatStream: () => Promise<boolean>;
   retryChatStream: (opts?: RetryChatStreamOptions) => void;
   getLastChunkReceivedAt: () => number;
   hasActiveSendMessages: () => boolean;
@@ -247,7 +248,7 @@ export function useSessionChatRuntime({
   const retryInFlightRef = useRef(false);
   const retryGenerationRef = useRef(0);
 
-  const stopChatStream = useCallback(() => {
+  const stopChatStream = useCallback((): Promise<boolean> => {
     userStoppedRef.current = true;
 
     // Send the current assistant message snapshot so the server can persist
@@ -255,17 +256,38 @@ export function useSessionChatRuntime({
     const lastMessage = chatInstance.messages[chatInstance.messages.length - 1];
     const assistantMessage =
       lastMessage?.role === "assistant" ? lastMessage : undefined;
+    const stopBody = JSON.stringify(
+      assistantMessage ? { assistantMessage } : {},
+    );
 
-    // We intentionally do not await this request so UI stop stays instant.
-    void fetch(`/api/chat/${chatId}/stop`, {
+    // Fire the server stop immediately while keeping UI abort instant.
+    // Browsers reject keepalive payloads larger than ~64 KiB, so only enable
+    // keepalive when the serialized snapshot fits safely under that cap.
+    const stopRequestPromise = fetch(`/api/chat/${chatId}/stop`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(assistantMessage ? { assistantMessage } : {}),
-    }).catch(() => {});
+      body: stopBody,
+      keepalive: stopBody.length <= 60_000,
+    })
+      .then((response) => {
+        if (!response.ok) {
+          toast.error("Failed to stop active workflow");
+          return false;
+        }
+        return true;
+      })
+      .catch(() => {
+        toast.error("Failed to reach server to stop workflow");
+        return false;
+      })
+      .finally(() => {
+        triggerBillingSync();
+      });
 
     void chatInstance.stop();
     abortChatInstanceTransport(chatId);
     triggerBillingSync();
+    return stopRequestPromise;
   }, [chatId, chatInstance]);
 
   // Compute resume only once on mount. If this tracks `chatInstance.status`

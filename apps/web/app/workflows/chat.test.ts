@@ -149,6 +149,14 @@ const spies = {
   // Defaults to "no prior failures" -- most tests don't care about the
   // repeat-failure note, only the dedicated test below overrides this.
   countRecentFailuresWithCategory: mock(() => Promise.resolve(0)),
+  cancelWorkflowRunStep: mock((_workflowRunId?: unknown) => Promise.resolve()),
+  finalizeAbortedChatStep: mock((_chatId?: unknown, _workflowRunId?: unknown) =>
+    Promise.resolve(),
+  ),
+  getUnreadInboxCountStep: mock((_chatId?: unknown) =>
+    Promise.resolve({ unreadCount: 0 }),
+  ),
+  runPostTurnPluginsStep: mock(() => Promise.resolve()),
   dequeueNextQueuedUserMessageStep: mock(
     (): Promise<{
       message: {
@@ -1837,6 +1845,70 @@ describe("runAgentWorkflow", () => {
 
     // The finally block should still fire
     expect(spies.clearActiveStream).toHaveBeenCalled();
+  });
+
+  test("cancels workflow run and releases billing turn when startup claim conflicts", async () => {
+    spies.claimActiveStream.mockImplementationOnce(async () => "conflict");
+
+    await runAgentWorkflow(makeOptions());
+
+    expect(spies.cancelWorkflowRunStep).toHaveBeenCalledWith("wrun_test-123");
+    expect(spies.releaseUserBillingTurnStep).toHaveBeenCalledWith(
+      "user-1",
+      "wrun_test-123",
+    );
+    expect(spies.closeStream).toHaveBeenCalledTimes(1);
+    expect(spies.persistFinalAssistantMessage).not.toHaveBeenCalled();
+    expect(spies.runAutoCommitStep).not.toHaveBeenCalled();
+  });
+
+  test("finalizes aborted workflow without overwriting cancelled status or running post-finish automation", async () => {
+    mock.module("@/app/config", () => ({
+      ...realAppConfig,
+      webAgent: {
+        tools: {},
+        stream: async () => {
+          throw Object.assign(new Error("The operation was aborted"), {
+            name: "AbortError",
+          });
+        },
+      },
+    }));
+
+    const { runAgentWorkflow: reloadedRun } = await import("./chat");
+    await reloadedRun(
+      makeOptions({
+        autoCommitEnabled: true,
+        autoCreatePrEnabled: true,
+        repoOwner: "acme",
+        repoName: "repo",
+      }),
+    );
+
+    expect(spies.finalizeAbortedChatStep).toHaveBeenCalledWith(
+      "chat-1",
+      "wrun_test-123",
+    );
+    expect(spies.releaseUserBillingTurnStep).toHaveBeenCalledWith(
+      "user-1",
+      "wrun_test-123",
+    );
+    expect(spies.persistFinalAssistantMessage).not.toHaveBeenCalled();
+    expect(spies.reconcileSessionStatusStep).not.toHaveBeenCalled();
+    expect(spies.runAutoCommitStep).not.toHaveBeenCalled();
+    expect(spies.runAutoCreatePrStep).not.toHaveBeenCalled();
+    expect(spies.startNextQueuedWorkflowStep).not.toHaveBeenCalled();
+    expect(spies.recordWorkflowUsage).toHaveBeenCalledWith(
+      "user-1",
+      expect.any(String),
+      undefined,
+      expect.any(Object),
+      undefined,
+      expect.objectContaining({
+        workflowRunId: "wrun_test-123",
+        status: "aborted",
+      }),
+    );
   });
 });
 

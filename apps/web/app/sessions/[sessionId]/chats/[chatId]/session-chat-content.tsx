@@ -84,6 +84,7 @@ import {
   getGitFinalizationState,
   hasRenderableAssistantPart,
   isChatInFlight as isChatInFlightStatus,
+  shouldClearUserStopped,
   shouldShowThinkingIndicator,
   shouldUseChatListStreamingState,
 } from "@/lib/chat-streaming-state";
@@ -1351,10 +1352,24 @@ export function SessionChatContent({
 
     if (status === "error" || status === "ready") {
       setHasPendingResponse(false);
+    }
+
+    if (
+      shouldClearUserStopped({
+        isChatInFlight,
+        status,
+        hasChatListStreaming: currentChatListItem?.isStreaming ?? false,
+      })
+    ) {
       setUserStopped(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
-  }, [isChatInFlight, shouldUseChatListStreaming, status]);
+  }, [
+    currentChatListItem?.isStreaming,
+    isChatInFlight,
+    shouldUseChatListStreaming,
+    status,
+  ]);
 
   useEffect(() => {
     if (!isChatInFlight && !hasPendingResponse) {
@@ -2856,11 +2871,24 @@ export function SessionChatContent({
   );
 
   const handleStopStream = useCallback(() => {
-    stopChatStream();
+    const stopRequest = stopChatStream();
     setHasPendingResponse(false);
     setUserStopped(true);
     void setChatStreaming(chatInfo.id, false);
-  }, [chatInfo.id, setChatStreaming, stopChatStream]);
+    void refreshChats().catch(() => undefined);
+    void Promise.resolve(stopRequest)
+      .catch(() => false)
+      .then(() => {
+        void refreshChats().catch(() => undefined);
+        void refreshCurrentChatSnapshot().catch(() => undefined);
+      });
+  }, [
+    chatInfo.id,
+    refreshChats,
+    refreshCurrentChatSnapshot,
+    setChatStreaming,
+    stopChatStream,
+  ]);
 
   const isReconnectingSandbox =
     reconnectionStatus === "checking" &&

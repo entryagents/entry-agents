@@ -201,9 +201,17 @@ mock.module("@/lib/db/sessions", () => ({
   setChatRunStatus: async (
     _chatId: string,
     status: string,
-    _opts?: { onlyIfActiveStreamId?: null },
+    opts?: { onlyIfActiveStreamId?: string | null },
   ) => {
     routeEvents.push(`status:${status}`);
+    if (
+      chatRecord &&
+      (opts?.onlyIfActiveStreamId === undefined ||
+        opts.onlyIfActiveStreamId === null ||
+        chatRecord.activeStreamId === opts.onlyIfActiveStreamId)
+    ) {
+      chatRecord.status = status;
+    }
   },
 }));
 
@@ -713,6 +721,48 @@ describe("/api/chat route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Another workflow is already running for this chat",
     });
+  });
+
+  test("cancels newly started workflow and returns 409 if stopped concurrently during start", async () => {
+    compareAndSetDefaultResult = true;
+    claimChatActiveStreamIdSpy.mockImplementationOnce(async () => {
+      if (chatRecord) {
+        chatRecord.status = "cancelled";
+      }
+      return true;
+    });
+
+    const { POST } = await routeModulePromise;
+    const response = await POST(createValidRequest());
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Chat run was stopped",
+    });
+    expect(compareAndSetChatActiveStreamIdSpy).toHaveBeenCalledWith(
+      "chat-1",
+      "wrun_test-123",
+      null,
+    );
+  });
+
+  test("cancels an already-cancelled activeStreamId instead of resuming it", async () => {
+    if (!chatRecord) throw new Error("chatRecord must be set");
+    chatRecord.activeStreamId = "wrun_cancelled-1";
+    chatRecord.status = "cancelled";
+    existingRunStatus = "running";
+
+    const { POST } = await routeModulePromise;
+    const response = await POST(createValidRequest());
+
+    expect(response.ok).toBe(true);
+    expect(compareAndSetChatActiveStreamIdSpy).toHaveBeenCalledWith(
+      "chat-1",
+      "wrun_cancelled-1",
+      null,
+    );
+    expect(startCalls).toHaveLength(1);
+    expect(response.headers.get("x-workflow-run-id")).toBe("wrun_test-123");
   });
 
   test("includes x-workflow-run-id header on success", async () => {
