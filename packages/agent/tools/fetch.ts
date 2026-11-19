@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises";
 import { tool } from "ai";
 import { z } from "zod";
 import { getSandbox, shellEscape } from "./utils";
@@ -8,6 +9,7 @@ import {
 import { getToolTimeoutMs } from "./tool-timeouts";
 import {
   createSecretRedactor,
+  isUrlAllowedForSecret,
   resolveSecretRecordTemplates,
   resolveSecretTemplates,
   type RuntimeSecret,
@@ -422,8 +424,10 @@ EXAMPLES:
     const redact = (value: string) =>
       redactor.hasSecrets() ? redactor.redact(value) : value;
 
-    const sandbox = await getSandbox(experimental_context, "web_fetch");
-    const workingDirectory = sandbox.workingDirectory;
+    const usedSecretNamesSet = new Set<string>();
+    const trackSecretUsed = (names: string[]) => {
+      for (const name of names) usedSecretNamesSet.add(name);
+    };
 
     const initialParsedUrl = new URL(url);
     let resolvedUrl = url;
@@ -432,22 +436,25 @@ EXAMPLES:
 
     try {
       resolvedUrl = resolveSecretTemplates(url, secretCtx.secrets, {
+        targetUrl: url,
         targetHost: initialParsedUrl.hostname,
-        onSecretUsed: secretCtx.onSecretUsed,
+        onSecretUsed: trackSecretUsed,
       });
-      const resolvedHost = new URL(resolvedUrl).hostname;
+      const resolvedParsedUrl = new URL(resolvedUrl);
       resolvedHeaders = resolveSecretRecordTemplates(
         headers,
         secretCtx.secrets,
         {
-          targetHost: resolvedHost,
-          onSecretUsed: secretCtx.onSecretUsed,
+          targetUrl: resolvedUrl,
+          targetHost: resolvedParsedUrl.hostname,
+          onSecretUsed: trackSecretUsed,
         },
       );
       if (body !== undefined) {
         resolvedBody = resolveSecretTemplates(body, secretCtx.secrets, {
-          targetHost: resolvedHost,
-          onSecretUsed: secretCtx.onSecretUsed,
+          targetUrl: resolvedUrl,
+          targetHost: resolvedParsedUrl.hostname,
+          onSecretUsed: trackSecretUsed,
         });
       }
     } catch (error) {
@@ -457,17 +464,200 @@ EXAMPLES:
       };
     }
 
+    const usedSecretNames = [...usedSecretNamesSet];
+    if (usedSecretNames.length > 0 && secretCtx.onSecretUsed) {
+      try {
+        secretCtx.onSecretUsed(usedSecretNames);
+      } catch {
+        // Non-fatal telemetry callback
+      }
+    }
+
     // Configurable per-tool timeout (upstream #798):
     // TOOL_TIMEOUT_WEB_FETCH_MS overrides the 30s default.
     const timeoutMs = getToolTimeoutMs("web_fetch", DEFAULT_TIMEOUT_MS);
 
-    // Upstream #781 / PR #813: save the FULL body to a sandbox file
-    // (deterministic per-URL name, so re-fetches overwrite rather than
-    // accumulate), then stream only the first MAX_BODY_LENGTH characters
-    // into stdout (and thus into the model's context). Size is reported
-    // after the status so we know whether the preview was truncated.
     const bodyFileName = buildWebFetchBodyFileName(url);
     const bodyFilePath = `${WEB_FETCH_BODY_DIR}/${bodyFileName}`;
+
+    // When ANY secret template was resolved, execute strictly server-side via
+    // Node fetch (never inside sandbox.exec("curl ...")!) so plaintext secret
+    // values NEVER touch sandbox memory, process lists, or files, and so
+    // redirect hops can be verified against every secret's URL lock.
+    if (usedSecretNames.length > 0) {
+      const usedSecrets = (secretCtx.secrets ?? []).filter((s) =>
+        usedSecretNamesSet.has(s.name),
+      );
+      let serverUrl = resolvedUrl;
+      let serverMethod = method;
+      let serverHeaders = resolvedHeaders;
+      let serverBody = resolvedBody;
+
+      for (
+        let redirectCount = 0;
+        redirectCount <= MAX_REDIRECTS;
+        redirectCount++
+      ) {
+        if (!isAllowedWebUrl(serverUrl)) {
+          return {
+            success: false,
+            error: "Fetch failed: URL must use http(s) and a public host",
+          };
+        }
+
+        const parsedServerUrl = new URL(serverUrl);
+        if (
+          !parseIpv4Address(parsedServerUrl.hostname) &&
+          !parseIpv6Address(parsedServerUrl.hostname)
+        ) {
+          try {
+            const dnsRecords = await lookup(parsedServerUrl.hostname, {
+              all: true,
+            });
+            if (
+              dnsRecords.length === 0 ||
+              dnsRecords.some((rec) => isPrivateHost(rec.address))
+            ) {
+              return {
+                success: false,
+                error:
+                  "Fetch failed: URL resolves to a private or internal host",
+              };
+            }
+          } catch {
+            return {
+              success: false,
+              error: redact(`Fetch failed: Unable to resolve host`),
+            };
+          }
+        }
+
+        const timeoutController = new AbortController();
+        const timer = setTimeout(() => timeoutController.abort(), timeoutMs);
+        const combinedSignal = abortSignal
+          ? AbortSignal.any([abortSignal, timeoutController.signal])
+          : timeoutController.signal;
+
+        try {
+          const response = await fetch(serverUrl, {
+            method: serverMethod,
+            headers: serverHeaders,
+            body:
+              serverMethod !== "GET" &&
+              serverMethod !== "HEAD" &&
+              serverBody !== undefined
+                ? serverBody
+                : undefined,
+            redirect: "manual",
+            signal: combinedSignal,
+          });
+
+          if (REDIRECT_STATUS_CODES.has(response.status)) {
+            const location = response.headers.get("location");
+            if (!location) {
+              return {
+                success: false,
+                error: "Fetch failed: Redirect missing Location header",
+              };
+            }
+            if (redirectCount >= MAX_REDIRECTS) {
+              return {
+                success: false,
+                error: "Fetch failed: Too many redirects",
+              };
+            }
+
+            let nextUrl: string;
+            try {
+              nextUrl = new URL(location, serverUrl).toString();
+            } catch {
+              return {
+                success: false,
+                error: "Fetch failed: Invalid redirect URL",
+              };
+            }
+
+            for (const usedSecret of usedSecrets) {
+              if (
+                usedSecret.allowedHosts &&
+                usedSecret.allowedHosts.length > 0 &&
+                !isUrlAllowedForSecret(nextUrl, usedSecret.allowedHosts)
+              ) {
+                return {
+                  success: false,
+                  error: redact(
+                    `Secret "${usedSecret.name}" is restricted to (${usedSecret.allowedHosts.join(", ")}) and refused redirect to "${nextUrl}".`,
+                  ),
+                };
+              }
+            }
+
+            const nextParsed = new URL(nextUrl);
+            if (nextParsed.origin !== parsedServerUrl.origin) {
+              serverHeaders = stripCrossOriginAuthHeaders(serverHeaders);
+            }
+
+            if (
+              response.status === 303 ||
+              ((response.status === 301 || response.status === 302) &&
+                serverMethod !== "GET" &&
+                serverMethod !== "HEAD")
+            ) {
+              serverMethod = "GET";
+              serverBody = undefined;
+            }
+
+            serverUrl = nextUrl;
+            continue;
+          }
+
+          const rawText = await response.text();
+          const safeText = redact(rawText);
+          const truncated = safeText.length > MAX_BODY_LENGTH;
+          let savedPath: string | undefined;
+
+          if (truncated) {
+            try {
+              const sandbox = await getSandbox(
+                experimental_context,
+                "web_fetch",
+              );
+              if (sandbox.writeFile) {
+                await sandbox.writeFile(bodyFilePath, safeText);
+                savedPath = bodyFilePath;
+              }
+            } catch {
+              // Non-fatal if sandbox isn't booted when persisting large body
+            }
+          }
+
+          return {
+            success: true,
+            status: response.status,
+            body: truncated ? safeText.slice(0, MAX_BODY_LENGTH) : safeText,
+            truncated,
+            ...(savedPath ? { savedTo: savedPath } : {}),
+          };
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          return {
+            success: false,
+            error: redact(`Fetch failed: ${message}`),
+          };
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      return {
+        success: false,
+        error: "Fetch failed: Too many redirects",
+      };
+    }
+
+    const sandbox = await getSandbox(experimental_context, "web_fetch");
+    const workingDirectory = sandbox.workingDirectory;
 
     // curl is not guaranteed on every sandbox base image (the boxd ubuntu
     // image ships neither curl nor wget), which used to make every

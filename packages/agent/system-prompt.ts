@@ -268,7 +268,7 @@ function buildSecretsPrompt(secretCatalog: SecretCatalogEntry[]): string {
       details.push(entry.description);
     }
     if (entry.allowedHosts && entry.allowedHosts.length > 0) {
-      details.push(`allowed hosts: ${entry.allowedHosts.join(", ")}`);
+      details.push(`locked to URL(s): ${entry.allowedHosts.join(", ")}`);
     }
     return details.length > 0
       ? `- \`${entry.name}\` (${details.join("; ")})`
@@ -277,13 +277,13 @@ function buildSecretsPrompt(secretCatalog: SecretCatalogEntry[]): string {
 
   return `
 ## Available User Secrets & API Keys
-The user has configured encrypted secrets for this account. You CANNOT read or inspect their raw values; they are injected transiently server-side only when referenced safely:
+The user has configured encrypted API keys for this account. You CANNOT view, read, or inspect their raw values under any circumstance:
 ${lines.join("\n")}
 
-Rules for using secrets:
-- In \`bash\`: reference as environment variable \`"$SECRET_NAME"\` (injected ephemerally for commands that use it). NEVER print, echo, \`env\`, \`printenv\`, base64-encode, or write secret values to disk.
-- In \`web_fetch\`: reference inside headers or URLs using \`{{SECRET:SECRET_NAME}}\` (resolved server-side only; domain allowlists are strictly enforced).
-- Outputs, tool responses, and errors automatically redact any secret values.`;
+Rules for using API keys:
+- In \`web_fetch\` (preferred for HTTP calls): reference inside URLs, headers, or JSON bodies using \`{{SECRET:KEY_NAME}}\`. Executed server-side only; keys with locked URLs can ONLY be used against their configured URL(s).
+- In \`bash\`: unrestricted keys (without URL locks) are available as \`"$KEY_NAME"\` for scripts, SDKs, and CLIs. URL-locked keys are blocked from shell environments and MUST use \`web_fetch\` or matching MCP servers.
+- NEVER attempt to print, inspect (\`env\`, \`printenv\`, \`echo\`), encode, or persist raw key values.`;
 }
 
 function buildMcpPrompt(summary: McpPromptSummary): string {

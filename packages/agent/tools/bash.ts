@@ -31,6 +31,12 @@ function buildSandboxSecretEnv(
   const env: Record<string, string> = {};
   let hasAny = false;
   for (const secret of secrets) {
+    // Secrets restricted to specific URLs must NEVER be exposed into arbitrary
+    // shell environments — they are resolved exclusively server-side in
+    // web_fetch / MCP after strict URL & redirect verification.
+    if (secret.allowedHosts && secret.allowedHosts.length > 0) {
+      continue;
+    }
     if (secret.injectInSandbox !== false && secret.value) {
       env[secret.name] = secret.value;
       hasAny = true;
@@ -47,6 +53,7 @@ function detectReferencedSecretNames(
   const used: string[] = [];
   for (const secret of secrets) {
     if (secret.injectInSandbox === false) continue;
+    if (secret.allowedHosts && secret.allowedHosts.length > 0) continue;
     const escaped = secret.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const regex = new RegExp(`(?:\\$\\{?${escaped}\\}?\\b)`);
     if (regex.test(command)) {
@@ -54,6 +61,71 @@ function detectReferencedSecretNames(
     }
   }
   return used;
+}
+
+const ENV_DUMP_COMMAND_PATTERNS = [
+  /(?:^|[;&|(\n])\s*(?:command\s+)?printenv(?:\s|$|[;&|)])/,
+  /(?:^|[;&|(\n])\s*(?:command\s+)?env\s*(?:$|[;&|>\n]|-[0u])/,
+  /(?:^|[;&|(\n])\s*export\s+-p(?:\s|$|[;&|)])/,
+  /(?:^|[;&|(\n])\s*(?:declare|typeset)\s+-[a-zA-Z]*[px][a-zA-Z]*(?:\s|$|[;&|)])/,
+  /(?:^|[;&|(\n])\s*compgen\s+-[a-zA-Z]*[ve](?:\s|$|[;&|)])/,
+  /(?:^|[;&|(\n])\s*set\s*(?:$|[;&|>\n])/,
+  /\/proc\/(?:\$\$|\d+|self)\/environ\b/,
+  /\.entry_session_env\b/,
+];
+
+const INLINE_ENV_ACCESS_PATTERN =
+  /\b(?:process\.env|os\.environ|os\.getenv|ENV\[|getenv\s*\()/;
+const PRINT_OR_WRITE_PATTERN =
+  /\b(?:echo|printf|cat|tee|head|tail|more|less|rev|xxd|od|hexdump|strings|base64|tr|fold|sed|awk|cut|console\.(?:log|info|warn|error|debug|dir)|process\.stdout\.write|print\s*\(|puts\b|writeFileSync|write_text)\b|(?:^|[^0-9&])>>?/;
+
+/**
+ * Prevents bash commands from reading, printing, encoding, or bypassing URL
+ * locks on configured user API keys.
+ */
+export function detectSecretExfiltrationAttempt(
+  command: string,
+  secrets: readonly RuntimeSecret[] | undefined,
+): string | null {
+  if (!command || !secrets || secrets.length === 0) {
+    return null;
+  }
+
+  for (const secret of secrets) {
+    const escaped = secret.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const nameRef = new RegExp(`\\b${escaped}\\b`);
+
+    if (
+      secret.allowedHosts &&
+      secret.allowedHosts.length > 0 &&
+      nameRef.test(command)
+    ) {
+      return `Secret "${secret.name}" is locked to (${secret.allowedHosts.join(", ")}) and cannot be accessed inside shell commands. Use web_fetch with {{SECRET:${secret.name}}} targeting an allowed URL instead.`;
+    }
+  }
+
+  for (const pattern of ENV_DUMP_COMMAND_PATTERNS) {
+    if (pattern.test(command)) {
+      return "Environment inspection commands are blocked while private API keys are active.";
+    }
+  }
+
+  if (
+    INLINE_ENV_ACCESS_PATTERN.test(command) &&
+    PRINT_OR_WRITE_PATTERN.test(command)
+  ) {
+    return "Inspecting or writing environment variables from inline shell snippets is blocked while private API keys are active.";
+  }
+
+  for (const secret of secrets) {
+    const escaped = secret.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const varRef = new RegExp(`(?:\\$\\{?${escaped}\\}?\\b)`);
+    if (varRef.test(command) && PRINT_OR_WRITE_PATTERN.test(command)) {
+      return `Direct output, encoding, or file redirection of "$${secret.name}" is blocked for security.`;
+    }
+  }
+
+  return null;
 }
 
 const bashInputSchema = z.object({
@@ -278,6 +350,19 @@ EXAMPLES:
           stdout: "",
           stderr:
             "Invalid cwd: the bash working directory must be a workspace-relative path inside the sandbox workspace.",
+        };
+      }
+
+      const blockedReason = detectSecretExfiltrationAttempt(
+        command,
+        secretCtx.secrets,
+      );
+      if (blockedReason) {
+        return {
+          success: false,
+          exitCode: 1,
+          stdout: "",
+          stderr: blockedReason,
         };
       }
 

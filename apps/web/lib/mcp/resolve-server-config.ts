@@ -36,6 +36,7 @@ export async function resolveSingleMcpServerConfig(
   })();
 
   const resolvedUrl = resolveSecretTemplates(server.url, secrets, {
+    targetUrl: server.url,
     targetHost: initialHost,
     onSecretUsed,
   });
@@ -47,6 +48,7 @@ export async function resolveSingleMcpServerConfig(
     server.headers,
     secrets,
     {
+      targetUrl: resolvedUrl,
       targetHost: finalHost,
       onSecretUsed,
     },

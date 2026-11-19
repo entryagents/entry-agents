@@ -12,7 +12,7 @@ export default function SecretsPage() {
     <div className="space-y-6">
       <StackHeader
         title="API keys"
-        description="Save private provider keys once so agents can run SDKs, authenticated API calls, and custom MCP tools without pasting tokens into chat."
+        description="Save API keys once. Values stay encrypted on the server and are never shown to the agent."
       />
       <SecretsSection />
     </div>

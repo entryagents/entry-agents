@@ -22,7 +22,8 @@ export class SecretTemplateError extends Error {
   }
 }
 
-const MIN_REDACTABLE_SECRET_LENGTH = 6;
+const MIN_REDACTABLE_SECRET_LENGTH = 4;
+const MIN_FINGERPRINT_SECRET_LENGTH = 10;
 const TEMPLATE_PATTERN = /\{\{SECRET:([A-Z][A-Z0-9_]{0,63})\}\}/g;
 
 function escapeRegex(value: string): string {
@@ -37,36 +38,107 @@ function normalizeHost(host: string): string {
   return lower;
 }
 
-export function isHostAllowedForSecret(
-  targetHost: string,
-  allowedHosts: readonly string[],
+function normalizePort(url: URL): string {
+  if (url.port) return url.port;
+  if (url.protocol === "https:") return "443";
+  if (url.protocol === "http:") return "80";
+  return "";
+}
+
+function normalizePathPrefix(pathname: string): string {
+  if (!pathname || pathname === "/") return "/";
+  return pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+}
+
+function matchesHostPattern(targetHost: string, ruleHost: string): boolean {
+  const normalizedTarget = normalizeHost(targetHost);
+  const normalizedRule = normalizeHost(ruleHost);
+  if (!normalizedTarget || !normalizedRule) {
+    return false;
+  }
+  if (normalizedRule === "*") {
+    return true;
+  }
+  if (normalizedRule.startsWith("*.")) {
+    const suffix = normalizedRule.slice(2);
+    return (
+      normalizedTarget === suffix || normalizedTarget.endsWith(`.${suffix}`)
+    );
+  }
+  return normalizedTarget === normalizedRule;
+}
+
+/**
+ * Validates whether a target URL or hostname matches a secret's allowed URL /
+ * domain rules.
+ *
+ * Supported rule formats:
+ * - Full URL (e.g. `https://api.stripe.com`, `https://api.stripe.com/v1`, `https://*.example.com:8443/api`):
+ *   enforces scheme, hostname, port, and pathname prefix.
+ * - Hostname or wildcard domain (e.g. `api.stripe.com`, `*.stripe.dev`):
+ *   enforces hostname match.
+ */
+export function isUrlAllowedForSecret(
+  targetUrlOrHost: string,
+  allowedRules: readonly string[],
 ): boolean {
-  if (allowedHosts.length === 0) {
+  if (allowedRules.length === 0) {
     return true;
   }
 
-  const normalizedTarget = normalizeHost(targetHost);
-  if (!normalizedTarget) {
+  const trimmedTarget = targetUrlOrHost.trim();
+  if (!trimmedTarget) {
     return false;
   }
 
-  for (const rawRule of allowedHosts) {
-    const rule = normalizeHost(rawRule);
+  let parsedTarget: URL | null = null;
+  if (trimmedTarget.includes("://")) {
+    try {
+      parsedTarget = new URL(trimmedTarget);
+    } catch {
+      return false;
+    }
+  }
+  const targetHost = parsedTarget ? parsedTarget.hostname : trimmedTarget;
+
+  for (const rawRule of allowedRules) {
+    const rule = rawRule.trim();
     if (!rule) continue;
-    if (rule === "*") {
+
+    if (rule.includes("://")) {
+      let parsedRule: URL;
+      try {
+        parsedRule = new URL(rule);
+      } catch {
+        continue;
+      }
+
+      if (!parsedTarget) {
+        continue;
+      }
+      if (parsedTarget.protocol !== parsedRule.protocol) {
+        continue;
+      }
+      if (!matchesHostPattern(parsedTarget.hostname, parsedRule.hostname)) {
+        continue;
+      }
+      if (normalizePort(parsedTarget) !== normalizePort(parsedRule)) {
+        continue;
+      }
+      const rulePrefix = normalizePathPrefix(parsedRule.pathname);
+      if (rulePrefix !== "/") {
+        const targetPath = normalizePathPrefix(parsedTarget.pathname);
+        if (
+          targetPath !== rulePrefix &&
+          !targetPath.startsWith(`${rulePrefix}/`)
+        ) {
+          continue;
+        }
+      }
       return true;
     }
-    if (rule.startsWith("*.")) {
-      const suffix = rule.slice(2);
-      if (
-        normalizedTarget === suffix ||
-        normalizedTarget.endsWith(`.${suffix}`)
-      ) {
-        return true;
-      }
-      continue;
-    }
-    if (normalizedTarget === rule) {
+
+    if (matchesHostPattern(targetHost, rule)) {
       return true;
     }
   }
@@ -74,11 +146,34 @@ export function isHostAllowedForSecret(
   return false;
 }
 
+export function isHostAllowedForSecret(
+  targetHost: string,
+  allowedHosts: readonly string[],
+): boolean {
+  return isUrlAllowedForSecret(targetHost, allowedHosts);
+}
+
+interface SecretFingerprint {
+  name: string;
+  alnum: string;
+  reversedAlnum: string;
+}
+
+function buildSplitLineLeakRegex(alnum: string): RegExp {
+  // Matches the secret's alphanumeric characters separated by up to 4
+  // arbitrary punctuation/whitespace characters (catches e.g. `s k _ l i v e`,
+  // `s-k-l-i-v-e`, `s\nk\nl\ni\nv\ne`, etc.).
+  const parts = alnum.split("").map((ch) => escapeRegex(ch));
+  return new RegExp(parts.join("[^a-zA-Z0-9]{0,4}"), "g");
+}
+
 export function createSecretRedactor(
   secrets: readonly RuntimeSecret[] | undefined,
 ): SecretRedactor {
   const candidates: Array<{ needle: string; replacement: string }> = [];
   const seenNeedles = new Set<string>();
+  const fingerprints: Array<SecretFingerprint & { splitRegexes: RegExp[] }> =
+    [];
 
   for (const secret of secrets ?? []) {
     if (!secret.value || secret.value.length < MIN_REDACTABLE_SECRET_LENGTH) {
@@ -86,6 +181,11 @@ export function createSecretRedactor(
     }
     const replacement = `[REDACTED:${secret.name}]`;
     const variants = [secret.value];
+
+    const reversed = secret.value.split("").toReversed().join("");
+    if (reversed !== secret.value) {
+      variants.push(reversed);
+    }
 
     try {
       const urlEncoded = encodeURIComponent(secret.value);
@@ -95,14 +195,29 @@ export function createSecretRedactor(
       ) {
         variants.push(urlEncoded);
       }
+      const uriEncoded = encodeURI(secret.value);
+      if (
+        uriEncoded !== secret.value &&
+        uriEncoded.length >= MIN_REDACTABLE_SECRET_LENGTH
+      ) {
+        variants.push(uriEncoded);
+      }
     } catch {
       // Ignore malformed URI sequences
     }
 
     try {
       const base64 = Buffer.from(secret.value, "utf8").toString("base64");
-      if (base64.length >= 8) {
+      if (base64.length >= 6) {
         variants.push(base64);
+      }
+      const base64Url = Buffer.from(secret.value, "utf8").toString("base64url");
+      if (base64Url.length >= 6) {
+        variants.push(base64Url);
+      }
+      const hexLower = Buffer.from(secret.value, "utf8").toString("hex");
+      if (hexLower.length >= 8) {
+        variants.push(hexLower, hexLower.toUpperCase());
       }
     } catch {
       // Ignore environments without Buffer
@@ -121,6 +236,21 @@ export function createSecretRedactor(
         seenNeedles.add(variant);
         candidates.push({ needle: variant, replacement });
       }
+    }
+
+    const alnum = secret.value.replace(/[^a-zA-Z0-9]/g, "");
+    if (alnum.length >= MIN_FINGERPRINT_SECRET_LENGTH) {
+      const reversedAlnum = alnum.split("").toReversed().join("");
+      const splitRegexes = [buildSplitLineLeakRegex(alnum)];
+      if (reversedAlnum !== alnum) {
+        splitRegexes.push(buildSplitLineLeakRegex(reversedAlnum));
+      }
+      fingerprints.push({
+        name: secret.name,
+        alnum,
+        reversedAlnum,
+        splitRegexes,
+      });
     }
   }
 
@@ -144,9 +274,34 @@ export function createSecretRedactor(
 
   const redact = (text: string): string => {
     if (!text) return text;
-    return text.replace(combinedRegex, (match) => {
+    let out = text.replace(combinedRegex, (match) => {
       return replacementByNeedle.get(match) ?? "[REDACTED_SECRET]";
     });
+
+    if (fingerprints.length > 0) {
+      const stripped = out.replace(/[^a-zA-Z0-9]/g, "");
+      for (const fp of fingerprints) {
+        if (
+          stripped.includes(fp.alnum) ||
+          stripped.includes(fp.reversedAlnum)
+        ) {
+          for (const regex of fp.splitRegexes) {
+            out = out.replace(regex, `[REDACTED:${fp.name}]`);
+          }
+          // Fallback: if arbitrary separators > 4 chars were inserted (e.g.
+          // multi-line comments or padding), block the full output safely.
+          const afterStripped = out.replace(/[^a-zA-Z0-9]/g, "");
+          if (
+            afterStripped.includes(fp.alnum) ||
+            afterStripped.includes(fp.reversedAlnum)
+          ) {
+            return `[REDACTED:${fp.name}:POTENTIAL_EXFILTRATION_BLOCKED]`;
+          }
+        }
+      }
+    }
+
+    return out;
   };
 
   const redactUnknown = <T>(value: T): T => {
@@ -180,6 +335,7 @@ export function resolveSecretTemplates(
   input: string,
   secrets: readonly RuntimeSecret[] | undefined,
   options?: {
+    targetUrl?: string;
     targetHost?: string;
     onSecretUsed?: (names: string[]) => void;
   },
@@ -198,15 +354,15 @@ export function resolveSecretTemplates(
     const secret = secretByName.get(name);
     if (!secret) {
       throw new SecretTemplateError(
-        `Secret "${name}" is not configured in Settings -> API Keys & Secrets.`,
+        `Secret "${name}" is not configured in Settings -> API keys.`,
       );
     }
 
     if (secret.allowedHosts && secret.allowedHosts.length > 0) {
-      const host = options?.targetHost;
-      if (!host || !isHostAllowedForSecret(host, secret.allowedHosts)) {
+      const target = options?.targetUrl ?? options?.targetHost;
+      if (!target || !isUrlAllowedForSecret(target, secret.allowedHosts)) {
         throw new SecretTemplateError(
-          `Secret "${name}" is restricted to allowed hosts (${secret.allowedHosts.join(", ")}) and cannot be sent to "${host ?? "unknown host"}".`,
+          `Secret "${name}" is restricted to allowed URL(s) (${secret.allowedHosts.join(", ")}) and cannot be sent to "${target ?? "unknown target"}".`,
         );
       }
     }
@@ -226,6 +382,7 @@ export function resolveSecretRecordTemplates(
   record: Record<string, string> | undefined,
   secrets: readonly RuntimeSecret[] | undefined,
   options?: {
+    targetUrl?: string;
     targetHost?: string;
     onSecretUsed?: (names: string[]) => void;
   },
