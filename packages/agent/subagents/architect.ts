@@ -1,4 +1,3 @@
-import type { LanguageModel } from "ai";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { z } from "zod";
 import { addCacheControl } from "../context-management";
@@ -10,7 +9,10 @@ import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
 import { teamBoardTool } from "../tools/team";
-import type { SandboxExecutionContext } from "../types";
+import {
+  buildSubagentExperimentalContext,
+  sharedSubagentCallOptionsFields,
+} from "./call-options";
 import {
   SUBAGENT_NO_QUESTIONS_RULES,
   SUBAGENT_RESPONSE_FORMAT,
@@ -54,15 +56,7 @@ const callOptionsSchema = z.object({
   instructions: z
     .string()
     .describe("Detailed architecture and planning instructions"),
-  sandbox: z
-    .custom<SandboxExecutionContext["sandbox"]>()
-    .describe("Sandbox for file system and shell operations"),
-  model: z.custom<LanguageModel>().describe("Language model for this subagent"),
-  teamId: z.string().optional(),
-  teamContext: z.string().optional(),
-  maxOutputTokens: z.number().int().positive().optional(),
-  contextWindow: z.number().int().positive().optional(),
-  compactionThreshold: z.number().positive().optional(),
+  ...sharedSubagentCallOptionsFields,
 });
 
 export type ArchitectCallOptions = z.infer<typeof callOptionsSchema>;
@@ -95,7 +89,6 @@ export const architectSubagent = new ToolLoopAgent({
       throw new Error("Architect subagent requires task call options.");
     }
 
-    const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider(defaultModelLabel);
     const teamBlock = options.teamContext ? `${options.teamContext}\n\n` : "";
     return {
@@ -115,14 +108,11 @@ export const architectSubagent = new ToolLoopAgent({
         ],
         model,
       }),
-      experimental_context: {
-        sandbox,
+      experimental_context: buildSubagentExperimentalContext(
+        options,
         model,
-        teamId: options.teamId ?? "default-team",
-        agentRole: "architect",
-        contextWindow: options.contextWindow,
-        compactionThreshold: options.compactionThreshold,
-      },
+        "architect",
+      ),
     };
   },
 });
