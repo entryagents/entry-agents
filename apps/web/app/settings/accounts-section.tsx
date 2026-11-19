@@ -46,8 +46,7 @@ import { authClient } from "@/lib/auth/client";
 import type { GitHubConnectionReason } from "@/lib/github/status";
 import { fetcher } from "@/lib/swr";
 
-const GITHUB_OAUTH_CALLBACK =
-  "/api/github/post-link?next=/settings/connections";
+const GITHUB_OAUTH_CALLBACK = "/api/github/post-link?next=/settings/accounts";
 
 interface GitHubUserProfile {
   githubId: number;
@@ -89,7 +88,7 @@ function GitHubIcon({ className }: { className?: string }) {
 
 function startGitHubInstallForOrg(githubId: number) {
   const params = new URLSearchParams({
-    next: "/settings/connections",
+    next: "/settings/accounts",
     target_id: String(githubId),
   });
 
@@ -98,7 +97,7 @@ function startGitHubInstallForOrg(githubId: number) {
 
 function startGitHubInstallFromSettings() {
   const params = new URLSearchParams({
-    next: "/settings/connections",
+    next: "/settings/accounts",
   });
   window.location.href = `/api/github/app/install?${params.toString()}`;
 }
@@ -106,7 +105,7 @@ function startGitHubInstallFromSettings() {
 async function startGitHubReconnect(reason: GitHubConnectionReason | null) {
   if (reason === "installations_missing") {
     const params = new URLSearchParams({
-      next: "/settings/connections",
+      next: "/settings/accounts",
       reconnect: "1",
     });
     window.location.href = `/api/github/app/install?${params.toString()}`;

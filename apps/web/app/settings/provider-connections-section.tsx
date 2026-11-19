@@ -49,8 +49,8 @@ export function ProviderConnectionsSection() {
     try {
       const result = await authClient.linkSocial({
         provider: "google",
-        callbackURL: "/settings/connections",
-        errorCallbackURL: "/settings/connections",
+        callbackURL: "/settings/accounts",
+        errorCallbackURL: "/settings/accounts",
       });
       if (result?.error) {
         toast.error(result.error.message || "Failed to connect Google account");

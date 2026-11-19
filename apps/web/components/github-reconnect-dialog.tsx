@@ -54,7 +54,7 @@ export function GitHubReconnectDialog({
             </Button>
           )}
           <Button asChild>
-            <Link href="/settings/connections">Reconnect GitHub</Link>
+            <Link href="/settings/accounts">Reconnect GitHub</Link>
           </Button>
         </DialogFooter>
       </DialogContent>

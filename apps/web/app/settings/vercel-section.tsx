@@ -51,7 +51,7 @@ export function VercelSectionSkeleton() {
 }
 
 /**
- * Vercel section on /settings/connections. Two distinct states:
+ * Vercel section on /settings/accounts. Two distinct states:
  * - Users who signed in WITH Vercel: their login is the Vercel account, so
  *   it shows as managed.
  * - Users who signed in with Google/GitHub: Vercel is NOT connected until
@@ -79,8 +79,8 @@ export function VercelSection() {
     try {
       const result = await authClient.linkSocial({
         provider: "vercel",
-        callbackURL: "/settings/connections",
-        errorCallbackURL: "/settings/connections",
+        callbackURL: "/settings/accounts",
+        errorCallbackURL: "/settings/accounts",
       });
       if (result?.error) {
         toast.error(result.error.message || "Failed to connect Vercel account");

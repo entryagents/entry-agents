@@ -6,6 +6,7 @@ import {
   Cable,
   CircleDashed,
   KeyRound,
+  Link2,
   Loader2,
   Monitor,
   Moon,
@@ -282,12 +283,18 @@ export function CommandPalette({
             <span>Preferences</span>
           </CommandItem>
           <CommandItem
+            onSelect={() => runAction(() => router.push("/settings/accounts"))}
+          >
+            <Link2 />
+            <span>Accounts</span>
+          </CommandItem>
+          <CommandItem
             onSelect={() =>
               runAction(() => router.push("/settings/connections"))
             }
           >
             <Cable />
-            <span>Connections</span>
+            <span>Integrations</span>
           </CommandItem>
           <CommandItem
             onSelect={() => runAction(() => router.push("/settings/profile"))}

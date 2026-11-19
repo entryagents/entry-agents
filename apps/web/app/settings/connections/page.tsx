@@ -1,36 +1,24 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { StackHeader } from "../_components/stack-header";
-import { AccountsSection, AccountsSectionSkeleton } from "../accounts-section";
-import { VercelSection, VercelSectionSkeleton } from "../vercel-section";
-import { ProviderConnectionsSection } from "../provider-connections-section";
 import {
   ComposioToolkitsSection,
   ComposioToolkitsSectionSkeleton,
 } from "./composio-toolkits-section";
 
 export const metadata: Metadata = {
-  title: "Connections",
+  title: "Integrations",
   description:
-    "Manage connected apps, developer platforms, and workspace tools.",
+    "Connect workspace apps, custom MCP tools, and API keys for your agents.",
 };
 
 export default function ConnectionsPage() {
   return (
     <div className="space-y-6">
       <StackHeader
-        title="Apps & accounts"
-        description="Connect GitHub, Vercel, Gmail, Slack, Linear, Notion, and workspace tools so agents discover and run tools directly from chat."
+        title="Integrations"
+        description="Connect Gmail, Slack, Linear, Notion, custom MCP servers, and API keys so your agents can work across your stack."
       />
-      <div className="grid gap-4 md:grid-cols-2">
-        <Suspense fallback={<VercelSectionSkeleton />}>
-          <VercelSection />
-        </Suspense>
-        <ProviderConnectionsSection />
-      </div>
-      <Suspense fallback={<AccountsSectionSkeleton />}>
-        <AccountsSection />
-      </Suspense>
       <Suspense fallback={<ComposioToolkitsSectionSkeleton />}>
         <ComposioToolkitsSection />
       </Suspense>

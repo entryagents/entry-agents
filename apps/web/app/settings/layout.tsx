@@ -6,6 +6,7 @@ import {
   Blocks,
   Cable,
   CreditCard,
+  Link2,
   LogOut,
   Menu,
   Settings as SettingsIcon,
@@ -113,6 +114,13 @@ const baseSidebarItems: readonly SidebarNavItem[] = [
     icon: SlidersHorizontal,
   },
   {
+    id: "accounts",
+    label: "Accounts",
+    href: "/settings/accounts",
+    matchPrefixes: ["/settings/accounts"],
+    icon: Link2,
+  },
+  {
     id: "integrations",
     label: "Integrations",
     href: "/settings/connections",
@@ -150,6 +158,9 @@ function resolvePageTitle(
   pathname: string,
   activeItem?: SidebarNavItem,
 ): string {
+  if (matchesPrefix(pathname, ["/settings/accounts"])) {
+    return "Connected accounts";
+  }
   if (matchesPrefix(pathname, ["/settings/mcp-servers"])) {
     return "Custom MCP tools";
   }
@@ -315,7 +326,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     matchesPrefix(pathname, item.matchPrefixes),
   );
   const fallbackTitle = resolvePageTitle(pathname, activeItem);
-  const fallbackContent = matchesPrefix(pathname, ["/settings/connections"]) ? (
+  const fallbackContent = matchesPrefix(pathname, [
+    "/settings/accounts",
+    "/settings/connections",
+  ]) ? (
     <ConnectionsPageSkeleton />
   ) : matchesPrefix(pathname, ["/settings/mcp-servers"]) ? (
     <McpServersSectionSkeleton />
