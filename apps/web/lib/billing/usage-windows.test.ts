@@ -80,24 +80,25 @@ describe("findExceededUsageWindow", () => {
     ).toBe("monthly");
   });
 
-  test("Entry windows are 20%/50%/100% of the $50 grant", () => {
-    expect(windows.fiveHourLimitCents).toBe(1000);
-    expect(windows.weeklyLimitCents).toBe(2500);
-    expect(windows.monthlyLimitCents).toBe(5000);
+  test("Builder windows are $6 / $14 / $28 of the $28 grant", () => {
+    expect(windows.fiveHourLimitCents).toBe(600);
+    expect(windows.weeklyLimitCents).toBe(1400);
+    expect(windows.monthlyLimitCents).toBe(2800);
   });
 
-  test("the $13 windowed plan is named Entry with id entry (and normalizes legacy goat)", () => {
-    expect(PLAN_CATALOG.entry.name).toBe("Entry");
+  test("the $10 windowed plan is named Builder with id entry (and normalizes legacy goat)", () => {
+    expect(PLAN_CATALOG.entry.name).toBe("Builder");
+    expect(PLAN_CATALOG.entry.priceUsdCents).toBe(1000);
     expect(normalizePlanId("goat")).toBe("entry");
   });
 
-  test("only the Entry plan has usage windows", () => {
-    for (const [planId, plan] of Object.entries(PLAN_CATALOG)) {
-      if (planId === "entry") {
-        expect(plan.usageWindows).toBeDefined();
-      } else {
-        expect(plan.usageWindows).toBeUndefined();
-      }
-    }
+  test("Plus ($3) and Builder ($10) plans have usage windows", () => {
+    expect(PLAN_CATALOG.plus.usageWindows).toEqual({
+      fiveHourLimitCents: 150,
+      weeklyLimitCents: 350,
+      monthlyLimitCents: 600,
+    });
+    expect(PLAN_CATALOG.entry.usageWindows).toBeDefined();
+    expect(PLAN_CATALOG.free.usageWindows).toBeUndefined();
   });
 });

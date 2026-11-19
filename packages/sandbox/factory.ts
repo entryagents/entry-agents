@@ -40,6 +40,10 @@ export interface ConnectOptions {
   vcpus?: number;
   /** Optional working directory override inside the sandbox (e.g. per-session isolation) */
   workingDirectory?: string;
+  /** Aggressive lifecycle timeouts (seconds) enforced per subscription tier */
+  autoSuspendSeconds?: number;
+  autoHibernateSeconds?: number;
+  autoDestroySeconds?: number;
   /** Optional provider image override, used by isolated benchmark workers. */
   image?: string;
   /** Ports to expose from the sandbox for dev server preview URLs */

@@ -6,9 +6,72 @@ export const FREE_USER_SANDBOX_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
 export const STARTER_SANDBOX_VCPUS = 1;
 export const HIGH_SUBSCRIBER_SANDBOX_VCPUS = 2;
 
+export interface SandboxPlanPolicy {
+  sharedVm: boolean;
+  vcpus: number;
+  maxConcurrentActiveVms: number;
+  autoSuspendSeconds: number;
+  autoHibernateSeconds: number;
+  autoDestroySeconds: number;
+  monthlyActiveHoursLimit: number;
+}
+
+export function getSandboxPlanPolicy(
+  planId: string | null | undefined,
+  isAdmin = false,
+): SandboxPlanPolicy {
+  if (isAdmin) {
+    return {
+      sharedVm: false,
+      vcpus: HIGH_SUBSCRIBER_SANDBOX_VCPUS,
+      maxConcurrentActiveVms: 10,
+      autoSuspendSeconds: 300,
+      autoHibernateSeconds: 1200,
+      autoDestroySeconds: 30 * 24 * 3600,
+      monthlyActiveHoursLimit: 500,
+    };
+  }
+
+  const plan = getPlanDefinition(planId);
+  if (plan.id === "free") {
+    return {
+      sharedVm: true,
+      vcpus: STARTER_SANDBOX_VCPUS,
+      maxConcurrentActiveVms: 1,
+      autoSuspendSeconds: 180,
+      autoHibernateSeconds: 600,
+      autoDestroySeconds: 7 * 24 * 3600,
+      monthlyActiveHoursLimit: 5,
+    };
+  }
+
+  if (plan.id === "plus") {
+    return {
+      sharedVm: true,
+      vcpus: STARTER_SANDBOX_VCPUS,
+      maxConcurrentActiveVms: 1,
+      autoSuspendSeconds: 180,
+      autoHibernateSeconds: 600,
+      autoDestroySeconds: 14 * 24 * 3600,
+      monthlyActiveHoursLimit: 25,
+    };
+  }
+
+  // Builder ("entry") and legacy dedicated tiers: dedicated per-session 2 vCPU VMs, max 3 concurrent
+  return {
+    sharedVm: false,
+    vcpus: HIGH_SUBSCRIBER_SANDBOX_VCPUS,
+    maxConcurrentActiveVms: 3,
+    autoSuspendSeconds: 180,
+    autoHibernateSeconds: 600,
+    autoDestroySeconds: 14 * 24 * 3600,
+    monthlyActiveHoursLimit: 50,
+  };
+}
+
 /**
  * Resolves sandbox vCPU allocation by subscription tier:
- * - High subscribers (`entry`, `pro`, `max`) and admins receive 2 vCPUs.
+ * - High subscribers (`entry` / Builder, `pro`, `max`) and admins receive 2 vCPUs.
  * - Free and entry-level (`plus`) subscribers stay on 1 vCPU for sustainable economics.
  * - Vercel Hobby profile enforces a 1 vCPU platform cap regardless of plan.
  */
@@ -22,16 +85,7 @@ export function resolveSandboxVcpusForPlan(input: {
     return STARTER_SANDBOX_VCPUS;
   }
 
-  if (input.isAdmin) {
-    return HIGH_SUBSCRIBER_SANDBOX_VCPUS;
-  }
-
-  const plan = getPlanDefinition(input.planId);
-  if (plan.id === "entry" || plan.id === "pro" || plan.id === "max") {
-    return HIGH_SUBSCRIBER_SANDBOX_VCPUS;
-  }
-
-  return STARTER_SANDBOX_VCPUS;
+  return getSandboxPlanPolicy(input.planId, Boolean(input.isAdmin)).vcpus;
 }
 
 export interface SessionSandboxCandidate {
@@ -115,8 +169,7 @@ export function resolveFreeTierSandboxReuse(input: {
 }): FreeTierSandboxResolution {
   const plan = getPlanDefinition(input.userPlan);
   const isSharedPlan =
-    !input.isAdmin &&
-    (plan.id === "free" || plan.id === "plus" || plan.id === "entry");
+    !input.isAdmin && (plan.id === "free" || plan.id === "plus");
 
   if (!isSharedPlan) {
     const sharedWithOther = isSandboxSharedAcrossSessions(

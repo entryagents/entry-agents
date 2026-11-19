@@ -27,8 +27,8 @@ function createBoxdMachine(
       vcpu: size.vcpu,
       memory: size.memory,
       disk: BOXD_DISK,
-      autoSuspendTimeout: 300,
-      autoDestroyTimeout: 0,
+      autoSuspendTimeout: options?.autoSuspendSeconds ?? 180,
+      autoDestroyTimeout: options?.autoDestroySeconds ?? 14 * 24 * 3600,
       ssh: true,
     },
   });
@@ -263,11 +263,13 @@ export async function connectBoxd(
     await client.machines.resume(machine.id);
   }
 
-  // Ensure every Boxd machine automatically pauses (suspends to RAM) after 5 minutes (300s)
-  // and hibernates (suspends to disk) after 20 minutes (1200s) of inactivity.
+  const suspendSeconds = options?.autoSuspendSeconds ?? 180;
+  const hibernateSeconds = options?.autoHibernateSeconds ?? 600;
+
+  // Ensure every Boxd machine automatically suspends and hibernates on the plan's aggressive schedule.
   await Promise.allSettled([
-    client.machines.setAutoSuspendTimeout(machine.id, 300),
-    client.machines.setAutoHibernateTimeout(machine.id, 1200),
+    client.machines.setAutoSuspendTimeout(machine.id, suspendSeconds),
+    client.machines.setAutoHibernateTimeout(machine.id, hibernateSeconds),
   ]);
 
   try {
@@ -286,8 +288,8 @@ export async function connectBoxd(
       await client.machines.delete(machine.id).catch(() => {});
       machine = await createBoxdMachine(client, name, options);
       await Promise.allSettled([
-        client.machines.setAutoSuspendTimeout(machine.id, 300),
-        client.machines.setAutoHibernateTimeout(machine.id, 1200),
+        client.machines.setAutoSuspendTimeout(machine.id, suspendSeconds),
+        client.machines.setAutoHibernateTimeout(machine.id, hibernateSeconds),
       ]);
       await client.machines.waitUntilReady(machine.id);
     } else {
