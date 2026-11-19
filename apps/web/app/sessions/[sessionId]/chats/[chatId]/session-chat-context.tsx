@@ -1197,7 +1197,9 @@ export function SessionChatProvider({
       !allModelOptions.some((o) => o.id === chatInfo.modelId)
     ) {
       const fallbackId = getDefaultModelOptionId(allModelOptions);
-      void updateChatModel(fallbackId);
+      if (fallbackId) {
+        void updateChatModel(fallbackId);
+      }
     }
   }, [
     allModelOptions,

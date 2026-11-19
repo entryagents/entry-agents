@@ -8,7 +8,7 @@ import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { Octokit } from "@octokit/rest";
 import { generateText } from "ai";
 import { gateway } from "@entry-agents/agent";
-import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { resolveLatestGatewayModelId } from "@/lib/models-with-context";
 
 type RouteContext = {
   params: Promise<{ sessionId: string }>;
@@ -158,8 +158,13 @@ async function compactLog(rawLog: string): Promise<string> {
     logInput = `${rawLog.slice(0, half)}\n\n... (${omitted} characters omitted) ...\n\n${rawLog.slice(-half)}`;
   }
 
+  const modelId = await resolveLatestGatewayModelId();
+  if (!modelId) {
+    return logInput;
+  }
+
   const result = await generateText({
-    model: gateway(APP_DEFAULT_MODEL_ID),
+    model: gateway(modelId),
     system: LOG_SUMMARIZATION_PROMPT,
     prompt: logInput,
   });

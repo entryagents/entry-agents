@@ -589,7 +589,7 @@ function delay(ms: number) {
 
 export async function recordWorkflowUsage(
   userId: string,
-  modelId: string,
+  modelId: string | undefined,
   totalUsage: LanguageModelUsage | undefined,
   responseMessage: WebAgentUIMessage,
   previousResponseMessage?: WebAgentUIMessage,
@@ -653,7 +653,7 @@ export async function recordWorkflowUsage(
 
     // Record main agent usage (analytics only -- billing already
     // happened in real time during the stream, see comment above).
-    if (totalUsage) {
+    if (totalUsage && modelId) {
       const mainUsage = {
         inputTokens: totalUsage.inputTokens ?? 0,
         cachedInputTokens: cachedInputTokensFor(totalUsage),

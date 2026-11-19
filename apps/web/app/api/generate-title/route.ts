@@ -5,9 +5,9 @@ import { z } from "zod";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { getTitleModelId } from "@/lib/db/platform-settings";
+import { resolveLatestGatewayModelId } from "@/lib/models-with-context";
 import { sanitizePromptToTitle } from "@/lib/random-city";
 
-const FALLBACK_TITLE_MODEL_ID = "step-5-preview";
 const TITLE_GENERATION_TIMEOUT_MS = 12_000;
 
 /**
@@ -23,7 +23,9 @@ export async function generateSessionTitle(
 
   try {
     const configuredTitleModel = await getTitleModelId();
-    const titleModelId = configuredTitleModel ?? FALLBACK_TITLE_MODEL_ID;
+    const titleModelId =
+      configuredTitleModel ?? (await resolveLatestGatewayModelId());
+    if (!titleModelId) return null;
 
     const result = await generateText({
       model: gateway(titleModelId),

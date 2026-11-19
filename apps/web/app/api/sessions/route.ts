@@ -424,7 +424,10 @@ export async function POST(req: Request) {
           session,
           req.url,
         ) ?? trimmedRequestedModelId)
-      : preferences.defaultModelId;
+      : (preferences.defaultModelId ??
+        (await (
+          await import("@/lib/models-with-context")
+        ).resolveLatestGatewayModelId()));
     let effectiveReasoningEffort: string | null | undefined;
     if (requestedReasoningEffort === null) {
       effectiveReasoningEffort = null;

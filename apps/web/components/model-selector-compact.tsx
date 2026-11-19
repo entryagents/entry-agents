@@ -28,7 +28,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { groupByProvider, type ModelOption } from "@/lib/model-options";
-import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
+import { selectLatestGatewayModelId } from "@/lib/models";
 import { cn } from "@/lib/utils";
 
 interface ModelSelectorCompactProps {
@@ -118,6 +118,10 @@ export function ModelSelectorCompact({
   const displayText = selectedOption?.shortLabel ?? optimisticModelId;
 
   const groups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
+  const latestModelId = useMemo(
+    () => selectLatestGatewayModelId(modelOptions),
+    [modelOptions],
+  );
 
   return (
     <>
@@ -198,9 +202,9 @@ export function ModelSelectorCompact({
                           </span>
                         ) : (
                           <>
-                            {option.id === APP_DEFAULT_MODEL_ID && (
+                            {option.id === latestModelId && (
                               <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-                                default
+                                latest
                               </span>
                             )}
                             <CheckIcon

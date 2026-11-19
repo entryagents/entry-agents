@@ -1,5 +1,5 @@
 import {
-  APP_DEFAULT_MODEL_ID,
+  selectLatestGatewayModelId,
   type AvailableModel,
   type AvailableModelCost,
   getModelDisplayName,
@@ -20,6 +20,10 @@ export interface ModelOption {
   reasoningEffortLevels?: Array<{ value: string; label: string }>;
   defaultReasoningEffort?: string;
   supportsReasoningEffort?: boolean;
+  created?: number;
+  releasedAt?: string;
+  isLatest?: boolean;
+  isDefault?: boolean;
 }
 
 function toBaseModelOption(model: AvailableModel): ModelOption {
@@ -41,6 +45,10 @@ function toBaseModelOption(model: AvailableModel): ModelOption {
     ...(model.supportsReasoningEffort !== undefined
       ? { supportsReasoningEffort: model.supportsReasoningEffort }
       : {}),
+    ...(model.created !== undefined ? { created: model.created } : {}),
+    ...(model.releasedAt ? { releasedAt: model.releasedAt } : {}),
+    ...(model.isLatest !== undefined ? { isLatest: model.isLatest } : {}),
+    ...(model.isDefault !== undefined ? { isDefault: model.isDefault } : {}),
     provider,
   };
 }
@@ -106,10 +114,8 @@ export function withMissingModelOption(
   return modelOptions;
 }
 
-export function getDefaultModelOptionId(modelOptions: ModelOption[]): string {
-  if (modelOptions.some((option) => option.id === APP_DEFAULT_MODEL_ID)) {
-    return APP_DEFAULT_MODEL_ID;
-  }
-
-  return modelOptions[0]?.id ?? APP_DEFAULT_MODEL_ID;
+export function getDefaultModelOptionId(
+  modelOptions: ModelOption[],
+): string | null {
+  return selectLatestGatewayModelId(modelOptions);
 }

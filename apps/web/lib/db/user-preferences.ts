@@ -5,7 +5,6 @@ import {
   DEFAULT_SANDBOX_PROVIDER,
   isUserSelectableSandboxType,
 } from "@entry-agents/sandbox/registry.js";
-import { APP_DEFAULT_MODEL_ID } from "@/lib/models";
 import {
   normalizeGlobalSkillRefs,
   type GlobalSkillRef,
@@ -16,7 +15,7 @@ import { userPreferences, type UserPreferences } from "./schema";
 export type DiffMode = "unified" | "split";
 
 export interface UserPreferencesData {
-  defaultModelId: string;
+  defaultModelId: string | null;
   defaultSubagentModelId: string | null;
   defaultSandboxType: SandboxType;
   defaultDiffMode: DiffMode;
@@ -32,7 +31,7 @@ export interface UserPreferencesData {
 }
 
 const DEFAULT_PREFERENCES: UserPreferencesData = {
-  defaultModelId: APP_DEFAULT_MODEL_ID,
+  defaultModelId: null,
   defaultSubagentModelId: null,
   defaultSandboxType: DEFAULT_SANDBOX_PROVIDER as SandboxType,
   defaultDiffMode: "unified",

@@ -95,11 +95,7 @@ import {
   sanitizeSelectedModelIdForSession,
   sanitizeUserPreferencesForSession,
 } from "@/lib/model-access";
-import {
-  APP_DEFAULT_MODEL_ID,
-  type AvailableModel,
-  estimateModelUsageCost,
-} from "@/lib/models";
+import { type AvailableModel, estimateModelUsageCost } from "@/lib/models";
 import type { Session as AuthSession } from "@/lib/session/types";
 import type {
   WorkflowRunStatus,
@@ -993,13 +989,13 @@ function buildStepTiming(
 
 function withModelMetadata(
   metadata: WebAgentMessageMetadata | undefined,
-  selectedModelId: string,
-  modelId: string,
+  selectedModelId: string | undefined,
+  modelId: string | undefined,
 ): WebAgentMessageMetadata {
   return {
     ...metadata,
-    selectedModelId,
-    modelId,
+    ...(selectedModelId ? { selectedModelId } : {}),
+    ...(modelId ? { modelId } : {}),
   };
 }
 
@@ -2540,8 +2536,9 @@ export async function runAgentWorkflow(options: Options) {
     });
   }
 
-  let selectedModelId = APP_DEFAULT_MODEL_ID;
-  let modelId = APP_DEFAULT_MODEL_ID;
+  let selectedModelId: string | undefined =
+    options.selectedModelId ?? undefined;
+  let modelId: string | undefined = options.modelId ?? undefined;
 
   // Live pricing catalog from entry-gateway (see gateway-metadata.ts) --
   // used to price every step below since our shared provider doesn't emit

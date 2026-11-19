@@ -135,7 +135,11 @@ export default async function RepoPage({ params }: RepoPageProps) {
     initialChat: {
       id: nanoid(),
       title: "New chat",
-      modelId: preferences.defaultModelId,
+      modelId:
+        preferences.defaultModelId ??
+        (await (
+          await import("@/lib/models-with-context")
+        ).resolveLatestGatewayModelId()),
     },
   });
 

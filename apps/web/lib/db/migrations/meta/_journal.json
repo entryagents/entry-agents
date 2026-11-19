@@ -547,6 +547,13 @@
       "when": 1795046039700,
       "tag": "0077_volatile_kronos",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1795112332589,
+      "tag": "0078_remove_hardcoded_default_model",
+      "breakpoints": true
     }
   ]
 }

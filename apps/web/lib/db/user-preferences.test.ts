@@ -13,7 +13,7 @@ describe("toUserPreferencesData", () => {
     const { toUserPreferencesData } = await userPreferencesModulePromise;
 
     expect(toUserPreferencesData()).toEqual({
-      defaultModelId: "step-5-preview",
+      defaultModelId: null,
       defaultSubagentModelId: null,
       defaultSandboxType: "boxd",
       defaultDiffMode: "unified",
