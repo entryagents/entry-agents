@@ -114,9 +114,11 @@ export function resolveFreeTierSandboxReuse(input: {
   userSessions: SessionSandboxCandidate[];
 }): FreeTierSandboxResolution {
   const plan = getPlanDefinition(input.userPlan);
-  const isFreeUser = !input.isAdmin && plan.id === "free";
+  const isSharedPlan =
+    !input.isAdmin &&
+    (plan.id === "free" || plan.id === "plus" || plan.id === "entry");
 
-  if (!isFreeUser) {
+  if (!isSharedPlan) {
     const sharedWithOther = isSandboxSharedAcrossSessions(
       input.currentSessionId,
       input.currentSandboxState,

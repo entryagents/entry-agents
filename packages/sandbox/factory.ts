@@ -38,6 +38,8 @@ export interface ConnectOptions {
   timeout?: number;
   /** Number of vCPUs for new sandboxes */
   vcpus?: number;
+  /** Optional working directory override inside the sandbox (e.g. per-session isolation) */
+  workingDirectory?: string;
   /** Optional provider image override, used by isolated benchmark workers. */
   image?: string;
   /** Ports to expose from the sandbox for dev server preview URLs */

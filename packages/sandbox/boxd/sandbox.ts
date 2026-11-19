@@ -64,7 +64,7 @@ function mapExec(result: BoxdExecResult): ExecResult {
 
 export class BoxdSandbox implements Sandbox {
   readonly type = "cloud" as const;
-  readonly workingDirectory = BOXD_WORKING_DIRECTORY;
+  readonly workingDirectory: string;
   readonly hooks?: SandboxHooks;
   readonly env?: Record<string, string>;
   readonly host?: string;
@@ -81,6 +81,7 @@ export class BoxdSandbox implements Sandbox {
     private readonly baseDomain = "boxd.sh",
     private readonly proxyPorts = new Set<number>(),
   ) {
+    this.workingDirectory = options?.workingDirectory ?? BOXD_WORKING_DIRECTORY;
     this.hooks = options?.hooks;
     this.env = options?.env;
   }

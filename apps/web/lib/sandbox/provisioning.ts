@@ -297,6 +297,9 @@ export async function provisionSessionSandbox(params: {
         gitUser,
         timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
         vcpus: sandboxVcpus,
+        ...(provider.id === "boxd" && {
+          workingDirectory: `/tmp/entry-workspace/sessions/${session.id}`,
+        }),
         ports: DEFAULT_SANDBOX_PORTS,
         baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
         persistent: false,
