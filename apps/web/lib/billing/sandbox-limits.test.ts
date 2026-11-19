@@ -3,6 +3,7 @@ import type { SandboxState } from "@entry-agents/sandbox";
 import {
   isSandboxSharedAcrossSessions,
   resolveFreeTierSandboxReuse,
+  resolveSandboxVcpusForPlan,
 } from "./sandbox-limits";
 
 function boxdState(machineId?: string): SandboxState {
@@ -117,5 +118,46 @@ describe("resolveFreeTierSandboxReuse", () => {
         { activeOnly: true },
       ),
     ).toBe(true);
+  });
+});
+
+describe("resolveSandboxVcpusForPlan", () => {
+  test("assigns 1 vCPU to free and starter plus subscribers", () => {
+    expect(
+      resolveSandboxVcpusForPlan({ planId: "free", providerType: "boxd" }),
+    ).toBe(1);
+    expect(
+      resolveSandboxVcpusForPlan({ planId: "plus", providerType: "boxd" }),
+    ).toBe(1);
+  });
+
+  test("assigns 2 vCPUs to high subscribers and admins", () => {
+    expect(
+      resolveSandboxVcpusForPlan({ planId: "entry", providerType: "boxd" }),
+    ).toBe(2);
+    expect(
+      resolveSandboxVcpusForPlan({ planId: "pro", providerType: "boxd" }),
+    ).toBe(2);
+    expect(
+      resolveSandboxVcpusForPlan({ planId: "max", providerType: "boxd" }),
+    ).toBe(2);
+    expect(
+      resolveSandboxVcpusForPlan({
+        planId: "free",
+        isAdmin: true,
+        providerType: "boxd",
+      }),
+    ).toBe(2);
+  });
+
+  test("respects Vercel Hobby 1 vCPU ceiling", () => {
+    expect(
+      resolveSandboxVcpusForPlan({
+        planId: "pro",
+        isAdmin: true,
+        providerType: "vercel",
+        isHobbyProfile: true,
+      }),
+    ).toBe(1);
   });
 });

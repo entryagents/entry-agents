@@ -82,8 +82,16 @@ function SessionLayoutInner({
   const suppressPanelTransition = usePanelNavigationSuppression(activeChatId);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const [chatWidthPercent, setChatWidthPercent] = useState<number>(50);
+  const [chatWidthPercent, setChatWidthPercent] = useState<number>(46);
   const [isDragging, setIsDragging] = useState(false);
+
+  const persistSplit = useCallback((nextWidth: number) => {
+    try {
+      localStorage.setItem("entry_agents_workspace_split", String(nextWidth));
+    } catch {
+      // Ignore localStorage write errors in restricted contexts
+    }
+  }, []);
 
   // Restore saved width from localStorage on mount
   useEffect(() => {
@@ -91,7 +99,7 @@ function SessionLayoutInner({
       const saved = localStorage.getItem("entry_agents_workspace_split");
       if (saved) {
         const parsed = parseFloat(saved);
-        if (!isNaN(parsed) && parsed >= 20 && parsed <= 80) {
+        if (!isNaN(parsed) && parsed >= 22 && parsed <= 78) {
           setChatWidthPercent(parsed);
         }
       }
@@ -108,20 +116,13 @@ function SessionLayoutInner({
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
-      const clamped = Math.min(Math.max(newWidth, 20), 80);
+      const clamped = Math.min(Math.max(newWidth, 22), 78);
       setChatWidthPercent(clamped);
     };
 
     const handleMouseUp = () => {
       setIsDragging(false);
-      try {
-        localStorage.setItem(
-          "entry_agents_workspace_split",
-          String(chatWidthPercent),
-        );
-      } catch {
-        // Ignore localStorage write errors in restricted contexts
-      }
+      persistSplit(chatWidthPercent);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -130,11 +131,21 @@ function SessionLayoutInner({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, chatWidthPercent]);
+  }, [isDragging, chatWidthPercent, persistSplit]);
+
+  const splitStyles = useMemo(
+    () =>
+      ({
+        "--chat-width": `${chatWidthPercent}%`,
+        "--workspace-width": `${100 - chatWidthPercent}%`,
+      }) as React.CSSProperties,
+    [chatWidthPercent],
+  );
 
   return (
     <div
       ref={containerRef}
+      style={splitStyles}
       className={cn(
         "relative flex h-full overflow-hidden",
         isDragging && "select-none cursor-col-resize",
@@ -151,21 +162,13 @@ function SessionLayoutInner({
           "flex min-w-0 flex-col overflow-hidden",
           !suppressPanelTransition &&
             !isDragging &&
-            "transition-[width] duration-75",
+            "transition-[width] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
           gitPanelOpen && isWorkspaceExpanded
             ? "hidden"
             : gitPanelOpen
-              ? "flex-1 lg:flex-none shrink-0 border-r border-border"
+              ? "flex-1 lg:w-[var(--chat-width)] lg:flex-none shrink-0 border-r border-border"
               : "flex-1",
         )}
-        style={{
-          width:
-            gitPanelOpen && !isWorkspaceExpanded
-              ? typeof window !== "undefined" && window.innerWidth >= 1024
-                ? `${chatWidthPercent}%`
-                : undefined
-              : undefined,
-        }}
       >
         <SessionHeader />
         {activeChatId && <ChatTabs activeChatId={activeChatId} />}
@@ -176,7 +179,11 @@ function SessionLayoutInner({
       {gitPanelOpen && !isWorkspaceExpanded && (
         <div
           role="separator"
+          aria-label="Resize chat and workspace panels"
           aria-orientation="vertical"
+          aria-valuenow={Math.round(chatWidthPercent)}
+          aria-valuemin={22}
+          aria-valuemax={78}
           tabIndex={0}
           onMouseDown={(e) => {
             e.preventDefault();
@@ -184,24 +191,46 @@ function SessionLayoutInner({
           }}
           onDoubleClick={() => {
             setChatWidthPercent(50);
-            try {
-              localStorage.setItem("entry_agents_workspace_split", "50");
-            } catch {
-              // Ignore localStorage write errors in restricted contexts
+            persistSplit(50);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              const next = Math.max(22, chatWidthPercent - 2);
+              setChatWidthPercent(next);
+              persistSplit(next);
+            } else if (e.key === "ArrowRight") {
+              e.preventDefault();
+              const next = Math.min(78, chatWidthPercent + 2);
+              setChatWidthPercent(next);
+              persistSplit(next);
+            } else if (e.key === "0" || e.key === "Home") {
+              e.preventDefault();
+              setChatWidthPercent(50);
+              persistSplit(50);
             }
           }}
           className={cn(
-            "hidden lg:flex relative items-center justify-center w-2 -mx-1 z-20 cursor-col-resize select-none shrink-0 group transition-colors",
-            isDragging ? "bg-primary" : "hover:bg-primary/40 bg-transparent",
+            "hidden lg:flex relative items-center justify-center w-2 -mx-1 z-20 cursor-col-resize select-none shrink-0 group focus-visible:outline-none",
           )}
-          title="Drag to resize panels, double-click to reset 50/50"
+          title="Drag to resize panels · Double-click for 50/50"
         >
           <div
             className={cn(
-              "w-[1px] h-full bg-border transition-[background-color,width] group-hover:bg-primary group-hover:w-[2px]",
-              isDragging && "bg-primary w-[2px]",
+              "w-[1px] h-full bg-border transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-foreground/30 group-focus-visible:bg-foreground/40",
+              isDragging && "bg-foreground/50 w-[2px]",
             )}
           />
+          <div
+            className={cn(
+              "pointer-events-none absolute flex h-8 w-1.5 flex-col items-center justify-center gap-0.5 rounded-full border border-border/80 bg-background/95 opacity-0 transition-opacity duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 group-focus-visible:opacity-100",
+              isDragging && "opacity-100 border-foreground/30",
+            )}
+          >
+            <span className="h-0.5 w-0.5 rounded-full bg-muted-foreground" />
+            <span className="h-0.5 w-0.5 rounded-full bg-muted-foreground" />
+            <span className="h-0.5 w-0.5 rounded-full bg-muted-foreground" />
+          </div>
         </div>
       )}
 
@@ -222,21 +251,13 @@ function SessionLayoutInner({
           "absolute right-0 top-0 z-30 flex h-full min-w-0 flex-col overflow-hidden border-l border-border bg-background shadow-xl lg:relative lg:right-auto lg:top-auto lg:z-0 lg:shadow-none",
           !suppressPanelTransition &&
             !isDragging &&
-            "transition-[transform,width] duration-75",
+            "transition-[transform,width] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
           gitPanelOpen
             ? isWorkspaceExpanded
               ? "w-full translate-x-0"
-              : "w-full sm:w-[540px] lg:w-auto lg:flex-none lg:shrink-0 translate-x-0"
+              : "w-full sm:w-[540px] lg:w-[var(--workspace-width)] lg:flex-none lg:shrink-0 translate-x-0"
             : "w-0 translate-x-full lg:translate-x-0 border-l-0 overflow-hidden pointer-events-none",
         )}
-        style={{
-          width:
-            gitPanelOpen && !isWorkspaceExpanded
-              ? typeof window !== "undefined" && window.innerWidth >= 1024
-                ? `${100 - chatWidthPercent}%`
-                : undefined
-              : undefined,
-        }}
       />
     </div>
   );

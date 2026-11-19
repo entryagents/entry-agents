@@ -3,6 +3,36 @@ import { getPlanDefinition } from "./plans";
 
 export const FREE_USER_MAX_SANDBOXES = 1;
 export const FREE_USER_SANDBOX_INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000;
+export const STARTER_SANDBOX_VCPUS = 1;
+export const HIGH_SUBSCRIBER_SANDBOX_VCPUS = 2;
+
+/**
+ * Resolves sandbox vCPU allocation by subscription tier:
+ * - High subscribers (`entry`, `pro`, `max`) and admins receive 2 vCPUs.
+ * - Free and entry-level (`plus`) subscribers stay on 1 vCPU for sustainable economics.
+ * - Vercel Hobby profile enforces a 1 vCPU platform cap regardless of plan.
+ */
+export function resolveSandboxVcpusForPlan(input: {
+  planId: string | null | undefined;
+  isAdmin?: boolean;
+  providerType?: string | null;
+  isHobbyProfile?: boolean;
+}): number {
+  if (input.providerType === "vercel" && input.isHobbyProfile) {
+    return STARTER_SANDBOX_VCPUS;
+  }
+
+  if (input.isAdmin) {
+    return HIGH_SUBSCRIBER_SANDBOX_VCPUS;
+  }
+
+  const plan = getPlanDefinition(input.planId);
+  if (plan.id === "entry" || plan.id === "pro" || plan.id === "max") {
+    return HIGH_SUBSCRIBER_SANDBOX_VCPUS;
+  }
+
+  return STARTER_SANDBOX_VCPUS;
+}
 
 export interface SessionSandboxCandidate {
   id: string;

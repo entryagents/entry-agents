@@ -21,10 +21,12 @@ import { getPlanDefinition } from "@/lib/billing/plans";
 import {
   FREE_USER_SANDBOX_INACTIVITY_TIMEOUT_MS,
   resolveFreeTierSandboxReuse,
+  resolveSandboxVcpusForPlan,
 } from "@/lib/billing/sandbox-limits";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { isUserAdmin } from "@/lib/db/users";
+import { isHobbyResourceProfile } from "@/lib/deployment/resource-profile";
 import {
   verifyRepoAccess,
   getRepoAccessErrorMessage,
@@ -39,7 +41,6 @@ import {
   DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
   DEFAULT_SANDBOX_PORTS,
   DEFAULT_SANDBOX_TIMEOUT_MS,
-  DEFAULT_SANDBOX_VCPUS,
   getSandboxDriveConfig,
 } from "@/lib/sandbox/config";
 import {
@@ -278,6 +279,13 @@ export async function provisionSessionSandbox(params: {
     session,
   });
 
+  const sandboxVcpus = resolveSandboxVcpusForPlan({
+    planId: plan.id,
+    isAdmin,
+    providerType: provider.id,
+    isHobbyProfile: isHobbyResourceProfile(),
+  });
+
   const connectWithOptions = async (
     stateOverride: SandboxState | null | undefined,
     createIfMissing: boolean,
@@ -288,7 +296,7 @@ export async function provisionSessionSandbox(params: {
         githubToken: setupToken?.token,
         gitUser,
         timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-        vcpus: DEFAULT_SANDBOX_VCPUS,
+        vcpus: sandboxVcpus,
         ports: DEFAULT_SANDBOX_PORTS,
         baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
         persistent: false,
