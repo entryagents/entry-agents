@@ -3,12 +3,13 @@
 import {
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
   Folder,
   FolderOpen,
   Search,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 import { FileTypeIcon } from "@/components/file-type-icons";
 import { Button } from "@/components/ui/button";
@@ -67,6 +68,15 @@ function buildFileTree(files: FileSuggestion[]): TreeNode {
   return root;
 }
 
+function getAncestorDirPaths(filePath: string): string[] {
+  const parts = filePath.split("/").filter(Boolean);
+  const dirs: string[] = [];
+  for (let i = 1; i < parts.length; i++) {
+    dirs.push(`${parts.slice(0, i).join("/")}/`);
+  }
+  return dirs;
+}
+
 export function WorkspaceFileTree({
   files,
   diffFiles = [],
@@ -85,7 +95,7 @@ export function WorkspaceFileTree({
   className?: string;
 }) {
   const [search, setSearch] = useState("");
-  const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
     () => new Set(),
   );
 
@@ -98,8 +108,41 @@ export function WorkspaceFileTree({
     return map;
   }, [diffFiles]);
 
+  // Build the hierarchical tree
+  const treeRoot = useMemo(() => {
+    if (!files || files.length === 0) return null;
+    return buildFileTree(files);
+  }, [files]);
+
+  const fileCount = useMemo(() => {
+    if (!files) return 0;
+    return files.filter((f) => !f.isDirectory).length;
+  }, [files]);
+
+  // Auto-expand active file's ancestor folders
+  useEffect(() => {
+    if (!activeFilePath) return;
+    const ancestors = getAncestorDirPaths(activeFilePath);
+    if (ancestors.length === 0) return;
+    setExpandedPaths((prev) => {
+      let changed = false;
+      for (const dir of ancestors) {
+        if (!prev.has(dir)) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return prev;
+      const next = new Set(prev);
+      for (const dir of ancestors) {
+        next.add(dir);
+      }
+      return next;
+    });
+  }, [activeFilePath]);
+
   const toggleFolder = (dirPath: string) => {
-    setCollapsedPaths((prev) => {
+    setExpandedPaths((prev) => {
       const next = new Set(prev);
       if (next.has(dirPath)) {
         next.delete(dirPath);
@@ -109,12 +152,6 @@ export function WorkspaceFileTree({
       return next;
     });
   };
-
-  // Build the hierarchical tree
-  const treeRoot = useMemo(() => {
-    if (!files || files.length === 0) return null;
-    return buildFileTree(files);
-  }, [files]);
 
   // Filtered flat list when searching
   const searchResults = useMemo(() => {
@@ -136,28 +173,40 @@ export function WorkspaceFileTree({
 
     return entries.map((child) => {
       if (child.isDirectory) {
-        const isCollapsed = collapsedPaths.has(child.path);
+        const isExpanded = expandedPaths.has(child.path);
         return (
           <div key={child.path} className="flex flex-col">
             <button
               type="button"
               onClick={() => toggleFolder(child.path)}
               style={{ paddingLeft: `${depth * 12 + 8}px` }}
-              className="flex w-full items-center gap-1.5 py-1 pr-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors select-none text-left rounded-sm group cursor-pointer"
+              className="flex h-7 w-full items-center gap-1.5 pr-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] select-none text-left rounded-md group cursor-pointer"
             >
-              {isCollapsed ? (
-                <ChevronRight className="h-3 w-3 shrink-0 opacity-70 group-hover:opacity-100" />
+              {isExpanded ? (
+                <ChevronDown
+                  className="h-3.5 w-3.5 shrink-0 opacity-60 group-hover:opacity-100"
+                  strokeWidth={1.5}
+                />
               ) : (
-                <ChevronDown className="h-3 w-3 shrink-0 opacity-70 group-hover:opacity-100" />
+                <ChevronRight
+                  className="h-3.5 w-3.5 shrink-0 opacity-60 group-hover:opacity-100"
+                  strokeWidth={1.5}
+                />
               )}
-              {isCollapsed ? (
-                <Folder className="h-3.5 w-3.5 shrink-0 text-amber-500/80" />
+              {isExpanded ? (
+                <FolderOpen
+                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
               ) : (
-                <FolderOpen className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                <Folder
+                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground/80"
+                  strokeWidth={1.5}
+                />
               )}
               <span className="truncate font-medium">{child.name}</span>
             </button>
-            {!isCollapsed && renderTree(child, depth + 1)}
+            {isExpanded && renderTree(child, depth + 1)}
           </div>
         );
       }
@@ -173,11 +222,11 @@ export function WorkspaceFileTree({
           onClick={() => onOpenFile(child.path)}
           onMouseEnter={() => onPrefetchFile?.(child.path)}
           onFocus={() => onPrefetchFile?.(child.path)}
-          style={{ paddingLeft: `${depth * 12 + 20}px` }}
+          style={{ paddingLeft: `${depth * 12 + 24}px` }}
           className={cn(
-            "flex w-full items-center justify-between py-1 pr-2 text-xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] select-none text-left rounded-sm group cursor-pointer",
+            "flex h-7 w-full items-center justify-between pr-2 text-xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] select-none text-left rounded-md group cursor-pointer",
             isActive
-              ? "bg-primary/10 text-primary font-medium"
+              ? "bg-secondary text-foreground font-medium"
               : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
           )}
         >
@@ -190,16 +239,13 @@ export function WorkspaceFileTree({
           {status && (
             <span
               className={cn(
-                "ml-1 flex h-3.5 px-1 shrink-0 items-center justify-center rounded text-[10px] font-medium tabular-nums",
-                status === "added" &&
-                  "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
-                status === "modified" &&
-                  "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-                status === "deleted" &&
-                  "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+                "ml-1.5 shrink-0 font-mono text-[11px] font-medium tabular-nums",
+                status === "added" && "text-emerald-600 dark:text-emerald-400",
+                status === "modified" && "text-amber-600 dark:text-amber-400",
+                status === "deleted" && "text-rose-600 dark:text-rose-400",
               )}
             >
-              {status === "added" ? "+" : status === "modified" ? "~" : "-"}
+              {status === "added" ? "A" : status === "modified" ? "M" : "D"}
             </span>
           )}
         </button>
@@ -215,20 +261,39 @@ export function WorkspaceFileTree({
       )}
     >
       {/* Explorer Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
-        <span className="text-xs font-medium text-muted-foreground">Files</span>
-        {onCloseSidebar && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={onCloseSidebar}
-            className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
-            aria-label="Close file explorer"
-          >
-            <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-          </Button>
-        )}
+      <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-medium text-foreground">Files</span>
+          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+            {fileCount}
+          </span>
+        </div>
+        <div className="flex items-center gap-0.5">
+          {expandedPaths.size > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setExpandedPaths(new Set())}
+              className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
+              aria-label="Collapse all folders"
+            >
+              <ChevronsDownUp className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </Button>
+          )}
+          {onCloseSidebar && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onCloseSidebar}
+              className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
+              aria-label="Close file explorer"
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Search Input */}
@@ -277,9 +342,9 @@ export function WorkspaceFileTree({
                     onMouseEnter={() => onPrefetchFile?.(f.value)}
                     onFocus={() => onPrefetchFile?.(f.value)}
                     className={cn(
-                      "flex w-full items-center justify-between px-2 py-1 text-xs rounded transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] text-left cursor-pointer",
+                      "flex h-7 w-full items-center justify-between px-2 text-xs rounded-md transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] text-left cursor-pointer",
                       isActive
-                        ? "bg-primary/10 text-primary font-medium"
+                        ? "bg-secondary text-foreground font-medium"
                         : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                     )}
                   >
@@ -293,20 +358,20 @@ export function WorkspaceFileTree({
                     {status && (
                       <span
                         className={cn(
-                          "ml-1 flex h-3.5 px-1 shrink-0 items-center justify-center rounded text-[9px] font-bold",
+                          "ml-1.5 shrink-0 font-mono text-[11px] font-medium tabular-nums",
                           status === "added" &&
-                            "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+                            "text-emerald-600 dark:text-emerald-400",
                           status === "modified" &&
-                            "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                            "text-amber-600 dark:text-amber-400",
                           status === "deleted" &&
-                            "bg-rose-500/15 text-rose-600 dark:text-rose-400",
+                            "text-rose-600 dark:text-rose-400",
                         )}
                       >
                         {status === "added"
-                          ? "+"
+                          ? "A"
                           : status === "modified"
-                            ? "~"
-                            : "-"}
+                            ? "M"
+                            : "D"}
                       </span>
                     )}
                   </button>

@@ -14,7 +14,6 @@ import {
   RefreshCw,
   Save,
   WrapText,
-  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -123,7 +122,7 @@ function CodeLoadingSkeleton() {
 export function WorkspaceFileTab({
   sessionId,
   filePath,
-  onClose,
+  onClose: _onClose,
   onOpenDiff,
 }: WorkspaceFileTabProps) {
   const [copied, setCopied] = useState(false);
@@ -280,10 +279,9 @@ export function WorkspaceFileTab({
 
   const downloadUrl = useMemo(() => {
     if (binaryPreview) return binaryPreview;
-    if (!data?.content) return null;
-    const blob = new Blob([data.content], { type: "text/plain;charset=utf-8" });
-    return URL.createObjectURL(blob);
-  }, [binaryPreview, data]);
+    if (!requestUrl || !data?.content) return null;
+    return `${requestUrl}&download=1`;
+  }, [binaryPreview, data?.content, requestUrl]);
 
   const hasPreviewSupport = supportsPreview(filePath);
   const lineCount = useMemo(
@@ -294,7 +292,7 @@ export function WorkspaceFileTab({
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
       {/* File Action Bar */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/20 px-3 py-1.5">
+      <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/20 px-3">
         {/* Left: File Icon + Path Breadcrumbs + Language & Metrics */}
         <div className="flex min-w-0 items-center gap-2">
           <FileTypeIcon path={fileName} className="h-4 w-4 shrink-0" />
@@ -521,23 +519,6 @@ export function WorkspaceFileTab({
                 </TooltipTrigger>
                 <TooltipContent side="bottom">Refresh</TooltipContent>
               </Tooltip>
-
-              {onClose ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="ml-0.5 h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
-                      onClick={onClose}
-                      aria-label="Close tab"
-                    >
-                      <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Close</TooltipContent>
-                </Tooltip>
-              ) : null}
             </>
           )}
         </div>

@@ -225,7 +225,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         icon: hasRepo ? GitCompare : FileCode,
         badge: changesCount > 0 ? `+${changesCount}` : null,
         badgeColor: hasActionNeeded
-          ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold"
+          ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 font-medium"
           : "bg-blue-500/15 text-blue-600 dark:text-blue-400",
         closeable: openToolTabs.length > 1 || openFiles.length > 0,
       });
@@ -441,8 +441,11 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 onClick={() => setFileSearchOpen(true)}
                 className="cursor-pointer gap-2"
               >
-                <Search className="h-3.5 w-3.5 text-muted-foreground" />
-                <span>Open File...</span>
+                <Search
+                  className="h-3.5 w-3.5 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
+                <span>Open file</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -498,6 +501,14 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
       {/* Body: Left Sidebar (Desktop) + Mobile Drawer + Tab Panels */}
       <div className="relative flex flex-1 min-h-0 overflow-hidden">
+        {isSidebarOpen && isMobile ? (
+          <button
+            type="button"
+            aria-label="Close file tree"
+            onClick={() => setIsSidebarOpen(false)}
+            className="absolute inset-0 z-10 bg-background/60 backdrop-blur-[1px]"
+          />
+        ) : null}
         {isSidebarOpen ? (
           <WorkspaceFileTree
             files={files}
@@ -517,7 +528,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
             onCloseSidebar={() => setIsSidebarOpen(false)}
             className={
               isMobile
-                ? "absolute inset-y-0 left-0 z-20 w-72 max-w-[85vw] shadow-lg"
+                ? "absolute inset-y-0 left-0 z-20 w-72 max-w-[85vw] border-r border-border"
                 : undefined
             }
           />
