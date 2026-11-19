@@ -256,6 +256,7 @@ export async function POST(req: Request) {
           break;
         }
 
+        let updatedUserId: string | null = null;
         await db.transaction(async (tx) => {
           const [existing] = await tx
             .select({ id: billingWebhookEvents.id })
@@ -277,6 +278,7 @@ export async function POST(req: Request) {
               .update(users)
               .set({ plan: planId, billingSubscriptionCode: subscriptionId })
               .where(eq(users.id, user.id));
+            updatedUserId = user.id;
           }
 
           await tx.insert(billingWebhookEvents).values({
@@ -286,6 +288,19 @@ export async function POST(req: Request) {
             payload: event.data,
           });
         });
+
+        if (updatedUserId && planId && planId !== "free") {
+          const { reconcileUserSandboxesOnPlanUpgrade } =
+            await import("@/lib/sandbox/upgrade-reconcile");
+          await reconcileUserSandboxesOnPlanUpgrade(updatedUserId).catch(
+            (err) => {
+              console.warn(
+                "[billing/webhook] Best-effort reconcileUserSandboxesOnPlanUpgrade failed:",
+                err,
+              );
+            },
+          );
+        }
         break;
       }
 

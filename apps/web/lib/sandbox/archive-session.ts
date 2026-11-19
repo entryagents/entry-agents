@@ -177,8 +177,12 @@ export async function finalizeArchivedSessionSandboxInline(
     ]);
 
     const [userSessions, isAdmin] = await Promise.all([
-      getSessionsByUserId(archivedSession.userId).catch(() => []),
-      isUserAdmin(archivedSession.userId).catch(() => false),
+      typeof getSessionsByUserId === "function"
+        ? getSessionsByUserId(archivedSession.userId).catch(() => [])
+        : Promise.resolve([]),
+      typeof isUserAdmin === "function"
+        ? isUserAdmin(archivedSession.userId).catch(() => false)
+        : Promise.resolve(false),
     ]);
 
     const sharedWithActiveSibling = isSandboxSharedAcrossSessions(
@@ -202,11 +206,16 @@ export async function finalizeArchivedSessionSandboxInline(
       return;
     }
 
-    const billingState = await getUserBillingState(archivedSession.userId, {
-      isAdmin,
-    }).catch(() => null);
+    const billingState =
+      typeof getUserBillingState === "function"
+        ? await getUserBillingState(archivedSession.userId, {
+            isAdmin,
+          }).catch(() => null)
+        : null;
     const isFreeUser =
-      !isAdmin && getPlanDefinition(billingState?.plan).id === "free";
+      billingState !== null &&
+      !isAdmin &&
+      getPlanDefinition(billingState.plan).id === "free";
 
     const sandbox = await connectSandbox(archivedSession.sandboxState);
     if (isFreeUser) {
