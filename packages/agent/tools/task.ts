@@ -43,7 +43,7 @@ import { enrichUsageWithProviderCache, sumLanguageModelUsage } from "../usage";
 import { getSandbox, getSandboxContext, getSubagentModel } from "./utils";
 import type { AgentContext, SubagentBudgetGuard } from "../types";
 
-const MAX_CONTINUATION_RECOVERIES = 2;
+const MAX_CONTINUATION_RECOVERIES = 4;
 
 async function sleepWithAbort(ms: number, signal: AbortSignal): Promise<void> {
   if (signal.aborted) return;
@@ -393,15 +393,34 @@ IMPORTANT:
         const attemptTextChunks: string[] = [];
         const attemptCompletedTools: string[] = [];
 
+        const liveTeamContext = formatTeamContextSummary(
+          getOrCreateTeamBoard(teamId),
+        );
+
         const sharedCallOptions = {
           task,
           instructions,
           sandbox: effectiveSandbox,
           model,
           teamId,
-          ...(teamContext ? { teamContext } : {}),
+          ...(liveTeamContext || teamContext
+            ? { teamContext: liveTeamContext || teamContext }
+            : {}),
           ...(contextWindow ? { contextWindow } : {}),
           ...(compactionThreshold ? { compactionThreshold } : {}),
+          ...(parentContext?.secrets ? { secrets: parentContext.secrets } : {}),
+          ...(parentContext?.secretCatalog
+            ? { secretCatalog: parentContext.secretCatalog }
+            : {}),
+          ...(parentContext?.secretRedactor
+            ? { secretRedactor: parentContext.secretRedactor }
+            : {}),
+          ...(parentContext?.onSecretUsed
+            ? { onSecretUsed: parentContext.onSecretUsed }
+            : {}),
+          ...(parentContext?.sandboxLifecycleHooks
+            ? { sandboxLifecycleHooks: parentContext.sandboxLifecycleHooks }
+            : {}),
           ...(billingGuard
             ? (() => {
                 const plan = billingGuard.planSubagent(subagentModelId);
@@ -709,10 +728,13 @@ IMPORTANT:
           isTransientSubagentError(attemptRawError ?? attemptError)
         ) {
           recoveryAttempts += 1;
-          await sleepWithAbort(
-            recoveryAttempts === 1 ? 500 : 1500,
-            localAbort.signal,
-          );
+          const backoffTiers = [400, 1000, 1800, 3000];
+          const baseMs =
+            backoffTiers[
+              Math.min(recoveryAttempts - 1, backoffTiers.length - 1)
+            ] ?? 1500;
+          const jitterMs = Math.floor(Math.random() * 250);
+          await sleepWithAbort(baseMs + jitterMs, localAbort.signal);
           if (localAbort.signal.aborted || abortSignal?.aborted) {
             break;
           }

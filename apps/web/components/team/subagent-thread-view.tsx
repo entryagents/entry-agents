@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Check, Loader2, XCircle } from "lucide-react";
+import { ArrowLeft, Check, GitBranch, Loader2, XCircle } from "lucide-react";
 import { useMemo } from "react";
 import type { WebAgentUIMessage, WebAgentUIMessagePart } from "@/app/types";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
@@ -163,6 +163,19 @@ export function SubagentThreadView({
         </div>
 
         <div className="flex shrink-0 items-center gap-2 font-mono text-[11px] text-muted-foreground tabular-nums">
+          {data?.worktreeBranch && (
+            <span className="hidden items-center gap-1 rounded border border-border/70 bg-muted/30 px-1.5 py-0.5 text-[10px] sm:inline-flex">
+              <GitBranch className="size-3" strokeWidth={1.5} />
+              <span className="max-w-[140px] truncate">
+                {data.worktreeBranch}
+              </span>
+            </span>
+          )}
+          {data?.toolCallCount != null && data.toolCallCount > 0 && (
+            <span className="hidden sm:inline">
+              {data.toolCallCount} tool{data.toolCallCount === 1 ? "" : "s"}
+            </span>
+          )}
           {modelTag && <span className="hidden sm:inline">{modelTag}</span>}
           {elapsedMs !== null && (
             <span>{formatSubagentElapsed(elapsedMs)}</span>

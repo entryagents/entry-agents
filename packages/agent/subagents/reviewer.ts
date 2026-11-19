@@ -1,4 +1,3 @@
-import type { LanguageModel } from "ai";
 import { addCacheControl } from "../context-management";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { createInertPlaceholderModel, sharedProvider } from "../models";
@@ -10,7 +9,10 @@ import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
 import { teamBoardTool } from "../tools/team";
-import type { SandboxExecutionContext } from "../types";
+import {
+  buildSubagentExperimentalContext,
+  sharedSubagentCallOptionsFields,
+} from "./call-options";
 import {
   SUBAGENT_NO_QUESTIONS_RULES,
   SUBAGENT_RESPONSE_FORMAT,
@@ -86,19 +88,7 @@ const callOptionsSchema = z.object({
   instructions: z
     .string()
     .describe("Detailed review instructions (what to review and why)"),
-  sandbox: z
-    .custom<SandboxExecutionContext["sandbox"]>()
-    .describe("Sandbox for file system and shell operations"),
-  model: z.custom<LanguageModel>().describe("Language model for this subagent"),
-  teamId: z.string().optional(),
-  teamContext: z.string().optional(),
-  // Per-step output clamp threaded from the host's billing guard
-  // (packages/agent SubagentBudgetGuard, 2026-09-15): ToolLoopAgent
-  // applies call settings to every internal step, so one value caps
-  // each step's output. Undefined = no cap.
-  maxOutputTokens: z.number().int().positive().optional(),
-  contextWindow: z.number().int().positive().optional(),
-  compactionThreshold: z.number().positive().optional(),
+  ...sharedSubagentCallOptionsFields,
 });
 
 export type ReviewerCallOptions = z.infer<typeof callOptionsSchema>;
@@ -135,7 +125,6 @@ export const reviewerSubagent = new ToolLoopAgent({
       throw new Error("Reviewer subagent requires task call options.");
     }
 
-    const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider(defaultModelLabel);
     const teamBlock = options.teamContext ? `${options.teamContext}\n\n` : "";
     return {
@@ -155,14 +144,11 @@ export const reviewerSubagent = new ToolLoopAgent({
         ],
         model,
       }),
-      experimental_context: {
-        sandbox,
+      experimental_context: buildSubagentExperimentalContext(
+        options,
         model,
-        teamId: options.teamId ?? "default-team",
-        agentRole: "reviewer",
-        contextWindow: options.contextWindow,
-        compactionThreshold: options.compactionThreshold,
-      },
+        "reviewer",
+      ),
     };
   },
 });

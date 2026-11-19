@@ -1,4 +1,3 @@
-import type { LanguageModel } from "ai";
 import { addCacheControl } from "../context-management";
 import { stepCountIs, ToolLoopAgent } from "ai";
 import { defaultModelLabel } from "../default-model";
@@ -11,7 +10,11 @@ import { readFileTool } from "../tools/read";
 import { createReadFileState } from "../tools/read-state";
 import { editFileTool, writeFileTool } from "../tools/write";
 import { teamBoardTool } from "../tools/team";
-import type { SandboxExecutionContext } from "../types";
+import { webFetchTool } from "../tools/fetch";
+import {
+  buildSubagentExperimentalContext,
+  sharedSubagentCallOptionsFields,
+} from "./call-options";
 import {
   SUBAGENT_BASH_RULES,
   SUBAGENT_COMPLETE_TASK_RULES,
@@ -86,19 +89,7 @@ ${SUBAGENT_BASH_RULES}`;
 const callOptionsSchema = z.object({
   task: z.string().describe("Short description of the task"),
   instructions: z.string().describe("Detailed instructions for the task"),
-  sandbox: z
-    .custom<SandboxExecutionContext["sandbox"]>()
-    .describe("Sandbox for file system and shell operations"),
-  model: z.custom<LanguageModel>().describe("Language model for this subagent"),
-  teamId: z.string().optional(),
-  teamContext: z.string().optional(),
-  // Per-step output clamp threaded from the host's billing guard
-  // (packages/agent SubagentBudgetGuard, 2026-09-15): ToolLoopAgent
-  // applies call settings to every internal step, so one value caps
-  // each step's output. Undefined = no cap.
-  maxOutputTokens: z.number().int().positive().optional(),
-  contextWindow: z.number().int().positive().optional(),
-  compactionThreshold: z.number().positive().optional(),
+  ...sharedSubagentCallOptionsFields,
 });
 
 export type DesignCallOptions = z.infer<typeof callOptionsSchema>;
@@ -110,6 +101,7 @@ const designTools = {
   grep: grepTool(),
   glob: globTool(),
   bash: bashTool(),
+  web_fetch: webFetchTool,
   team_board: teamBoardTool,
 };
 
@@ -137,7 +129,6 @@ export const designSubagent = new ToolLoopAgent({
       throw new Error("Design subagent requires task call options.");
     }
 
-    const sandbox = options.sandbox;
     const model = options.model ?? sharedProvider(defaultModelLabel);
     const teamBlock = options.teamContext ? `${options.teamContext}\n\n` : "";
     return {
@@ -157,20 +148,12 @@ export const designSubagent = new ToolLoopAgent({
         ],
         model,
       }),
-      experimental_context: {
-        sandbox,
+      experimental_context: buildSubagentExperimentalContext(
+        options,
         model,
-        teamId: options.teamId ?? "default-team",
-        agentRole: "design",
-        contextWindow: options.contextWindow,
-        compactionThreshold: options.compactionThreshold,
-        // Read-before-edit gate state (tools/read-state.ts): a fresh
-        // store per subagent run — the subagent must read a file
-        // before editing it, same rule as the main agent. Parent
-        // reads do NOT carry over: the subagent's own view of the
-        // file is what its edits are checked against.
-        readFileState: createReadFileState(),
-      },
+        "design",
+        createReadFileState(),
+      ),
     };
   },
 });
