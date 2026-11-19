@@ -315,30 +315,35 @@ export function WorkspaceTerminalTab({
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleRerun = useCallback(
+    (cmd: string) => {
+      void executeCommand(cmd);
+    },
+    [executeCommand],
+  );
+
+  const handleOutputMouseUp = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.toString().length === 0) {
+      inputRef.current?.focus();
+    }
+  }, []);
+
   const shortCwd = currentCwd
     ? currentCwd.split("/").slice(-2).join("/") || "/"
     : "~";
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-zinc-950 font-mono text-zinc-100">
-      {/* Top Bar */}
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-800/80 bg-zinc-950 px-3 py-1.5 text-xs">
+      {/* Header */}
+      <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-zinc-800/80 bg-zinc-950 px-3 text-xs">
         <div className="flex min-w-0 items-center gap-2">
           <TerminalIcon
             className="h-3.5 w-3.5 shrink-0 text-zinc-400"
             strokeWidth={1.5}
           />
-          <span className="truncate font-medium text-zinc-200">Terminal</span>
-          <span
-            className={cn(
-              "flex shrink-0 items-center gap-1.5 rounded-md border px-1.5 py-0.5 text-[11px]",
-              isRunning
-                ? "border-amber-500/25 bg-amber-500/10 text-amber-300"
-                : canRun
-                  ? "border-zinc-800 bg-zinc-900 text-zinc-300"
-                  : "border-zinc-800 bg-zinc-900 text-zinc-500",
-            )}
-          >
+          <span className="truncate text-zinc-200">{shortCwd}</span>
+          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-zinc-400">
             <span
               className={cn(
                 "h-1.5 w-1.5 rounded-full",
@@ -360,7 +365,7 @@ export function WorkspaceTerminalTab({
                 type="button"
                 onClick={handleCopy}
                 disabled={logs.length === 0}
-                className="rounded-md p-1.5 text-zinc-400 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-zinc-800/80 hover:text-zinc-200 disabled:opacity-40 cursor-pointer"
+                className="rounded-md p-1.5 text-zinc-400 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-35 cursor-pointer"
                 aria-label="Copy terminal output"
               >
                 {copied ? (
@@ -382,7 +387,7 @@ export function WorkspaceTerminalTab({
                 type="button"
                 onClick={handleClear}
                 disabled={logs.length === 0}
-                className="rounded-md p-1.5 text-zinc-400 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-zinc-800/80 hover:text-zinc-200 disabled:opacity-40 cursor-pointer"
+                className="rounded-md p-1.5 text-zinc-400 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-35 cursor-pointer"
                 aria-label="Clear terminal"
               >
                 <Trash2 className="h-3.5 w-3.5" strokeWidth={1.5} />
@@ -396,7 +401,7 @@ export function WorkspaceTerminalTab({
               <button
                 type="button"
                 onClick={() => router.push(`/codespace/${sessionId}`)}
-                className="flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-300 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-zinc-800 hover:text-zinc-100 cursor-pointer"
+                className="flex items-center gap-1.5 rounded-md border border-zinc-800 px-2 py-1 text-[11px] font-sans font-medium text-zinc-300 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-zinc-900 hover:text-zinc-100 cursor-pointer"
               >
                 <ExternalLink className="h-3 w-3" strokeWidth={1.5} />
                 <span className="hidden sm:inline">Full shell</span>
@@ -409,74 +414,101 @@ export function WorkspaceTerminalTab({
         </div>
       </div>
 
-      {/* Quick Commands Strip (scrollable on mobile & desktop) */}
-      <div className="flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-zinc-800/60 bg-zinc-950/80 px-3 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {QUICK_COMMANDS.map((qc) => (
-          <button
-            key={qc.label}
-            type="button"
-            onClick={() => void executeCommand(qc.cmd)}
-            disabled={isRunning || !canRun}
-            className="shrink-0 rounded-md border border-zinc-800/90 bg-zinc-900/80 px-2 py-0.5 text-[11px] text-zinc-400 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-zinc-700 hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-40 cursor-pointer"
-          >
-            {qc.label}
-          </button>
-        ))}
-      </div>
-
       {/* Terminal Output Area */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 text-xs leading-5 selection:bg-emerald-800 selection:text-white">
+      <div
+        role="log"
+        aria-label="Terminal output"
+        onMouseUp={handleOutputMouseUp}
+        className="flex-1 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4 text-xs leading-5 selection:bg-zinc-700 selection:text-zinc-50"
+      >
         {logs.length === 0 ? (
-          <div className="text-zinc-500 text-xs">
-            Sandbox shell ready. Run a command below or select a quick command.
+          <div className="flex h-full min-h-[160px] flex-col items-start justify-end gap-3 pb-1 font-sans">
+            <div className="space-y-1">
+              <p className="text-xs font-medium text-zinc-300">Sandbox shell</p>
+              <p className="text-xs text-zinc-500">
+                Run a command below or start with a common check
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1.5 font-mono">
+              {QUICK_COMMANDS.map((qc) => (
+                <button
+                  key={qc.label}
+                  type="button"
+                  onClick={() => void executeCommand(qc.cmd)}
+                  disabled={isRunning || !canRun}
+                  className="rounded-md border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-[11px] text-zinc-300 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-zinc-700 hover:bg-zinc-900 hover:text-zinc-100 disabled:opacity-40 cursor-pointer"
+                >
+                  $ {qc.label}
+                </button>
+              ))}
+            </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="divide-y divide-zinc-900">
+            {logs.map((log) => (
+              <div
+                key={log.id}
+                className="group space-y-1.5 py-2.5 first:pt-0 last:pb-0"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="shrink-0 text-emerald-400">$</span>
+                    <span className="truncate font-medium text-zinc-100">
+                      {log.command}
+                    </span>
+                    {log.running ? (
+                      <Loader2 className="ml-1 h-3 w-3 shrink-0 animate-spin text-amber-400" />
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {log.result &&
+                    log.result.exitCode !== null &&
+                    log.result.exitCode !== 0 ? (
+                      <span className="rounded border border-rose-500/25 bg-rose-500/10 px-1.5 py-0.5 text-[10px] tabular-nums text-rose-400">
+                        exit {log.result.exitCode}
+                      </span>
+                    ) : null}
+                    {log.durationMs !== undefined ? (
+                      <span className="text-[11px] tabular-nums text-zinc-500">
+                        {formatDuration(log.durationMs)}
+                      </span>
+                    ) : null}
+                    {!log.running && canRun ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRerun(log.command)}
+                        disabled={isRunning}
+                        className="rounded px-1.5 py-0.5 text-[10px] font-sans text-zinc-400 opacity-0 transition-opacity duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 focus:opacity-100 hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-0 cursor-pointer"
+                      >
+                        Re-run
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
 
-        {logs.map((log) => (
-          <div key={log.id} className="space-y-1">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span className="shrink-0 text-emerald-400">$</span>
-                <span className="truncate font-medium text-zinc-100">
-                  {log.command}
-                </span>
-                {log.running ? (
-                  <Loader2 className="ml-1 h-3 w-3 shrink-0 animate-spin text-amber-400" />
+                {log.result?.stdout ? (
+                  <AnsiText
+                    text={log.result.stdout}
+                    className="text-zinc-300"
+                  />
+                ) : null}
+
+                {log.result?.stderr ? (
+                  <AnsiText
+                    text={log.result.stderr}
+                    className="border-rose-900/60 text-rose-400"
+                  />
+                ) : null}
+
+                {log.error ? (
+                  <div className="border-l border-rose-900 pl-3 text-rose-400">
+                    {log.error}
+                  </div>
                 ) : null}
               </div>
-              {log.durationMs !== undefined ? (
-                <span className="shrink-0 text-[11px] tabular-nums text-zinc-500">
-                  {formatDuration(log.durationMs)}
-                </span>
-              ) : null}
-            </div>
-
-            {log.result?.stdout ? (
-              <AnsiText text={log.result.stdout} className="text-zinc-300" />
-            ) : null}
-
-            {log.result?.stderr ? (
-              <AnsiText
-                text={log.result.stderr}
-                className="border-rose-900/60 text-rose-400"
-              />
-            ) : null}
-
-            {log.error ? (
-              <div className="border-l border-rose-900 pl-3 text-rose-400">
-                {log.error}
-              </div>
-            ) : null}
-
-            {log.result &&
-            log.result.exitCode !== null &&
-            log.result.exitCode !== 0 ? (
-              <div className="pl-3 text-[11px] tabular-nums text-rose-400/90">
-                Exit code {log.result.exitCode}
-              </div>
-            ) : null}
+            ))}
           </div>
-        ))}
+        )}
         <div ref={outputEndRef} />
       </div>
 
@@ -498,7 +530,7 @@ export function WorkspaceTerminalTab({
           type="button"
           onClick={() => void executeCommand(inputCommand)}
           disabled={isRunning || !canRun || !inputCommand.trim()}
-          className="shrink-0 rounded-md p-1 text-zinc-400 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-zinc-800 hover:text-zinc-200 disabled:opacity-30 cursor-pointer"
+          className="shrink-0 rounded-md p-1.5 text-zinc-400 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-zinc-900 hover:text-zinc-200 disabled:opacity-30 cursor-pointer"
           aria-label="Execute command"
         >
           {isRunning ? (
