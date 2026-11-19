@@ -297,7 +297,7 @@ function GitHubConnectionWarning({
       <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-400">
         Your GitHub connection needs to be refreshed.{" "}
         {/* oxlint-disable-next-line nextjs/no-html-link-for-pages */}
-        <a href="/settings/connections" className="underline">
+        <a href="/settings/accounts" className="underline">
           Reconnect
         </a>
       </div>
@@ -308,7 +308,7 @@ function GitHubConnectionWarning({
       <div className="rounded-md border border-border bg-muted/40 p-2 text-xs text-muted-foreground">
         Connect GitHub to push changes.{" "}
         {/* oxlint-disable-next-line nextjs/no-html-link-for-pages */}
-        <a href="/settings/connections" className="underline">
+        <a href="/settings/accounts" className="underline">
           Go to settings
         </a>
       </div>

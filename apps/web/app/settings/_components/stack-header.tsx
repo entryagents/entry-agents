@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 const STACK_TABS = [
   {
     href: "/settings/connections",
-    label: "Apps & accounts",
+    label: "Connected apps",
     icon: Cable,
   },
   {
