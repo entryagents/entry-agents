@@ -29,6 +29,7 @@ let currentVercelToken: string | null = "vercel-token";
 let matchingProjects: VercelProjectSelection[] = [];
 let matchingProjectsError: Error | null = null;
 const createCalls: Array<Record<string, unknown>> = [];
+const createChatCalls: Array<Record<string, unknown>> = [];
 const upsertCalls: Array<Record<string, unknown>> = [];
 const provisioningKickCalls: string[] = [];
 
@@ -92,6 +93,7 @@ mock.module("@/lib/db/sessions", () => ({
     initialChat: Record<string, unknown>;
   }) => {
     createCalls.push(input.session);
+    createChatCalls.push(input.initialChat);
     return {
       session: {
         ...input.session,
@@ -103,6 +105,9 @@ mock.module("@/lib/db/sessions", () => ({
         sessionId: String(input.session.id),
         title: String(input.initialChat.title),
         modelId: String(input.initialChat.modelId),
+        reasoningEffort:
+          (input.initialChat.reasoningEffort as string | null | undefined) ??
+          null,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -152,6 +157,7 @@ describe("/api/sessions POST vercel project linking", () => {
     matchingProjects = [];
     matchingProjectsError = null;
     createCalls.length = 0;
+    createChatCalls.length = 0;
     upsertCalls.length = 0;
     provisioningKickCalls.length = 0;
   });
@@ -367,5 +373,40 @@ describe("/api/sessions POST vercel project linking", () => {
       autoCommitPushOverride: true,
       autoCreatePrOverride: true,
     });
+  });
+
+  test("persists permissionModeOverride, modelId, and reasoningEffort when creating a session", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        permissionModeOverride: "fullAccess",
+        modelId: "openai/gpt-5",
+        reasoningEffort: "high",
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(createCalls[0]).toMatchObject({
+      permissionModeOverride: "fullAccess",
+    });
+    expect(createChatCalls[0]).toMatchObject({
+      modelId: "openai/gpt-5",
+    });
+  });
+
+  test("rejects invalid permissionModeOverride values", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        permissionModeOverride: "invalidMode",
+      }),
+    );
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("Invalid permissionModeOverride value");
+    expect(createCalls).toHaveLength(0);
   });
 });

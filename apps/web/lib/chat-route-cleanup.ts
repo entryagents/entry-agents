@@ -1,5 +1,5 @@
 import {
-  abortChatInstanceTransport,
+  abortChatInstanceStreamReads,
   removeChatInstance,
 } from "@/lib/chat-instance-manager";
 import { clearChatWorkspaceStatus } from "@/lib/workspace-status-store";
@@ -12,7 +12,7 @@ type ChatRouteCleanupDependencies = {
 };
 
 const defaultDependencies: ChatRouteCleanupDependencies = {
-  abortTransport: abortChatInstanceTransport,
+  abortTransport: abortChatInstanceStreamReads,
   removeInstance: removeChatInstance,
   clearWorkspaceStatus: clearChatWorkspaceStatus,
 };
@@ -20,8 +20,9 @@ const defaultDependencies: ChatRouteCleanupDependencies = {
 /**
  * Route teardown cleanup for chat pages.
  *
- * This intentionally does NOT issue a server stop signal; generation may still
- * continue in the background while the user is off-page.
+ * Intentionally aborts only SSE reading and reconnect polling (preserving any
+ * in-flight POST /api/chat handshake) and never issues a server stop signal, so
+ * work continues reliably in the background while the user is off-page.
  */
 export function cleanupChatRouteOnUnmount(
   chatId: string,

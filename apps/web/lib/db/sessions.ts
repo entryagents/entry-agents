@@ -97,7 +97,8 @@ export async function createSession(data: NewSession) {
 
 interface CreateSessionWithInitialChatInput {
   session: NewSession;
-  initialChat: Pick<NewChat, "id" | "title" | "modelId">;
+  initialChat: Pick<NewChat, "id" | "title" | "modelId"> &
+    Partial<Pick<NewChat, "reasoningEffort">>;
 }
 
 export async function createSessionWithInitialChat(
@@ -119,6 +120,9 @@ export async function createSessionWithInitialChat(
         sessionId: session.id,
         title: input.initialChat.title,
         modelId: input.initialChat.modelId,
+        ...(input.initialChat.reasoningEffort !== undefined
+          ? { reasoningEffort: input.initialChat.reasoningEffort }
+          : {}),
       })
       .returning();
     if (!chat) {

@@ -17,7 +17,14 @@ import {
   upsertVercelProjectLink,
 } from "@/lib/db/vercel-project-links";
 import { getUserPreferences } from "@/lib/db/user-preferences";
-import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
+import {
+  sanitizeSelectedModelIdForSession,
+  sanitizeUserPreferencesForSession,
+} from "@/lib/model-access";
+import {
+  reasoningEffortSchema,
+  sanitizeReasoningEffort,
+} from "@/lib/model-reasoning";
 import {
   isValidGitHubRepoName,
   isValidGitHubRepoOwner,
@@ -37,6 +44,8 @@ import {
   type VercelProjectSelection,
 } from "@/lib/vercel/types";
 
+const VALID_PERMISSION_MODES = new Set(["ask", "autoAccept", "fullAccess"]);
+
 interface CreateSessionRequest {
   title?: string;
   projectId?: string | null;
@@ -48,6 +57,9 @@ interface CreateSessionRequest {
   sandboxType?: SandboxProviderId;
   autoCommitPush?: boolean;
   autoCreatePr?: boolean;
+  permissionModeOverride?: "ask" | "autoAccept" | "fullAccess" | null;
+  modelId?: string;
+  reasoningEffort?: string | null;
   vercelProject?: VercelProjectSelection | null;
 }
 
@@ -229,6 +241,40 @@ export async function POST(req: Request) {
   }
 
   if (
+    body.permissionModeOverride !== undefined &&
+    body.permissionModeOverride !== null &&
+    (typeof body.permissionModeOverride !== "string" ||
+      !VALID_PERMISSION_MODES.has(body.permissionModeOverride))
+  ) {
+    return Response.json(
+      { error: "Invalid permissionModeOverride value" },
+      { status: 400 },
+    );
+  }
+
+  if (body.modelId !== undefined && typeof body.modelId !== "string") {
+    return Response.json({ error: "Invalid modelId value" }, { status: 400 });
+  }
+
+  let requestedReasoningEffort: string | null | undefined;
+  if (Object.hasOwn(body, "reasoningEffort")) {
+    if (body.reasoningEffort === null) {
+      requestedReasoningEffort = null;
+    } else {
+      const parsedReasoning = reasoningEffortSchema.safeParse(
+        body.reasoningEffort,
+      );
+      if (!parsedReasoning.success) {
+        return Response.json(
+          { error: "Invalid reasoningEffort value" },
+          { status: 400 },
+        );
+      }
+      requestedReasoningEffort = parsedReasoning.data;
+    }
+  }
+
+  if (
     body.repoOwner !== undefined &&
     (typeof body.repoOwner !== "string" ||
       !isValidGitHubRepoOwner(body.repoOwner))
@@ -290,6 +336,8 @@ export async function POST(req: Request) {
     sandboxType = DEFAULT_SANDBOX_PROVIDER,
     autoCommitPush,
     autoCreatePr,
+    permissionModeOverride,
+    modelId: rawModelId,
   } = body;
 
   let verifiedProjectId: string | null = null;
@@ -369,6 +417,27 @@ export async function POST(req: Request) {
     const effectiveAutoCommitPush =
       autoCommitPush ?? preferences.autoCommitPush;
     const effectiveAutoCreatePr = autoCreatePr ?? preferences.autoCreatePr;
+    const trimmedRequestedModelId = rawModelId?.trim();
+    const effectiveModelId = trimmedRequestedModelId
+      ? (sanitizeSelectedModelIdForSession(
+          trimmedRequestedModelId,
+          session,
+          req.url,
+        ) ?? trimmedRequestedModelId)
+      : preferences.defaultModelId;
+    let effectiveReasoningEffort: string | null | undefined;
+    if (requestedReasoningEffort === null) {
+      effectiveReasoningEffort = null;
+    } else if (requestedReasoningEffort && effectiveModelId) {
+      const { fetchAvailableLanguageModels } =
+        await import("@/lib/models-with-context");
+      const liveModels = await fetchAvailableLanguageModels().catch(() => []);
+      effectiveReasoningEffort = sanitizeReasoningEffort(
+        effectiveModelId,
+        requestedReasoningEffort,
+        liveModels,
+      );
+    }
     const result = await createSessionWithInitialChat({
       session: {
         id: nanoid(),
@@ -385,6 +454,9 @@ export async function POST(req: Request) {
         vercelTeamId: resolvedVercelProject?.teamId ?? null,
         vercelTeamSlug: resolvedVercelProject?.teamSlug ?? null,
         isNewBranch: isNewBranch ?? false,
+        ...(permissionModeOverride !== undefined
+          ? { permissionModeOverride }
+          : {}),
         autoCommitPushOverride: effectiveAutoCommitPush,
         autoCreatePrOverride: effectiveAutoCommitPush
           ? effectiveAutoCreatePr
@@ -399,7 +471,10 @@ export async function POST(req: Request) {
       initialChat: {
         id: nanoid(),
         title: "New chat",
-        modelId: preferences.defaultModelId,
+        modelId: effectiveModelId,
+        ...(effectiveReasoningEffort !== undefined
+          ? { reasoningEffort: effectiveReasoningEffort }
+          : {}),
       },
     });
 

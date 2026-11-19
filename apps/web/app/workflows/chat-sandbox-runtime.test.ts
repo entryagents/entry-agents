@@ -9,6 +9,15 @@ const state = {
 
 mock.module("@/lib/db/sessions", () => ({
   getSessionById: async () => state.mockSession,
+  getSessionsByUserId: async () => [],
+}));
+
+mock.module("@/lib/db/users", () => ({
+  isUserAdmin: async () => false,
+}));
+
+mock.module("@/lib/billing/credit-ledger", () => ({
+  getUserBillingState: async () => null,
 }));
 
 mock.module("@/lib/sandbox/provisioning-kick", () => ({

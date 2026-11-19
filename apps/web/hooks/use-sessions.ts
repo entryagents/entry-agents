@@ -40,6 +40,9 @@ export interface CreateSessionInput {
   sandboxType: SandboxType;
   autoCommitPush: boolean;
   autoCreatePr: boolean;
+  permissionModeOverride?: "ask" | "autoAccept" | "fullAccess" | null;
+  modelId?: string;
+  reasoningEffort?: string | null;
   vercelProject?: VercelProjectSelection | null;
 }
 
