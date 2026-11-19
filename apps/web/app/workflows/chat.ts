@@ -729,6 +729,23 @@ async function resolveChatModelRuntime(params: {
             "We're at capacity right now -- please check back in a little while.",
         };
       }
+
+      const {
+        countUserMessagesLast24Hours,
+        FREE_DAILY_MESSAGE_LIMIT,
+        isFreeDailyLimitExceeded,
+      } = await import("@/lib/billing/free-daily-limit");
+      const dailyCount = await countUserMessagesLast24Hours(params.userId);
+      if (isFreeDailyLimitExceeded(dailyCount)) {
+        const { releaseUserBillingTurn } =
+          await import("@/lib/billing/credit-ledger");
+        await releaseUserBillingTurn(params.userId, params.workflowRunId).catch(
+          () => {},
+        );
+        return {
+          blockedNotice: `Daily free limit reached (${FREE_DAILY_MESSAGE_LIMIT} messages per day). Upgrade to Plus or Builder to continue chatting.`,
+        };
+      }
     }
 
     const { getFreeTierModelId, parseAdminFreeTierModels } =

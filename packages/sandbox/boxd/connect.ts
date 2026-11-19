@@ -77,6 +77,7 @@ async function bootstrapWorkspace(
     return;
   }
 
+  const workDir = sandbox.workingDirectory;
   const source = state.source;
   const git = "git";
 
@@ -86,15 +87,11 @@ async function bootstrapWorkspace(
   // Probe order: boxd machines run as ROOT with no sudo binary, so the
   // plain apt-get path is the one that works (verified against the live
   // boxd API); sudo -n stays as the fallback for non-root images.
-  const hasGit = await sandbox.exec(
-    "command -v git",
-    BOXD_WORKING_DIRECTORY,
-    30_000,
-  );
+  const hasGit = await sandbox.exec("command -v git", workDir, 30_000);
   if (!hasGit.success) {
     const installPlain = await sandbox.exec(
       "apt-get update -qq && apt-get install -y -qq git",
-      BOXD_WORKING_DIRECTORY,
+      workDir,
       300_000,
     );
     if (!installPlain.success) {
@@ -337,8 +334,9 @@ export async function connectBoxd(
     // Named proxies are best-effort; BoxdSandbox.domain falls back to the machine's default HTTPS route.
   }
 
+  const targetWorkDir = options?.workingDirectory ?? BOXD_WORKING_DIRECTORY;
   await client.machines.exec(machine.id, {
-    command: ["mkdir", "-p", BOXD_WORKING_DIRECTORY],
+    command: ["mkdir", "-p", targetWorkDir],
   });
   const baseDomain = machine.access?.domain || "boxd.sh";
   const sandbox = new BoxdSandbox(

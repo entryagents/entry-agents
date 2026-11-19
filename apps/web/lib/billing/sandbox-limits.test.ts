@@ -71,13 +71,30 @@ describe("resolveFreeTierSandboxReuse", () => {
     }
   });
 
-  test("upgraded paid user automatically detaches from shared sandbox and provisions a fresh dedicated one", () => {
+  test("plus and builder subscribers share their existing user sandbox across chats", () => {
     const shared = boxdState("mach_shared_1");
     const res = resolveFreeTierSandboxReuse({
       currentSessionId: "s_2",
       currentSandboxState: shared,
       requestedProviderType: "boxd",
       userPlan: "plus",
+      isAdmin: false,
+      userSessions: [
+        { id: "s_1", status: "running", sandboxState: shared },
+        { id: "s_2", status: "running", sandboxState: shared },
+      ],
+    });
+
+    expect(res.mode).toBe("keep-existing");
+  });
+
+  test("dedicated plan user automatically detaches from shared sandbox and provisions a fresh dedicated one", () => {
+    const shared = boxdState("mach_shared_1");
+    const res = resolveFreeTierSandboxReuse({
+      currentSessionId: "s_2",
+      currentSandboxState: shared,
+      requestedProviderType: "boxd",
+      userPlan: "pro",
       isAdmin: false,
       userSessions: [
         { id: "s_1", status: "running", sandboxState: shared },
