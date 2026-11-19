@@ -18,7 +18,7 @@ export default function Loading() {
               <textarea
                 disabled
                 rows={1}
-                placeholder="Request changes or ask a question..."
+                placeholder=""
                 className="w-full resize-none overflow-y-auto bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none"
                 style={{ minHeight: "24px" }}
               />

@@ -1089,51 +1089,13 @@ export function InboxSidebar({
   return (
     <>
       <div className="flex h-full min-h-0 flex-col bg-sidebar p-2 select-none">
-        {/* Authentic Header: Real EntryMark Logo + Active/Archive Switcher */}
-        <div className="mb-2 flex items-center justify-between px-1 py-1">
-          <div className="flex items-center gap-2">
-            <EntryMark className="h-4 w-4 shrink-0 text-foreground" />
-
-            <div className="flex items-center gap-0.5 rounded-lg border border-border/60 bg-background/40 p-0.5">
-              <button
-                type="button"
-                onClick={() => setShowArchived(false)}
-                className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors cursor-pointer ${
-                  !showArchived
-                    ? "bg-sidebar-active text-foreground shadow-2xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Active
-                {activeSessions.length > 0 ? (
-                  <span className="ml-1 font-mono text-[10px] tabular-nums text-muted-foreground">
-                    {activeSessions.length}
-                  </span>
-                ) : null}
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowArchived(true)}
-                className={`flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
-                  showArchived
-                    ? "bg-sidebar-active text-foreground shadow-2xs"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                <Archive className="h-3 w-3" strokeWidth={1.5} />
-                <span>Archive</span>
-                {archivedCount > 0 ? (
-                  <span className="ml-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
-                    {archivedCount}
-                  </span>
-                ) : null}
-              </button>
-            </div>
-          </div>
+        {/* Top Mark */}
+        <div className="mb-2 flex items-center justify-between px-1.5 py-1">
+          <EntryMark className="h-4 w-4 shrink-0 text-foreground" />
         </div>
 
         {/* New Chat Split Dropdown (Blank Chat + Import from GitHub) */}
-        <div className="mb-2 flex h-8 items-stretch overflow-hidden rounded-lg border border-border/70 bg-background/70">
+        <div className="mb-2 flex h-9 items-stretch overflow-hidden rounded-lg border border-border/70 bg-background/70">
           <button
             type="button"
             onClick={() => {
@@ -1182,6 +1144,43 @@ export function InboxSidebar({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        </div>
+
+        {/* Active / Archive Switcher (below New Chat) */}
+        <div className="mb-2 grid grid-cols-2 gap-1 rounded-lg border border-border/60 bg-background/40 p-0.5">
+          <button
+            type="button"
+            onClick={() => setShowArchived(false)}
+            className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
+              !showArchived
+                ? "bg-sidebar-active text-foreground shadow-2xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <span>Active</span>
+            {activeSessions.length > 0 ? (
+              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                {activeSessions.length}
+              </span>
+            ) : null}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowArchived(true)}
+            className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
+              showArchived
+                ? "bg-sidebar-active text-foreground shadow-2xs"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Archive className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <span>Archive</span>
+            {archivedCount > 0 ? (
+              <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                {archivedCount}
+              </span>
+            ) : null}
+          </button>
         </div>
 
         {/* Borderless Filter Input */}
