@@ -28,6 +28,8 @@ import {
 import { FatalError, getWorkflowMetadata, getWritable, sleep } from "workflow";
 import {
   isRecoverableStepError,
+  isWorkflowStepAutoRecoverable,
+  MAX_CONSECUTIVE_STEP_RECOVERIES,
   WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS,
 } from "@/lib/chat/recoverable-step-error";
 
@@ -1061,38 +1063,6 @@ function hasGuidedFrontendWorkflowTrigger(
   return extractPlainText(message.parts)
     .toLowerCase()
     .includes(GUIDED_FRONTEND_WORKFLOW_TRIGGER_PHRASE);
-}
-
-/**
- * Replace a quota-exhausted provider message's text parts with a clear,
- * user-facing explanation and mark it in metadata. Preserves every other
- * part (tool calls, step markers, etc.) untouched.
- */
-function markProviderQuotaExhausted(
-  message: WebAgentUIMessage,
-  modelId: string,
-): WebAgentUIMessage {
-  const friendlyText = `The "${modelId}" model has hit its provider-side usage limit and can't respond right now. Please switch to a different model and try again.`;
-  let replaced = false;
-  const parts = message.parts.map((part) => {
-    if (part.type === "text") {
-      if (replaced) {
-        return { ...part, text: "" };
-      }
-      replaced = true;
-      return { ...part, text: friendlyText };
-    }
-    return part;
-  });
-
-  return {
-    ...message,
-    parts,
-    metadata: {
-      ...message.metadata,
-      providerQuotaExhausted: true,
-    },
-  };
 }
 
 function getSetupErrorMessage(error: unknown, isRepeatFailure = false): string {
@@ -2971,9 +2941,8 @@ export async function runAgentWorkflow(options: Options) {
         }
         const errorCategory = classifyChatError(error);
         if (
-          isRecoverableStepError(error) &&
-          consecutiveStepRecoveries <
-            WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length
+          isWorkflowStepAutoRecoverable(error) &&
+          consecutiveStepRecoveries < MAX_CONSECUTIVE_STEP_RECOVERIES
         ) {
           if (await checkChatCancelledStep(options.chatId, workflowRunId)) {
             wasAborted = true;
@@ -3029,15 +2998,19 @@ export async function runAgentWorkflow(options: Options) {
               stripDanglingToolCalls(modelMessages);
               lastKnownInputTokens = undefined;
             }
-          } else if (errorCategory === "invalid_prompt") {
+          } else {
             stripDanglingToolCalls(modelMessages);
           }
           const backoffSeconds =
-            WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS[consecutiveStepRecoveries] ??
-            24;
+            WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS[
+              Math.min(
+                consecutiveStepRecoveries,
+                WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length - 1,
+              )
+            ] ?? 5;
           consecutiveStepRecoveries++;
           console.warn(
-            `[chat-workflow] Recoverable step error (${errorCategory}) on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length})`,
+            `[chat-workflow] Recoverable step error (${errorCategory}) on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${MAX_CONSECUTIVE_STEP_RECOVERIES})`,
           );
           await setChatRunStatusStep(
             options.chatId,
@@ -3076,10 +3049,7 @@ export async function runAgentWorkflow(options: Options) {
             pendingAssistantResponse,
           );
         }
-        if (
-          consecutiveStepRecoveries <
-          WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length
-        ) {
+        if (consecutiveStepRecoveries < MAX_CONSECUTIVE_STEP_RECOVERIES) {
           if (await checkChatCancelledStep(options.chatId, workflowRunId)) {
             wasAborted = true;
             break;
@@ -3136,15 +3106,19 @@ export async function runAgentWorkflow(options: Options) {
               stripDanglingToolCalls(modelMessages);
               lastKnownInputTokens = undefined;
             }
-          } else if (recoveryAction === "sanitize") {
+          } else {
             stripDanglingToolCalls(modelMessages);
           }
           const backoffSeconds =
-            WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS[consecutiveStepRecoveries] ??
-            24;
+            WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS[
+              Math.min(
+                consecutiveStepRecoveries,
+                WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length - 1,
+              )
+            ] ?? 5;
           consecutiveStepRecoveries++;
           console.warn(
-            `[chat-workflow] Mid-stream recoverable error${recoveryAction ? ` (${recoveryAction})` : ""} on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length})`,
+            `[chat-workflow] Mid-stream recoverable error${recoveryAction ? ` (${recoveryAction})` : ""} on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${MAX_CONSECUTIVE_STEP_RECOVERIES})`,
           );
           await setChatRunStatusStep(
             options.chatId,
@@ -4053,6 +4027,7 @@ const runAgentStep = async (
   let streamWriteFailed = false;
   let didWriteOutputToWritable = false;
   let stepFinishedThisInvocation = false;
+  let inStreamErrorText: string | undefined;
   let responseMessage: WebAgentUIMessage | undefined;
   const streamedTextById = new Map<string, string>();
   const streamedTextOrder: string[] = [];
@@ -5145,10 +5120,14 @@ const runAgentStep = async (
               errSignal.includes("at capacity") ||
               errSignal.includes("no healthy upstream");
 
-            if (isTransient && streamAttempts < MAX_TRANSIENT_ATTEMPTS) {
+            const shouldRetryInStep =
+              (isTransient || isWorkflowStepAutoRecoverable(streamErr)) &&
+              streamAttempts < MAX_TRANSIENT_ATTEMPTS;
+
+            if (shouldRetryInStep) {
               const backoffMs = Math.min(
-                6000,
-                1000 * 1.5 ** streamAttempts + Math.random() * 500,
+                2500,
+                400 * 1.5 ** streamAttempts + Math.random() * 250,
               );
               console.warn(
                 `[chat-workflow] Transient model error on attempt ${streamAttempts} (${errSignal.slice(0, 100)}), retrying in ${Math.round(backoffMs)}ms...`,
@@ -5520,6 +5499,14 @@ const runAgentStep = async (
               (streamedReasoningById.get(part.id) ?? "") + part.delta,
             );
           }
+          if (part.type === "error") {
+            const errorText =
+              "errorText" in part && typeof part.errorText === "string"
+                ? part.errorText
+                : "Interrupted model stream";
+            inStreamErrorText = errorText;
+            continue;
+          }
           if (
             part.type === "text-delta" ||
             part.type === "reasoning-delta" ||
@@ -5889,9 +5876,9 @@ const runAgentStep = async (
       const responseText = extractPlainText(responseMessage.parts);
       if (detectProviderQuotaExhaustion(finishReason, responseText)) {
         console.warn(
-          `[workflow] Detected provider-side quota exhaustion for model '${modelId}' -- rewriting response before it is persisted. Raw text: ${responseText}`,
+          `[workflow] Detected provider-side quota exhaustion for model '${modelId}' -- triggering fast recovery. Raw text: ${responseText}`,
         );
-        responseMessage = markProviderQuotaExhausted(responseMessage, modelId);
+        inStreamErrorText = inStreamErrorText ?? "Provider quota reached";
       }
     }
 
@@ -5905,6 +5892,42 @@ const runAgentStep = async (
     // SDK refuses to serialize into the event log (it fails the run with a
     // non-retryable SerializationError). Strip them before returning.
     await Promise.allSettled(pendingDebits);
+
+    if (
+      !abortController.signal.aborted &&
+      !creditExhausted &&
+      !windowExhausted &&
+      !turnSpendCapped &&
+      (inStreamErrorText !== undefined || finishReason === "error")
+    ) {
+      const recoverableErrorText =
+        inStreamErrorText ??
+        `Model step ended with finishReason=${finishReason}`;
+      return withoutUndefined({
+        responseMessage,
+        responseMessages: safeResponseMessages,
+        finishReason: "error" as FinishReason,
+        rawFinishReason,
+        stepUsage,
+        stepCost: stepsCost,
+        stepWasAborted: false,
+        recoverableStepError: recoverableErrorText,
+        recoveryAction: "sanitize" as const,
+        failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
+        remainingBalanceCents,
+        remainingWindowBudgetCents,
+        creditExhausted,
+        windowExhausted,
+        turnSpendCapped,
+        stepTiming: buildStepTiming(
+          stepNumber,
+          stepStartedAt,
+          stepFinishedAt,
+          "error",
+          rawFinishReason,
+        ),
+      });
+    }
 
     return withoutUndefined({
       responseMessage,
@@ -6030,9 +6053,17 @@ const runAgentStep = async (
       // Best-effort checkpoint; never mask the original step error.
     }
 
-    if (stepFinishedThisInvocation && partialMessage) {
+    const lastRecordedFinishReason = stepFinishReasons.at(-1)?.finishReason;
+    if (
+      stepFinishedThisInvocation &&
+      partialMessage &&
+      !inStreamErrorText &&
+      lastRecordedFinishReason &&
+      lastRecordedFinishReason !== "error"
+    ) {
       await Promise.allSettled(pendingDebits);
-      const recoveredFinishReason: FinishReason = "stop";
+      const recoveredFinishReason: FinishReason =
+        lastRecordedFinishReason === "tool-calls" ? "tool-calls" : "stop";
       return withoutUndefined({
         responseMessage: partialMessage,
         responseMessages: [],
@@ -6079,11 +6110,14 @@ const runAgentStep = async (
         ? ("compact" as const)
         : errorCategory === "invalid_prompt"
           ? ("sanitize" as const)
-          : undefined;
+          : didWriteOutputToWritable
+            ? ("sanitize" as const)
+            : undefined;
 
     if (
       recoveryAction !== undefined ||
-      isRecoverableStepError(errorWithStepTiming)
+      isRecoverableStepError(errorWithStepTiming) ||
+      isWorkflowStepAutoRecoverable(errorWithStepTiming)
     ) {
       await Promise.allSettled(pendingDebits);
       return withoutUndefined({
@@ -6112,16 +6146,11 @@ const runAgentStep = async (
       });
     }
 
-    // Use `FatalError` in both cases so Workflow SDK never replays output.
+    // Use `FatalError` only for genuinely unrecoverable terminal errors.
     if (
       isNonRetryableApiCallError(errorWithStepTiming) ||
       didWriteOutputToWritable
     ) {
-      // FatalError's constructor only takes a message string (see
-      // node_modules/workflow's own docs -- no options/cause param), so
-      // stepTiming has to be reattached manually to keep the outer
-      // loop's isStepTimingError(error) pickup working the same way it
-      // does for the plain-throw path above.
       const fatalError = new FatalError(errorWithStepTiming.message);
       Object.assign(fatalError, {
         stepTiming: (errorWithStepTiming as { stepTiming?: unknown })
