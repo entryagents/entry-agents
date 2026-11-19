@@ -167,6 +167,23 @@ function waitForRetryOrOnline(
   });
 }
 
+export type TransportAbortOptions = {
+  /**
+   * When true (used on route unmount), abort stream reading and GET
+   * `/api/chat/:id/stream` reconnect polling while letting any in-flight initial
+   * `POST /api/chat` handshake finish reaching the server so background execution
+   * starts reliably.
+   */
+  preserveInFlightSend?: boolean;
+};
+
+function createAbortError(reason?: unknown): DOMException {
+  if (reason instanceof Error && reason.name === "AbortError") {
+    return reason as DOMException;
+  }
+  return new DOMException("Aborted", "AbortError");
+}
+
 function createSyntheticFinishSseResponse(workflowRunId?: string): Response {
   const body = 'data: {"type":"finish"}\n\n';
   const headers: Record<string, string> = {
@@ -184,7 +201,7 @@ function createSyntheticFinishSseResponse(workflowRunId?: string): Response {
 }
 
 /**
- * A chat transport that allows aborting ALL active fetch connections,
+ * A chat transport that allows aborting active fetch connections,
  * including `reconnectToStream` requests, while providing a 30-minute
  * network resilience window across initial send POSTs and stream reconnection.
  */
@@ -192,7 +209,8 @@ export class AbortableChatTransport<
   UI_MESSAGE extends UIMessage = UIMessage,
 > extends WorkflowChatTransport<UI_MESSAGE> {
   private _state: {
-    controller: AbortController;
+    sendController: AbortController;
+    readController: AbortController;
     lastChunkAt: number;
     activeSendMessagesCount: number;
     activeReconnectCount: number;
@@ -200,31 +218,104 @@ export class AbortableChatTransport<
 
   constructor(options: AbortableWorkflowChatTransportOptions<UI_MESSAGE>) {
     const state = {
-      controller: new AbortController(),
+      sendController: new AbortController(),
+      readController: new AbortController(),
       lastChunkAt: 0,
       activeSendMessagesCount: 0,
       activeReconnectCount: 0,
     };
     const outerFetch: FetchFunction = options?.fetch ?? globalThis.fetch;
 
-    const tapSseResponse = (response: Response): Response => {
+    const tapSseResponse = (
+      response: Response,
+      readSignal?: AbortSignal,
+    ): Response => {
       const contentType = response.headers.get("Content-Type") ?? "";
-      if (
-        !response.body ||
-        !contentType.includes("text/event-stream") ||
-        typeof TransformStream === "undefined"
-      ) {
+      if (!response.body || !contentType.includes("text/event-stream")) {
         return response;
       }
-      state.lastChunkAt = Date.now();
-      const tappedBody = response.body.pipeThrough(
-        new TransformStream<Uint8Array, Uint8Array>({
-          transform(chunk, controller) {
-            state.lastChunkAt = Date.now();
-            controller.enqueue(chunk);
+      if (readSignal?.aborted) {
+        void response.body.cancel().catch(() => {});
+        const abortedStream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.error(createAbortError(readSignal.reason));
           },
-        }),
-      );
+        });
+        return new Response(abortedStream, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        });
+      }
+      state.lastChunkAt = Date.now();
+      const sourceReader = response.body.getReader();
+      let settled = false;
+      let onReadAbort: (() => void) | undefined;
+      const cleanupReadSignal = () => {
+        if (onReadAbort && readSignal) {
+          readSignal.removeEventListener("abort", onReadAbort);
+          onReadAbort = undefined;
+        }
+      };
+
+      const tappedBody = new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (readSignal) {
+            onReadAbort = () => {
+              if (settled) return;
+              settled = true;
+              cleanupReadSignal();
+              controller.error(createAbortError(readSignal.reason));
+              void sourceReader.cancel().catch(() => {});
+            };
+            readSignal.addEventListener("abort", onReadAbort, { once: true });
+          }
+        },
+        async pull(controller) {
+          if (settled || readSignal?.aborted) {
+            if (!settled) {
+              settled = true;
+              cleanupReadSignal();
+              controller.error(createAbortError(readSignal?.reason));
+            }
+            return;
+          }
+          try {
+            const next = await sourceReader.read();
+            if (settled || readSignal?.aborted) {
+              if (!settled) {
+                settled = true;
+                cleanupReadSignal();
+                controller.error(createAbortError(readSignal?.reason));
+              }
+              return;
+            }
+            if (next.done) {
+              settled = true;
+              cleanupReadSignal();
+              controller.close();
+            } else {
+              state.lastChunkAt = Date.now();
+              controller.enqueue(next.value);
+            }
+          } catch (error) {
+            if (!settled) {
+              settled = true;
+              cleanupReadSignal();
+              controller.error(
+                readSignal?.aborted
+                  ? createAbortError(readSignal.reason)
+                  : error,
+              );
+            }
+          }
+        },
+        async cancel(reason) {
+          settled = true;
+          cleanupReadSignal();
+          await sourceReader.cancel(reason).catch(() => {});
+        },
+      });
       return new Response(tappedBody, {
         status: response.status,
         statusText: response.statusText,
@@ -279,7 +370,7 @@ export class AbortableChatTransport<
             );
             if (streamRes.ok && streamRes.body) {
               options.onReconnectNeeded?.();
-              return tapSseResponse(streamRes);
+              return tapSseResponse(streamRes, signal);
             }
             if (!TRANSIENT_HTTP_STATUSES.has(streamRes.status)) {
               break;
@@ -313,9 +404,13 @@ export class AbortableChatTransport<
         input: Parameters<FetchFunction>[0],
         init?: Parameters<FetchFunction>[1],
       ): Promise<Response> => {
-        const combinedSignal = init?.signal
-          ? AbortSignal.any([state.controller.signal, init.signal])
-          : state.controller.signal;
+        const sendSignal = init?.signal
+          ? AbortSignal.any([state.sendController.signal, init.signal])
+          : state.sendController.signal;
+        const readSignal = init?.signal
+          ? AbortSignal.any([state.readController.signal, init.signal])
+          : state.readController.signal;
+        const combinedSignal = AbortSignal.any([sendSignal, readSignal]);
 
         const url = getRequestUrl(input);
         const isStream = isStreamReconnectUrl(url);
@@ -324,6 +419,7 @@ export class AbortableChatTransport<
 
         if (!isStream) {
           const isPost = (init?.method ?? "GET").toUpperCase() === "POST";
+          const postFetchSignal = isPost ? sendSignal : combinedSignal;
           const identifiers = isPost
             ? parseIdentifiersFromBody(init?.body)
             : null;
@@ -343,7 +439,7 @@ export class AbortableChatTransport<
 
             // Before re-POSTing after a dropped connection, verify the server
             // didn't already accept the request and start the workflow.
-            if (attemptedSend && identifiers) {
+            if (attemptedSend && identifiers && !combinedSignal.aborted) {
               const recovered = await probeExistingRunAfterPostFailure(
                 identifiers,
                 combinedSignal,
@@ -357,10 +453,14 @@ export class AbortableChatTransport<
             try {
               const response = await outerFetch(input, {
                 ...init,
-                signal: combinedSignal,
+                signal: postFetchSignal,
               });
 
-              if (response.status === 409 && identifiers) {
+              if (
+                response.status === 409 &&
+                identifiers &&
+                !readSignal.aborted
+              ) {
                 const reconciled = await probeExistingRunAfterPostFailure(
                   identifiers,
                   combinedSignal,
@@ -382,7 +482,7 @@ export class AbortableChatTransport<
                 continue;
               }
 
-              return tapSseResponse(response);
+              return tapSseResponse(response, readSignal);
             } catch (error) {
               if (combinedSignal.aborted || Date.now() >= deadline) {
                 throw error;
@@ -488,7 +588,7 @@ export class AbortableChatTransport<
               continue;
             }
 
-            return tapSseResponse(response);
+            return tapSseResponse(response, readSignal);
           } catch (error) {
             if (combinedSignal.aborted || Date.now() >= deadline) {
               throw error;
@@ -668,11 +768,17 @@ export class AbortableChatTransport<
   }
 
   /**
-   * Abort every in-flight fetch made through this transport, then reset
-   * so new requests go through normally.
+   * Abort active fetches made through this transport, then reset controllers so
+   * new requests go through normally. When `preserveInFlightSend` is set, only
+   * SSE reading and GET `/stream` reconnects are aborted while any in-flight
+   * `POST /api/chat` finishes reaching the server.
    */
-  abort(): void {
-    this._state.controller.abort();
-    this._state.controller = new AbortController();
+  abort(options?: TransportAbortOptions): void {
+    if (!options?.preserveInFlightSend) {
+      this._state.sendController.abort();
+      this._state.sendController = new AbortController();
+    }
+    this._state.readController.abort();
+    this._state.readController = new AbortController();
   }
 }

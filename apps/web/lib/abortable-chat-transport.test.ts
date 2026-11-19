@@ -281,4 +281,182 @@ describe("AbortableChatTransport durability", () => {
     expect(streamAttempts).toBe(2);
     expect(chunks.some((c) => c.type === "finish")).toBe(true);
   });
+
+  test("abort({ preserveInFlightSend: true }) lets in-flight POST finish and closes stream without reconnecting", async () => {
+    let markPostStarted!: () => void;
+    const postStarted = new Promise<void>((resolve) => {
+      markPostStarted = resolve;
+    });
+    let releasePost!: () => void;
+    const postGate = new Promise<void>((resolve) => {
+      releasePost = resolve;
+    });
+    let postAborted = false;
+    let postCompleted = false;
+    let reconnectCalls = 0;
+
+    const mockFetch = asFetch(async (input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/chat" && init?.method === "POST") {
+        init.signal?.addEventListener("abort", () => {
+          postAborted = true;
+        });
+        markPostStarted();
+        await postGate;
+        postCompleted = true;
+        return makeSseResponse([
+          { type: "start", messageId: "msg_bg" },
+          { type: "finish" },
+        ]);
+      }
+      if (url.startsWith("/api/chat/chat_bg/stream")) {
+        reconnectCalls += 1;
+        return makeSseResponse([{ type: "finish" }]);
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const transport = new AbortableChatTransport<UIMessage>({
+      api: "/api/chat",
+      fetch: mockFetch,
+      body: { sessionId: "sess_1", chatId: "chat_bg" },
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat_bg",
+      messages: [
+        {
+          id: "u_bg",
+          role: "user",
+          parts: [{ type: "text", text: "run in background" }],
+        },
+      ],
+    });
+
+    const readPromise = readAllChunks(stream);
+    await postStarted;
+
+    // Simulate navigating away while POST /api/chat is still in flight.
+    transport.abort({ preserveInFlightSend: true });
+    expect(postAborted).toBe(false);
+
+    releasePost();
+    const chunks = await readPromise;
+
+    expect(postAborted).toBe(false);
+    expect(postCompleted).toBe(true);
+    expect(reconnectCalls).toBe(0);
+    expect(chunks).toEqual([]);
+  });
+
+  test("abort({ preserveInFlightSend: true }) stops active SSE reading without entering reconnect loop", async () => {
+    let reconnectCalls = 0;
+    let streamCancelled = false;
+
+    const mockFetch = asFetch(async (input, init) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === "/api/chat" && init?.method === "POST") {
+        const encoder = new TextEncoder();
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "start", messageId: "msg_sse" })}\n\n`,
+              ),
+            );
+          },
+          cancel() {
+            streamCancelled = true;
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream",
+            "x-workflow-run-id": "run_sse",
+          },
+        });
+      }
+      if (url.startsWith("/api/chat/chat_sse/stream")) {
+        reconnectCalls += 1;
+        return makeSseResponse([{ type: "finish" }]);
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const transport = new AbortableChatTransport<UIMessage>({
+      api: "/api/chat",
+      fetch: mockFetch,
+      body: { sessionId: "sess_1", chatId: "chat_sse" },
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat_sse",
+      messages: [
+        {
+          id: "u_sse",
+          role: "user",
+          parts: [{ type: "text", text: "stream then leave" }],
+        },
+      ],
+    });
+
+    const reader = stream.getReader();
+    const first = await reader.read();
+    expect(first.done).toBe(false);
+
+    transport.abort({ preserveInFlightSend: true });
+
+    while (!(await reader.read()).done) {
+      // Drain remaining closed/empty items if any
+    }
+
+    expect(streamCancelled).toBe(true);
+    expect(reconnectCalls).toBe(0);
+  });
+
+  test("abort() without preserveInFlightSend aborts an in-flight POST immediately", async () => {
+    let postAborted = false;
+
+    const mockFetch = asFetch(async (_input, init) => {
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            postAborted = true;
+            reject(new DOMException("Aborted", "AbortError"));
+          },
+          { once: true },
+        );
+      });
+    });
+
+    const transport = new AbortableChatTransport<UIMessage>({
+      api: "/api/chat",
+      fetch: mockFetch,
+      body: { sessionId: "sess_1", chatId: "chat_stop" },
+    });
+
+    const stream = await transport.sendMessages({
+      trigger: "submit-message",
+      chatId: "chat_stop",
+      messages: [
+        {
+          id: "u_stop",
+          role: "user",
+          parts: [{ type: "text", text: "stop me" }],
+        },
+      ],
+    });
+
+    const readPromise = readAllChunks(stream).catch((err) => err);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    transport.abort();
+
+    const result = await readPromise;
+    expect(postAborted).toBe(true);
+    expect(result).toBeInstanceOf(Error);
+  });
 });

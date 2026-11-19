@@ -4,12 +4,17 @@ import { Folder, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
+import { useSWRConfig } from "swr";
 import { DEFAULT_SANDBOX_TYPE } from "@/components/sandbox-selector-compact";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useModelOptions } from "@/hooks/use-model-options";
 import { useProjects } from "@/hooks/use-projects";
+import type { SessionWithUnread } from "@/hooks/use-sessions";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
-import { savePendingInitialPrompt } from "@/lib/chat/pending-initial-prompt";
+import {
+  generateAndApplyInitialTitle,
+  startInitialChatOnServer,
+} from "@/lib/chat/start-initial-chat";
 import { sanitizePromptToTitle } from "@/lib/random-city";
 import {
   ChatComposer,
@@ -21,6 +26,7 @@ export function SessionsIndexShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedProjectId = searchParams.get("projectId");
+  const { mutate: globalMutate } = useSWRConfig();
   const { createSession } = useSessionsShell();
   const { projects } = useProjects({ enabled: Boolean(selectedProjectId) });
   const selectedFolder = selectedProjectId
@@ -77,20 +83,82 @@ export function SessionsIndexShell() {
           sandboxType: preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE,
           autoCommitPush: preferences?.autoCommitPush ?? false,
           autoCreatePr: preferences?.autoCreatePr ?? false,
+          permissionModeOverride: permissionMode,
+          ...(effectiveModelId ? { modelId: effectiveModelId } : {}),
+          ...(reasoningEffort !== null ? { reasoningEffort } : {}),
         });
 
-        if (
-          effectiveModelId &&
-          effectiveModelId !== preferences?.defaultModelId
-        ) {
-          await fetch(`/api/sessions/${createdSession.id}/chats/${chat.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ modelId: effectiveModelId }),
-          }).catch(() => {});
-        }
+        // Start the agent workflow directly on submit so background execution
+        // begins immediately even if the user navigates away or closes the tab
+        // before the chat page mounts.
+        await startInitialChatOnServer({
+          sessionId: createdSession.id,
+          chatId: chat.id,
+          built,
+        });
 
-        savePendingInitialPrompt(chat.id, built);
+        void globalMutate<{
+          sessions: SessionWithUnread[];
+          archivedCount?: number;
+        }>(
+          "/api/sessions",
+          (current) => {
+            if (!current) return current;
+            return {
+              ...current,
+              sessions: current.sessions.map((s) =>
+                s.id === createdSession.id
+                  ? { ...s, hasStreaming: true, latestChatId: chat.id }
+                  : s,
+              ),
+            };
+          },
+          { revalidate: false },
+        );
+
+        void globalMutate<{
+          chats?: Array<Record<string, unknown>>;
+          defaultModelId?: string | null;
+        }>(
+          `/api/sessions/${createdSession.id}/chats`,
+          (current) => {
+            if (!current?.chats) return current;
+            return {
+              ...current,
+              chats: current.chats.map((c) =>
+                c.id === chat.id ? { ...c, isStreaming: true } : c,
+              ),
+            };
+          },
+          { revalidate: false },
+        );
+
+        void generateAndApplyInitialTitle({
+          sessionId: createdSession.id,
+          chatId: chat.id,
+          displayText: built.displayText,
+          onTitleResolved: (finalTitle) => {
+            void globalMutate<{
+              sessions: SessionWithUnread[];
+              archivedCount?: number;
+            }>(
+              "/api/sessions",
+              (current) => {
+                if (!current) return current;
+                return {
+                  ...current,
+                  sessions: current.sessions.map((s) =>
+                    s.id === createdSession.id
+                      ? { ...s, title: finalTitle }
+                      : s,
+                  ),
+                };
+              },
+              { revalidate: false },
+            );
+          },
+        });
+
         router.push(`/sessions/${createdSession.id}/chats/${chat.id}`, {
           scroll: false,
         });
@@ -104,11 +172,13 @@ export function SessionsIndexShell() {
     [
       createSession,
       effectiveModelId,
+      globalMutate,
       isCreating,
+      permissionMode,
       preferences?.autoCommitPush,
       preferences?.autoCreatePr,
-      preferences?.defaultModelId,
       preferences?.defaultSandboxType,
+      reasoningEffort,
       router,
       selectedProjectId,
     ],

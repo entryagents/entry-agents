@@ -4,6 +4,7 @@ import * as realLibWorkspaceStatusStore from "@/lib/workspace-status-store";
 
 const spies = {
   abortChatInstanceTransport: mock((_chatId: string) => {}),
+  abortChatInstanceStreamReads: mock((_chatId: string) => {}),
   removeChatInstance: mock((_chatId: string) => {}),
   clearChatWorkspaceStatus: mock((_chatId: string) => {}),
 };
@@ -11,6 +12,7 @@ const spies = {
 mock.module("@/lib/chat-instance-manager", () => ({
   ...realLibChatInstanceManager,
   abortChatInstanceTransport: spies.abortChatInstanceTransport,
+  abortChatInstanceStreamReads: spies.abortChatInstanceStreamReads,
   removeChatInstance: spies.removeChatInstance,
 }));
 
@@ -52,11 +54,17 @@ describe("cleanupChatRouteOnUnmount", () => {
     ]);
   });
 
-  test("clears workspace status with default dependencies", async () => {
+  test("aborts stream reads (preserving in-flight POST) and clears workspace status with default dependencies", async () => {
     const { cleanupChatRouteOnUnmount } = await cleanupModulePromise;
+
+    spies.abortChatInstanceTransport.mockClear();
+    spies.abortChatInstanceStreamReads.mockClear();
+    spies.clearChatWorkspaceStatus.mockClear();
 
     cleanupChatRouteOnUnmount("chat-789");
 
+    expect(spies.abortChatInstanceStreamReads).toHaveBeenCalledWith("chat-789");
+    expect(spies.abortChatInstanceTransport).not.toHaveBeenCalled();
     expect(spies.clearChatWorkspaceStatus).toHaveBeenCalledWith("chat-789");
   });
 

@@ -11,7 +11,7 @@ type ManagedChatInstance = {
 };
 
 type AbortableTransport = {
-  abort: () => void;
+  abort: (options?: { preserveInFlightSend?: boolean }) => void;
 };
 
 function isAbortableTransport(value: unknown): value is AbortableTransport {
@@ -63,6 +63,15 @@ export function abortChatInstanceTransport(chatId: string): void {
   }
 
   managed.transport.abort();
+}
+
+export function abortChatInstanceStreamReads(chatId: string): void {
+  const managed = chatInstances.get(chatId);
+  if (!managed || !isAbortableTransport(managed.transport)) {
+    return;
+  }
+
+  managed.transport.abort({ preserveInFlightSend: true });
 }
 
 export function removeChatInstance(chatId: string): void {

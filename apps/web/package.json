@@ -43,7 +43,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@vercel/analytics": "^1.4.1",
     "@vercel/oidc": "^2.0.0",
-    "@workflow/ai": "5.0.4",
+    "@workflow/ai": "5.0.5",
     "ai": "catalog:",
     "arctic": "^3.7.0",
     "better-auth": "^1.7.22",
@@ -69,7 +69,7 @@
     "tailwind-merge": "^3.4.0",
     "three": "^0.187.0",
     "vaul": "^1.1.2",
-    "workflow": "5.5.0",
+    "workflow": "5.6.1",
     "zod": "catalog:"
   },
   "devDependencies": {
