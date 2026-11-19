@@ -270,3 +270,97 @@ export async function GET(req: Request, context: RouteContext) {
     );
   }
 }
+
+export async function PUT(req: Request, context: RouteContext) {
+  const authResult = await requireAuthenticatedUser();
+  if (!authResult.ok) {
+    return authResult.response;
+  }
+
+  const { sessionId } = await context.params;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const record =
+    typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>)
+      : {};
+  const filePath = normalizeRequestedFilePath(
+    typeof record.path === "string" ? record.path : null,
+  );
+  if (!filePath) {
+    return Response.json({ error: "Invalid file path" }, { status: 400 });
+  }
+
+  if (typeof record.content !== "string") {
+    return Response.json(
+      { error: "File content must be a string" },
+      { status: 400 },
+    );
+  }
+
+  const byteLength = Buffer.byteLength(record.content, "utf-8");
+  if (byteLength > MAX_FILE_PREVIEW_BYTES) {
+    return Response.json(
+      { error: "File exceeds maximum editable size (5 MB)" },
+      { status: 413 },
+    );
+  }
+
+  const sessionContext = await requireOwnedSessionWithSandboxGuard({
+    userId: authResult.userId,
+    sessionId,
+    sandboxGuard: hasRuntimeSandboxState,
+    sandboxErrorMessage: "Sandbox is not running",
+  });
+  if (!sessionContext.ok) {
+    return sessionContext.response;
+  }
+
+  const { sessionRecord } = sessionContext;
+  if (!sessionRecord.sandboxState) {
+    return Response.json({ error: "Sandbox state missing" }, { status: 400 });
+  }
+
+  try {
+    const sandbox = await connectSandbox(sessionRecord.sandboxState);
+    const fullPath = posix.join(sandbox.workingDirectory, filePath);
+    await sandbox.writeFile(fullPath, record.content, "utf-8");
+
+    const response: WorkspaceFileContentResponse = {
+      path: filePath,
+      content: record.content,
+      size: byteLength,
+      kind: "text",
+      mimeType: "text/plain",
+    };
+
+    return Response.json(response);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isSandboxUnavailableError(message)) {
+      await updateSession(sessionId, {
+        sandboxState: clearUnavailableSandboxState(
+          sessionRecord.sandboxState,
+          message,
+        ),
+        ...buildHibernatedLifecycleUpdate(),
+      });
+      return Response.json(
+        { error: "Sandbox is unavailable. Please resume sandbox." },
+        { status: 409 },
+      );
+    }
+
+    console.error("Failed to save workspace file:", error);
+    return Response.json(
+      { error: "Failed to save workspace file" },
+      { status: 500 },
+    );
+  }
+}
