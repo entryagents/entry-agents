@@ -1723,6 +1723,8 @@ export function SessionChatContent({
 
   const sendMessageWithPendingState = useCallback(
     async (message: Parameters<typeof sendMessage>[0]) => {
+      const { clearChatStoppedByUser } = await import("@/lib/chat/stop-latch");
+      clearChatStoppedByUser(chatInfo.id);
       setHasPendingResponse(true);
       setUserStopped(false);
       lastSendTimestampRef.current = Date.now();

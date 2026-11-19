@@ -25,6 +25,11 @@ import {
 } from "@/lib/chat-instance-manager";
 import { cleanupChatRouteOnUnmount } from "@/lib/chat-route-cleanup";
 import { isFriendlyChatErrorText } from "@/lib/chat/friendly-error";
+import {
+  clearChatStoppedByUser,
+  isChatStoppedByUser,
+  markChatStoppedByUser,
+} from "@/lib/chat/stop-latch";
 import { getTeamRoleModelsSnapshot } from "@/lib/team/role-models-store";
 import {
   CONTINUE_AFTER_ERROR_PROMPT,
@@ -115,6 +120,9 @@ export function useSessionChatRuntime({
   contextLimit,
 }: UseSessionChatRuntimeParams): UseSessionChatRuntimeReturn {
   const contextLimitRef = useRef<number | null>(contextLimit);
+  const userStoppedRef = useRef(
+    initialChatStatus === "cancelled" || isChatStoppedByUser(chatId),
+  );
   const workspaceStatus = useSyncExternalStore(
     useCallback(
       (listener) => subscribeChatWorkspaceStatus(chatId, listener),
@@ -235,7 +243,12 @@ export function useSessionChatRuntime({
           setIsReconnecting(false);
           triggerBillingSync();
         },
-        sendAutomaticallyWhen: shouldAutoSubmit,
+        sendAutomaticallyWhen: ({ messages }) => {
+          if (userStoppedRef.current || isChatStoppedByUser(chatId)) {
+            return false;
+          }
+          return shouldAutoSubmit({ messages });
+        },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only create once per chatId; init values are only used at creation time
     [chatId],
@@ -244,12 +257,12 @@ export function useSessionChatRuntime({
   // Track explicit user-initiated stops so auto-recovery doesn't immediately
   // reconnect to the still-running server stream (the main cause of the
   // "need to tap stop 3 times on iOS" bug).
-  const userStoppedRef = useRef(false);
   const retryInFlightRef = useRef(false);
   const retryGenerationRef = useRef(0);
 
   const stopChatStream = useCallback((): Promise<boolean> => {
     userStoppedRef.current = true;
+    markChatStoppedByUser(chatId);
 
     // Send the current assistant message snapshot so the server can persist
     // mid-step output before cancelling the workflow.
@@ -296,6 +309,8 @@ export function useSessionChatRuntime({
   // stream, causing visible jank.
   const shouldResumeOnMountRef = useRef(
     !!initialChatActiveStreamId &&
+      initialChatStatus !== "cancelled" &&
+      !isChatStoppedByUser(chatId) &&
       (!alreadyExisted ||
         chatInstance.status === "ready" ||
         chatInstance.status === "error"),
@@ -324,7 +339,10 @@ export function useSessionChatRuntime({
       // This prevents the "tap stop 3 times" loop on iOS where aborting the
       // transport causes a transient error that the auto-recovery immediately
       // reconnects.
-      if (opts?.auto && userStoppedRef.current) {
+      if (
+        opts?.auto &&
+        (userStoppedRef.current || isChatStoppedByUser(chatId))
+      ) {
         // Still clear the error so the UI doesn't show a stale error banner.
         chat.clearError();
         return;
@@ -339,7 +357,10 @@ export function useSessionChatRuntime({
       if (retryInFlightRef.current && strategy === "soft") {
         return;
       }
-      userStoppedRef.current = false;
+      if (!opts?.auto) {
+        userStoppedRef.current = false;
+        clearChatStoppedByUser(chatId);
+      }
       retryInFlightRef.current = true;
       const retryGeneration = ++retryGenerationRef.current;
 
@@ -426,17 +447,33 @@ export function useSessionChatRuntime({
                   part.type === "reasoning",
               );
 
+            if (serverSnapshotData.status === "cancelled") {
+              markChatStoppedByUser(chatId);
+              userStoppedRef.current = true;
+              chat.clearError();
+              return;
+            }
+
             if (
               serverSnapshotData.status === "completed" ||
               (serverSnapshotData.status !== "failed" &&
-                serverSnapshotData.status !== "cancelled" &&
                 lastIsCompletedNonErrorAssistant)
             ) {
               chat.clearError();
               return;
             }
 
-            if (userStoppedRef.current) {
+            if (
+              userStoppedRef.current ||
+              isChatStoppedByUser(chatId) ||
+              opts?.auto
+            ) {
+              if (opts?.auto && strategy === "soft") {
+                return;
+              }
+            }
+
+            if (userStoppedRef.current || isChatStoppedByUser(chatId)) {
               return;
             }
 
@@ -537,6 +574,13 @@ export function useSessionChatRuntime({
                 clearChatWorkspaceStatus(chatId);
                 triggerBillingSync();
 
+                if (data?.status === "cancelled") {
+                  markChatStoppedByUser(chatId);
+                  userStoppedRef.current = true;
+                  chat.clearError();
+                  return;
+                }
+
                 const lastMerged = mergedMessages[mergedMessages.length - 1];
                 const lastIsCompletedNonErrorAssistant =
                   lastMerged?.role === "assistant" &&
@@ -552,14 +596,13 @@ export function useSessionChatRuntime({
                 if (
                   data?.status === "completed" ||
                   (data?.status !== "failed" &&
-                    data?.status !== "cancelled" &&
                     lastIsCompletedNonErrorAssistant)
                 ) {
                   chat.clearError();
                   return;
                 }
 
-                if (userStoppedRef.current) {
+                if (userStoppedRef.current || isChatStoppedByUser(chatId)) {
                   return;
                 }
 
@@ -594,7 +637,11 @@ export function useSessionChatRuntime({
               return;
             }
 
-            if (!resumeAttachedToNothing || userStoppedRef.current) {
+            if (
+              !resumeAttachedToNothing ||
+              userStoppedRef.current ||
+              isChatStoppedByUser(chatId)
+            ) {
               return;
             }
 
@@ -627,11 +674,10 @@ export function useSessionChatRuntime({
     [chat, chatId, chatInstance, sessionId, transport],
   );
 
-  // Reset the user-stopped flag when a new message is sent so that
-  // auto-recovery works normally for the new stream.
+  // Clear workspace status when status transitions. Note: userStoppedRef is
+  // NEVER cleared passively here — only by an explicit user send or manual Retry.
   useEffect(() => {
     if (chat.status === "submitted") {
-      userStoppedRef.current = false;
       clearChatWorkspaceStatus(chatId);
       return;
     }
@@ -711,10 +757,15 @@ export function useSessionChatRuntime({
         .then(async (res) => {
           if (cancelled || !res.ok) return;
           const data = (await res.json()) as {
+            status?: string;
             isStreaming?: boolean;
             messages?: WebAgentUIMessage[];
           };
           if (cancelled) return;
+          if (data.status === "cancelled") {
+            markChatStoppedByUser(chatId);
+            userStoppedRef.current = true;
+          }
           if (Array.isArray(data.messages) && data.messages.length > 0) {
             chat.setMessages(
               mergePreservingLocalWork(data.messages, chatInstance.messages),
@@ -722,8 +773,10 @@ export function useSessionChatRuntime({
           }
           if (
             data.isStreaming &&
+            data.status !== "cancelled" &&
             chatInstance.status === "ready" &&
-            !userStoppedRef.current
+            !userStoppedRef.current &&
+            !isChatStoppedByUser(chatId)
           ) {
             setIsReconnecting(true);
             await chat.resumeStream();
@@ -738,6 +791,10 @@ export function useSessionChatRuntime({
       };
     }
 
+    if (initialChatStatus === "cancelled" || isChatStoppedByUser(chatId)) {
+      return;
+    }
+
     let cancelled = false;
     // If `useChat({ resume: true })` already initiated resume on mount,
     // skip the 0ms duplicate probe so we don't attach twice simultaneously.
@@ -747,7 +804,12 @@ export function useSessionChatRuntime({
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     const attemptResume = async () => {
-      if (cancelled || retryInFlightRef.current || userStoppedRef.current) {
+      if (
+        cancelled ||
+        retryInFlightRef.current ||
+        userStoppedRef.current ||
+        isChatStoppedByUser(chatId)
+      ) {
         return;
       }
 

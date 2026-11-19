@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ChatUiStatus } from "@/lib/chat-streaming-state";
 import {
+  isChatStoppedByUser,
+  markChatStoppedByUser,
+} from "@/lib/chat/stop-latch";
+import {
   SUBMITTED_PROBE_GRACE_MS,
   getStreamRecoveryDecision,
   getStreamRecoveryDelayMs,
@@ -79,6 +83,10 @@ export function useStreamRecovery({
       return;
     }
 
+    if (isChatStoppedByUser(chatId)) {
+      return;
+    }
+
     const now = Date.now();
     const recoveryDecision = getStreamRecoveryDecision({
       now,
@@ -97,7 +105,10 @@ export function useStreamRecovery({
     }
 
     if (recoveryDecision === "retry-error") {
-      if (hasAutoRetriedCurrentErrorRef.current) {
+      if (
+        hasAutoRetriedCurrentErrorRef.current ||
+        isChatStoppedByUser(chatId)
+      ) {
         return;
       }
       hasAutoRetriedCurrentErrorRef.current = true;
@@ -138,6 +149,14 @@ export function useStreamRecovery({
           isStreaming: Boolean(serverChat?.isStreaming),
         };
 
+        if (serverChat?.status === "cancelled") {
+          markChatStoppedByUser(chatId);
+          if (previous?.stamp !== serverStamp) {
+            await onReconcileSnapshot?.();
+          }
+          return;
+        }
+
         if (!serverChat?.isStreaming) {
           // Never interrupt a local POST /api/chat request that is still
           // persisting the user message / claiming activeStreamId.
@@ -153,7 +172,7 @@ export function useStreamRecovery({
           // If the client thinks the chat is in flight, or the server completed/updated
           // a turn while this tab was backgrounded/offline/idle (including before mount),
           // reconcile immediately so the user never has to reload the page to see latest results.
-          if (isChatInFlight) {
+          if (isChatInFlight && !isChatStoppedByUser(chatId)) {
             retryChatStream({ auto: true, strategy: "soft" });
           } else if (
             status === "error" &&
@@ -172,7 +191,10 @@ export function useStreamRecovery({
         }
 
         // Attach when this device is not yet streaming or errored out.
-        if (!isChatInFlight || status === "error") {
+        if (
+          (!isChatInFlight || status === "error") &&
+          !isChatStoppedByUser(chatId)
+        ) {
           hasAutoRetriedCurrentErrorRef.current = false;
           retryChatStream({ auto: true, strategy: "soft" });
           return;
