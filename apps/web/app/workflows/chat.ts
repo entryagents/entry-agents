@@ -2612,6 +2612,7 @@ export async function runAgentWorkflow(options: Options) {
   let totalUsage: LanguageModelUsage | undefined;
   let finalFinishReason: FinishReason | undefined;
   let streamClosed = false;
+  let didPersistFinalCompletion = false;
   let workflowStatus: WorkflowRunStatus = "completed";
   let caughtError: unknown;
   let isRepeatFailure = false;
@@ -3439,10 +3440,21 @@ export async function runAgentWorkflow(options: Options) {
       pendingAssistantResponse,
       workflowRunId,
     );
+    didPersistFinalCompletion = true;
 
     await Promise.all([
-      clearActiveStream(options.chatId, workflowRunId),
-      releaseUserBillingTurnStep(options.userId, workflowRunId),
+      clearActiveStream(options.chatId, workflowRunId).catch((err) => {
+        console.warn(
+          "[workflow] Best-effort clearActiveStream failed after completion:",
+          err,
+        );
+      }),
+      releaseUserBillingTurnStep(options.userId, workflowRunId).catch((err) => {
+        console.warn(
+          "[workflow] Best-effort releaseUserBillingTurnStep failed after completion:",
+          err,
+        );
+      }),
       ...(sandboxState && shouldRefreshCachedDiff
         ? [
             refreshDiffCache(options.sessionId, sandboxState).catch((err) => {
@@ -3492,10 +3504,22 @@ export async function runAgentWorkflow(options: Options) {
         ...(options.autoCreatePrEnabled !== undefined
           ? { autoCreatePrEnabled: options.autoCreatePrEnabled }
           : {}),
+      }).catch((err) => {
+        console.warn(
+          "[workflow] Best-effort startNextQueuedWorkflowStep failed after completion:",
+          err,
+        );
       });
     }
 
-    await sendFinish(writable).then(() => closeStream(writable));
+    await sendFinish(writable)
+      .then(() => closeStream(writable))
+      .catch((err) => {
+        console.warn(
+          "[workflow] Best-effort sendFinish/closeStream failed after completion:",
+          err,
+        );
+      });
     streamClosed = true;
 
     workflowStatus = wasAborted
@@ -3504,71 +3528,83 @@ export async function runAgentWorkflow(options: Options) {
         ? "failed"
         : "completed";
   } catch (error) {
-    workflowStatus = wasAborted ? "aborted" : "failed";
-    caughtError = error;
-
-    // Aborts are user-initiated, never a "repeating issue." For anything
-    // else, check whether this chat has already failed with the same
-    // error category recently -- lets both the setup-error text below
-    // and the final thrown error (see the `if (caughtError)` block after
-    // the try/finally) tell the user this looks deterministic rather
-    // than a one-off, instead of the generic "please try again."
-    const errorCategory = wasAborted ? "aborted" : classifyChatError(error);
-    if (errorCategory !== "aborted") {
-      isRepeatFailure = await checkIsRepeatFailureStep(
-        options.chatId,
-        errorCategory,
-        workflowRunId,
+    if (didPersistFinalCompletion) {
+      console.warn(
+        "[workflow] Post-completion error ignored because final assistant message was already persisted:",
+        error,
       );
-    }
+      workflowStatus = wasAborted
+        ? "aborted"
+        : exhaustedMaxSteps
+          ? "failed"
+          : "completed";
+    } else {
+      workflowStatus = wasAborted ? "aborted" : "failed";
+      caughtError = error;
 
-    if (totalUsage) {
-      pendingAssistantResponse = {
-        ...pendingAssistantResponse,
-        metadata: {
-          ...pendingAssistantResponse.metadata,
-          totalMessageUsage: totalUsage,
-        },
-      };
-    }
+      // Aborts are user-initiated, never a "repeating issue." For anything
+      // else, check whether this chat has already failed with the same
+      // error category recently -- lets both the setup-error text below
+      // and the final thrown error (see the `if (caughtError)` block after
+      // the try/finally) tell the user this looks deterministic rather
+      // than a one-off, instead of the generic "please try again."
+      const errorCategory = wasAborted ? "aborted" : classifyChatError(error);
+      if (errorCategory !== "aborted") {
+        isRepeatFailure = await checkIsRepeatFailureStep(
+          options.chatId,
+          errorCategory,
+          workflowRunId,
+        );
+      }
 
-    const errorText = getSetupErrorMessage(error, isRepeatFailure);
-    if (pendingAssistantResponse.parts.length === 0) {
-      const recovered = await getPersistedAssistantMessageStep(
-        options.chatId,
-        assistantId,
-      );
-      if (recovered && recovered.parts.length > 0) {
+      if (totalUsage) {
         pendingAssistantResponse = {
-          ...recovered,
+          ...pendingAssistantResponse,
           metadata: {
-            ...recovered.metadata,
             ...pendingAssistantResponse.metadata,
+            totalMessageUsage: totalUsage,
           },
         };
       }
-    }
-    if (pendingAssistantResponse.parts.length === 0 && !streamClosed) {
-      pendingAssistantResponse = {
-        ...pendingAssistantResponse,
-        parts: [{ type: "text", text: errorText }],
-      };
-      await sendTextMessage(writable, "setup-error", errorText);
-    } else if (
-      pendingAssistantResponse.parts.length > 0 &&
-      errorCategory !== "aborted"
-    ) {
-      pendingAssistantResponse = {
-        ...pendingAssistantResponse,
-        metadata: {
-          ...pendingAssistantResponse.metadata,
-          turnError: errorText,
-        },
-      };
-    }
 
-    if (pendingAssistantResponse.parts.length > 0) {
-      await persistAssistantMessage(options.chatId, pendingAssistantResponse);
+      const errorText = getSetupErrorMessage(error, isRepeatFailure);
+      if (pendingAssistantResponse.parts.length === 0) {
+        const recovered = await getPersistedAssistantMessageStep(
+          options.chatId,
+          assistantId,
+        );
+        if (recovered && recovered.parts.length > 0) {
+          pendingAssistantResponse = {
+            ...recovered,
+            metadata: {
+              ...recovered.metadata,
+              ...pendingAssistantResponse.metadata,
+            },
+          };
+        }
+      }
+      if (pendingAssistantResponse.parts.length === 0 && !streamClosed) {
+        pendingAssistantResponse = {
+          ...pendingAssistantResponse,
+          parts: [{ type: "text", text: errorText }],
+        };
+        await sendTextMessage(writable, "setup-error", errorText);
+      } else if (
+        pendingAssistantResponse.parts.length > 0 &&
+        errorCategory !== "aborted"
+      ) {
+        pendingAssistantResponse = {
+          ...pendingAssistantResponse,
+          metadata: {
+            ...pendingAssistantResponse.metadata,
+            turnError: errorText,
+          },
+        };
+      }
+
+      if (pendingAssistantResponse.parts.length > 0) {
+        await persistAssistantMessage(options.chatId, pendingAssistantResponse);
+      }
     }
   } finally {
     try {
@@ -3576,9 +3612,13 @@ export async function runAgentWorkflow(options: Options) {
       // so the chat is never permanently marked as streaming.
       if (!streamClosed) {
         await Promise.all([
-          clearActiveStream(options.chatId, workflowRunId),
-          releaseUserBillingTurnStep(options.userId, workflowRunId),
-          sendFinish(writable).then(() => closeStream(writable)),
+          clearActiveStream(options.chatId, workflowRunId).catch(() => {}),
+          releaseUserBillingTurnStep(options.userId, workflowRunId).catch(
+            () => {},
+          ),
+          sendFinish(writable)
+            .then(() => closeStream(writable))
+            .catch(() => {}),
         ]);
       }
       const terminalState =

@@ -156,6 +156,13 @@ export function useStreamRecovery({
           if (isChatInFlight) {
             retryChatStream({ auto: true, strategy: "soft" });
           } else if (
+            status === "error" &&
+            serverChat &&
+            serverChat.status !== "failed" &&
+            serverChat.status !== "cancelled"
+          ) {
+            await onReconcileSnapshot?.();
+          } else if (
             (previous !== null && previous.stamp !== serverStamp) ||
             (previous === null && hasPendingTurn)
           ) {
