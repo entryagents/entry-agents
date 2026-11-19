@@ -61,10 +61,33 @@ export function normalizeAllowedHosts(
 ): string[] {
   if (!rawHosts || rawHosts.length === 0) return [];
   const unique = new Set<string>();
-  for (const host of rawHosts) {
-    const normalized = host.trim().toLowerCase();
-    if (!normalized) continue;
-    unique.add(normalized);
+  for (const rawEntry of rawHosts) {
+    const trimmed = rawEntry.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.includes("://")) {
+      let parsed: URL;
+      try {
+        parsed = new URL(trimmed);
+      } catch {
+        throw new InvalidSecretValueError(
+          `Invalid URL "${trimmed}". Expected a valid http:// or https:// URL.`,
+        );
+      }
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new InvalidSecretValueError(
+          `Unsupported URL protocol "${parsed.protocol}". Only http:// and https:// are allowed.`,
+        );
+      }
+      const cleanPath =
+        parsed.pathname === "/" ? "" : parsed.pathname.replace(/\/+$/, "");
+      unique.add(
+        `${parsed.protocol}//${parsed.host.toLowerCase()}${cleanPath}`,
+      );
+      continue;
+    }
+
+    unique.add(trimmed.toLowerCase());
   }
   return [...unique];
 }

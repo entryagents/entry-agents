@@ -47,6 +47,7 @@ export { isAllowedWebUrl, isPrivateHost } from "./tools/fetch";
 export {
   createSecretRedactor,
   isHostAllowedForSecret,
+  isUrlAllowedForSecret,
   resolveSecretRecordTemplates,
   resolveSecretTemplates,
   SecretTemplateError,

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   createSecretRedactor,
   isHostAllowedForSecret,
+  isUrlAllowedForSecret,
   resolveSecretRecordTemplates,
   resolveSecretTemplates,
   SecretTemplateError,
@@ -142,5 +143,49 @@ describe("resolveSecretTemplates & resolveSecretRecordTemplates", () => {
       Authorization: "token ghp_1234567890abcdef1234",
       Accept: "application/json",
     });
+  });
+});
+
+describe("isUrlAllowedForSecret & zero-leak redaction", () => {
+  test("enforces scheme, host, port, and path prefix when full URL rule is configured", () => {
+    const rules = ["https://api.stripe.com/v1"];
+    expect(
+      isUrlAllowedForSecret("https://api.stripe.com/v1/charges", rules),
+    ).toBe(true);
+    expect(isUrlAllowedForSecret("https://api.stripe.com/v1", rules)).toBe(
+      true,
+    );
+    expect(
+      isUrlAllowedForSecret("http://api.stripe.com/v1/charges", rules),
+    ).toBe(false);
+    expect(
+      isUrlAllowedForSecret("https://api.stripe.com/v2/charges", rules),
+    ).toBe(false);
+    expect(isUrlAllowedForSecret("https://api.stripe.com/v1evil", rules)).toBe(
+      false,
+    );
+    expect(isUrlAllowedForSecret("https://evil.com/v1/charges", rules)).toBe(
+      false,
+    );
+    expect(isUrlAllowedForSecret("api.stripe.com", rules)).toBe(false);
+  });
+
+  test("redacts reversed, hex, base64url, and character-separated secret leaks", () => {
+    const redactor = createSecretRedactor(SAMPLE_SECRETS);
+    const raw = SAMPLE_SECRETS[0]!.value;
+    const reversed = raw.split("").toReversed().join("");
+    const hex = Buffer.from(raw, "utf8").toString("hex");
+    const spaced = raw.split("").join(" ");
+    const dashed = raw
+      .replace(/[^a-zA-Z0-9]/g, "")
+      .split("")
+      .join("-");
+
+    expect(redactor.redact(`rev=${reversed}`)).not.toContain(reversed);
+    expect(redactor.redact(`hex=${hex}`)).not.toContain(hex);
+    expect(redactor.redact(`spaced=${spaced}`)).not.toContain("s k _ l i v e");
+    expect(redactor.redact(`dashed=${dashed}`)).toContain(
+      "[REDACTED:STRIPE_SECRET_KEY]",
+    );
   });
 });

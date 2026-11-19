@@ -281,9 +281,40 @@ ACTIONS:
             return hostResult({ key: safeKey, set: true }, input.action);
           }
           case "env_get": {
+            const secretCtx =
+              experimental_context && typeof experimental_context === "object"
+                ? (experimental_context as {
+                    secrets?: Array<{ name: string }>;
+                    secretRedactor?: {
+                      hasSecrets: () => boolean;
+                      redact: (t: string) => string;
+                    };
+                  })
+                : {};
+            if (
+              input.envKey &&
+              secretCtx.secrets?.some(
+                (s) => s.name === input.envKey?.trim().toUpperCase(),
+              )
+            ) {
+              throw new Error(
+                `Secret "${input.envKey}" is private and cannot be read with env_get.`,
+              );
+            }
+            const redactEnv = (value: string) =>
+              secretCtx.secretRedactor?.hasSecrets()
+                ? secretCtx.secretRedactor.redact(value)
+                : value;
             if (control.env_get) {
               const res = await control.env_get({ key: input.envKey });
-              return hostResult(res, input.action);
+              return hostResult(
+                typeof res === "string"
+                  ? redactEnv(res)
+                  : secretCtx.secretRedactor?.hasSecrets()
+                    ? JSON.parse(redactEnv(JSON.stringify(res)))
+                    : res,
+                input.action,
+              );
             }
             const sandbox = await getSandbox(experimental_context, "sandbox");
             const res = await sandbox.exec(
@@ -291,7 +322,7 @@ ACTIONS:
               sandbox.workingDirectory,
               10000,
             );
-            return hostResult({ env: res.stdout }, input.action);
+            return hostResult({ env: redactEnv(res.stdout) }, input.action);
           }
           case "checkpoint_create": {
             if (control.checkpoint_create) {
