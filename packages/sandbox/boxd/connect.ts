@@ -3,10 +3,9 @@ import type { ConnectOptions } from "../factory.ts";
 import type { Sandbox } from "../interface.ts";
 import {
   BOXD_DISK,
-  BOXD_MEMORY,
-  BOXD_VCPU,
   BOXD_WORKING_DIRECTORY,
   isBoxdConfigured,
+  resolveBoxdMachineSize,
 } from "./config.ts";
 import type { BoxdState } from "./state.ts";
 import { BoxdSandbox } from "./sandbox.ts";
@@ -18,14 +17,15 @@ function createBoxdMachine(
   name: string,
   options?: ConnectOptions,
 ) {
+  const size = resolveBoxdMachineSize(options?.vcpus);
   return client.machines.create({
     name,
     image: options?.image ?? "ubuntu:24.04",
     isolated: true,
     restartPolicy: "never",
     config: {
-      vcpu: BOXD_VCPU,
-      memory: BOXD_MEMORY,
+      vcpu: size.vcpu,
+      memory: size.memory,
       disk: BOXD_DISK,
       autoSuspendTimeout: 300,
       autoDestroyTimeout: 0,

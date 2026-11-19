@@ -2,6 +2,7 @@
 
 import {
   FileCode,
+  GitBranch,
   GitCompare,
   Globe,
   Maximize2,
@@ -13,7 +14,7 @@ import {
   Terminal as TerminalIcon,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { preload } from "swr";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 import { fetcher } from "@/lib/swr";
@@ -68,6 +69,8 @@ type WorkspaceTabItem = {
   closeable?: boolean;
 };
 
+const WORKSPACE_SIDEBAR_STORAGE_KEY = "entry_agents_workspace_sidebar";
+
 export function WorkspacePanel(props: WorkspacePanelProps) {
   const {
     devServer,
@@ -96,6 +99,40 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   const isMobile = useIsMobile();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const sidebarInitializedRef = useRef(false);
+
+  useEffect(() => {
+    if (sidebarInitializedRef.current) return;
+    sidebarInitializedRef.current = true;
+    if (isMobile) {
+      setIsSidebarOpen(false);
+      return;
+    }
+    try {
+      const saved = localStorage.getItem(WORKSPACE_SIDEBAR_STORAGE_KEY);
+      if (saved === "0") {
+        setIsSidebarOpen(false);
+      } else {
+        setIsSidebarOpen(true);
+      }
+    } catch {
+      setIsSidebarOpen(true);
+    }
+  }, [isMobile]);
+
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen((prev) => {
+      const next = !prev;
+      if (!isMobile) {
+        try {
+          localStorage.setItem(WORKSPACE_SIDEBAR_STORAGE_KEY, next ? "1" : "0");
+        } catch {
+          // Ignore storage write errors
+        }
+      }
+      return next;
+    });
+  }, [isMobile]);
 
   // Dynamic tool tabs: which core tabs are open
   // If no repo is connected, default to preview + terminal rather than assuming git PR review
@@ -110,6 +147,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
 
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState("");
+  const [selectedSearchIndex, setSelectedSearchIndex] = useState(0);
   const [visitedToolTabs, setVisitedToolTabs] = useState<Set<string>>(
     () => new Set(),
   );
@@ -213,6 +251,45 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
       .filter((f) => f.value.toLowerCase().includes(q))
       .slice(0, 40);
   }, [files, fileSearchQuery]);
+
+  const diffTotals = useMemo(() => {
+    const list = gitPanelProps.diffFiles ?? [];
+    let additions = 0;
+    let deletions = 0;
+    for (const file of list) {
+      additions += file.additions;
+      deletions += file.deletions;
+    }
+    return { additions, deletions };
+  }, [gitPanelProps.diffFiles]);
+
+  const totalFileCount = useMemo(
+    () => (files ? files.filter((f) => !f.isDirectory).length : 0),
+    [files],
+  );
+
+  // Reset highlighted index when query changes
+  useEffect(() => {
+    setSelectedSearchIndex(0);
+  }, [fileSearchQuery, fileSearchOpen]);
+
+  // Desktop Cmd/Ctrl+P Quick Open shortcut
+  useEffect(() => {
+    if (isMobile) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        event.key.toLowerCase() === "p"
+      ) {
+        event.preventDefault();
+        setFileSearchOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMobile]);
 
   // Construct dynamic tab list
   const tabList: WorkspaceTabItem[] = useMemo(() => {
@@ -451,8 +528,32 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
           </DropdownMenu>
         </div>
 
-        {/* Right Header Actions: Expand/Collapse & Close */}
+        {/* Right Header Actions: Quick Open, Expand/Collapse & Close */}
         <div className="flex items-center gap-1 shrink-0 ml-1">
+          {!isMobile && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="hidden xl:inline-flex h-7 gap-1.5 rounded-md border border-border/70 bg-background/60 px-2 text-xs text-muted-foreground hover:bg-background hover:text-foreground cursor-pointer"
+                  onClick={() => setFileSearchOpen(true)}
+                  aria-label="Quick open file"
+                >
+                  <Search className="h-3 w-3" strokeWidth={1.5} />
+                  <span>Open</span>
+                  <kbd className="rounded bg-muted px-1 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+                    ⌘P
+                  </kbd>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Quick open file (⌘P)
+              </TooltipContent>
+            </Tooltip>
+          )}
+
           {!isMobile && onToggleWorkspaceExpand && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -525,7 +626,13 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               }
             }}
             onPrefetchFile={handlePrefetchFile}
-            onCloseSidebar={() => setIsSidebarOpen(false)}
+            onCloseSidebar={() => {
+              if (isMobile) {
+                setIsSidebarOpen(false);
+              } else {
+                toggleSidebar();
+              }
+            }}
             className={
               isMobile
                 ? "absolute inset-y-0 left-0 z-20 w-72 max-w-[85vw] border-r border-border"
@@ -605,11 +712,123 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         </div>
       </div>
 
+      {/* Desktop Workspace Status Bar */}
+      <div className="hidden lg:flex h-7 shrink-0 items-center justify-between border-t border-border bg-muted/20 px-3 text-[11px] text-muted-foreground select-none">
+        <div className="flex min-w-0 items-center gap-3">
+          {hasRepo ? (
+            <button
+              type="button"
+              onClick={() => openToolTab("review")}
+              className="flex items-center gap-1.5 font-mono hover:text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer min-w-0"
+              title="Open review tab"
+            >
+              <GitBranch className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+              <span className="truncate max-w-[160px]">
+                {session.branch ?? "main"}
+              </span>
+            </button>
+          ) : (
+            <span className="flex items-center gap-1.5 font-mono">
+              <FileCode className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+              <span>Workspace</span>
+            </span>
+          )}
+
+          {changesCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => openToolTab("review")}
+              className="flex items-center gap-1.5 font-mono tabular-nums hover:text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer"
+              title="View uncommitted changes"
+            >
+              <span>
+                {changesCount} {changesCount === 1 ? "change" : "changes"}
+              </span>
+              {diffTotals.additions > 0 && (
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  +{diffTotals.additions}
+                </span>
+              )}
+              {diffTotals.deletions > 0 && (
+                <span className="text-rose-600 dark:text-rose-400">
+                  -{diffTotals.deletions}
+                </span>
+              )}
+            </button>
+          ) : (
+            <span className="tabular-nums text-muted-foreground/80">Clean</span>
+          )}
+
+          {openFiles.includes(activeWorkspaceTab) && (
+            <span className="hidden xl:inline truncate max-w-[260px] font-mono text-foreground/80 border-l border-border pl-3">
+              {activeWorkspaceTab}
+            </span>
+          )}
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setFileSearchOpen(true)}
+            className="flex items-center gap-1 hover:text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer tabular-nums"
+            title="Quick open file (⌘P)"
+          >
+            <Search className="h-3 w-3" strokeWidth={1.5} />
+            <span>{totalFileCount} files</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openToolTab("terminal")}
+            className={cn(
+              "flex items-center gap-1 hover:text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
+              activeWorkspaceTab === "terminal" &&
+                "text-foreground font-medium",
+            )}
+            title="Open terminal"
+          >
+            <TerminalIcon className="h-3 w-3" strokeWidth={1.5} />
+            <span>Terminal</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => openToolTab("preview")}
+            className={cn(
+              "flex items-center gap-1.5 hover:text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer tabular-nums",
+              isDevServerReady && "text-emerald-600 dark:text-emerald-400",
+            )}
+            title="Open preview"
+          >
+            <span
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                isDevServerReady
+                  ? "bg-emerald-500"
+                  : gitPanelProps.hasSandbox
+                    ? "bg-foreground/40"
+                    : "bg-muted-foreground/30",
+              )}
+            />
+            <span>
+              {devServer.state.status === "ready"
+                ? `:${devServer.state.info.port}`
+                : gitPanelProps.hasSandbox
+                  ? "Sandbox ready"
+                  : "Offline"}
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* Open File Quick-Open Dialog */}
       <Dialog open={fileSearchOpen} onOpenChange={setFileSearchOpen}>
         <DialogContent className="max-w-lg p-0 overflow-hidden gap-0">
-          <DialogHeader className="p-3 border-b border-border">
+          <DialogHeader className="p-3 border-b border-border flex-row items-center justify-between">
             <DialogTitle className="text-sm font-medium">Open file</DialogTitle>
+            <span className="text-[11px] font-mono text-muted-foreground">
+              ↑↓ navigate · Enter open
+            </span>
           </DialogHeader>
           <div className="p-3 border-b border-border bg-muted/20">
             <div className="relative">
@@ -620,7 +839,29 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
               <Input
                 value={fileSearchQuery}
                 onChange={(e) => setFileSearchQuery(e.target.value)}
-                placeholder="Search files by path"
+                onKeyDown={(e) => {
+                  if (filteredFiles.length === 0) return;
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setSelectedSearchIndex((prev) =>
+                      prev + 1 < filteredFiles.length ? prev + 1 : 0,
+                    );
+                  } else if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setSelectedSearchIndex((prev) =>
+                      prev - 1 >= 0 ? prev - 1 : filteredFiles.length - 1,
+                    );
+                  } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    const picked =
+                      filteredFiles[selectedSearchIndex] ?? filteredFiles[0];
+                    if (picked) {
+                      openWorkspaceFile(picked.value);
+                      setFileSearchOpen(false);
+                    }
+                  }
+                }}
+                placeholder="Search files by path..."
                 className="pl-8 h-8 text-xs font-mono"
                 autoFocus
               />
@@ -632,17 +873,28 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 No matching files
               </div>
             ) : (
-              filteredFiles.map((f) => (
+              filteredFiles.map((f, index) => (
                 <button
                   key={f.value}
                   type="button"
-                  onMouseEnter={() => handlePrefetchFile(f.value)}
-                  onFocus={() => handlePrefetchFile(f.value)}
+                  onMouseEnter={() => {
+                    setSelectedSearchIndex(index);
+                    handlePrefetchFile(f.value);
+                  }}
+                  onFocus={() => {
+                    setSelectedSearchIndex(index);
+                    handlePrefetchFile(f.value);
+                  }}
                   onClick={() => {
                     openWorkspaceFile(f.value);
                     setFileSearchOpen(false);
                   }}
-                  className="flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-left rounded hover:bg-muted/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer group"
+                  className={cn(
+                    "flex w-full items-center gap-2 px-2.5 py-1.5 text-xs text-left rounded transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer group",
+                    index === selectedSearchIndex
+                      ? "bg-muted text-foreground"
+                      : "hover:bg-muted/60",
+                  )}
                 >
                   <FileTypeIcon
                     path={f.value}

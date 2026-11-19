@@ -8,16 +8,19 @@ import {
   restoreWorkspacePayload,
   type Sandbox,
 } from "@entry-agents/sandbox";
+import { getUserBillingState } from "@/lib/billing/credit-ledger";
+import { resolveSandboxVcpusForPlan } from "@/lib/billing/sandbox-limits";
 import {
   claimSessionSandboxMigration,
   getSessionById,
   updateSession,
 } from "@/lib/db/sessions";
+import { isUserAdmin } from "@/lib/db/users";
+import { isHobbyResourceProfile } from "@/lib/deployment/resource-profile";
 import {
   DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
   DEFAULT_SANDBOX_PORTS,
   DEFAULT_SANDBOX_TIMEOUT_MS,
-  DEFAULT_SANDBOX_VCPUS,
   getSandboxDriveConfig,
 } from "@/lib/sandbox/config";
 import {
@@ -159,12 +162,22 @@ export async function performSandboxMigration(
       sessionId,
       fresh: true,
     });
+    const isAdmin = await isUserAdmin(session.userId).catch(() => false);
+    const billingState = await getUserBillingState(session.userId, {
+      isAdmin,
+    }).catch(() => null);
+    const sandboxVcpus = resolveSandboxVcpusForPlan({
+      planId: billingState?.plan,
+      isAdmin,
+      providerType: freshProvider.id,
+      isHobbyProfile: isHobbyResourceProfile(),
+    });
 
     const freshSandbox = await connectSandbox(
       { state: freshState },
       {
         timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
-        vcpus: DEFAULT_SANDBOX_VCPUS,
+        vcpus: sandboxVcpus,
         ports: DEFAULT_SANDBOX_PORTS,
         baseSnapshotId: DEFAULT_SANDBOX_BASE_SNAPSHOT_ID,
         persistent: false,

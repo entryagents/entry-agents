@@ -33,6 +33,7 @@ export interface SubagentTabData {
   finalText: string | null;
   errorText: string | null;
   sessionId: string | null;
+  worktreeBranch: string | null;
   depth: number;
 }
 
@@ -423,6 +424,13 @@ export function deriveSubagentTabData(
           typeof taskPart.errorText === "string" ? taskPart.errorText : null,
         sessionId:
           typeof output?.sessionId === "string" ? output.sessionId : null,
+        worktreeBranch:
+          typeof output?.worktreeBranch === "string" &&
+          output.worktreeBranch.length > 0
+            ? output.worktreeBranch
+            : typeof asRecord(output?.worktree)?.branchName === "string"
+              ? String(asRecord(output?.worktree)?.branchName)
+              : null,
         depth: numberOrNull(output?.depth) ?? 0,
       };
     }

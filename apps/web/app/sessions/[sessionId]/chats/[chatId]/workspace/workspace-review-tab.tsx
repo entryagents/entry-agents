@@ -418,9 +418,9 @@ export function WorkspaceReviewTab({
               type="button"
               onClick={() => setDiffStyle("split")}
               className={cn(
-                "rounded px-2 py-0.5 font-medium transition-colors cursor-pointer",
+                "rounded px-2 py-0.5 font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
                 diffStyle === "split"
-                  ? "bg-background text-foreground shadow-2xs font-semibold"
+                  ? "bg-background text-foreground font-semibold"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -561,7 +561,7 @@ export function WorkspaceReviewTab({
               return (
                 <div key={file.path} className="group/diff-file">
                   {/* Accordion File Header */}
-                  <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-muted/30 hover:bg-muted/50 transition-colors select-none text-xs">
+                  <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-muted/20 hover:bg-muted/40 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] select-none text-xs">
                     <button
                       type="button"
                       onClick={() => toggleFile(file.path)}
@@ -569,7 +569,7 @@ export function WorkspaceReviewTab({
                     >
                       <ChevronRight
                         className={cn(
-                          "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150",
+                          "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
                           isExpanded && "rotate-90",
                         )}
                       />
@@ -593,7 +593,7 @@ export function WorkspaceReviewTab({
                     {/* Right: File line stats + file actions */}
                     <div className="flex items-center gap-2 shrink-0">
                       {(file.additions > 0 || file.deletions > 0) && (
-                        <div className="flex items-center gap-1 font-mono text-[11px]">
+                        <div className="flex items-center gap-1 font-mono text-[11px] tabular-nums">
                           {file.additions > 0 && (
                             <span className="text-emerald-600 dark:text-emerald-400">
                               +{file.additions}

@@ -623,7 +623,7 @@ EXAMPLES:
                 "web_fetch",
               );
               if (sandbox.writeFile) {
-                await sandbox.writeFile(bodyFilePath, safeText);
+                await sandbox.writeFile(bodyFilePath, safeText, "utf-8");
                 savedPath = bodyFilePath;
               }
             } catch {

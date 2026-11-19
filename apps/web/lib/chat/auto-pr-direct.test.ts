@@ -1,12 +1,13 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 import type { AutoCreatePrResult } from "./auto-pr-direct";
-import * as realGitHelpers from "@/lib/git/helpers";
-import * as realDbSessions from "@/lib/db/sessions";
-import * as realGithubRepos from "@/lib/github/repos";
-import * as realGithubApp from "@/lib/github/app";
 
 mock.module("server-only", () => ({}));
+
+const realGitHelpers = await import("@/lib/git/helpers");
+const realDbSessions = await import("@/lib/db/sessions");
+const realGithubRepos = await import("@/lib/github/repos");
+const realGithubApp = await import("@/lib/github/app");
 
 type ExecResult = {
   success: boolean;
