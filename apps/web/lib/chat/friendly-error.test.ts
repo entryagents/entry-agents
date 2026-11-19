@@ -14,10 +14,10 @@ describe("isFriendlyChatErrorText", () => {
     ).toBe(true);
   });
 
-  test("matches with the repeat-failure suffix appended", () => {
+  test("matches the unknown fallback friendly error string", () => {
     expect(
       isFriendlyChatErrorText(
-        "The request took too long and timed out. Please try again. This error happened multiple times on this chat; inspect the tool output above or switch models before retrying.",
+        "The model request was interrupted before finishing. Send your next message or switch models if the issue persists.",
       ),
     ).toBe(true);
   });

@@ -2965,6 +2965,7 @@ export async function runAgentWorkflow(options: Options) {
         if (isStepTimingError(error)) {
           stepTimings.push(error.stepTiming);
         }
+        const errorCategory = classifyChatError(error);
         if (
           isRecoverableStepError(error) &&
           consecutiveStepRecoveries <
@@ -2974,12 +2975,65 @@ export async function runAgentWorkflow(options: Options) {
             wasAborted = true;
             break;
           }
+          if (errorCategory === "context_overflow") {
+            const latestUiId = options.messages.at(-1)?.id;
+            const compacted = await compactAndCheckpointStep(
+              withoutUndefined({
+                messages: withoutUndefined(modelMessages),
+                modelId,
+                ...(modelMeta?.contextWindow !== undefined
+                  ? { contextWindowOverride: modelMeta.contextWindow }
+                  : {}),
+                compactionThresholdOverride: 0.35,
+                chatId: options.chatId,
+                sessionId: options.sessionId,
+                userId: options.userId,
+                totalUiMessageCount: options.messages.length,
+                ...(latestUiId ? { lastUiMessageId: latestUiId } : {}),
+              }),
+            ).catch(() => null);
+            if (compacted?.changed && compacted.messages.length > 0) {
+              modelMessages.splice(
+                0,
+                modelMessages.length,
+                ...compacted.messages,
+              );
+              lastKnownInputTokens = undefined;
+            } else if (modelMessages.length > 4) {
+              const splitIdx = Math.max(1, modelMessages.length - 4);
+              const fallbackSummary = buildFallbackCompactionSummary(
+                modelMessages.slice(0, splitIdx),
+              );
+              const tail = modelMessages.slice(splitIdx);
+              while (tail.length > 0 && tail[0]?.role === "tool") {
+                tail.shift();
+              }
+              modelMessages.splice(
+                0,
+                modelMessages.length,
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: `<compaction-checkpoint>\n${fallbackSummary}\n</compaction-checkpoint>`,
+                    },
+                  ],
+                },
+                ...tail,
+              );
+              stripDanglingToolCalls(modelMessages);
+              lastKnownInputTokens = undefined;
+            }
+          } else if (errorCategory === "invalid_prompt") {
+            stripDanglingToolCalls(modelMessages);
+          }
           const backoffSeconds =
             WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS[consecutiveStepRecoveries] ??
             24;
           consecutiveStepRecoveries++;
           console.warn(
-            `[chat-workflow] Recoverable step error on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length})`,
+            `[chat-workflow] Recoverable step error (${errorCategory}) on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length})`,
           );
           await setChatRunStatusStep(
             options.chatId,
@@ -3026,12 +3080,67 @@ export async function runAgentWorkflow(options: Options) {
             wasAborted = true;
             break;
           }
+          const recoveryAction =
+            "recoveryAction" in result ? result.recoveryAction : undefined;
+          if (recoveryAction === "compact") {
+            const latestUiId = options.messages.at(-1)?.id;
+            const compacted = await compactAndCheckpointStep(
+              withoutUndefined({
+                messages: withoutUndefined(modelMessages),
+                modelId,
+                ...(modelMeta?.contextWindow !== undefined
+                  ? { contextWindowOverride: modelMeta.contextWindow }
+                  : {}),
+                compactionThresholdOverride: 0.35,
+                chatId: options.chatId,
+                sessionId: options.sessionId,
+                userId: options.userId,
+                totalUiMessageCount: options.messages.length,
+                ...(latestUiId ? { lastUiMessageId: latestUiId } : {}),
+              }),
+            ).catch(() => null);
+            if (compacted?.changed && compacted.messages.length > 0) {
+              modelMessages.splice(
+                0,
+                modelMessages.length,
+                ...compacted.messages,
+              );
+              lastKnownInputTokens = undefined;
+            } else if (modelMessages.length > 4) {
+              const splitIdx = Math.max(1, modelMessages.length - 4);
+              const fallbackSummary = buildFallbackCompactionSummary(
+                modelMessages.slice(0, splitIdx),
+              );
+              const tail = modelMessages.slice(splitIdx);
+              while (tail.length > 0 && tail[0]?.role === "tool") {
+                tail.shift();
+              }
+              modelMessages.splice(
+                0,
+                modelMessages.length,
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text: `<compaction-checkpoint>\n${fallbackSummary}\n</compaction-checkpoint>`,
+                    },
+                  ],
+                },
+                ...tail,
+              );
+              stripDanglingToolCalls(modelMessages);
+              lastKnownInputTokens = undefined;
+            }
+          } else if (recoveryAction === "sanitize") {
+            stripDanglingToolCalls(modelMessages);
+          }
           const backoffSeconds =
             WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS[consecutiveStepRecoveries] ??
             24;
           consecutiveStepRecoveries++;
           console.warn(
-            `[chat-workflow] Mid-stream recoverable error on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length})`,
+            `[chat-workflow] Mid-stream recoverable error${recoveryAction ? ` (${recoveryAction})` : ""} on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS.length})`,
           );
           await setChatRunStatusStep(
             options.chatId,
@@ -5386,7 +5495,7 @@ const runAgentStep = async (
         }
         if (!streamWriteFailed) {
           try {
-            await coalescingWriter.flush();
+            await Promise.race([coalescingWriter.flush(), delay(5_000)]);
           } catch (writeError) {
             streamWriteFailed = true;
             const errorName = (writeError as { name?: unknown })?.name;
@@ -5909,18 +6018,16 @@ const runAgentStep = async (
       ),
     });
 
-    // Real incident, 2026-08-17: a bad-param request (reasoning_effort
-    // "max" not accepted by the real upstream behind starter model) threw
-    // an AI_APICallError that the AI SDK itself had already correctly
-    // flagged `isRetryable: false` -- and whenever output chunks have ALREADY
-    // been written to the append-only workflow `writable`, retrying the step
-    // would concatenate a duplicate copy of the response onto the same stream.
-    // For transient mid-stream errors, return a recoverable step result so
-    // `runAgentWorkflow` can durably `sleep()` and continue from the
-    // checkpointed partial message instead of failing the whole turn.
+    const errorCategory = classifyChatError(errorWithStepTiming);
+    const recoveryAction =
+      errorCategory === "context_overflow"
+        ? ("compact" as const)
+        : errorCategory === "invalid_prompt"
+          ? ("sanitize" as const)
+          : undefined;
+
     if (
-      didWriteOutputToWritable &&
-      !isNonRetryableApiCallError(errorWithStepTiming) &&
+      recoveryAction !== undefined ||
       isRecoverableStepError(errorWithStepTiming)
     ) {
       await Promise.allSettled(pendingDebits);
@@ -5933,6 +6040,7 @@ const runAgentStep = async (
         stepCost: lastStepCost,
         stepWasAborted: false,
         recoverableStepError: errorWithStepTiming.message,
+        ...(recoveryAction ? { recoveryAction } : {}),
         failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
         remainingBalanceCents,
         remainingWindowBudgetCents,
@@ -5971,7 +6079,9 @@ const runAgentStep = async (
     throw errorWithStepTiming;
   } finally {
     try {
-      await coalescingWriter?.waitForIdle();
+      if (coalescingWriter) {
+        await Promise.race([coalescingWriter.waitForIdle(), delay(3_000)]);
+      }
     } catch {
       // Ignore drain errors during cleanup
     }
@@ -6104,13 +6214,21 @@ function startStopMonitor(
     const isAdminUser = await isUserAdmin(userId).catch(() => false);
     const { getChatById } = await import("@/lib/db/sessions");
 
+    const withMonitorTimeout = <T>(
+      promise: Promise<T>,
+    ): Promise<T | undefined> =>
+      Promise.race([
+        promise,
+        delay(4_000, monitorStopController.signal).then(() => undefined),
+      ]);
+
     while (!shouldStop && !abortController.signal.aborted) {
       // 1. Cooperative DB Check: Check if user stopped this chat via Stop button
       // or a newer workflow run took ownership of activeStreamId. Never abort
       // merely because activeStreamId is null/undefined (e.g. when
       // claimActiveStream degraded gracefully on a transient DB blip).
       try {
-        const chat = await getChatById(chatId);
+        const chat = await withMonitorTimeout(getChatById(chatId));
         if (
           chat &&
           (chat.status === "cancelled" ||
@@ -6140,7 +6258,7 @@ function startStopMonitor(
         | undefined;
 
       try {
-        runStatus = await run.status;
+        runStatus = await withMonitorTimeout(run.status);
       } catch {
         // Continue loop even if run.status read fails
       }

@@ -66,6 +66,7 @@ export type ChatErrorCategory =
   // falling through to "unknown" and showing a generic fallback.
   | "blocked"
   | "model_unavailable"
+  | "context_overflow"
   | "invalid_prompt"
   | "no_output"
   | "workspace"
@@ -93,15 +94,16 @@ const CATEGORY_MESSAGES: Record<ChatErrorCategory, string> = {
     "The model provider refused this message under its content policy, so no reply was generated. That is a refusal at the provider, not a bug -- reword the message, or pick a different model and send it again.",
   model_unavailable:
     "Your selected model isn't available on the gateway right now, so the turn couldn't start. Open Settings > Models, pick a model that works, and resend.",
+  context_overflow:
+    "This conversation exceeded the model's context window even after compaction. Send a follow-up to continue in a fresh context or switch to a larger-context model.",
   invalid_prompt:
-    "This chat's stored history is no longer in a shape the model accepts -- usually an interrupted or partially-failed previous turn. Send the message again; if it keeps happening, start a new chat from this session.",
+    "This chat's stored history had an incomplete tool call from an earlier turn. Send your next message to continue cleanly.",
   no_output:
     "The model connected but returned an empty response. Send the message again, or switch to a different model if it repeats.",
   workspace:
     "The sandbox workspace could not be initialized. Entry is switching to a writable workspace path and retrying the session. Resend this message in a moment.",
-  // The residual category: an error signature Entry doesn't recognize.
   unknown:
-    "Generation could not be completed cleanly. Retry to resume from the last checkpoint, or send another message.",
+    "The model request was interrupted before finishing. Send your next message or switch models if the issue persists.",
 };
 
 /** Classifies a raw error (or a raw error-message string pulled back out
@@ -143,6 +145,21 @@ export function classifyChatError(error: unknown): ChatErrorCategory {
     return "blocked";
   }
 
+  if (
+    matchesAny(signal, [
+      "context_length_exceeded",
+      "maximum context length",
+      "context window",
+      "token limit",
+      "exceeded the maximum",
+      "prompt is too long",
+      "too many tokens",
+      "input is too long",
+    ])
+  ) {
+    return "context_overflow";
+  }
+
   // The conversation replayed into convertToModelMessages no longer
   // satisfies the ModelMessage[] schema -- an interrupted/partial turn,
   // or a tool result carrying a type the schema rejects (a Date).
@@ -152,6 +169,8 @@ export function classifyChatError(error: unknown): ChatErrorCategory {
       "modelmessage",
       "messages do not match",
       "type validation failed",
+      "missing tool results",
+      "ai_missingtoolresultserror",
     ])
   ) {
     return "invalid_prompt";
@@ -172,7 +191,15 @@ export function classifyChatError(error: unknown): ChatErrorCategory {
   }
 
   // Stream ended without producing a single token.
-  if (matchesAny(signal, ["no output generated", "no output"])) {
+  if (
+    matchesAny(signal, [
+      "no output generated",
+      "no output",
+      "agent stream finished without a response message",
+      "no response message",
+      "empty response",
+    ])
+  ) {
     return "no_output";
   }
 
@@ -347,19 +374,16 @@ export function classifyChatError(error: unknown): ChatErrorCategory {
   return "unknown";
 }
 
-const REPEAT_FAILURE_SUFFIX =
-  " This error happened multiple times on this chat; inspect the tool output above or switch models before retrying.";
-
 /**
- * @param isRepeatFailure When true, appends a note that this chat has hit
- * the same error category before (see countRecentFailuresWithCategory in
- * lib/db/workflow-runs.ts). Never set for "aborted" -- callers should
- * check the category first, a user-initiated stop is never repeated.
+ * @param isRepeatFailure Retained for caller compatibility; errors are
+ * already classified into specific actionable categories without appending
+ * generic repeat-failure boilerplate.
  */
 export function toFriendlyChatErrorText(
   error: unknown,
   isRepeatFailure = false,
 ): string {
+  void isRepeatFailure;
   const safeMessage = extractSafeChatError(error);
   if (safeMessage !== null) {
     return safeMessage;
@@ -376,20 +400,6 @@ export function toFriendlyChatErrorText(
       "[chat-error] unclassified error left as `unknown`:",
       extractErrorSignal(error).slice(0, 300),
     );
-  }
-
-  // Never append the repeat-failure nudge to an exhausted usage window.
-  // "This looks like a repeating issue... retrying probably won't help"
-  // reads as blame for something the user did not choose, and the window
-  // refills on its own -- the right next step is to wait or raise the
-  // plan, which the message already says.
-  if (
-    isRepeatFailure &&
-    category !== "aborted" &&
-    category !== "usage_window" &&
-    category !== "credit_exhausted"
-  ) {
-    return `${base}${REPEAT_FAILURE_SUFFIX}`;
   }
 
   return base;

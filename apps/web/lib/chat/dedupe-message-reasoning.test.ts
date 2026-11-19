@@ -195,7 +195,7 @@ describe("dedupeMessageParts", () => {
     };
     const inlineSetupError = {
       type: "text" as const,
-      text: "Generation could not be completed cleanly. Retry to resume from the last checkpoint, or send another message.",
+      text: "The model request was interrupted before finishing. Send your next message or switch models if the issue persists.",
     };
 
     const message = msg([

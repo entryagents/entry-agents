@@ -12,6 +12,24 @@ describe("isRecoverableStepError", () => {
     expect(
       isRecoverableStepError(new Error("The model returned no output")),
     ).toBe(true);
+    expect(
+      isRecoverableStepError(
+        new Error("Agent stream finished without a response message"),
+      ),
+    ).toBe(true);
+  });
+
+  it("returns true for auto-fixable context_overflow and invalid_prompt errors even when isRetryable is false", () => {
+    const contextErr = Object.assign(new Error("prompt is too long"), {
+      isRetryable: false,
+    });
+    expect(isRecoverableStepError(contextErr)).toBe(true);
+
+    const danglingToolErr = Object.assign(
+      new Error("AI_MissingToolResultsError: missing tool results"),
+      { isRetryable: false },
+    );
+    expect(isRecoverableStepError(danglingToolErr)).toBe(true);
   });
 
   it("returns false for aborts, FatalError, and non-retryable errors", () => {
@@ -35,7 +53,7 @@ describe("isRecoverableStepError", () => {
     ).toBe(false);
     expect(
       isRecoverableStepError(
-        new Error("invalid_request_error: bad prompt shape"),
+        new Error("invalid_request_error: bad parameter value"),
       ),
     ).toBe(false);
   });

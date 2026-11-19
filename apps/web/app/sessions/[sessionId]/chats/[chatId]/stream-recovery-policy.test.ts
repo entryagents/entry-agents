@@ -331,7 +331,7 @@ describe("getDeadTurnRetryAction (hard strategy)", () => {
     expect(action).toBe("regenerate");
   });
 
-  test("regenerates for a friendly error notice with the repeat-failure suffix", () => {
+  test("regenerates for a friendly timeout error notice", () => {
     const action = getDeadTurnRetryAction(
       [
         { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
@@ -341,7 +341,7 @@ describe("getDeadTurnRetryAction (hard strategy)", () => {
           parts: [
             {
               type: "text",
-              text: "The request took too long and timed out. Please try again. This error happened multiple times on this chat; inspect the tool output above or switch models before retrying.",
+              text: "The request took too long and timed out. Please try again.",
             },
           ],
         },
