@@ -93,22 +93,33 @@ export async function countRecentFailuresWithCategory(
   lookbackLimit = 20,
 ): Promise<number> {
   const rows = await db
-    .select({ errorMessage: workflowRuns.errorMessage })
+    .select({
+      status: workflowRuns.status,
+      errorMessage: workflowRuns.errorMessage,
+    })
     .from(workflowRuns)
     .where(
-      and(
-        eq(workflowRuns.chatId, chatId),
-        eq(workflowRuns.status, "failed"),
-        ne(workflowRuns.id, excludeRunId),
-      ),
+      and(eq(workflowRuns.chatId, chatId), ne(workflowRuns.id, excludeRunId)),
     )
     .orderBy(desc(workflowRuns.startedAt))
     .limit(lookbackLimit);
 
-  return rows.filter(
-    (row) =>
-      row.errorMessage && classifyChatError(row.errorMessage) === category,
-  ).length;
+  let count = 0;
+  for (const row of rows) {
+    // Stop at the most recent completed turn so older resolved errors do not
+    // cause a fresh failure to be labeled as a repeating chat error.
+    if (row.status === "completed") {
+      break;
+    }
+    if (
+      row.status === "failed" &&
+      row.errorMessage &&
+      classifyChatError(row.errorMessage) === category
+    ) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 export async function getLatestCompletedWorkflowRunIdForChat(
