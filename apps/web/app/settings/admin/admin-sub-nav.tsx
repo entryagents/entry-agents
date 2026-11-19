@@ -2,6 +2,7 @@
 
 import {
   Cpu,
+  CreditCard,
   Gauge,
   ShieldAlert,
   TriangleAlert,
@@ -19,6 +20,12 @@ const ADMIN_TABS = [
     label: "Overview",
     href: "/settings/admin",
     icon: ShieldAlert,
+  },
+  {
+    id: "subscriptions",
+    label: "Subscriptions",
+    href: "/settings/admin/subscriptions",
+    icon: CreditCard,
   },
   {
     id: "chats",
