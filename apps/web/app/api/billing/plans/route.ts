@@ -9,8 +9,10 @@ import { PLAN_CATALOG, PLAN_IDS } from "@/lib/billing/plans";
  * (adaptive_pricing is on for this account), so there is no rate for the
  * client to display or for us to be wrong about.
  */
+const ACTIVE_PLAN_IDS = new Set(["free", "plus", "entry"]);
+
 export async function GET() {
-  const plans = PLAN_IDS.map((id) => {
+  const plans = PLAN_IDS.filter((id) => ACTIVE_PLAN_IDS.has(id)).map((id) => {
     const plan = PLAN_CATALOG[id];
     return {
       id: plan.id,
