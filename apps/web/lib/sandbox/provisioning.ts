@@ -20,6 +20,7 @@ import { getUserBillingState } from "@/lib/billing/credit-ledger";
 import { getPlanDefinition } from "@/lib/billing/plans";
 import {
   FREE_USER_SANDBOX_INACTIVITY_TIMEOUT_MS,
+  getSandboxPlanPolicy,
   resolveFreeTierSandboxReuse,
   resolveSandboxVcpusForPlan,
 } from "@/lib/billing/sandbox-limits";
@@ -279,6 +280,7 @@ export async function provisionSessionSandbox(params: {
     session,
   });
 
+  const sandboxPolicy = getSandboxPlanPolicy(plan.id, isAdmin);
   const sandboxVcpus = resolveSandboxVcpusForPlan({
     planId: plan.id,
     isAdmin,
@@ -297,6 +299,9 @@ export async function provisionSessionSandbox(params: {
         gitUser,
         timeout: DEFAULT_SANDBOX_TIMEOUT_MS,
         vcpus: sandboxVcpus,
+        autoSuspendSeconds: sandboxPolicy.autoSuspendSeconds,
+        autoHibernateSeconds: sandboxPolicy.autoHibernateSeconds,
+        autoDestroySeconds: sandboxPolicy.autoDestroySeconds,
         ...(provider.id === "boxd" && {
           workingDirectory: `/tmp/entry-workspace/sessions/${session.id}`,
         }),

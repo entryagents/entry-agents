@@ -357,21 +357,26 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
   plus: {
     id: "plus",
     name: "Plus",
-    priceUsdCents: 500, // $5/mo
-    creditGrantCents: 1000, // $10 credit (2x)
+    priceUsdCents: 300, // $3/mo
+    creditGrantCents: 600, // $6 credit (2x)
     modelAccess: "all",
+    usageWindows: {
+      fiveHourLimitCents: 150, // $1.50 per 5 hours
+      weeklyLimitCents: 350, // $3.50 per 7 days
+      monthlyLimitCents: 600, // $6.00 per 1-month cycle
+    },
     bachsProductId: "prod_cf3431b0d90141368721",
   },
   entry: {
     id: "entry",
-    name: "Entry",
-    priceUsdCents: 1300, // $13/mo
-    creditGrantCents: 5000, // $50 credit
+    name: "Builder",
+    priceUsdCents: 1000, // $10/mo
+    creditGrantCents: 2800, // $28 credit (2.8x)
     modelAccess: "all",
     usageWindows: {
-      fiveHourLimitCents: 1000, // $10 per 5 hours
-      weeklyLimitCents: 2500, // $25 per 7 days
-      monthlyLimitCents: 5000, // $50 per 1-month cycle
+      fiveHourLimitCents: 600, // $6.00 per 5 hours
+      weeklyLimitCents: 1400, // $14.00 per 7 days
+      monthlyLimitCents: 2800, // $28.00 per 1-month cycle
     },
     bachsProductId: "prod_bf5c08cc52e447ecacdc",
   },
