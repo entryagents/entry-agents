@@ -132,7 +132,7 @@ type SessionChatContextValue = {
   chatInfo: Chat;
   chat: UseChatHelpers<WebAgentUIMessage>;
   contextLimit: number | null;
-  stopChatStream: () => void;
+  stopChatStream: () => Promise<boolean>;
   sandboxInfo: SandboxInfo | null;
   workspaceStatus: WebAgentWorkspaceStatusData | null;
   clearWorkspaceStatus: () => void;

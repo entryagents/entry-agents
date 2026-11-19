@@ -14,6 +14,7 @@ import {
 } from "@/lib/db/sessions";
 import { canOperateOnSandbox } from "@/lib/sandbox/utils";
 import { sanitizeMessageForDatabase } from "@/lib/chat/sanitize-db-message";
+import { isDefinitelyGoneRunError } from "@/lib/workflow-run-recovery";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
@@ -73,18 +74,7 @@ export async function POST(request: Request, context: RouteContext) {
     );
   });
 
-  // 2. Clear activeStreamId immediately so a follow-up prompt does not
-  // reconnect to the cancelled (but not yet terminal) workflow.
-  await compareAndSetChatActiveStreamId(chatId, activeStreamId, null).catch(
-    (err: unknown) => {
-      console.error(
-        `[workflow] Failed to clear activeStreamId for chat ${chatId}:`,
-        err,
-      );
-    },
-  );
-
-  // 3. If a sandbox bash command is currently running for this session,
+  // 2. If a sandbox bash command is currently running for this session,
   // terminate the remote process immediately so it doesn't outlive the stop.
   try {
     const session = await getSessionById(chat.sessionId);
@@ -110,17 +100,40 @@ export async function POST(request: Request, context: RouteContext) {
     );
   }
 
-  // 4. Cancel the workflow run at the next suspension point
+  // 3. Cancel the workflow run first, and only CAS-clear activeStreamId once
+  // cancellation succeeds or the run is definitively gone. Leaving activeStreamId
+  // intact on transient errors preserves ownership for retry and reconciliation.
+  let cancelError: unknown = null;
   try {
     const run = getRun(activeStreamId);
     await run.cancel();
-  } catch (error) {
-    console.warn(
-      `[workflow] run.cancel() failed for chat ${chatId} (DB already marked cancelled):`,
-      error,
+    await compareAndSetChatActiveStreamId(chatId, activeStreamId, null).catch(
+      (err: unknown) => {
+        console.error(
+          `[workflow] Failed to clear activeStreamId for chat ${chatId}:`,
+          err,
+        );
+      },
     );
+  } catch (error) {
+    if (isDefinitelyGoneRunError(error)) {
+      await compareAndSetChatActiveStreamId(chatId, activeStreamId, null).catch(
+        (err: unknown) => {
+          console.error(
+            `[workflow] Failed to clear activeStreamId for gone run on chat ${chatId}:`,
+            err,
+          );
+        },
+      );
+    } else {
+      cancelError = error;
+      console.warn(
+        `[workflow] run.cancel() failed for chat ${chatId} (DB already marked cancelled):`,
+        error,
+      );
+    }
   } finally {
-    // 5. Release user billing turn lease immediately
+    // 4. Release user billing turn lease immediately
     try {
       const { releaseUserBillingTurn } =
         await import("@/lib/billing/credit-ledger");
@@ -130,6 +143,13 @@ export async function POST(request: Request, context: RouteContext) {
     } catch {
       // Non-fatal
     }
+  }
+
+  if (cancelError) {
+    return Response.json(
+      { error: "Failed to cancel workflow run" },
+      { status: 500 },
+    );
   }
 
   return Response.json({ success: true });

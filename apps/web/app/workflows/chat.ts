@@ -55,9 +55,11 @@ import type {
   WebAgentUIMessage,
 } from "@/app/types";
 import {
+  cancelWorkflowRunStep,
   claimActiveStream,
   closeStream,
   clearActiveStream,
+  finalizeAbortedChatStep,
   getUnreadInboxCountStep,
   releaseUserBillingTurnStep,
   reconcileSessionStatusStep,
@@ -2534,15 +2536,17 @@ export async function runAgentWorkflow(options: Options) {
   );
   const activeStreamClaim = await activeStreamClaimPromise;
   if (activeStreamClaim === "conflict") {
-    // Another workflow claimed the slot while this run was queued or starting.
-    // Exit before emitting chunks or persisting messages so only the owning
-    // workflow can mutate this chat.
+    // Another workflow claimed the slot (or the chat was already stopped)
+    // while this run was queued or starting. Exit before emitting chunks or
+    // persisting messages so only the owning workflow can mutate this chat.
     await Promise.allSettled([
       checkpointPromise,
       runtimePromise,
       modelMessagesPromise,
       inputMessagesPersistPromise,
       modelRuntimePromise,
+      cancelWorkflowRunStep(workflowRunId).catch(() => {}),
+      releaseUserBillingTurnStep(options.userId, workflowRunId).catch(() => {}),
     ]);
     await closeStream(writable);
     return;
@@ -3408,6 +3412,52 @@ export async function runAgentWorkflow(options: Options) {
       await persistSandboxState(options.sessionId, sandboxState);
     }
 
+    if (wasAborted) {
+      if (pendingAssistantResponse.parts.length > 0) {
+        await persistAssistantMessage(options.chatId, pendingAssistantResponse);
+      }
+
+      await Promise.all([
+        finalizeAbortedChatStep(options.chatId, workflowRunId).catch((err) => {
+          console.warn(
+            "[workflow] Best-effort finalizeAbortedChatStep failed after abort:",
+            err,
+          );
+        }),
+        releaseUserBillingTurnStep(options.userId, workflowRunId).catch(
+          (err) => {
+            console.warn(
+              "[workflow] Best-effort releaseUserBillingTurnStep failed after abort:",
+              err,
+            );
+          },
+        ),
+        ...(sandboxState && shouldRefreshCachedDiff
+          ? [
+              refreshDiffCache(options.sessionId, sandboxState).catch((err) => {
+                console.warn(
+                  "[workflow] Best-effort refreshDiffCache failed after abort:",
+                  err,
+                );
+              }),
+            ]
+          : []),
+      ]);
+
+      await sendFinish(writable)
+        .then(() => closeStream(writable))
+        .catch((err) => {
+          console.warn(
+            "[workflow] Best-effort sendFinish/closeStream failed after abort:",
+            err,
+          );
+        });
+      streamClosed = true;
+      didPersistFinalCompletion = true;
+      workflowStatus = "aborted";
+      return;
+    }
+
     const finishedNaturally =
       !wasAborted &&
       !wasTimedOut &&
@@ -3730,9 +3780,11 @@ export async function runAgentWorkflow(options: Options) {
             .catch(() => {}),
         ]);
       }
-      const terminalState =
-        workflowStatus === "failed" || caughtError ? "failed" : "completed";
-      await reconcileSessionStatusStep(options.sessionId, terminalState);
+      if (workflowStatus !== "aborted") {
+        const terminalState =
+          workflowStatus === "failed" || caughtError ? "failed" : "completed";
+        await reconcileSessionStatusStep(options.sessionId, terminalState);
+      }
       await kickSandboxLifecycleStep(options.sessionId);
     } finally {
       const runFinishedAt = new Date();
@@ -4331,6 +4383,9 @@ const runAgentStep = async (
           let migrationRunId: string | undefined;
 
           while (true) {
+            if (abortController.signal.aborted) {
+              throw createAbortError();
+            }
             const current = await getSessionById(sessionId);
             if (!current) {
               throw new Error(
@@ -4354,7 +4409,7 @@ const runAgentStep = async (
                 );
               }
 
-              await new Promise((resolve) => setTimeout(resolve, 750));
+              await delayAbortable(750, abortController.signal);
               continue;
             }
 
@@ -4409,7 +4464,7 @@ const runAgentStep = async (
                 await kickSandboxProvisioningWorkflow(sessionId).catch(
                   () => {},
                 );
-                await new Promise((resolve) => setTimeout(resolve, 750));
+                await delayAbortable(750, abortController.signal);
                 continue;
               }
 
@@ -5098,7 +5153,7 @@ const runAgentStep = async (
               console.warn(
                 `[chat-workflow] Transient model error on attempt ${streamAttempts} (${errSignal.slice(0, 100)}), retrying in ${Math.round(backoffMs)}ms...`,
               );
-              await new Promise((resolve) => setTimeout(resolve, backoffMs));
+              await delayAbortable(backoffMs, abortController.signal);
               continue;
             }
 
@@ -5858,7 +5913,7 @@ const runAgentStep = async (
       rawFinishReason,
       stepUsage,
       stepCost: stepsCost,
-      stepWasAborted: false,
+      stepWasAborted: abortController.signal.aborted,
       failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
       remainingBalanceCents,
       remainingWindowBudgetCents,
@@ -5985,7 +6040,7 @@ const runAgentStep = async (
         rawFinishReason: stepFinishReasons.at(-1)?.rawFinishReason,
         stepUsage: lastStepUsage ?? totalMessageUsage,
         stepCost: lastStepCost,
-        stepWasAborted: false,
+        stepWasAborted: abortController.signal.aborted,
         failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
         remainingBalanceCents,
         remainingWindowBudgetCents,
@@ -6038,7 +6093,7 @@ const runAgentStep = async (
         rawFinishReason: undefined,
         stepUsage: lastStepUsage ?? totalMessageUsage,
         stepCost: lastStepCost,
-        stepWasAborted: false,
+        stepWasAborted: abortController.signal.aborted,
         recoverableStepError: errorWithStepTiming.message,
         ...(recoveryAction ? { recoveryAction } : {}),
         failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
@@ -6346,6 +6401,29 @@ function delay(ms: number, signal?: AbortSignal) {
     if (timer !== undefined) {
       clearTimeout(timer);
     }
+  });
+}
+
+function createAbortError(): Error {
+  return Object.assign(new Error("The operation was aborted"), {
+    name: "AbortError",
+  });
+}
+
+function delayAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    return Promise.reject(createAbortError());
+  }
+  return new Promise<void>((resolve, reject) => {
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(createAbortError());
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 

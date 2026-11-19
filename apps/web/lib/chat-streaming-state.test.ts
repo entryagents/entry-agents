@@ -13,6 +13,7 @@ const {
   getNavbarGitActionState,
   hasRenderableAssistantPart,
   isChatInFlight,
+  shouldClearUserStopped,
   shouldKeepCollapsedReasoningStreaming,
   shouldRefreshAfterReadyTransition,
   shouldRenderGitDataPart,
@@ -171,6 +172,40 @@ describe("chat streaming state", () => {
         lastMessageRole: "user",
       }),
     ).toBe(false);
+  });
+
+  test("keeps userStopped latched until status settles AND chat list SWR stops reporting streaming", () => {
+    expect(
+      shouldClearUserStopped({
+        isChatInFlight: false,
+        status: "ready",
+        hasChatListStreaming: true,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldClearUserStopped({
+        isChatInFlight: false,
+        status: "error",
+        hasChatListStreaming: true,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldClearUserStopped({
+        isChatInFlight: true,
+        status: "streaming",
+        hasChatListStreaming: false,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldClearUserStopped({
+        isChatInFlight: false,
+        status: "ready",
+        hasChatListStreaming: false,
+      }),
+    ).toBe(true);
   });
 
   test("derives pending commit state from the latest assistant git message", () => {

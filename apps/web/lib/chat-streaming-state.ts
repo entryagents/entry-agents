@@ -93,6 +93,18 @@ export function shouldUseChatListStreamingState(options: {
   return !hasAssistantRenderableContent;
 }
 
+export function shouldClearUserStopped(options: {
+  isChatInFlight: boolean;
+  status: ChatUiStatus;
+  hasChatListStreaming: boolean;
+}): boolean {
+  const { isChatInFlight, status, hasChatListStreaming } = options;
+  if (isChatInFlight || hasChatListStreaming) {
+    return false;
+  }
+  return status === "ready" || status === "error";
+}
+
 export function shouldKeepCollapsedReasoningStreaming(options: {
   isMessageStreaming: boolean;
   hasStreamingReasoningPart: boolean;

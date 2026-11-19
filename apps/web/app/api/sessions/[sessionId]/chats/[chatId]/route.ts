@@ -113,7 +113,7 @@ export async function GET(req: Request, context: RouteContext) {
 
   let activeStreamId = chatContext.chat.activeStreamId;
   let chatStatus = chatContext.chat.status;
-  let isStreaming = activeStreamId !== null;
+  let isStreaming = activeStreamId !== null && chatStatus !== "cancelled";
 
   if (activeStreamId) {
     const { outcome, terminalStatus } =

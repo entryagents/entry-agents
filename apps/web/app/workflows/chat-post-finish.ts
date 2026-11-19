@@ -398,6 +398,44 @@ export async function clearActiveStream(
   }
 }
 
+export async function finalizeAbortedChatStep(
+  chatId: string,
+  workflowRunId: string,
+): Promise<void> {
+  "use step";
+
+  try {
+    const { compareAndSetChatActiveStreamId, setChatRunStatus } =
+      await import("@/lib/db/sessions");
+    await setChatRunStatus(chatId, "cancelled", {
+      onlyIfActiveStreamId: workflowRunId,
+    });
+    await compareAndSetChatActiveStreamId(chatId, workflowRunId, null);
+  } catch (error) {
+    console.error("[workflow] Failed to finalize aborted chat:", error);
+  }
+}
+
+export async function cancelWorkflowRunStep(
+  workflowRunId: string,
+): Promise<void> {
+  "use step";
+
+  try {
+    const { getRun } = await import("workflow/api");
+    await getRun(workflowRunId).cancel();
+  } catch (error) {
+    const { isDefinitelyGoneRunError } =
+      await import("@/lib/workflow-run-recovery");
+    if (!isDefinitelyGoneRunError(error)) {
+      console.warn(
+        `[workflow] Best-effort cancelWorkflowRunStep failed for ${workflowRunId}:`,
+        error,
+      );
+    }
+  }
+}
+
 const BILLING_TURN_RELEASE_MAX_ATTEMPTS = 3;
 const BILLING_TURN_RELEASE_RETRY_DELAY_MS = 50;
 
