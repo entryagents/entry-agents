@@ -7,11 +7,13 @@ import {
   Monitor,
   Play,
   RotateCcw,
+  SlidersHorizontal,
   Smartphone,
   Square,
   Tablet,
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
+import { CompareSlider } from "@/components/compare/compare-slider";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -45,6 +47,7 @@ export function WorkspacePreviewTab({
   const [activeSource, setActiveSource] = useState<"dev-server" | "vercel">(
     "dev-server",
   );
+  const [compareMode, setCompareMode] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const isDevServerReady = devServer.state.status === "ready";
@@ -53,6 +56,7 @@ export function WorkspacePreviewTab({
     devServer.state.status === "ready" ? devServer.state.info.url : null;
   const devServerPort =
     devServer.state.status === "ready" ? devServer.state.info.port : null;
+  const canCompare = Boolean(devServerUrl && previewDeploymentTargetUrl);
 
   const currentPreviewUrl =
     activeSource === "vercel" && previewDeploymentTargetUrl
@@ -255,6 +259,28 @@ export function WorkspacePreviewTab({
             </Tooltip>
           ) : null}
 
+          {canCompare ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant={compareMode ? "secondary" : "ghost"}
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                  onClick={() => setCompareMode((prev) => !prev)}
+                  aria-label="Compare deployed vs dev server"
+                >
+                  <SlidersHorizontal
+                    className="h-3.5 w-3.5"
+                    strokeWidth={1.5}
+                  />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {compareMode ? "Exit compare" : "Compare Deployed vs Dev"}
+              </TooltipContent>
+            </Tooltip>
+          ) : null}
+
           {currentPreviewUrl ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -285,16 +311,26 @@ export function WorkspacePreviewTab({
               viewport === "mobile" && "w-[375px] max-w-full",
             )}
           >
-            {/* oxlint-disable react/iframe-missing-sandbox -- cross-origin sandbox/Vercel preview requires allow-same-origin alongside allow-scripts for SPA storage */}
-            <iframe
-              key={iframeKey}
-              ref={iframeRef}
-              src={currentPreviewUrl}
-              title="Application preview"
-              className="h-full w-full border-0 bg-background"
-              sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
-            />
-            {/* oxlint-enable react/iframe-missing-sandbox */}
+            {compareMode && devServerUrl && previewDeploymentTargetUrl ? (
+              <CompareSlider
+                beforeUrl={previewDeploymentTargetUrl}
+                afterUrl={devServerUrl}
+                beforeLabel="Deployed"
+                afterLabel="Dev server"
+                mode="iframe"
+              />
+            ) : (
+              /* oxlint-disable react/iframe-missing-sandbox -- cross-origin sandbox/Vercel preview requires allow-same-origin alongside allow-scripts for SPA storage */
+              <iframe
+                key={iframeKey}
+                ref={iframeRef}
+                src={currentPreviewUrl}
+                title="Application preview"
+                className="h-full w-full border-0 bg-background"
+                sandbox="allow-forms allow-modals allow-popups allow-presentation allow-same-origin allow-scripts"
+              />
+              /* oxlint-enable react/iframe-missing-sandbox */
+            )}
           </div>
         ) : isDevServerStarting ? (
           <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
