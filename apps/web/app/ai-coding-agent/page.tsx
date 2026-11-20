@@ -199,9 +199,9 @@ export default function AiCodingAgentPage() {
                 Up to 99% prompt caching and $5–$40 builder plans
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-(--l-fg-2)">
-                Start with $1 free trial credit, then scale across Plus ($5/mo
-                for $10 credit), Entry ($13/mo for $50 credit, 3.8x), Pro
-                ($20/mo for $100), and Max ($40/mo for $180).
+                Start with $1 free trial credit, then scale across Plus ($3/mo
+                for $6 credit) and Builder ($10/mo for $28 credit, 2.8x) with
+                zero per-token markup.
               </p>
             </div>
             <div className="mt-5 border-t border-(--l-border) pt-4 font-mono text-xs text-(--l-fg-3) tabular-nums">
