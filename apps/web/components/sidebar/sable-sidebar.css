@@ -103,3 +103,44 @@
 .sable-child-new:hover {
   opacity: 1;
 }
+
+/* Edge resize handle: a 10px grab strip straddling the sidebar's right border. */
+.side-resize {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-width) - 5px);
+  z-index: 30;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.side-resize::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 4px;
+  width: 2px;
+  background-color: transparent;
+  transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.side-resize:hover::after,
+.side-resize:focus-visible::after,
+.side-resize[data-dragging]::after {
+  background-color: var(--side-line, rgba(127, 127, 127, 0.3));
+}
+
+html[data-side-resizing] {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* While dragging, the width follows the pointer without easing. */
+html[data-side-resizing] [data-slot="sidebar-container"],
+html[data-side-resizing] [data-slot="sidebar-gap"] {
+  transition: none !important;
+}
