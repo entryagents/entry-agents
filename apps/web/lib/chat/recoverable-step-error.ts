@@ -135,13 +135,36 @@ export function isWorkflowStepAutoRecoverable(error: unknown): boolean {
   }
 
   if (
-    message.includes("invalid_request_error") &&
+    (message.includes("invalid_request_error") ||
+      hasInvalidRequestErrorType(error)) &&
     !AUTO_FIXABLE_CATEGORIES.has(category)
   ) {
     return false;
   }
 
   return true;
+}
+
+function hasInvalidRequestErrorType(error: unknown, depth = 0): boolean {
+  if (!error || typeof error !== "object" || depth > 2) return false;
+  const record = error as {
+    data?: unknown;
+    cause?: unknown;
+  };
+  if (record.data && typeof record.data === "object") {
+    const inner = (record.data as { error?: unknown }).error;
+    if (
+      inner &&
+      typeof inner === "object" &&
+      (inner as { type?: unknown }).type === "invalid_request_error"
+    ) {
+      return true;
+    }
+  }
+  if (record.cause) {
+    return hasInvalidRequestErrorType(record.cause, depth + 1);
+  }
+  return false;
 }
 
 export const WORKFLOW_STEP_RECOVERY_BACKOFF_SECONDS = [1, 2, 3, 5] as const;
