@@ -44,6 +44,7 @@ export interface CreateSessionInput {
   modelId?: string;
   reasoningEffort?: string | null;
   vercelProject?: VercelProjectSelection | null;
+  initialMessage?: import("@/app/types").WebAgentUIMessage;
 }
 
 interface SessionsResponse {
@@ -54,6 +55,7 @@ interface SessionsResponse {
 interface CreateSessionResponse {
   session: Session;
   chat: Chat;
+  workflowRunId?: string | null;
 }
 
 function cloneSessionsResponse(
@@ -150,6 +152,7 @@ export function useSessions(options?: {
       const responseData = (await res.json()) as {
         session?: Session;
         chat?: Chat;
+        workflowRunId?: string | null;
         error?: string;
       };
 
@@ -161,6 +164,11 @@ export function useSessions(options?: {
 
       const createdSession = responseData.session;
       const createdChat = responseData.chat;
+      const workflowRunId =
+        typeof responseData.workflowRunId === "string"
+          ? responseData.workflowRunId
+          : null;
+      const startedStreaming = Boolean(workflowRunId);
 
       void globalMutate(
         `/api/sessions/${createdSession.id}/chats`,
@@ -169,7 +177,7 @@ export function useSessions(options?: {
             {
               ...createdChat,
               hasUnread: false,
-              isStreaming: false,
+              isStreaming: startedStreaming,
             },
           ],
           defaultModelId: createdChat.modelId,
@@ -186,7 +194,7 @@ export function useSessions(options?: {
               {
                 ...createdSession,
                 hasUnread: false,
-                hasStreaming: false,
+                hasStreaming: startedStreaming,
                 latestChatId: createdChat.id,
                 lastActivityAt: createdChat.updatedAt,
               },
@@ -201,6 +209,7 @@ export function useSessions(options?: {
       return {
         session: createdSession,
         chat: createdChat,
+        ...(workflowRunId ? { workflowRunId } : {}),
       } satisfies CreateSessionResponse;
     },
     [data, globalMutate, mutate],

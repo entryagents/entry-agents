@@ -1538,9 +1538,10 @@ export function SessionChatContent({
     // Status is the source of truth, so adopt it rather than waiting for
     // an event that may never come.
     setHasPendingResponse(false);
+    void setChatStreaming(chatInfo.id, false);
 
     clearError();
-  }, [chatInfo.id, clearError, session.id, setMessages]);
+  }, [chatInfo.id, clearError, session.id, setChatStreaming, setMessages]);
 
   const refreshAfterTabResume = useCallback(async (): Promise<void> => {
     // Visibility gates the RATE at which we refresh, never WHETHER we do.
@@ -1717,7 +1718,8 @@ export function SessionChatContent({
     deletingMessageId !== null || resendingMessageId !== null || isChatInFlight;
 
   shouldSkipServerSnapshotOverwriteRef.current =
-    hasPendingResponse ||
+    hasActiveSendMessages() ||
+    status === "submitted" ||
     deletingMessageId !== null ||
     resendingMessageId !== null;
 

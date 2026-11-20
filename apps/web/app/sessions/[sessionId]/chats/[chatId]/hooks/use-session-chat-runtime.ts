@@ -72,11 +72,22 @@ type UseSessionChatRuntimeReturn = {
 };
 
 /**
- * Custom predicate for auto-submitting messages.
- * Unlike the default `lastAssistantMessageIsCompleteWithApprovalResponses`,
- * this also checks for tools waiting in `input-available` state (e.g., AskUserQuestion).
+ * Custom predicate for auto-submitting messages from the client browser.
+ *
+ * Server-side tools (`bash`, `read`, `write`, `edit`, `task`, etc.) are executed
+ * durably across steps inside `runAgentWorkflow` on the server without any client
+ * involvement. The client must ONLY auto-submit a new `/api/chat` turn when a
+ * human-in-the-loop interaction completed in the browser:
+ *   1. A tool approval gate (`part.state === "approval-responded"`), or
+ *   2. The client-only `ask_user_question` tool (`part.type === "tool-ask_user_question"`
+ *      transitioning to `output-available`).
+ *
+ * Returning `true` for ordinary server-executed tools (`output-available` /
+ * `output-error`) would cause a reconnecting or stream-interrupted browser tab
+ * to fire a duplicate `POST /api/chat` while the server workflow is already
+ * continuing or has finished.
  */
-function shouldAutoSubmit({
+export function shouldAutoSubmit({
   messages,
 }: {
   messages: WebAgentUIMessage[];
@@ -100,9 +111,17 @@ function shouldAutoSubmit({
   // If no tool invocations, don't auto-submit
   if (lastStepToolInvocations.length === 0) return false;
 
-  // Auto-submit only if ALL tools are in terminal state
-  // Terminal states: output-available, output-error, approval-responded
-  // NOT terminal: input-available (waiting for user input, e.g., AskUserQuestion)
+  // Require at least one client-responded tool interaction in the last step
+  const hasClientToolResponse = lastStepToolInvocations.some(
+    (part) =>
+      part.state === "approval-responded" ||
+      (part.type === "tool-ask_user_question" &&
+        part.state === "output-available"),
+  );
+  if (!hasClientToolResponse) return false;
+
+  // Auto-submit only if ALL tools in the step are in a terminal state
+  // (none still waiting in input-available / approval-requested / input-streaming)
   return lastStepToolInvocations.every(
     (part) =>
       part.state === "output-available" ||

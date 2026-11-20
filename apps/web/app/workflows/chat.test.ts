@@ -79,6 +79,9 @@ const spies = {
   persistAssistantMessage: mock((_chatId?: unknown, _message?: unknown) =>
     Promise.resolve(),
   ),
+  persistAssistantMessageInternal: mock(
+    (_chatId?: unknown, _message?: unknown) => Promise.resolve(),
+  ),
   persistFinalAssistantMessage: mock(
     (_chatId?: unknown, _message?: unknown, _workflowRunId?: unknown) =>
       Promise.resolve(),
@@ -1832,6 +1835,59 @@ describe("runAgentWorkflow", () => {
       "startNextQueuedWorkflowStep",
       "closeStream",
     ]);
+  });
+
+  test("continues execution, checkpoints live tool parts to Postgres mid-step, and persists final message", async () => {
+    agentStreamParts = [
+      { type: "start-step" },
+      {
+        type: "tool-input-available",
+        toolCallId: "tool_bash_1",
+        toolName: "bash",
+        input: { command: "pnpm test" },
+      },
+      {
+        type: "tool-output-available",
+        toolCallId: "tool_bash_1",
+        output: { stdout: "All tests pass", exitCode: 0 },
+      },
+      { type: "text-start", id: "txt_1" },
+      { type: "text-delta", id: "txt_1", delta: "Completed in the cloud." },
+      {
+        type: "finish-step",
+        finishReason: "stop",
+        rawFinishReason: "stop",
+        usage: { inputTokens: 20, outputTokens: 10, totalTokens: 30 },
+      },
+    ];
+    agentAssistantParts = [
+      { type: "step-start" },
+      {
+        type: "tool-bash",
+        toolCallId: "tool_bash_1",
+        state: "output-available",
+        input: { command: "pnpm test" },
+        output: { stdout: "All tests pass", exitCode: 0 },
+      },
+      { type: "text", text: "Completed in the cloud." },
+    ];
+
+    await runAgentWorkflow(makeOptions());
+
+    expect(spies.persistAssistantMessageInternal).toHaveBeenCalled();
+    const firstCheckpointCall =
+      spies.persistAssistantMessageInternal.mock.calls[0];
+    expect(firstCheckpointCall?.[0]).toBe("chat-1");
+    expect(firstCheckpointCall?.[1]).toMatchObject({
+      role: "assistant",
+      parts: expect.arrayContaining([
+        expect.objectContaining({
+          type: "tool-bash",
+          toolCallId: "tool_bash_1",
+        }),
+      ]),
+    });
+    expect(spies.persistFinalAssistantMessage).toHaveBeenCalledTimes(1);
   });
 
   test("still clears stream and sends finish even on step error", async () => {

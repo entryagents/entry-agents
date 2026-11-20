@@ -11,6 +11,7 @@ import { useModelOptions } from "@/hooks/use-model-options";
 import { useProjects } from "@/hooks/use-projects";
 import type { SessionWithUnread } from "@/hooks/use-sessions";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
+import { buildUserMessageFromComposerPayload } from "@/lib/chat/build-user-message";
 import {
   generateAndApplyInitialTitle,
   startInitialChatOnServer,
@@ -76,7 +77,14 @@ export function SessionsIndexShell() {
           trimmedDisplayText.length > 0
             ? sanitizePromptToTitle(trimmedDisplayText)
             : undefined;
-        const { session: createdSession, chat } = await createSession({
+        const initialMessage = buildUserMessageFromComposerPayload(
+          built.payload,
+        );
+        const {
+          session: createdSession,
+          chat,
+          workflowRunId,
+        } = await createSession({
           ...(initialTitle ? { title: initialTitle } : {}),
           ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
           isNewBranch: false,
@@ -86,18 +94,20 @@ export function SessionsIndexShell() {
           permissionModeOverride: permissionMode,
           ...(effectiveModelId ? { modelId: effectiveModelId } : {}),
           ...(reasoningEffort !== null ? { reasoningEffort } : {}),
+          initialMessage,
         });
 
-        // Kick off the agent workflow in parallel with route navigation so the
-        // transition to the new chat page feels instant while background
-        // execution starts immediately.
-        void startInitialChatOnServer({
-          sessionId: createdSession.id,
-          chatId: chat.id,
-          built,
-        }).catch((error) => {
-          console.error("Failed to start initial chat on server:", error);
-        });
+        // If POST /api/sessions did not already start the workflow on the server,
+        // fall back to starting it via POST /api/chat.
+        if (!workflowRunId) {
+          void startInitialChatOnServer({
+            sessionId: createdSession.id,
+            chatId: chat.id,
+            built,
+          }).catch((error) => {
+            console.error("Failed to start initial chat on server:", error);
+          });
+        }
 
         void globalMutate<{
           sessions: SessionWithUnread[];

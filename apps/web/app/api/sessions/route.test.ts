@@ -32,8 +32,24 @@ const createCalls: Array<Record<string, unknown>> = [];
 const createChatCalls: Array<Record<string, unknown>> = [];
 const upsertCalls: Array<Record<string, unknown>> = [];
 const provisioningKickCalls: string[] = [];
+const persistedMessages: Array<Record<string, unknown>> = [];
+const claimedStreamCalls: Array<{ chatId: string; runId: string }> = [];
+const startedWorkflowArgs: Array<Record<string, unknown>> = [];
 
 const originalNodeEnv = process.env.NODE_ENV;
+
+mock.module("workflow/api", () => ({
+  start: async (_fn: unknown, args: Array<Record<string, unknown>>) => {
+    if (args[0]) {
+      startedWorkflowArgs.push(args[0]);
+    }
+    return { runId: "wrun_atomic_1" };
+  },
+}));
+
+mock.module("@/app/workflows/chat", () => ({
+  runAgentWorkflow: async () => {},
+}));
 
 mock.module("@/lib/session/get-server-session", () => ({
   ...realSessionGetServerSession,
@@ -113,6 +129,18 @@ mock.module("@/lib/db/sessions", () => ({
       },
     };
   },
+  createChatMessageIfNotExists: async (input: Record<string, unknown>) => {
+    persistedMessages.push(input);
+    return input;
+  },
+  claimChatActiveStreamId: async (chatId: string, runId: string) => {
+    claimedStreamCalls.push({ chatId, runId });
+    return true;
+  },
+  setChatRunStatus: async () => {},
+  touchChat: async () => {},
+  updateChat: async () => null,
+  updateSession: async () => null,
   getArchivedSessionCountByUserId: async () => 0,
   getSessionsWithUnreadByUserId: async () => [],
   getUsedSessionTitles: async () => new Set<string>(),
@@ -160,6 +188,9 @@ describe("/api/sessions POST vercel project linking", () => {
     createChatCalls.length = 0;
     upsertCalls.length = 0;
     provisioningKickCalls.length = 0;
+    persistedMessages.length = 0;
+    claimedStreamCalls.length = 0;
+    startedWorkflowArgs.length = 0;
   });
 
   test("explicit Vercel project is validated against live repo matches before it is persisted", async () => {
@@ -408,5 +439,52 @@ describe("/api/sessions POST vercel project linking", () => {
     expect(response.status).toBe(400);
     expect(body.error).toBe("Invalid permissionModeOverride value");
     expect(createCalls).toHaveLength(0);
+  });
+
+  test("atomically persists initialMessage, starts runAgentWorkflow, and claims activeStreamId in a single request", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        title: "Build cloud workflow",
+        initialMessage: {
+          id: "msg_initial_1",
+          role: "user",
+          parts: [
+            { type: "text", text: "Build durable cloud workflow execution" },
+          ],
+        },
+      }),
+    );
+
+    const body = (await response.json()) as {
+      session: Record<string, unknown>;
+      chat: Record<string, unknown>;
+      workflowRunId?: string;
+    };
+
+    expect(response.status).toBe(200);
+    expect(body.workflowRunId).toBe("wrun_atomic_1");
+    expect(body.chat.activeStreamId).toBe("wrun_atomic_1");
+    expect(body.chat.status).toBe("running");
+    expect(persistedMessages).toHaveLength(1);
+    expect(persistedMessages[0]).toMatchObject({
+      id: "msg_initial_1",
+      chatId: body.chat.id,
+      role: "user",
+    });
+    expect(startedWorkflowArgs).toHaveLength(1);
+    expect(startedWorkflowArgs[0]).toMatchObject({
+      chatId: body.chat.id,
+      sessionId: body.session.id,
+      userId: "user-1",
+      inputMessagesPersisted: true,
+    });
+    expect(claimedStreamCalls).toEqual([
+      {
+        chatId: String(body.chat.id),
+        runId: "wrun_atomic_1",
+      },
+    ]);
   });
 });
