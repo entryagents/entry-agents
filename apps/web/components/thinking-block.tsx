@@ -31,7 +31,6 @@ const STREAMING_STATE: ToolRenderState = {
 export function ThinkingBlock({
   text,
   isStreaming = false,
-  partCount = 1,
 }: ThinkingBlockProps) {
   const [elapsed, setElapsed] = useState(0);
   const startTimeRef = useRef<number | null>(null);
@@ -73,28 +72,22 @@ export function ThinkingBlock({
   }, [isStreaming]);
 
   const hasContent = text.trim().length > 0;
-  const thoughtLabel =
-    partCount === 1
-      ? "Thought"
-      : `${partCount} thought${partCount !== 1 ? "s" : ""}`;
-
-  const name = isStreaming ? "Thinking..." : thoughtLabel;
+  // One quiet line with its time; nothing opens by itself, so the trail never jumps.
+  const name = isStreaming ? "Thinking" : "Thought";
 
   const summary =
     !isStreaming && elapsed > 0
-      ? `${elapsed} second${elapsed !== 1 ? "s" : ""}`
+      ? elapsed >= 60
+        ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`
+        : `${elapsed}s`
       : "";
 
   const expandedContent = hasContent ? (
-    <div className="rounded-md border border-border bg-muted/40 px-3 py-2">
+    <div className="my-0.5 ml-[7px] border-l border-border/70 py-px pl-4">
       <UserMessageFold
         text={text}
-        className="text-[13.2px] text-muted-foreground"
+        className="text-[12.5px] leading-[1.6] text-muted-foreground"
       />
-    </div>
-  ) : isStreaming ? (
-    <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2">
-      <p className="text-[13px] text-muted-foreground">Reasoning…</p>
     </div>
   ) : undefined;
 
@@ -104,8 +97,8 @@ export function ThinkingBlock({
       icon={<Brain className="h-3.5 w-3.5" />}
       summary={summary}
       state={isStreaming ? STREAMING_STATE : COMPLETED_STATE}
-      defaultExpanded={isStreaming}
-      autoExpanded={isStreaming}
+      defaultExpanded={false}
+      autoExpanded={false}
       expandedContent={expandedContent}
     />
   );
