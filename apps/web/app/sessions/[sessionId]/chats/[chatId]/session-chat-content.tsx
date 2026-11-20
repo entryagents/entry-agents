@@ -3546,6 +3546,7 @@ export function SessionChatContent({
               <SubagentThreadView
                 subagentId={activeSubagentId}
                 messages={messages}
+                isParentStreaming={effectiveStatus === "streaming"}
                 onOpenFile={openFileTab}
                 onClose={closeSubagentTab}
                 onStopRun={handleStopStream}

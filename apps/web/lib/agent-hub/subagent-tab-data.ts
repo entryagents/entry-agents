@@ -335,17 +335,35 @@ export function extractConciseTaskSummary(
     : candidate;
 }
 
+export interface DeriveSubagentTabOptions {
+  /** Whether the parent chat run is currently streaming. When false, incomplete task parts reconcile to failed instead of staying stuck as running. */
+  isParentStreaming?: boolean;
+}
+
 /**
  * Extracts full details for a subagent by its toolCallId from persisted chat messages.
  */
 export function deriveSubagentTabData(
   messages: unknown,
   subagentId: string,
+  options?: DeriveSubagentTabOptions,
 ): SubagentTabData | null {
   if (!Array.isArray(messages)) return null;
 
-  for (const raw of messages as RawMessage[]) {
+  const rawMessages = messages as RawMessage[];
+  let lastAssistantIndex = -1;
+  for (let i = rawMessages.length - 1; i >= 0; i -= 1) {
+    if (rawMessages[i]?.role === "assistant") {
+      lastAssistantIndex = i;
+      break;
+    }
+  }
+  const isParentStreaming = options?.isParentStreaming ?? true;
+
+  for (let msgIdx = 0; msgIdx < rawMessages.length; msgIdx += 1) {
+    const raw = rawMessages[msgIdx];
     if (!raw || raw.role !== "assistant" || !Array.isArray(raw.parts)) continue;
+    const isTurnActive = isParentStreaming && msgIdx === lastAssistantIndex;
 
     for (const part of raw.parts) {
       if (!part || typeof part !== "object") continue;
@@ -409,7 +427,13 @@ export function deriveSubagentTabData(
           typeof input?.instructions === "string" ? input.instructions : "",
         startedAt: numberOrNull(output?.startedAt),
         completedAt: numberOrNull(output?.completedAt),
-        status: statusOf(taskPart),
+        status: (() => {
+          const rawStatus = statusOf(taskPart);
+          return !isTurnActive &&
+            (rawStatus === "starting" || rawStatus === "running")
+            ? "failed"
+            : rawStatus;
+        })(),
         modelId: typeof output?.modelId === "string" ? output.modelId : null,
         toolCallCount:
           numberOrNull(output?.toolCallCount) ?? completedParts.length,

@@ -36,8 +36,10 @@ export function TaskRenderer({
   const output = hasOutput
     ? (part.output as Record<string, unknown> | undefined)
     : undefined;
-  const isFailed = taskDenied || taskErrored || output?.status === "failed";
-  const isRunning = state.running || isPreliminary;
+  const isInterrupted = state.interrupted || (isPreliminary && !state.running);
+  const isFailed =
+    taskDenied || taskErrored || output?.status === "failed" || isInterrupted;
+  const isRunning = state.running;
 
   const toolCallCount =
     typeof output?.toolCallCount === "number" ? output.toolCallCount : null;
