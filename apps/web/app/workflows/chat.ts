@@ -14,7 +14,10 @@ import {
   reportUndefined,
   withoutUndefined,
 } from "@/app/workflows/serialization";
-import { TurnLoopGuard } from "@/app/workflows/loop-guard";
+import {
+  normalizeToolCallSignature,
+  TurnLoopGuard,
+} from "@/app/workflows/loop-guard";
 import type { PlanUsageWindows } from "@/lib/billing/plans";
 import {
   createMcpToolSet,
@@ -493,6 +496,110 @@ const convertMessages = async (
     }),
   );
 };
+
+function countToolResultsInModelMessages(messages: ModelMessage[]): number {
+  let count = 0;
+  for (const msg of messages) {
+    if (msg.role === "tool" && Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (
+          part &&
+          typeof part === "object" &&
+          (part as { type?: unknown }).type === "tool-result"
+        ) {
+          count += 1;
+        }
+      }
+    }
+  }
+  return count;
+}
+
+function reconstructStepModelMessages(params: {
+  streamedTextOrder: string[];
+  streamedTextById: Map<string, string>;
+  liveStepToolOrder: string[];
+  liveStepToolParts: Map<string, WebAgentUIMessage["parts"][number]>;
+}): { messages: ModelMessage[]; completedToolCount: number } {
+  const assistantParts: Array<Record<string, unknown>> = [];
+  const toolResultParts: Array<Record<string, unknown>> = [];
+
+  for (const id of params.streamedTextOrder) {
+    const text = params.streamedTextById.get(id) ?? "";
+    if (text.length > 0) {
+      assistantParts.push({ type: "text", text });
+    }
+  }
+
+  for (const toolCallId of params.liveStepToolOrder) {
+    const part = params.liveStepToolParts.get(toolCallId) as
+      | {
+          type?: string;
+          toolCallId?: string;
+          state?: string;
+          input?: unknown;
+          output?: unknown;
+          preliminary?: boolean;
+          errorText?: string;
+        }
+      | undefined;
+    if (!part?.type || !part.type.startsWith("tool-")) continue;
+    const toolName = part.type.slice("tool-".length);
+    if (!toolName) continue;
+
+    if (part.state === "output-available" && !part.preliminary) {
+      assistantParts.push({
+        type: "tool-call",
+        toolCallId,
+        toolName,
+        input: part.input ?? {},
+      });
+      toolResultParts.push({
+        type: "tool-result",
+        toolCallId,
+        toolName,
+        output: {
+          type: "json",
+          value: (part.output ?? null) as unknown,
+        },
+      });
+    } else if (part.state === "output-error") {
+      assistantParts.push({
+        type: "tool-call",
+        toolCallId,
+        toolName,
+        input: part.input ?? {},
+      });
+      toolResultParts.push({
+        type: "tool-result",
+        toolCallId,
+        toolName,
+        output: {
+          type: "error-text",
+          value:
+            typeof part.errorText === "string" && part.errorText.trim()
+              ? part.errorText
+              : "Tool execution failed",
+        },
+      });
+    }
+  }
+
+  const messages: ModelMessage[] = [];
+  if (assistantParts.length > 0) {
+    messages.push({
+      role: "assistant",
+      content: assistantParts,
+    } as unknown as ModelMessage);
+  }
+  if (toolResultParts.length > 0) {
+    messages.push({
+      role: "tool",
+      content: toolResultParts,
+    } as unknown as ModelMessage);
+  }
+  return { messages, completedToolCount: toolResultParts.length };
+}
 
 function appendTurnDirectiveToUserMessage(
   messages: ModelMessage[],
@@ -2791,8 +2898,10 @@ export async function runAgentWorkflow(options: Options) {
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
+    const MAX_CONSECUTIVE_ZERO_PROGRESS_TOOL_STEPS = 2;
     const loopGuard = new TurnLoopGuard();
     let consecutiveStepRecoveries = 0;
+    let consecutiveZeroProgressToolSteps = 0;
 
     for (
       let step = 0;
@@ -2893,17 +3002,28 @@ export async function runAgentWorkflow(options: Options) {
       const { unreadCount: unreadInboxCount } = await getUnreadInboxCountStep(
         options.chatId,
       );
-      if (unreadInboxCount > 0) {
-        modelMessages.push({
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `[HIGH-PRIORITY STEERING INBOX INTERVENTION]\nYou have ${unreadInboxCount} unread message(s) in your steering inbox.\nYou MUST call the \`inbox\` tool IMMEDIATELY before continuing other work so you read every new instruction (marked [NEW / UNREAD] vs [OLD / READ]) and adjust your course in real time without restarting or losing context.`,
-            },
-          ],
-        });
-      }
+      // Ephemeral per-step steering notice: never mutate `modelMessages` with
+      // this imperative, otherwise once `inbox` marks messages read (or if a
+      // step retries) the stale "You MUST call the `inbox` tool IMMEDIATELY"
+      // user message remains in history and traps models in an infinite inbox loop.
+      const stepModelMessages: ModelMessage[] =
+        unreadInboxCount > 0
+          ? [
+              ...modelMessages,
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: `[HIGH-PRIORITY STEERING INBOX INTERVENTION]\nYou have ${unreadInboxCount} unread message(s) in your steering inbox.\nCall the \`inbox\` tool ONCE right now to read the unread instruction(s) (marked [NEW / UNREAD]) and adjust your course without restarting. After reading them, do NOT call \`inbox\` again unless a new unread intervention arrives.`,
+                  },
+                ],
+              },
+            ]
+          : modelMessages;
+
+      const toolResultsBeforeStep =
+        countToolResultsInModelMessages(modelMessages);
 
       try {
         // COMPACT TELEMETRY SCOPE (2026-09-17): the sink wraps the model
@@ -2916,7 +3036,7 @@ export async function runAgentWorkflow(options: Options) {
         // log the exact paths on the argument side before it can fail. A
         // hit here identifies the offending property by name.
         reportUndefined("chat.runAgentStep args", [
-          modelMessages,
+          stepModelMessages,
           originalMessagesForStep,
           assistantId,
           workflowRunId,
@@ -2934,7 +3054,7 @@ export async function runAgentWorkflow(options: Options) {
           remainingWindowBudgetCents,
         ]);
         result = await runAgentStep(
-          modelMessages,
+          stepModelMessages,
           originalMessagesForStep,
           assistantId,
           writable,
@@ -3270,6 +3390,33 @@ export async function runAgentWorkflow(options: Options) {
         break;
       }
 
+      if (options.maxSteps !== undefined && step + 1 >= options.maxSteps) {
+        exhaustedMaxSteps = true;
+        break;
+      }
+
+      // Zero-progress guard: if finishReason === "tool-calls" yet zero surviving
+      // tool-result messages were appended to modelMessages (e.g. a stream/metadata
+      // fault dropped tool history or stripDanglingToolCalls removed orphaned calls),
+      // continuing would replay the exact same prompt with amnesia and bypass
+      // signature-based loop guards.
+      const toolResultsAfterStep =
+        countToolResultsInModelMessages(modelMessages);
+      if (toolResultsAfterStep <= toolResultsBeforeStep) {
+        consecutiveZeroProgressToolSteps += 1;
+        if (
+          consecutiveZeroProgressToolSteps >=
+          MAX_CONSECUTIVE_ZERO_PROGRESS_TOOL_STEPS
+        ) {
+          console.warn(
+            `[chat-workflow] Detected ${consecutiveZeroProgressToolSteps} consecutive tool-calls steps with zero persisted tool results for chat ${options.chatId}. Breaking loop to prevent amnesia repetition.`,
+          );
+          break;
+        }
+      } else {
+        consecutiveZeroProgressToolSteps = 0;
+      }
+
       // Loop breaker (cost & token optimization): detect consecutive identical tool
       // calls across steps (e.g. model calling identical failing commands repeatedly
       // without changing args). Short-circuits runaway loops to preserve model tokens.
@@ -3292,12 +3439,10 @@ export async function runAgentWorkflow(options: Options) {
                 args?: unknown;
               };
               const name = tc.toolName ?? "unknown";
-              let sig = name;
-              try {
-                sig = `${name}:${JSON.stringify(tc.input ?? tc.args ?? {})}`;
-              } catch {
-                sig = name;
-              }
+              const sig = normalizeToolCallSignature(
+                name,
+                tc.input ?? tc.args ?? {},
+              );
               stepToolCallSignatures.push(sig);
               stepToolCallRecords.push({ toolName: name, signature: sig });
             }
@@ -3339,11 +3484,6 @@ export async function runAgentWorkflow(options: Options) {
           lastConsecutiveToolSignature = currentSignature;
           consecutiveIdenticalToolCount = 1;
         }
-      }
-
-      if (options.maxSteps !== undefined && step + 1 >= options.maxSteps) {
-        exhaustedMaxSteps = true;
-        break;
       }
     }
 
@@ -5882,18 +6022,22 @@ const runAgentStep = async (
         metadataError,
       );
       rawStepUsage = totalMessageUsage ?? lastStepUsage;
-      const fallbackText = extractPlainText(responseMessage.parts).trim();
-      response = {
-        messages:
-          fallbackText.length > 0
-            ? [
-                {
-                  role: "assistant",
-                  content: [{ type: "text", text: fallbackText }],
-                },
-              ]
-            : [],
-      };
+      const reconstructed = reconstructStepModelMessages({
+        streamedTextOrder,
+        streamedTextById,
+        liveStepToolOrder,
+        liveStepToolParts,
+      });
+      response = { messages: reconstructed.messages };
+      // Never continue a tool-calls loop without at least one completed
+      // (tool-call, tool-result) pair in response.messages; otherwise the next
+      // step replays the exact same prompt with amnesia and repeats forever.
+      if (
+        finishReason === "tool-calls" &&
+        reconstructed.completedToolCount === 0
+      ) {
+        finishReason = "stop";
+      }
     }
 
     const steps = rawSteps.map((step) => ({
@@ -6306,11 +6450,23 @@ const runAgentStep = async (
       lastRecordedFinishReason !== "error"
     ) {
       await Promise.allSettled(pendingDebits);
+      const reconstructed = reconstructStepModelMessages({
+        streamedTextOrder,
+        streamedTextById,
+        liveStepToolOrder,
+        liveStepToolParts,
+      });
       const recoveredFinishReason: FinishReason =
-        lastRecordedFinishReason === "tool-calls" ? "tool-calls" : "stop";
+        lastRecordedFinishReason === "tool-calls" &&
+        reconstructed.completedToolCount > 0
+          ? "tool-calls"
+          : "stop";
+      const safeReconstructedMessages = stepSecretRedactor?.hasSecrets()
+        ? stepSecretRedactor.redactUnknown(reconstructed.messages)
+        : reconstructed.messages;
       return withoutUndefined({
         responseMessage: partialMessage,
-        responseMessages: [],
+        responseMessages: safeReconstructedMessages,
         finishReason: recoveredFinishReason,
         rawFinishReason: stepFinishReasons.at(-1)?.rawFinishReason,
         stepUsage: lastStepUsage ?? totalMessageUsage,

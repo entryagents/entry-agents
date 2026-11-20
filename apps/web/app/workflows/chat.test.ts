@@ -2037,6 +2037,278 @@ describe("runAgentWorkflow", () => {
       }),
     );
   });
+
+  test("keeps steering inbox intervention ephemeral so it never poisons subsequent steps after messages are marked read", async () => {
+    let unreadCalls = 0;
+    spies.getUnreadInboxCountStep.mockImplementation(async () => {
+      unreadCalls += 1;
+      return { unreadCount: unreadCalls === 1 ? 1 : 0 };
+    });
+
+    const seenMessagesPerStep: Array<Array<Record<string, unknown>>> = [];
+    let callIndex = 0;
+
+    mock.module("@/app/config", () => ({
+      ...realAppConfig,
+      webAgent: {
+        tools: {},
+        stream: async ({
+          messages,
+        }: {
+          messages: Array<Record<string, unknown>>;
+        }) => {
+          callIndex += 1;
+          seenMessagesPerStep.push(structuredClone(messages));
+          if (callIndex === 1) {
+            return {
+              toUIMessageStream: async function* ({
+                onFinish,
+              }: {
+                onFinish?: (ev: { responseMessage: unknown }) => void;
+              }) {
+                yield { type: "start-step" };
+                yield {
+                  type: "tool-input-available",
+                  toolCallId: "tc-inbox-1",
+                  toolName: "inbox",
+                  input: {},
+                };
+                yield {
+                  type: "tool-output-available",
+                  toolCallId: "tc-inbox-1",
+                  output: {
+                    success: true,
+                    unreadCount: 1,
+                    newlyReadCount: 1,
+                    messages: [{ id: "m1", content: "Focus on TypeScript" }],
+                  },
+                };
+                onFinish?.({
+                  responseMessage: {
+                    id: "assistant-1",
+                    role: "assistant",
+                    parts: [
+                      {
+                        type: "tool-inbox",
+                        toolCallId: "tc-inbox-1",
+                        state: "output-available",
+                        input: {},
+                        output: {
+                          success: true,
+                          unreadCount: 1,
+                          newlyReadCount: 1,
+                        },
+                      },
+                    ],
+                  },
+                });
+              },
+              totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
+              finishReason: Promise.resolve("tool-calls"),
+              rawFinishReason: Promise.resolve("tool_calls"),
+              response: Promise.resolve({
+                messages: [
+                  {
+                    role: "assistant",
+                    content: [
+                      {
+                        type: "tool-call",
+                        toolCallId: "tc-inbox-1",
+                        toolName: "inbox",
+                        input: {},
+                      },
+                    ],
+                  },
+                  {
+                    role: "tool",
+                    content: [
+                      {
+                        type: "tool-result",
+                        toolCallId: "tc-inbox-1",
+                        toolName: "inbox",
+                        output: {
+                          type: "json",
+                          value: {
+                            success: true,
+                            unreadCount: 1,
+                            newlyReadCount: 1,
+                          },
+                        },
+                      },
+                    ],
+                  },
+                ],
+              }),
+              steps: Promise.resolve([]),
+            };
+          }
+          return {
+            toUIMessageStream: async function* ({
+              onFinish,
+            }: {
+              onFinish?: (ev: { responseMessage: unknown }) => void;
+            }) {
+              yield { type: "start-step" };
+              yield { type: "text-start", id: "t2" };
+              yield {
+                type: "text-delta",
+                id: "t2",
+                delta: "Done with research.",
+              };
+              onFinish?.({
+                responseMessage: {
+                  id: "assistant-1",
+                  role: "assistant",
+                  parts: [{ type: "text", text: "Done with research." }],
+                },
+              });
+            },
+            totalUsage: Promise.resolve({ inputTokens: 12, outputTokens: 8 }),
+            finishReason: Promise.resolve("stop"),
+            rawFinishReason: Promise.resolve("stop"),
+            response: Promise.resolve({
+              messages: [
+                {
+                  role: "assistant",
+                  content: [{ type: "text", text: "Done with research." }],
+                },
+              ],
+            }),
+            steps: Promise.resolve([]),
+          };
+        },
+      },
+    }));
+
+    const { runAgentWorkflow: reloadedRun } = await import("./chat");
+    await reloadedRun(makeOptions({ maxSteps: 5 }));
+
+    expect(seenMessagesPerStep).toHaveLength(2);
+    const step1Text = JSON.stringify(seenMessagesPerStep[0]);
+    const step2Text = JSON.stringify(seenMessagesPerStep[1]);
+    expect(step1Text).toContain("HIGH-PRIORITY STEERING INBOX INTERVENTION");
+    // Step 2 must NOT retain the stale steering imperative once unreadCount is 0
+    expect(step2Text).not.toContain(
+      "HIGH-PRIORITY STEERING INBOX INTERVENTION",
+    );
+    expect(step2Text).toContain("tc-inbox-1");
+  });
+
+  test("reconstructs completed tool history on metadata rejection and breaks zero-progress tool-calls loops instead of repeating forever", async () => {
+    let streamCalls = 0;
+    mock.module("@/app/config", () => ({
+      ...realAppConfig,
+      webAgent: {
+        tools: {},
+        stream: async () => {
+          streamCalls += 1;
+          return {
+            toUIMessageStream: async function* ({
+              messageMetadata,
+            }: {
+              messageMetadata?: (ev: {
+                part: Record<string, unknown>;
+              }) => unknown;
+            }) {
+              yield { type: "start-step" };
+              yield { type: "text-start", id: `t-${streamCalls}` };
+              yield {
+                type: "text-delta",
+                id: `t-${streamCalls}`,
+                delta: `I'll research attempt ${streamCalls}.`,
+              };
+              messageMetadata?.({
+                part: {
+                  type: "finish-step",
+                  finishReason: "tool-calls",
+                  rawFinishReason: "tool_calls",
+                  usage: { inputTokens: 10, outputTokens: 5 },
+                },
+              });
+            },
+            totalUsage: Promise.reject(new Error("metadata stream dropped")),
+            finishReason: Promise.reject(new Error("metadata stream dropped")),
+            rawFinishReason: Promise.reject(
+              new Error("metadata stream dropped"),
+            ),
+            response: Promise.reject(new Error("metadata stream dropped")),
+            steps: Promise.reject(new Error("metadata stream dropped")),
+          };
+        },
+      },
+    }));
+
+    const { runAgentWorkflow: reloadedRun } = await import("./chat");
+    await reloadedRun(makeOptions({ maxSteps: 10 }));
+
+    // Downgrades to finishReason="stop" immediately on step 1 because zero
+    // completed (tool-call, tool-result) pairs exist — never loops 10 times!
+    expect(streamCalls).toBe(1);
+  });
+
+  test("breaks runaway loop when consecutive tool-calls steps append zero tool results", async () => {
+    let streamCalls = 0;
+    mock.module("@/app/config", () => ({
+      ...realAppConfig,
+      webAgent: {
+        tools: {},
+        stream: async () => {
+          streamCalls += 1;
+          return {
+            toUIMessageStream: async function* ({
+              onFinish,
+            }: {
+              onFinish?: (ev: { responseMessage: unknown }) => void;
+            }) {
+              yield { type: "start-step" };
+              yield { type: "text-start", id: `t-${streamCalls}` };
+              yield {
+                type: "text-delta",
+                id: `t-${streamCalls}`,
+                delta: `Opening attempt ${streamCalls}`,
+              };
+              onFinish?.({
+                responseMessage: {
+                  id: "assistant-1",
+                  role: "assistant",
+                  parts: [
+                    { type: "text", text: `Opening attempt ${streamCalls}` },
+                  ],
+                },
+              });
+            },
+            totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
+            finishReason: Promise.resolve("tool-calls"),
+            rawFinishReason: Promise.resolve("tool_calls"),
+            response: Promise.resolve({
+              // Assistant emits a dangling tool-call with NO tool-result
+              messages: [
+                {
+                  role: "assistant",
+                  content: [
+                    { type: "text", text: `Opening attempt ${streamCalls}` },
+                    {
+                      type: "tool-call",
+                      toolCallId: `dangling-${streamCalls}`,
+                      toolName: "web_search",
+                      input: { query: `query-${streamCalls}` },
+                    },
+                  ],
+                },
+              ],
+            }),
+            steps: Promise.resolve([]),
+          };
+        },
+      },
+    }));
+
+    const { runAgentWorkflow: reloadedRun } = await import("./chat");
+    await reloadedRun(makeOptions({ maxSteps: 10 }));
+
+    // Stops at 2 zero-progress steps instead of looping 10+ times!
+    expect(streamCalls).toBe(2);
+  });
 });
 
 // ── Subagent billing references ────────────────────────────────────
