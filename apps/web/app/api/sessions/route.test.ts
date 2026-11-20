@@ -28,6 +28,7 @@ let savedLink: VercelProjectSelection | null = null;
 let currentVercelToken: string | null = "vercel-token";
 let matchingProjects: VercelProjectSelection[] = [];
 let matchingProjectsError: Error | null = null;
+let startWorkflowGate: Promise<void> | null = null;
 const createCalls: Array<Record<string, unknown>> = [];
 const createChatCalls: Array<Record<string, unknown>> = [];
 const upsertCalls: Array<Record<string, unknown>> = [];
@@ -40,6 +41,9 @@ const originalNodeEnv = process.env.NODE_ENV;
 
 mock.module("workflow/api", () => ({
   start: async (_fn: unknown, args: Array<Record<string, unknown>>) => {
+    if (startWorkflowGate) {
+      await startWorkflowGate;
+    }
     if (args[0]) {
       startedWorkflowArgs.push(args[0]);
     }
@@ -107,9 +111,16 @@ mock.module("@/lib/db/sessions", () => ({
   createSessionWithInitialChat: async (input: {
     session: Record<string, unknown>;
     initialChat: Record<string, unknown>;
+    initialMessage?: Record<string, unknown>;
   }) => {
     createCalls.push(input.session);
     createChatCalls.push(input.initialChat);
+    if (input.initialMessage) {
+      persistedMessages.push({
+        ...input.initialMessage,
+        chatId: String(input.initialChat.id),
+      });
+    }
     return {
       session: {
         ...input.session,
@@ -124,6 +135,7 @@ mock.module("@/lib/db/sessions", () => ({
         reasoningEffort:
           (input.initialChat.reasoningEffort as string | null | undefined) ??
           null,
+        status: (input.initialChat.status as string | undefined) ?? "idle",
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -184,6 +196,7 @@ describe("/api/sessions POST vercel project linking", () => {
     currentVercelToken = "vercel-token";
     matchingProjects = [];
     matchingProjectsError = null;
+    startWorkflowGate = null;
     createCalls.length = 0;
     createChatCalls.length = 0;
     upsertCalls.length = 0;
@@ -441,8 +454,13 @@ describe("/api/sessions POST vercel project linking", () => {
     expect(createCalls).toHaveLength(0);
   });
 
-  test("atomically persists initialMessage, starts runAgentWorkflow, and claims activeStreamId in a single request", async () => {
+  test("atomically persists initialMessage in transaction and returns immediately while starting runAgentWorkflow in background", async () => {
     const { POST } = await routeModulePromise;
+
+    let releaseWorkflowStart!: () => void;
+    startWorkflowGate = new Promise<void>((resolve) => {
+      releaseWorkflowStart = resolve;
+    });
 
     const response = await POST(
       createJsonRequest({
@@ -460,19 +478,25 @@ describe("/api/sessions POST vercel project linking", () => {
     const body = (await response.json()) as {
       session: Record<string, unknown>;
       chat: Record<string, unknown>;
-      workflowRunId?: string;
+      initialWorkflowScheduled?: boolean;
     };
 
+    // HTTP response returns immediately without waiting on workflow/api start()
     expect(response.status).toBe(200);
-    expect(body.workflowRunId).toBe("wrun_atomic_1");
-    expect(body.chat.activeStreamId).toBe("wrun_atomic_1");
-    expect(body.chat.status).toBe("running");
+    expect(body.initialWorkflowScheduled).toBe(true);
+    expect(body.chat.status).toBe("queued");
     expect(persistedMessages).toHaveLength(1);
     expect(persistedMessages[0]).toMatchObject({
       id: "msg_initial_1",
       chatId: body.chat.id,
       role: "user",
     });
+    expect(startedWorkflowArgs).toHaveLength(0);
+
+    // Release the background workflow start and verify it runs & claims stream
+    releaseWorkflowStart();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
     expect(startedWorkflowArgs).toHaveLength(1);
     expect(startedWorkflowArgs[0]).toMatchObject({
       chatId: body.chat.id,
@@ -486,5 +510,30 @@ describe("/api/sessions POST vercel project linking", () => {
         runId: "wrun_atomic_1",
       },
     ]);
+  });
+
+  test("rejects initialMessage with more than 5 attachments before creating a session", async () => {
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(
+      createJsonRequest({
+        title: "Too many attachments",
+        initialMessage: {
+          id: "msg_too_many",
+          role: "user",
+          parts: Array.from({ length: 6 }, (_, i) => ({
+            type: "file",
+            url: `https://example.com/file-${i}.png`,
+            mediaType: "image/png",
+          })),
+        },
+      }),
+    );
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(400);
+    expect(body.error).toBe("Maximum 5 attachments allowed per message");
+    expect(createCalls).toHaveLength(0);
+    expect(persistedMessages).toHaveLength(0);
   });
 });

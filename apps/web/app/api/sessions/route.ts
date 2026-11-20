@@ -6,6 +6,7 @@ import {
   type SandboxProviderId,
 } from "@entry-agents/sandbox/registry.js";
 import { checkBotProtection } from "@/lib/botid";
+import { sanitizeMessageForDatabase } from "@/lib/chat/sanitize-db-message";
 import {
   createSessionWithInitialChat,
   getArchivedSessionCountByUserId,
@@ -356,9 +357,49 @@ export async function POST(req: Request) {
     finalBranch = generateBranchName(session.user.username, session.user.name);
   }
 
+  // Validate optional initialMessage upfront before creating any DB records.
+  const rawInitialMessage = body.initialMessage;
+  let initialUserMessage: import("@/app/types").WebAgentUIMessage | null = null;
+  if (
+    rawInitialMessage &&
+    typeof rawInitialMessage === "object" &&
+    rawInitialMessage.role === "user" &&
+    Array.isArray(rawInitialMessage.parts) &&
+    rawInitialMessage.parts.length > 0
+  ) {
+    const attachmentParts = rawInitialMessage.parts.filter(
+      (p) => p.type === "file" || p.type === "data-snippet",
+    );
+    if (attachmentParts.length > 5) {
+      return Response.json(
+        { error: "Maximum 5 attachments allowed per message" },
+        { status: 400 },
+      );
+    }
+
+    initialUserMessage = {
+      ...rawInitialMessage,
+      id:
+        typeof rawInitialMessage.id === "string" &&
+        rawInitialMessage.id.trim().length > 0
+          ? rawInitialMessage.id
+          : nanoid(),
+      role: "user",
+    };
+  }
+
   try {
+    const trimmedRequestedModelId = rawModelId?.trim();
+    const needsLiveModelsForReasoning =
+      typeof requestedReasoningEffort === "string" &&
+      requestedReasoningEffort.length > 0;
     const titlePromise = resolveSessionTitle(body, session.user.id);
     const preferencesPromise = getUserPreferences(session.user.id);
+    const liveModelsPromise = needsLiveModelsForReasoning
+      ? import("@/lib/models-with-context")
+          .then((m) => m.fetchAvailableLanguageModels())
+          .catch(() => [])
+      : null;
 
     let resolvedVercelProject: VercelProjectSelection | null = null;
     const hasRepo = Boolean(repoOwner && repoName);
@@ -407,9 +448,10 @@ export async function POST(req: Request) {
       }
     }
 
-    const [title, rawPreferences] = await Promise.all([
+    const [title, rawPreferences, prefetchedLiveModels] = await Promise.all([
       titlePromise,
       preferencesPromise,
+      liveModelsPromise ?? Promise.resolve(null),
     ]);
     const preferences = sanitizeUserPreferencesForSession(
       rawPreferences,
@@ -419,7 +461,6 @@ export async function POST(req: Request) {
     const effectiveAutoCommitPush =
       autoCommitPush ?? preferences.autoCommitPush;
     const effectiveAutoCreatePr = autoCreatePr ?? preferences.autoCreatePr;
-    const trimmedRequestedModelId = rawModelId?.trim();
     const effectiveModelId = trimmedRequestedModelId
       ? (sanitizeSelectedModelIdForSession(
           trimmedRequestedModelId,
@@ -434,15 +475,27 @@ export async function POST(req: Request) {
     if (requestedReasoningEffort === null) {
       effectiveReasoningEffort = null;
     } else if (requestedReasoningEffort && effectiveModelId) {
-      const { fetchAvailableLanguageModels } =
-        await import("@/lib/models-with-context");
-      const liveModels = await fetchAvailableLanguageModels().catch(() => []);
+      const liveModels =
+        prefetchedLiveModels ??
+        (await (
+          await import("@/lib/models-with-context")
+        )
+          .fetchAvailableLanguageModels()
+          .catch(() => []));
       effectiveReasoningEffort = sanitizeReasoningEffort(
         effectiveModelId,
         requestedReasoningEffort,
         liveModels,
       );
     }
+
+    const sanitizedInitialMessage = initialUserMessage
+      ? sanitizeMessageForDatabase(initialUserMessage)
+      : null;
+
+    // Persist session + chat (+ queued status and initial user message when
+    // present) in one atomic DB transaction so the client can navigate
+    // immediately without waiting on workflow startup round-trips.
     const result = await createSessionWithInitialChat({
       session: {
         id: nanoid(),
@@ -475,115 +528,28 @@ export async function POST(req: Request) {
       },
       initialChat: {
         id: nanoid(),
-        title: body.initialMessage ? title : "New chat",
+        title: initialUserMessage ? title : "New chat",
         modelId: effectiveModelId,
         ...(effectiveReasoningEffort !== undefined
           ? { reasoningEffort: effectiveReasoningEffort }
           : {}),
+        ...(initialUserMessage
+          ? {
+              status: "queued" as const,
+              runStatusUpdatedAt: new Date(),
+            }
+          : {}),
       },
+      ...(initialUserMessage && sanitizedInitialMessage
+        ? {
+            initialMessage: {
+              id: initialUserMessage.id,
+              role: "user",
+              parts: sanitizedInitialMessage,
+            },
+          }
+        : {}),
     });
-
-    let workflowRunId: string | null = null;
-    const rawInitialMessage = body.initialMessage;
-    if (
-      rawInitialMessage &&
-      typeof rawInitialMessage === "object" &&
-      rawInitialMessage.role === "user" &&
-      Array.isArray(rawInitialMessage.parts) &&
-      rawInitialMessage.parts.length > 0
-    ) {
-      const attachmentParts = rawInitialMessage.parts.filter(
-        (p) => p.type === "file" || p.type === "data-snippet",
-      );
-      if (attachmentParts.length > 5) {
-        return Response.json(
-          { error: "Maximum 5 attachments allowed per message" },
-          { status: 400 },
-        );
-      }
-
-      const initialUserMessage: import("@/app/types").WebAgentUIMessage = {
-        ...rawInitialMessage,
-        id:
-          typeof rawInitialMessage.id === "string" &&
-          rawInitialMessage.id.trim().length > 0
-            ? rawInitialMessage.id
-            : nanoid(),
-        role: "user",
-      };
-
-      const [
-        { generateId },
-        { start },
-        { runAgentWorkflow },
-        { isHobbyResourceProfile },
-        { sanitizeMessageForDatabase },
-        {
-          claimChatActiveStreamId,
-          createChatMessageIfNotExists,
-          setChatRunStatus,
-          touchChat,
-        },
-      ] = await Promise.all([
-        import("ai"),
-        import("workflow/api"),
-        import("@/app/workflows/chat"),
-        import("@/lib/deployment/resource-profile"),
-        import("@/lib/chat/sanitize-db-message"),
-        import("@/lib/db/sessions"),
-      ]);
-
-      await setChatRunStatus(result.chat.id, "queued", {
-        onlyIfActiveStreamId: null,
-      }).catch(() => {});
-
-      const sanitizedMessage = sanitizeMessageForDatabase(initialUserMessage);
-      await createChatMessageIfNotExists({
-        id: initialUserMessage.id,
-        chatId: result.chat.id,
-        role: "user",
-        parts: sanitizedMessage,
-      });
-      await touchChat(result.chat.id).catch(() => {});
-
-      try {
-        const run = await start(
-          runAgentWorkflow,
-          [
-            {
-              messages: [initialUserMessage],
-              chatId: result.chat.id,
-              sessionId: result.session.id,
-              userId: session.user.id,
-              requestUrl: req.url,
-              authSession: session ?? null,
-              assistantId: generateId(),
-              inputMessagesPersisted: true,
-              maxSteps: isHobbyResourceProfile() ? 50 : 500,
-            },
-          ],
-          {
-            attributes: {
-              chatId: result.chat.id,
-              sessionId: result.session.id,
-              userId: session.user.id,
-            },
-          },
-        );
-        workflowRunId = run.runId;
-        await claimChatActiveStreamId(result.chat.id, run.runId).catch(
-          () => false,
-        );
-      } catch (workflowError) {
-        await setChatRunStatus(result.chat.id, "failed", {
-          onlyIfActiveStreamId: null,
-        }).catch(() => {});
-        console.error(
-          `Failed to start initial workflow for chat ${result.chat.id}:`,
-          workflowError,
-        );
-      }
-    }
 
     const scheduleBackgroundWork = (task: () => Promise<void>) => {
       try {
@@ -594,21 +560,73 @@ export async function POST(req: Request) {
     };
 
     scheduleBackgroundWork(async () => {
-      await kickSandboxProvisioningWorkflow(result.session.id).catch(
-        (error) => {
+      const tasks: Array<Promise<unknown>> = [
+        kickSandboxProvisioningWorkflow(result.session.id).catch((error) => {
           console.error(
             `Failed to kick sandbox provisioning for session ${result.session.id}:`,
             error,
           );
-        },
-      );
+        }),
+      ];
 
-      if (
-        rawInitialMessage &&
-        typeof rawInitialMessage === "object" &&
-        Array.isArray(rawInitialMessage.parts)
-      ) {
-        const promptText = rawInitialMessage.parts
+      if (initialUserMessage) {
+        const messageToRun = initialUserMessage;
+        tasks.push(
+          (async () => {
+            const [
+              { generateId },
+              { start },
+              { runAgentWorkflow },
+              { isHobbyResourceProfile },
+              { claimChatActiveStreamId, setChatRunStatus },
+            ] = await Promise.all([
+              import("ai"),
+              import("workflow/api"),
+              import("@/app/workflows/chat"),
+              import("@/lib/deployment/resource-profile"),
+              import("@/lib/db/sessions"),
+            ]);
+
+            try {
+              const run = await start(
+                runAgentWorkflow,
+                [
+                  {
+                    messages: [messageToRun],
+                    chatId: result.chat.id,
+                    sessionId: result.session.id,
+                    userId: session.user.id,
+                    requestUrl: req.url,
+                    authSession: session ?? null,
+                    assistantId: generateId(),
+                    inputMessagesPersisted: true,
+                    maxSteps: isHobbyResourceProfile() ? 50 : 500,
+                  },
+                ],
+                {
+                  attributes: {
+                    chatId: result.chat.id,
+                    sessionId: result.session.id,
+                    userId: session.user.id,
+                  },
+                },
+              );
+              await claimChatActiveStreamId(result.chat.id, run.runId).catch(
+                () => false,
+              );
+            } catch (workflowError) {
+              await setChatRunStatus(result.chat.id, "failed", {
+                onlyIfActiveStreamId: null,
+              }).catch(() => {});
+              console.error(
+                `Failed to start initial workflow for chat ${result.chat.id}:`,
+                workflowError,
+              );
+            }
+          })(),
+        );
+
+        const promptText = messageToRun.parts
           .filter(
             (p): p is { type: "text"; text: string } =>
               p != null &&
@@ -621,40 +639,46 @@ export async function POST(req: Request) {
           .trim();
 
         if (promptText.length > 0 && (!body.title || body.title === title)) {
-          try {
-            const [{ generateSessionTitle }, { updateChat, updateSession }] =
-              await Promise.all([
-                import("@/app/api/generate-title/route"),
-                import("@/lib/db/sessions"),
-              ]);
-            const generatedTitle = await generateSessionTitle(promptText);
-            if (generatedTitle && generatedTitle.trim().length > 0) {
-              const cleanGenerated = generatedTitle.trim();
-              await Promise.all([
-                updateSession(result.session.id, {
-                  title: cleanGenerated,
-                }).catch(() => {}),
-                updateChat(result.chat.id, { title: cleanGenerated }).catch(
-                  () => {},
-                ),
-              ]);
-            }
-          } catch {
-            // Best-effort background title refinement
-          }
+          tasks.push(
+            (async () => {
+              try {
+                const [
+                  { generateSessionTitle },
+                  { updateChat, updateSession },
+                ] = await Promise.all([
+                  import("@/app/api/generate-title/route"),
+                  import("@/lib/db/sessions"),
+                ]);
+                const generatedTitle = await generateSessionTitle(promptText);
+                if (generatedTitle && generatedTitle.trim().length > 0) {
+                  const cleanGenerated = generatedTitle.trim();
+                  await Promise.all([
+                    updateSession(result.session.id, {
+                      title: cleanGenerated,
+                    }).catch(() => {}),
+                    updateChat(result.chat.id, { title: cleanGenerated }).catch(
+                      () => {},
+                    ),
+                  ]);
+                }
+              } catch {
+                // Best-effort background title refinement
+              }
+            })(),
+          );
         }
       }
+
+      await Promise.allSettled(tasks);
     });
 
     return Response.json({
       ...result,
       chat: {
         ...result.chat,
-        ...(workflowRunId
-          ? { activeStreamId: workflowRunId, status: "running" as const }
-          : {}),
+        ...(initialUserMessage ? { status: "queued" as const } : {}),
       },
-      ...(workflowRunId ? { workflowRunId } : {}),
+      ...(initialUserMessage ? { initialWorkflowScheduled: true } : {}),
     });
   } catch (error) {
     if (isVercelInvalidTokenError(error)) {
