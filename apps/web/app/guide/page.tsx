@@ -80,7 +80,7 @@ const structuredData = {
           name: "How do plans and 99% prompt caching work",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Paid plans range from $5/mo Plus ($10 credit) and $13/mo Entry ($50 credit, 3.8x) to $20/mo Pro ($100) and $40/mo Max ($180) with zero per-token markup, while prompt caching cuts repeated context costs by up to 99%.",
+            text: "Paid plans are $3/mo Plus ($6 credit, 2x) and $10/mo Builder ($28 credit, 2.8x) with zero per-token markup, while prompt caching cuts repeated context costs by up to 99%.",
           },
         },
       ],
@@ -383,7 +383,7 @@ Reproduce the bug, inspect network and server route responses, apply the smalles
                 {
                   plan: "Entry",
                   price: "$13/mo",
-                  detail: "$50 credit (3.8x) · $10/5h, $25/7d",
+                  detail: "$28 credit (2.8x) · $6/5h, $14/7d",
                 },
                 { plan: "Pro", price: "$20/mo", detail: "$100 credit (5.0x)" },
                 { plan: "Max", price: "$40/mo", detail: "$180 credit (4.5x)" },
