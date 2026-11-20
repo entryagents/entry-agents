@@ -1,7 +1,7 @@
 "use client";
 
 import type { ToolRenderState } from "@entry-agents/shared/lib/tool-state";
-import { CircleX, Loader2, Minus, OctagonPause, Plus } from "lucide-react";
+import { ChevronRight, CircleX, Loader2, OctagonPause } from "lucide-react";
 import type React from "react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -208,9 +208,9 @@ export function ToolLayout({
     <div className="-mx-1.5 rounded-md border border-transparent bg-transparent">
       <div
         className={cn(
-          "group flex min-w-0 select-none items-center gap-2 rounded-md px-1.5 py-1 text-sm",
+          "group flex min-h-[25px] min-w-0 select-none items-center gap-2 rounded-md px-1.5 py-0.5 text-[12.5px]",
           isInteractiveHeader &&
-            "cursor-pointer transition-colors hover:bg-muted/50 active:scale-[0.98]",
+            "cursor-pointer transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/40 active:bg-muted/60",
         )}
         {...(isInteractiveHeader && {
           onClick: handleClick,
@@ -221,34 +221,17 @@ export function ToolLayout({
         })}
       >
         {/* Icon area */}
-        <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70">
+        <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/70 transition-[color,transform] duration-150 group-hover:-translate-y-px group-hover:text-muted-foreground">
           {showErrorHeader ? (
             <>
-              <CircleX className="h-3.5 w-3.5 text-red-500 group-hover:hidden" />
-              {isExpandedPanelVisible ? (
-                <Minus className="hidden h-3.5 w-3.5 text-muted-foreground group-hover:block" />
-              ) : (
-                <Plus className="hidden h-3.5 w-3.5 text-muted-foreground group-hover:block" />
-              )}
+              <CircleX className="h-3.5 w-3.5 text-red-500" />
             </>
           ) : showInterruptedHeader ? (
             <>
-              <OctagonPause className="h-3.5 w-3.5 text-yellow-500 group-hover:hidden" />
-              {isExpandedPanelVisible ? (
-                <Minus className="hidden h-3.5 w-3.5 text-muted-foreground group-hover:block" />
-              ) : (
-                <Plus className="hidden h-3.5 w-3.5 text-muted-foreground group-hover:block" />
-              )}
+              <OctagonPause className="h-3.5 w-3.5 text-yellow-500" />
             </>
           ) : hasExpandedDetails && !isRunning ? (
-            <>
-              <span className="group-hover:hidden">{resolvedIcon}</span>
-              {isExpandedPanelVisible ? (
-                <Minus className="hidden h-3.5 w-3.5 text-muted-foreground group-hover:block" />
-              ) : (
-                <Plus className="hidden h-3.5 w-3.5 text-muted-foreground group-hover:block" />
-              )}
-            </>
+            <>{resolvedIcon}</>
           ) : (
             resolvedIcon
           )}
@@ -257,14 +240,14 @@ export function ToolLayout({
         {/* Name + summary */}
         <span
           className={cn(
-            "min-w-0 shrink truncate font-medium leading-none",
+            "min-w-0 shrink truncate font-normal leading-none transition-colors duration-150",
             showErrorHeader
               ? "text-red-500"
               : showInterruptedHeader
                 ? "text-yellow-500"
                 : state.denied
                   ? "text-red-500"
-                  : "text-foreground",
+                  : "text-muted-foreground group-hover:text-foreground",
             nameClassName,
           )}
         >
@@ -275,12 +258,12 @@ export function ToolLayout({
           {hasSummary && (
             <span
               className={cn(
-                "min-w-0 shrink truncate font-mono text-[13px] leading-none",
+                "min-w-0 shrink truncate text-[12.5px] leading-none",
                 showErrorHeader
                   ? "text-red-400/80"
                   : showInterruptedHeader
                     ? "text-yellow-400/80"
-                    : "text-neutral-700 dark:text-neutral-300 font-mono",
+                    : "text-muted-foreground",
                 summaryClassName,
               )}
             >
@@ -299,11 +282,20 @@ export function ToolLayout({
           )}
 
           {hasTrailingMeta && (
-            <span className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[12px] leading-none text-neutral-600 dark:text-neutral-400">
+            <span className="inline-flex shrink-0 items-center gap-1.5 text-[11.5px] leading-none tabular-nums text-muted-foreground/80">
               {meta}
             </span>
           )}
         </div>
+        {hasExpandedDetails && !isRunning && (
+          <ChevronRight
+            aria-hidden
+            className={cn(
+              "size-2.5 shrink-0 text-muted-foreground/60 opacity-0 transition-[transform,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 group-focus-visible:opacity-100",
+              isExpandedPanelVisible && "rotate-90 opacity-100",
+            )}
+          />
+        )}
       </div>
 
       {children}

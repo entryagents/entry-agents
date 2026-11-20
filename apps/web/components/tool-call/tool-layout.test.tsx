@@ -29,7 +29,7 @@ describe("ToolLayout interrupted state", () => {
     expect(html).toContain("lucide-octagon-pause");
     // Should NOT have the old pill badge
     expect(html).not.toContain("border-yellow-500/30 bg-yellow-500/10");
-    expect(html).not.toContain("py-0.5");
+    expect(html).not.toContain("py-1.5");
   });
 
   test("shows yellow interrupted box when expanded", () => {
@@ -111,7 +111,7 @@ describe("ToolLayout error state", () => {
     expect(html).toContain("bg-transparent");
     expect(html).not.toContain("bg-muted/35");
     // Uses +/- hover pattern instead of chevron
-    expect(html).toContain("lucide-minus");
+    expect(html).toContain("lucide-chevron-right");
     expect(html).toContain(
       "transition-[grid-template-rows,opacity,margin-top] motion-reduce:transition-none",
     );
