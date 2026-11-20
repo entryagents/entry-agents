@@ -80,7 +80,7 @@ const structuredData = {
           name: "How do plans and 99% prompt caching work",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Paid plans are $3/mo Plus ($6 credit, 2x) and $10/mo Builder ($28 credit, 2.8x) with zero per-token markup, while prompt caching cuts repeated context costs by up to 99%.",
+            text: "Paid plans are $3/mo Plus ($6 credit, 2x) and $10/mo Builder ($28 credit, 2.8x) with zero per-token markup, while we achieve a 90% to 99% cache hit rate across all models we support.",
           },
         },
       ],

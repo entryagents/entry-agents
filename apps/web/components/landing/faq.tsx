@@ -14,7 +14,7 @@ const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "What do plans cost and how does 99% prompt caching work",
     answer:
-      "Paid plans are $3/mo Plus ($6 credit, 2x value, $1.50/5h & $3.50/7d windows, 1 vCPU shared VM) and $10/mo Builder ($28 credit, 2.8x value, $6/5h & $14/7d windows, dedicated 2 vCPU / 8 GiB sandboxes up to 3 concurrent VMs) with zero per-token markup. Prompt caching reuses repository context and workspace history across turns, cutting repeat token costs by up to 99%.",
+      "Paid plans are $3/mo Plus ($6 credit, 2x value, $1.50/5h & $3.50/7d windows, 1 vCPU shared VM) and $10/mo Builder ($28 credit, 2.8x value, $6/5h & $14/7d windows, dedicated 2 vCPU / 8 GiB sandboxes up to 3 concurrent VMs) with zero per-token markup. We achieve a 90% to 99% cache hit rate across all models we support, reusing repository context and workspace history across turns.",
   },
   {
     question: "What happens if I lose internet or close my browser mid-turn",
