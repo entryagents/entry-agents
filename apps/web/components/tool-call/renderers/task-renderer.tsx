@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronRight, Loader2, XCircle } from "lucide-react";
+import { ChevronRight, Loader2, XCircle } from "lucide-react";
 import type { ToolRendererProps } from "@/app/lib/render-tool";
 import { useOptionalGitPanel } from "@/app/sessions/[sessionId]/chats/[chatId]/git-panel-context";
 import {
@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatAgentLine } from "@/lib/agent-hub/agent-line";
 import { cn } from "@/lib/utils";
+import "../agent-row.css";
 
 /**
  * Sable-style subagent block: header row (role · task + chevron to open SubagentThreadView)
@@ -83,51 +84,50 @@ export function TaskRenderer({
           onClick={handleOpen}
           disabled={!canOpen}
           className={cn(
-            "inline-flex max-w-full items-center gap-2 rounded-lg border border-border/70 bg-muted/30 px-2.5 py-1.5 text-xs text-foreground transition-colors duration-150",
+            "group -mx-1.5 flex min-h-[25px] max-w-full items-center gap-2 rounded-md px-1.5 py-0.5 text-left text-[12.5px] text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
             canOpen
-              ? "cursor-pointer hover:border-border hover:bg-muted/60"
+              ? "cursor-pointer hover:bg-muted/40 hover:text-foreground active:bg-muted/60"
               : "cursor-default",
           )}
         >
-          {isRunning ? (
-            <Loader2
-              className="size-3.5 shrink-0 animate-spin text-muted-foreground"
-              strokeWidth={1.5}
-            />
-          ) : isFailed ? (
-            <XCircle
-              className="size-3.5 shrink-0 text-destructive"
-              strokeWidth={1.5}
-            />
-          ) : (
-            <Check
-              className="size-3.5 shrink-0 text-emerald-500"
-              strokeWidth={1.75}
-            />
-          )}
-
-          <SubagentIcon
-            subagentType={subagentType}
-            className="size-3.5 shrink-0 text-muted-foreground"
-          />
-
-          <span className="font-medium text-foreground shrink-0">
-            {roleName}
+          <span className="flex size-4 shrink-0 items-center justify-center transition-transform duration-150 group-hover:-translate-y-px">
+            {isRunning ? (
+              <Loader2 className="size-3.5 animate-spin" strokeWidth={1.5} />
+            ) : isFailed ? (
+              <XCircle
+                className="size-3.5 text-destructive"
+                strokeWidth={1.5}
+              />
+            ) : (
+              <SubagentIcon
+                subagentType={subagentType}
+                className="size-3.5 shrink-0"
+              />
+            )}
           </span>
+
+          <span className="shrink-0 text-foreground/90">{roleName}</span>
           {title !== roleName && (
             <>
               <span className="text-muted-foreground/60" aria-hidden="true">
                 ·
               </span>
-              <span className="truncate text-muted-foreground max-w-[320px]">
-                {title}
-              </span>
+              <span className="min-w-0 truncate">{title}</span>
             </>
           )}
 
+          {isRunning && toolCallCount ? (
+            <span className="ml-auto shrink-0 pl-2 text-[11.5px] tabular-nums">
+              {toolCallCount} {toolCallCount === 1 ? "step" : "steps"}
+            </span>
+          ) : null}
+
           {canOpen && (
             <ChevronRight
-              className="size-3 shrink-0 text-muted-foreground/70 ml-0.5"
+              className={cn(
+                "size-2.5 shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100",
+                !(isRunning && toolCallCount) && "ml-auto",
+              )}
               strokeWidth={1.5}
             />
           )}
@@ -160,7 +160,7 @@ export function TaskRenderer({
       {(liveTicker || !isRunning) && (
         <div className="ml-2.5 border-l border-border/70 pl-2.5 text-[11.5px] tabular-nums text-muted-foreground">
           {liveTicker ? (
-            <span className="truncate block">{liveTicker}</span>
+            <span className="shimmer block truncate">{liveTicker}</span>
           ) : (
             <span
               className={line.tone === "error" ? "text-destructive" : undefined}
