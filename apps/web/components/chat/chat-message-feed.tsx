@@ -762,7 +762,7 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {groupedRenderMessages.map(
         ({ message: m, groups, isStreaming: isMessageStreaming }) => (
           <ChatMessageRow
