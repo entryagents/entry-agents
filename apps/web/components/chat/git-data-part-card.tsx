@@ -98,22 +98,18 @@ export function GitDataPartCard({
       : {};
 
   return (
-    <div className="flex items-center gap-3 py-1 select-none">
-      {/* Left rule */}
-      <div className="h-px flex-1 bg-border/60" />
-
-      {/* Center label */}
+    <div className="my-1 select-none">
       <Wrapper
         {...wrapperProps}
         className={cn(
-          "group/sep flex max-w-[80%] items-center gap-1.5",
-          url && !isPending && "cursor-pointer",
+          "group/sep inline-flex max-w-full items-center gap-2 rounded-md px-1 py-0.5 text-[13px] transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
+          url && !isPending && "cursor-pointer hover:bg-muted/50",
         )}
       >
         {IconEl}
         <span
           className={cn(
-            "truncate text-xs font-medium",
+            "truncate font-medium",
             textColor,
             url &&
               !isPending &&
@@ -123,36 +119,24 @@ export function GitDataPartCard({
           {label}
         </span>
         {detail && (
-          <>
-            <span className="text-muted-foreground/30">·</span>
-            <span
-              className={cn(
-                "truncate font-mono text-[11px]",
-                textColor,
-                url &&
-                  !isPending &&
-                  "group-hover/sep:text-foreground transition-colors",
-              )}
-            >
-              {detail}
-            </span>
-          </>
+          <span
+            className={cn(
+              "truncate font-mono text-[11px] tabular-nums",
+              textColor,
+            )}
+          >
+            {detail}
+          </span>
         )}
         {url && !isPending && (
-          <ExternalLink
-            className={cn(
-              "h-3 w-3 shrink-0 text-muted-foreground/0 transition-colors",
-              "group-hover/sep:text-muted-foreground",
-            )}
-          />
+          <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground/0 transition-colors group-hover/sep:text-muted-foreground" />
         )}
       </Wrapper>
-
-      {/* Right rule */}
-      <div className="h-px flex-1 bg-border/60" />
-
-      {/* Subtitle (commit message when SHA is shown as detail) */}
-      {subtitle && <p className="sr-only">{subtitle}</p>}
+      {subtitle && (
+        <p className="ml-[7px] mt-0.5 truncate border-l border-border/70 pl-4 text-[12.5px] text-muted-foreground">
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }
