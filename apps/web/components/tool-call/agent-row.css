@@ -1,0 +1,37 @@
+/*
+ * Subagent row, ported from Leonxlnx/sable timeline.css (.agent-*, .shimmer).
+ * A plain icon, "type · task", the figures at the right edge, and under it the
+ * live ticker or the settled hairline summary.
+ */
+
+.shimmer {
+  color: transparent;
+  background: linear-gradient(
+      100deg,
+      var(--muted-foreground) 35%,
+      var(--foreground) 50%,
+      var(--muted-foreground) 65%
+    )
+    0 0 / 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shimmer 2.4s linear infinite;
+  will-change: transform;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 130% 0;
+  }
+  to {
+    background-position: -130% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+    color: var(--muted-foreground);
+    background: none;
+  }
+}
