@@ -21,6 +21,8 @@ import {
   useGitPanel,
 } from "./chats/[chatId]/git-panel-context";
 import { ReviewProvider } from "./chats/[chatId]/review-context";
+import { TriageProvider } from "@/components/triage/triage-context";
+import { TriageDeck } from "@/components/triage/triage-deck";
 import { SessionHeader } from "./chats/[chatId]/session-header";
 import { ChatTabs } from "./chats/[chatId]/chat-tabs";
 import { SessionLayoutContext } from "./session-layout-context";
@@ -397,9 +399,12 @@ export function SessionLayoutShell({
     <SessionLayoutContext.Provider value={layoutContext}>
       <GitPanelProvider>
         <ReviewProvider sessionId={initialSession.id}>
-          <SessionLayoutInner activeChatId={activeChatId}>
-            {children}
-          </SessionLayoutInner>
+          <TriageProvider>
+            <SessionLayoutInner activeChatId={activeChatId}>
+              {children}
+            </SessionLayoutInner>
+            <TriageDeck />
+          </TriageProvider>
         </ReviewProvider>
       </GitPanelProvider>
     </SessionLayoutContext.Provider>
