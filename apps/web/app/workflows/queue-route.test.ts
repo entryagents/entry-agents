@@ -83,6 +83,13 @@ function makeTx(): FakeTx {
 
 mock.module("@/lib/db/client", () => ({
   db: {
+    select: () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Promise.resolve([{ queuedPrompts }]),
+        }),
+      }),
+    }),
     transaction: async (runTx: (tx: FakeTx) => Promise<unknown>) => {
       spies.transaction();
       const prev = txChain;
@@ -100,16 +107,57 @@ mock.module("@/lib/db/client", () => ({
   },
 }));
 
+let currentChat: {
+  id: string;
+  status: string;
+  activeStreamId: string | null;
+} = {
+  id: "chat-1",
+  status: "running",
+  activeStreamId: "wrun_active_1",
+};
+let verifyRunOutcome: "alive" | "gone" | "unknown" = "alive";
+let verifyTerminalStatus: "completed" | "failed" | "cancelled" | undefined =
+  undefined;
+const startNextQueuedSpy = mock((_params?: unknown) =>
+  Promise.resolve({ started: true, runId: "wrun_started_from_post" }),
+);
+const casClearActiveStreamSpy = mock(
+  (_chatId?: unknown, _expected?: unknown, _next?: unknown) =>
+    Promise.resolve(true),
+);
+
 mock.module("@/app/api/chat/_lib/chat-context", () => ({
   requireAuthenticatedUser: async () => ({ ok: true, userId: "user-1" }),
   requireOwnedChatById: async () => ({
     ok: true,
     sessionRecord: { id: "session-1", userId: "user-1" },
-    chat: { id: "chat-1" },
+    chat: currentChat,
   }),
 }));
 
-const { POST, DELETE } = await import("../api/chat/[chatId]/queue/route");
+mock.module("@/lib/db/sessions", () => ({
+  getChatById: async () => currentChat,
+  compareAndSetChatActiveStreamId: casClearActiveStreamSpy,
+  setChatRunStatus: mock(() => Promise.resolve()),
+}));
+
+mock.module("@/lib/workflow-run-recovery", () => ({
+  verifyRunStateWithStatus: async () => ({
+    outcome: verifyRunOutcome,
+    terminalStatus: verifyTerminalStatus,
+  }),
+}));
+
+mock.module("@/app/workflows/chat-post-finish", () => ({
+  startNextQueuedWorkflowInternal: startNextQueuedSpy,
+}));
+
+mock.module("@/lib/session/get-server-session", () => ({
+  getServerSession: async () => null,
+}));
+
+const { GET, POST, DELETE } = await import("../api/chat/[chatId]/queue/route");
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -154,7 +202,16 @@ beforeEach(() => {
   queuedPrompts = null;
   gateNextSelect = null;
   txChain = Promise.resolve();
+  currentChat = {
+    id: "chat-1",
+    status: "running",
+    activeStreamId: "wrun_active_1",
+  };
+  verifyRunOutcome = "alive";
+  verifyTerminalStatus = undefined;
   Object.values(spies).forEach((s) => s.mockClear());
+  startNextQueuedSpy.mockClear();
+  casClearActiveStreamSpy.mockClear();
 });
 
 describe("queue route mutations", () => {
@@ -222,5 +279,69 @@ describe("queue route mutations", () => {
       (call) => call[0] as string,
     );
     expect(strengths.every((strength) => strength === "update")).toBe(true);
+  });
+
+  test("GET reports hasActiveStream so clients can detect chained runs", async () => {
+    queuedPrompts = [makePrompt("q1")];
+    currentChat = {
+      id: "chat-1",
+      status: "running",
+      activeStreamId: "wrun_next_1",
+    };
+
+    const res = await GET(
+      new Request("http://localhost/api/chat/chat-1/queue"),
+      { params: Promise.resolve({ chatId: "chat-1" }) },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      queued: QueuedPrompt[];
+      hasActiveStream: boolean;
+    };
+    expect(body.hasActiveStream).toBe(true);
+    expect(body.queued.map((p) => p.id)).toEqual(["q1"]);
+  });
+
+  test("POST starts queued workflow when chat was previously cancelled and idle", async () => {
+    currentChat = {
+      id: "chat-1",
+      status: "cancelled",
+      activeStreamId: null,
+    };
+
+    const res = await post({
+      id: "after-cancel",
+      text: "run after stop",
+      payload: { text: "run after stop" },
+    });
+    expect(res.status).toBe(200);
+    expect(startNextQueuedSpy).toHaveBeenCalledTimes(1);
+    expect(startNextQueuedSpy.mock.calls[0]?.[0]).toMatchObject({
+      chatId: "chat-1",
+      allowFromCancelled: true,
+    });
+  });
+
+  test("POST clears stale gone activeStreamId and starts the queued workflow", async () => {
+    currentChat = {
+      id: "chat-1",
+      status: "running",
+      activeStreamId: "wrun_dead_1",
+    };
+    verifyRunOutcome = "gone";
+    verifyTerminalStatus = "failed";
+
+    const res = await post({
+      id: "after-stale",
+      text: "recover stale run",
+      payload: { text: "recover stale run" },
+    });
+    expect(res.status).toBe(200);
+    expect(casClearActiveStreamSpy).toHaveBeenCalledWith(
+      "chat-1",
+      "wrun_dead_1",
+      null,
+    );
+    expect(startNextQueuedSpy).toHaveBeenCalledTimes(1);
   });
 });

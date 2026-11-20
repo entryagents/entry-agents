@@ -135,7 +135,12 @@ export async function GET(_req: Request, context: RouteContext) {
   const auth = await authorize(context);
   if (!auth.ok) return auth.response;
 
-  return Response.json({ queued: await readQueue(auth.chatId) });
+  const hasActiveStream =
+    auth.chat.activeStreamId !== null && auth.chat.status !== "cancelled";
+  return Response.json({
+    queued: await readQueue(auth.chatId),
+    hasActiveStream,
+  });
 }
 
 export async function POST(req: Request, context: RouteContext) {
@@ -229,11 +234,45 @@ export async function POST(req: Request, context: RouteContext) {
 
   const freshChat =
     (await getChatById(auth.chatId).catch(() => null)) ?? auth.chat;
+  let activeStreamId = freshChat.activeStreamId ?? null;
+  let chatStatus = freshChat.status;
+
+  if (activeStreamId !== null) {
+    try {
+      const [
+        { verifyRunStateWithStatus },
+        { compareAndSetChatActiveStreamId, setChatRunStatus },
+      ] = await Promise.all([
+        import("@/lib/workflow-run-recovery"),
+        import("@/lib/db/sessions"),
+      ]);
+      const { outcome: runOutcome, terminalStatus } =
+        await verifyRunStateWithStatus(activeStreamId);
+      if (runOutcome === "gone") {
+        const cleared = await compareAndSetChatActiveStreamId(
+          auth.chatId,
+          activeStreamId,
+          null,
+        ).catch(() => false);
+        if (cleared) {
+          activeStreamId = null;
+          chatStatus = terminalStatus ?? "idle";
+          await setChatRunStatus(auth.chatId, chatStatus, {
+            onlyIfActiveStreamId: null,
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      // Best-effort stale-run check; leave activeStreamId untouched on error.
+    }
+  }
+
   if (
-    freshChat.activeStreamId === null &&
-    (freshChat.status === "idle" ||
-      freshChat.status === "completed" ||
-      freshChat.status === "failed")
+    activeStreamId === null &&
+    (chatStatus === "idle" ||
+      chatStatus === "completed" ||
+      chatStatus === "failed" ||
+      chatStatus === "cancelled")
   ) {
     try {
       const [{ startNextQueuedWorkflowInternal }, { getServerSession }] =
@@ -248,6 +287,7 @@ export async function POST(req: Request, context: RouteContext) {
         userId: auth.userId,
         requestUrl: req.url,
         authSession: session ?? null,
+        allowFromCancelled: true,
       });
       started = startedRun.started;
       if (started) {

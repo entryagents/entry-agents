@@ -898,6 +898,19 @@ export interface StartNextQueuedWorkflowParams {
   teamRoleModels?: Record<string, string>;
   autoCommitEnabled?: boolean;
   autoCreatePrEnabled?: boolean;
+  /**
+   * Allow starting a queued turn even when the previous turn ended as
+   * `"cancelled"` (used when the user explicitly posts a new prompt via
+   * `POST /api/chat/[chatId]/queue`). Automated end-of-turn chaining leaves
+   * this `false` so pressing Stop halts the remaining queue.
+   */
+  allowFromCancelled?: boolean;
+  /**
+   * When true, rethrow transient start/DB errors after restoring the popped
+   * prompt so the Workflow SDK retries `startNextQueuedWorkflowStep` instead
+   * of stranding the remaining queue.
+   */
+  rethrowOnStartError?: boolean;
 }
 
 function normalizeStoredChatMessage(row: {
@@ -1072,6 +1085,51 @@ export async function dequeueNextQueuedUserMessageStep(
  * timeout, isolated workflow event history, and full per-turn finalization
  * (auto-commit / auto-PR / final assistant persist).
  */
+async function restoreQueuedPromptToFront(
+  chatId: string,
+  rawItem: unknown,
+): Promise<void> {
+  if (rawItem === undefined) return;
+  const rawId =
+    rawItem &&
+    typeof rawItem === "object" &&
+    "id" in rawItem &&
+    typeof (rawItem as { id?: unknown }).id === "string"
+      ? (rawItem as { id: string }).id
+      : null;
+
+  const { eq } = await import("drizzle-orm");
+  const { db } = await import("@/lib/db/client");
+  const { chats } = await import("@/lib/db/schema");
+  await db
+    .transaction(async (tx) => {
+      const rows = await tx
+        .select({ queuedPrompts: chats.queuedPrompts })
+        .from(chats)
+        .where(eq(chats.id, chatId))
+        .limit(1)
+        .for("update");
+      const current = Array.isArray(rows[0]?.queuedPrompts)
+        ? (rows[0].queuedPrompts as unknown[])
+        : [];
+      const alreadyPresent =
+        rawId !== null &&
+        current.some(
+          (item) =>
+            item &&
+            typeof item === "object" &&
+            "id" in item &&
+            (item as { id?: unknown }).id === rawId,
+        );
+      if (alreadyPresent) return;
+      await tx
+        .update(chats)
+        .set({ queuedPrompts: [rawItem, ...current] })
+        .where(eq(chats.id, chatId));
+    })
+    .catch(() => {});
+}
+
 export async function startNextQueuedWorkflowInternal(
   params: StartNextQueuedWorkflowParams,
 ): Promise<{ started: boolean; runId?: string }> {
@@ -1083,7 +1141,11 @@ export async function startNextQueuedWorkflowInternal(
       setChatRunStatus,
     } = await import("@/lib/db/sessions");
     const chat = await getChatById(params.chatId);
-    if (!chat || chat.status === "cancelled" || chat.activeStreamId !== null) {
+    if (
+      !chat ||
+      (!params.allowFromCancelled && chat.status === "cancelled") ||
+      chat.activeStreamId !== null
+    ) {
       return { started: false };
     }
 
@@ -1154,6 +1216,7 @@ export async function startNextQueuedWorkflowInternal(
         nextRun.runId,
       );
       if (!claimed) {
+        await restoreQueuedPromptToFront(params.chatId, dequeued.rawItem);
         try {
           await getRun(nextRun.runId).cancel();
         } catch {
@@ -1165,39 +1228,28 @@ export async function startNextQueuedWorkflowInternal(
       return { started: true, runId: nextRun.runId };
     } catch (error) {
       // Restore the popped item to the front of queuedPrompts on workflow start failure.
-      if (dequeued.rawItem !== undefined) {
-        const { eq } = await import("drizzle-orm");
-        const { db } = await import("@/lib/db/client");
-        const { chats } = await import("@/lib/db/schema");
-        await db
-          .transaction(async (tx) => {
-            const rows = await tx
-              .select({ queuedPrompts: chats.queuedPrompts })
-              .from(chats)
-              .where(eq(chats.id, params.chatId))
-              .limit(1)
-              .for("update");
-            const current = Array.isArray(rows[0]?.queuedPrompts)
-              ? (rows[0].queuedPrompts as unknown[])
-              : [];
-            await tx
-              .update(chats)
-              .set({ queuedPrompts: [dequeued.rawItem, ...current] })
-              .where(eq(chats.id, params.chatId));
-          })
-          .catch(() => {});
-      }
-      await setChatRunStatus(params.chatId, "failed", {
-        onlyIfActiveStreamId: null,
-      }).catch(() => {});
+      await restoreQueuedPromptToFront(params.chatId, dequeued.rawItem);
+      await setChatRunStatus(
+        params.chatId,
+        params.rethrowOnStartError ? "completed" : "failed",
+        {
+          onlyIfActiveStreamId: null,
+        },
+      ).catch(() => {});
       console.error(
         `[workflow] Failed to start next queued workflow for chat ${params.chatId}:`,
         error,
       );
+      if (params.rethrowOnStartError) {
+        throw error;
+      }
       return { started: false };
     }
   } catch (error) {
     console.error("[workflow] startNextQueuedWorkflowInternal error:", error);
+    if (params.rethrowOnStartError) {
+      throw error;
+    }
     return { started: false };
   }
 }
@@ -1207,7 +1259,10 @@ export async function startNextQueuedWorkflowStep(
 ): Promise<{ started: boolean; runId?: string }> {
   "use step";
 
-  return startNextQueuedWorkflowInternal(params);
+  return startNextQueuedWorkflowInternal({
+    ...params,
+    rethrowOnStartError: true,
+  });
 }
 
 export async function getUnreadInboxCountStep(

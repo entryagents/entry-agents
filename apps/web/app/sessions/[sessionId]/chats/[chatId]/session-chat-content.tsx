@@ -2139,11 +2139,14 @@ export function SessionChatContent({
   const wasChatInFlightForQueueSyncRef = useRef(isChatInFlight);
   const queuedCountRef = useRef(queuedMessages.length);
   queuedCountRef.current = queuedMessages.length;
+  const queuedHeadIdRef = useRef<string | null>(queuedMessages[0]?.id ?? null);
+  queuedHeadIdRef.current = queuedMessages[0]?.id ?? null;
 
   // Read-only sync with the server-backed queue when a turn finishes: the
   // workflow engine drains and chains the next queued prompt durably on the
   // server, so this client only refreshes the displayed queue list and attaches
-  // to the chained workflow stream when a queued item was consumed.
+  // to the chained workflow stream when a queued item was consumed or a chained
+  // run is already active on the server.
   useEffect(() => {
     const transitionedToIdle =
       wasChatInFlightForQueueSyncRef.current && !isChatInFlight;
@@ -2154,6 +2157,7 @@ export function SessionChatContent({
     }
 
     const prevQueuedCount = queuedCountRef.current;
+    const prevHeadId = queuedHeadIdRef.current;
     if (!transitionedToIdle && prevQueuedCount === 0) {
       return;
     }
@@ -2171,6 +2175,7 @@ export function SessionChatContent({
               modelId?: string | null;
               reasoningEffort?: string | null;
             }>;
+            hasActiveStream?: boolean;
           } | null,
         ) => {
           if (cancelled || !data || !Array.isArray(data.queued)) return;
@@ -2183,10 +2188,14 @@ export function SessionChatContent({
               reasoningEffort: item.reasoningEffort,
             })),
           );
+          const headConsumed =
+            prevHeadId !== null && data.queued[0]?.id !== prevHeadId;
           if (
             transitionedToIdle &&
             !userStopped &&
-            data.queued.length < prevQueuedCount
+            (data.queued.length < prevQueuedCount ||
+              headConsumed ||
+              data.hasActiveStream === true)
           ) {
             retryChatStream({ auto: true, strategy: "reconnect" });
           }
