@@ -200,7 +200,11 @@ function SessionLayoutInner({
         )}
       >
         <SessionHeader />
-        {activeChatId && <ChatTabs activeChatId={activeChatId} />}
+        {activeChatId && (
+          <div className="md:hidden">
+            <ChatTabs activeChatId={activeChatId} />
+          </div>
+        )}
         <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
       </div>
 

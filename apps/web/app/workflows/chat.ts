@@ -14,6 +14,7 @@ import {
   reportUndefined,
   withoutUndefined,
 } from "@/app/workflows/serialization";
+import { TurnLoopGuard } from "@/app/workflows/loop-guard";
 import type { PlanUsageWindows } from "@/lib/billing/plans";
 import {
   createMcpToolSet,
@@ -2790,6 +2791,7 @@ export async function runAgentWorkflow(options: Options) {
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
+    const loopGuard = new TurnLoopGuard();
     let consecutiveStepRecoveries = 0;
 
     for (
@@ -3268,6 +3270,10 @@ export async function runAgentWorkflow(options: Options) {
       // calls across steps (e.g. model calling identical failing commands repeatedly
       // without changing args). Short-circuits runaway loops to preserve model tokens.
       const stepToolCallSignatures: string[] = [];
+      const stepToolCallRecords: Array<{
+        toolName: string;
+        signature: string;
+      }> = [];
       for (const msg of result.responseMessages) {
         if (msg.role === "assistant" && Array.isArray(msg.content)) {
           for (const part of msg.content) {
@@ -3281,16 +3287,35 @@ export async function runAgentWorkflow(options: Options) {
                 input?: unknown;
                 args?: unknown;
               };
+              const name = tc.toolName ?? "unknown";
+              let sig = name;
               try {
-                stepToolCallSignatures.push(
-                  `${tc.toolName ?? "unknown"}:${JSON.stringify(tc.input ?? tc.args ?? {})}`,
-                );
+                sig = `${name}:${JSON.stringify(tc.input ?? tc.args ?? {})}`;
               } catch {
-                stepToolCallSignatures.push(`${tc.toolName ?? "unknown"}`);
+                sig = name;
               }
+              stepToolCallSignatures.push(sig);
+              stepToolCallRecords.push({ toolName: name, signature: sig });
             }
           }
         }
+      }
+
+      const guardDecision = loopGuard.recordStep(stepToolCallRecords);
+      if (guardDecision.action === "warn") {
+        console.warn(
+          `[chat-workflow] Loop guard warning for chat ${options.chatId}: ${guardDecision.reason}`,
+        );
+        modelMessages.push({
+          role: "user",
+          content:
+            "[System notice: You have repeated exploration tool calls without making progress. Stop exploring and either complete the task directly with the context you already have, or ask the user one concise clarifying question.]",
+        });
+      } else if (guardDecision.action === "break") {
+        console.warn(
+          `[chat-workflow] Loop guard breaking runaway turn for chat ${options.chatId}: ${guardDecision.reason}`,
+        );
+        break;
       }
 
       if (stepToolCallSignatures.length > 0) {
