@@ -36,12 +36,10 @@ interface BillingMeResponse {
 }
 
 const PLAN_BLURB: Record<string, string> = {
-  free: "Try Entry with included starter models. $1 trial credit, no card required.",
-  plus: "Full model access. $10 of credit every month.",
+  free: "Try Entry with 5 messages/day and a shared 1 vCPU / 4 GiB cloud workspace. $1 trial credit, no card required.",
+  plus: "$6 monthly AI credit (2x value) with $1.50/5h and $3.50/7d usage windows, high-allowance open coding models, and a shared 1 vCPU / 4 GiB cloud workspace (25 active hrs/mo).",
   entry:
-    "The flagship Entry plan. $13/mo grants $50 of usage credit (3.8x). Choose between continuous Sliding Windows or Fixed Window Refill cycles for your $10 / 5-hour, $25 / 7-day, and $50 / 30-day limits.",
-  pro: "$100 of credit every month for heavy builders.",
-  max: "$180 of credit. Our biggest monthly pool.",
+    "$28 monthly AI credit (2.8x value) with $6/5h and $14/7d usage windows, full model access, dedicated 2 vCPU / 8 GiB cloud sandboxes per session (up to 3 concurrent VMs), and 50 active hrs/mo.",
 };
 
 export function PlansCatalog() {
