@@ -2,6 +2,7 @@
 
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { UserAvatarDropdown } from "@/components/user-avatar-dropdown";
 import { Button } from "@/components/ui/button";
@@ -20,9 +21,15 @@ export function LandingNav({
 }: {
   readonly showSignIn?: boolean;
 }) {
+  const pathname = usePathname();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { isAuthenticated, loading } = useSession();
+
+  const signInHref =
+    pathname && pathname !== "/" && pathname !== "/login"
+      ? `/login?next=${encodeURIComponent(pathname)}`
+      : "/login";
 
   useEffect(() => {
     const handle = () => setScrolled(window.scrollY > 16);
@@ -68,7 +75,7 @@ export function LandingNav({
           ) : (
             showSignIn && (
               <Link
-                href="/login"
+                href={signInHref}
                 className="inline-flex h-8 items-center rounded-lg border border-(--l-border) bg-(--l-surface) px-3 text-xs font-medium text-(--l-fg) transition-colors duration-150 hover:border-(--l-fg-4)"
               >
                 Sign in
@@ -107,7 +114,7 @@ export function LandingNav({
             ))}
             {!loading && !isAuthenticated && (
               <Link
-                href="/login"
+                href={signInHref}
                 onClick={() => setMobileMenuOpen(false)}
                 className="mt-1 inline-flex h-9 items-center justify-center rounded-lg bg-(--l-btn-bg) px-4 text-sm font-medium text-(--l-btn-fg)"
               >

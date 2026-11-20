@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { SignInButton } from "@/components/auth/sign-in-button";
+import { getServerSession } from "@/lib/session/get-server-session";
 
 /**
  * The dedicated sign-in page (one centered card, full-width provider buttons).
@@ -31,16 +33,25 @@ export default async function LoginPage({
       ? nextParam
       : "/sessions";
 
+  const session = await getServerSession();
+  if (session?.user) {
+    redirect(callbackUrl);
+  }
+
+  const isPricingReturn = callbackUrl.startsWith("/pricing");
+
   return (
     <main className="flex min-h-dvh items-center justify-center bg-background px-4 py-12 sm:px-6">
       <div className="w-full max-w-sm">
         <div className="rounded-2xl border border-border/60 bg-card p-6 shadow-xs sm:p-8">
           <div className="text-center">
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-              Sign in
+              {isPricingReturn ? "Sign in to subscribe" : "Sign in"}
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              Continue with Vercel, Google, or GitHub to open your workspaces.
+              {isPricingReturn
+                ? "Continue with Vercel, Google, or GitHub to return to subscription plans"
+                : "Continue with Vercel, Google, or GitHub to open your workspaces"}
             </p>
           </div>
 
@@ -70,10 +81,10 @@ export default async function LoginPage({
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
           <Link
-            href="/"
+            href={isPricingReturn ? "/pricing" : "/"}
             className="underline underline-offset-4 hover:text-foreground"
           >
-            Back to home
+            {isPricingReturn ? "Back to pricing" : "Back to home"}
           </Link>
         </p>
       </div>

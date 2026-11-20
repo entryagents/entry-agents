@@ -98,7 +98,15 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   } = useGitPanel();
 
   const isMobile = useIsMobile();
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    if (window.matchMedia("(max-width: 767px)").matches) return false;
+    try {
+      return localStorage.getItem(WORKSPACE_SIDEBAR_STORAGE_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
   const sidebarInitializedRef = useRef(false);
 
   useEffect(() => {
@@ -106,17 +114,6 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
     sidebarInitializedRef.current = true;
     if (isMobile) {
       setIsSidebarOpen(false);
-      return;
-    }
-    try {
-      const saved = localStorage.getItem(WORKSPACE_SIDEBAR_STORAGE_KEY);
-      if (saved === "0") {
-        setIsSidebarOpen(false);
-      } else {
-        setIsSidebarOpen(true);
-      }
-    } catch {
-      setIsSidebarOpen(true);
     }
   }, [isMobile]);
 
@@ -153,6 +150,10 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
   );
 
   useEffect(() => {
+    if (activeWorkspaceTab === "diff") {
+      setActiveWorkspaceTab("review");
+      return;
+    }
     if (
       activeWorkspaceTab === "review" ||
       activeWorkspaceTab === "preview" ||
@@ -162,8 +163,13 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
         if (prev.has(activeWorkspaceTab)) return prev;
         return new Set([...prev, activeWorkspaceTab]);
       });
+      setOpenToolTabs((prev) =>
+        prev.includes(activeWorkspaceTab)
+          ? prev
+          : [activeWorkspaceTab, ...prev],
+      );
     }
-  }, [activeWorkspaceTab]);
+  }, [activeWorkspaceTab, setActiveWorkspaceTab]);
 
   const handlePrefetchFile = useCallback(
     (filePath: string) => {
@@ -369,7 +375,7 @@ export function WorkspacePanel(props: WorkspacePanelProps) {
                 type="button"
                 variant="ghost"
                 size="icon"
-                onClick={() => setIsSidebarOpen((prev) => !prev)}
+                onClick={toggleSidebar}
                 className={cn(
                   "h-7 w-7 rounded-md text-muted-foreground hover:text-foreground cursor-pointer shrink-0 mr-0.5",
                   isSidebarOpen && "bg-muted text-foreground",

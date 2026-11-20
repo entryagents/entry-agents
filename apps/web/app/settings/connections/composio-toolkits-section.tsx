@@ -372,7 +372,7 @@ export function ComposioToolkitsSection() {
             </div>
           </div>
           <Link
-            href="/settings/billing"
+            href="/pricing"
             className="inline-flex h-7 shrink-0 items-center justify-center rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90"
           >
             Upgrade plan

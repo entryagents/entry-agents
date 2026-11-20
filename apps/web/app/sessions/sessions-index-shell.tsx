@@ -1,12 +1,18 @@
 "use client";
 
-import { Folder, X } from "lucide-react";
+import { Folder, Lock, Search, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import { DEFAULT_SANDBOX_TYPE } from "@/components/sandbox-selector-compact";
+import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useModelOptions } from "@/hooks/use-model-options";
 import { useProjects } from "@/hooks/use-projects";
 import type { SessionWithUnread } from "@/hooks/use-sessions";
@@ -198,24 +204,60 @@ export function SessionsIndexShell() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <header className="border-b border-border px-3 py-2 lg:px-4 lg:py-3">
-        <div className="flex min-h-8 items-center gap-2">
-          <SidebarTrigger className="shrink-0" />
-          <span className="text-sm font-medium text-foreground">New chat</span>
-          {selectedFolder ? (
-            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
-              <Folder className="h-3 w-3 shrink-0" strokeWidth={1.5} />
-              <span className="max-w-40 truncate">{selectedFolder.name}</span>
-              <button
-                type="button"
-                onClick={() => router.replace("/sessions", { scroll: false })}
-                className="ml-0.5 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
-                aria-label="Clear folder selection"
-              >
-                <X className="h-3 w-3" strokeWidth={1.5} />
-              </button>
+      <header className="border-b border-border bg-background px-3 py-1.5 select-none">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <SidebarTrigger className="h-7 w-7 shrink-0 cursor-pointer text-muted-foreground hover:text-foreground" />
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Toggle left sidebar · ⌘B
+              </TooltipContent>
+            </Tooltip>
+            <span className="text-xs font-medium text-foreground sm:text-sm sm:font-normal sm:text-muted-foreground">
+              New chat
             </span>
-          ) : null}
+            {selectedFolder ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground">
+                <Folder className="h-3 w-3 shrink-0" strokeWidth={1.5} />
+                <span className="max-w-40 truncate">{selectedFolder.name}</span>
+                <button
+                  type="button"
+                  onClick={() => router.replace("/sessions", { scroll: false })}
+                  className="ml-0.5 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+                  aria-label="Clear folder selection"
+                >
+                  <X className="h-3 w-3" strokeWidth={1.5} />
+                </button>
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex items-center gap-1.5 shrink-0">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    window.dispatchEvent(
+                      new CustomEvent("entry:open-command-palette"),
+                    );
+                  }}
+                  className="hidden h-7 items-center gap-1.5 rounded-md border border-border/60 bg-muted/20 px-2 text-xs text-muted-foreground hover:text-foreground sm:inline-flex cursor-pointer"
+                  aria-label="Open command palette"
+                >
+                  <Search className="h-3 w-3" />
+                  <kbd className="font-mono text-[10px] tracking-tight">⌘K</kbd>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Command palette · ⌘K / Ctrl+K
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       </header>
 
@@ -242,7 +284,7 @@ export function SessionsIndexShell() {
             onModelChange={setSelectedModelId}
             onReasoningEffortChange={setReasoningEffort}
             onUpgradeRequired={() => {
-              router.push("/settings/billing");
+              router.push("/pricing");
             }}
             permissionMode={permissionMode}
             isTogglingPermissionMode={false}
@@ -262,6 +304,23 @@ export function SessionsIndexShell() {
             onEnqueueMessage={() => {}}
             onSendInboxMessage={async () => false}
             onStopStream={() => {}}
+            overlaySlot={
+              composerGate ? (
+                <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-background/80 backdrop-blur-md">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/pricing")}
+                    className="flex items-center gap-2 rounded-full bg-background px-4 py-2 text-sm font-medium text-foreground shadow-md ring-1 ring-border transition-colors hover:bg-muted cursor-pointer"
+                  >
+                    <Lock className="h-4 w-4 shrink-0" />
+                    <span>
+                      {composerGate.reason ||
+                        "Free tier ended — upgrade your account to use Entry"}
+                    </span>
+                  </button>
+                </div>
+              ) : null
+            }
           />
         </div>
       </div>

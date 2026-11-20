@@ -16,7 +16,7 @@ import {
   RefreshCw,
   RotateCcw,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { PatchDiff } from "@pierre/diffs/react";
 import type { DiffFile } from "@/lib/diff/compute-diff";
@@ -50,6 +50,7 @@ import {
 } from "@/lib/github/queries/pr";
 import { cn } from "@/lib/utils";
 import type { GitPanelProps } from "../git-panel";
+import { useGitPanel } from "../git-panel-context";
 import { FileTypeIcon } from "@/components/file-type-icons";
 
 export type WorkspaceReviewTabProps = GitPanelProps & {
@@ -107,6 +108,8 @@ export function WorkspaceReviewTab({
   onCreateRepoClick,
 }: WorkspaceReviewTabProps) {
   const { resolvedTheme } = useTheme();
+  const { focusedDiffFile, focusedDiffRequestId } = useGitPanel();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Diff View Mode: unified or split
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified");
@@ -134,15 +137,9 @@ export function WorkspaceReviewTab({
     null,
   );
 
-  // Filter uncommitted changes
+  // Include all changed files (staged, unstaged, partial, or branch diff)
   const uncommittedFiles = useMemo(() => {
-    if (!diffFiles) return [];
-    return diffFiles.filter(
-      (f) =>
-        f.stagingStatus === "unstaged" ||
-        f.stagingStatus === "partial" ||
-        !f.stagingStatus,
-    );
+    return diffFiles ?? [];
   }, [diffFiles]);
 
   // Expand all by default on first load of uncommitted files
@@ -151,6 +148,30 @@ export function WorkspaceReviewTab({
       setExpandedFiles(new Set(uncommittedFiles.map((f) => f.path)));
     }
   }, [uncommittedFiles, expandedFiles.size]);
+
+  // Auto-expand and scroll to focusedDiffFile when openDiffToFile is triggered
+  useEffect(() => {
+    if (!focusedDiffFile) return;
+    setExpandedFiles((prev) => {
+      if (prev.has(focusedDiffFile)) return prev;
+      return new Set([...prev, focusedDiffFile]);
+    });
+
+    const raf = window.requestAnimationFrame(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      const items = container.querySelectorAll<HTMLElement>(
+        "[data-diff-file-path]",
+      );
+      for (const el of items) {
+        if (el.dataset.diffFilePath === focusedDiffFile) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          break;
+        }
+      }
+    });
+    return () => window.cancelAnimationFrame(raf);
+  }, [focusedDiffFile, focusedDiffRequestId]);
 
   // Check PR merge readiness when PR exists
   useEffect(() => {
@@ -522,7 +543,7 @@ export function WorkspaceReviewTab({
       </div>
 
       {/* Main Diff Accordions Scroll Area */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto">
         {diffRefreshing && uncommittedFiles.length === 0 ? (
           <div className="flex h-full items-center justify-center py-16 text-muted-foreground">
             <Loader2 className="h-6 w-6 animate-spin" />
@@ -559,7 +580,11 @@ export function WorkspaceReviewTab({
               const dirPath = file.path.slice(0, -fileName.length);
 
               return (
-                <div key={file.path} className="group/diff-file">
+                <div
+                  key={file.path}
+                  data-diff-file-path={file.path}
+                  className="group/diff-file"
+                >
                   {/* Accordion File Header */}
                   <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-muted/20 hover:bg-muted/40 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] select-none text-xs">
                     <button

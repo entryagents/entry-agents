@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { getAdminSubscriptionOverview } from "@/lib/admin/subscriptions";
+import { getBachsEnvironmentStatus } from "@/lib/billing/bachs";
+import { PLAN_CATALOG, resolveProductIdForPlan } from "@/lib/billing/plans";
 import { AdminStatCard } from "../admin-stat-card";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +21,72 @@ function formatShortDate(iso: string | null): string {
 
 export default async function AdminSubscriptionsPage() {
   const overview = await getAdminSubscriptionOverview();
+  const bachsStatus = getBachsEnvironmentStatus();
+  const plusProductId = resolveProductIdForPlan(PLAN_CATALOG.plus);
+  const builderProductId = resolveProductIdForPlan(PLAN_CATALOG.entry);
 
   return (
     <div className="space-y-6">
+      <section className="rounded-lg border border-border bg-card px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 font-mono text-xs font-medium ${
+                bachsStatus.mode === "live"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                  : bachsStatus.mode === "sandbox"
+                    ? "border-amber-500/30 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                    : "border-border bg-muted text-muted-foreground"
+              }`}
+            >
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  bachsStatus.mode === "live"
+                    ? "bg-emerald-500"
+                    : bachsStatus.mode === "sandbox"
+                      ? "bg-amber-500"
+                      : "bg-muted-foreground"
+                }`}
+              />
+              {bachsStatus.mode === "live"
+                ? "Bachs Live"
+                : bachsStatus.mode === "sandbox"
+                  ? "Bachs Sandbox"
+                  : "Bachs Unconfigured"}
+            </span>
+            <span className="font-mono text-xs text-muted-foreground">
+              {bachsStatus.baseUrl}
+            </span>
+            {bachsStatus.keyPrefix ? (
+              <span className="rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
+                {bachsStatus.keyPrefix}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 font-mono text-xs tabular-nums text-muted-foreground">
+            <span>
+              Webhook:{" "}
+              <strong className="font-medium text-foreground">
+                {bachsStatus.webhookSecretConfigured ? "Active" : "Missing"}
+              </strong>
+            </span>
+            <span>
+              Plus ($3):{" "}
+              <strong className="font-medium text-foreground">
+                {plusProductId ?? "none"}
+              </strong>
+            </span>
+            <span>
+              Builder ($10):{" "}
+              <strong className="font-medium text-foreground">
+                {builderProductId ?? "none"}
+              </strong>
+            </span>
+          </div>
+        </div>
+      </section>
+
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <AdminStatCard
           label="Estimated MRR"
