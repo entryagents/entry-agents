@@ -24,8 +24,10 @@ import {
   X,
 } from "lucide-react";
 import { useTheme } from "@/app/providers";
+import "./sidebar/sable-sidebar.css";
 import { EntryMark } from "@/components/entry-mark";
 import { GitHubImportDialog } from "@/components/github-import-dialog";
+import { SessionChildChats } from "@/components/sidebar/session-child-chats";
 import { SidebarProjectsSection } from "@/components/sidebar-projects-section";
 import {
   DesktopBalanceBox,
@@ -1059,7 +1061,7 @@ export function InboxSidebar({
         </div>
 
         {/* Unified Smooth Repository & Session Branch Tree */}
-        <div className="min-h-0 flex-1 overflow-y-auto pr-0.5">
+        <div className="min-h-0 flex-1 overflow-y-auto pr-0.5 sable-side-list">
           {showLoadingSkeleton ? (
             <div className="space-y-1 p-1">
               {Array.from({ length: 5 }).map((_, index) => (
@@ -1086,20 +1088,24 @@ export function InboxSidebar({
                 }}
                 onCreateSessionForRepo={handleImportRepo}
                 renderSessionRow={(sessionItem) => (
-                  <SessionRow
-                    key={sessionItem.id}
-                    session={sessionItem}
-                    isActive={sessionItem.id === activeSessionId}
-                    isPending={sessionItem.id === pendingSessionId}
-                    folders={customProjects}
-                    onSessionClick={handleSessionClick}
-                    onSessionPrefetch={handleSessionPrefetch}
-                    onRenameSession={onRenameSession}
-                    onMoveSessionToFolder={onMoveSessionToFolder}
-                    onArchiveSession={handleArchiveSession}
-                    onUnarchiveSession={handleUnarchiveSession}
-                    onOpenBranchPicker={handleOpenBranchPicker}
-                  />
+                  <div key={sessionItem.id}>
+                    <SessionRow
+                      session={sessionItem}
+                      isActive={sessionItem.id === activeSessionId}
+                      isPending={sessionItem.id === pendingSessionId}
+                      folders={customProjects}
+                      onSessionClick={handleSessionClick}
+                      onSessionPrefetch={handleSessionPrefetch}
+                      onRenameSession={onRenameSession}
+                      onMoveSessionToFolder={onMoveSessionToFolder}
+                      onArchiveSession={handleArchiveSession}
+                      onUnarchiveSession={handleUnarchiveSession}
+                      onOpenBranchPicker={handleOpenBranchPicker}
+                    />
+                    {sessionItem.id === activeSessionId && (
+                      <SessionChildChats sessionId={sessionItem.id} />
+                    )}
+                  </div>
                 )}
               />
 
@@ -1115,20 +1121,24 @@ export function InboxSidebar({
                   </div>
                   <div className="space-y-0.5 p-0.5">
                     {standaloneSessions.map((sessionItem) => (
-                      <SessionRow
-                        key={sessionItem.id}
-                        session={sessionItem}
-                        isActive={sessionItem.id === activeSessionId}
-                        isPending={sessionItem.id === pendingSessionId}
-                        folders={customProjects}
-                        onSessionClick={handleSessionClick}
-                        onSessionPrefetch={handleSessionPrefetch}
-                        onRenameSession={onRenameSession}
-                        onMoveSessionToFolder={onMoveSessionToFolder}
-                        onArchiveSession={handleArchiveSession}
-                        onUnarchiveSession={handleUnarchiveSession}
-                        onOpenBranchPicker={handleOpenBranchPicker}
-                      />
+                      <div key={sessionItem.id}>
+                        <SessionRow
+                          session={sessionItem}
+                          isActive={sessionItem.id === activeSessionId}
+                          isPending={sessionItem.id === pendingSessionId}
+                          folders={customProjects}
+                          onSessionClick={handleSessionClick}
+                          onSessionPrefetch={handleSessionPrefetch}
+                          onRenameSession={onRenameSession}
+                          onMoveSessionToFolder={onMoveSessionToFolder}
+                          onArchiveSession={handleArchiveSession}
+                          onUnarchiveSession={handleUnarchiveSession}
+                          onOpenBranchPicker={handleOpenBranchPicker}
+                        />
+                        {sessionItem.id === activeSessionId && (
+                          <SessionChildChats sessionId={sessionItem.id} />
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -1160,18 +1170,22 @@ export function InboxSidebar({
             <>
               <div className="space-y-0.5 p-0.5">
                 {filteredDisplayedSessions.map((sessionItem) => (
-                  <SessionRow
-                    key={sessionItem.id}
-                    session={sessionItem}
-                    isActive={sessionItem.id === activeSessionId}
-                    isPending={sessionItem.id === pendingSessionId}
-                    onSessionClick={handleSessionClick}
-                    onSessionPrefetch={handleSessionPrefetch}
-                    onRenameSession={onRenameSession}
-                    onArchiveSession={handleArchiveSession}
-                    onUnarchiveSession={handleUnarchiveSession}
-                    onOpenBranchPicker={handleOpenBranchPicker}
-                  />
+                  <div key={sessionItem.id}>
+                    <SessionRow
+                      session={sessionItem}
+                      isActive={sessionItem.id === activeSessionId}
+                      isPending={sessionItem.id === pendingSessionId}
+                      onSessionClick={handleSessionClick}
+                      onSessionPrefetch={handleSessionPrefetch}
+                      onRenameSession={onRenameSession}
+                      onArchiveSession={handleArchiveSession}
+                      onUnarchiveSession={handleUnarchiveSession}
+                      onOpenBranchPicker={handleOpenBranchPicker}
+                    />
+                    {sessionItem.id === activeSessionId && (
+                      <SessionChildChats sessionId={sessionItem.id} />
+                    )}
+                  </div>
                 ))}
               </div>
 
