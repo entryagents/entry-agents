@@ -6394,7 +6394,21 @@ const runAgentStep = async (
       isNonRetryableApiCallError(errorWithStepTiming) ||
       didWriteOutputToWritable
     ) {
-      const fatalError = new FatalError(errorWithStepTiming.message);
+      const hasStructuredInvalidRequest =
+        errorWithStepTiming instanceof APICallError &&
+        errorWithStepTiming.statusCode === 400 &&
+        isObjectRecord(errorWithStepTiming.data) &&
+        isObjectRecord(errorWithStepTiming.data.error) &&
+        errorWithStepTiming.data.error.type === "invalid_request_error";
+      const fatalMessage =
+        hasStructuredInvalidRequest &&
+        recoveryAction === undefined &&
+        !errorWithStepTiming.message
+          .toLowerCase()
+          .includes("invalid_request_error")
+          ? `invalid_request_error: ${errorWithStepTiming.message}`
+          : errorWithStepTiming.message;
+      const fatalError = new FatalError(fatalMessage);
       Object.assign(fatalError, {
         stepTiming: (errorWithStepTiming as { stepTiming?: unknown })
           .stepTiming,
