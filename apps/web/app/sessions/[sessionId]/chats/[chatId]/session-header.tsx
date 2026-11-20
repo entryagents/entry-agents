@@ -22,6 +22,7 @@ import {
 import { useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useGitPanel } from "./git-panel-context";
+import { WaitingCount } from "@/components/triage/waiting-count";
 import { useSessionLayout } from "@/app/sessions/[sessionId]/session-layout-context";
 
 /**
@@ -253,6 +254,7 @@ export function SessionHeader() {
             </Tooltip>
           )}
 
+          <WaitingCount />
           <div ref={headerActionsRef} className="flex items-center gap-1.5" />
 
           <Tooltip>

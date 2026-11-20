@@ -55,6 +55,8 @@ import {
 } from "@/components/pinned-todo-panel";
 import { QueuedPromptsPanel } from "@/components/queued-prompts-panel";
 import { ReviewBar } from "@/components/review/review-bar";
+import { useTriage } from "@/components/triage/triage-context";
+import { extractTriagePromptsFromMessages } from "@/lib/triage/deck";
 import { OpenFileProvider } from "@/components/tool-call/open-file-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -2870,6 +2872,37 @@ export function SessionChatContent({
       addToolApprovalResponse({ id, approved: false, reason }),
     [addToolApprovalResponse],
   );
+
+  const { setActiveHandlers } = useTriage();
+  const liveTriagePrompts = useMemo(
+    () =>
+      extractTriagePromptsFromMessages(messages, {
+        sessionId: session.id,
+        chatId: chatInfo.id,
+        sessionTitle: session.title,
+      }),
+    [messages, session.id, chatInfo.id, session.title],
+  );
+
+  useEffect(() => {
+    setActiveHandlers({
+      chatId: chatInfo.id,
+      livePrompts: liveTriagePrompts,
+      onApproveTool: handleApproveTool,
+      onDenyTool: handleDenyTool,
+      onSubmitQuestion: handleQuestionSubmit,
+      onCancelQuestion: handleQuestionCancel,
+    });
+    return () => setActiveHandlers(null);
+  }, [
+    chatInfo.id,
+    liveTriagePrompts,
+    handleApproveTool,
+    handleDenyTool,
+    handleQuestionSubmit,
+    handleQuestionCancel,
+    setActiveHandlers,
+  ]);
 
   const handleUpgradeRequired = useCallback(
     () => router.push("/pricing"),
