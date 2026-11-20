@@ -62,6 +62,7 @@ interface CreateSessionRequest {
   modelId?: string;
   reasoningEffort?: string | null;
   vercelProject?: VercelProjectSelection | null;
+  initialMessage?: import("@/app/types").WebAgentUIMessage;
 }
 
 function generateBranchName(username: string, name?: string | null): string {
@@ -474,7 +475,7 @@ export async function POST(req: Request) {
       },
       initialChat: {
         id: nanoid(),
-        title: "New chat",
+        title: body.initialMessage ? title : "New chat",
         modelId: effectiveModelId,
         ...(effectiveReasoningEffort !== undefined
           ? { reasoningEffort: effectiveReasoningEffort }
@@ -482,7 +483,117 @@ export async function POST(req: Request) {
       },
     });
 
-    after(async () => {
+    let workflowRunId: string | null = null;
+    const rawInitialMessage = body.initialMessage;
+    if (
+      rawInitialMessage &&
+      typeof rawInitialMessage === "object" &&
+      rawInitialMessage.role === "user" &&
+      Array.isArray(rawInitialMessage.parts) &&
+      rawInitialMessage.parts.length > 0
+    ) {
+      const attachmentParts = rawInitialMessage.parts.filter(
+        (p) => p.type === "file" || p.type === "data-snippet",
+      );
+      if (attachmentParts.length > 5) {
+        return Response.json(
+          { error: "Maximum 5 attachments allowed per message" },
+          { status: 400 },
+        );
+      }
+
+      const initialUserMessage: import("@/app/types").WebAgentUIMessage = {
+        ...rawInitialMessage,
+        id:
+          typeof rawInitialMessage.id === "string" &&
+          rawInitialMessage.id.trim().length > 0
+            ? rawInitialMessage.id
+            : nanoid(),
+        role: "user",
+      };
+
+      const [
+        { generateId },
+        { start },
+        { runAgentWorkflow },
+        { isHobbyResourceProfile },
+        { sanitizeMessageForDatabase },
+        {
+          claimChatActiveStreamId,
+          createChatMessageIfNotExists,
+          setChatRunStatus,
+          touchChat,
+        },
+      ] = await Promise.all([
+        import("ai"),
+        import("workflow/api"),
+        import("@/app/workflows/chat"),
+        import("@/lib/deployment/resource-profile"),
+        import("@/lib/chat/sanitize-db-message"),
+        import("@/lib/db/sessions"),
+      ]);
+
+      await setChatRunStatus(result.chat.id, "queued", {
+        onlyIfActiveStreamId: null,
+      }).catch(() => {});
+
+      const sanitizedMessage = sanitizeMessageForDatabase(initialUserMessage);
+      await createChatMessageIfNotExists({
+        id: initialUserMessage.id,
+        chatId: result.chat.id,
+        role: "user",
+        parts: sanitizedMessage,
+      });
+      await touchChat(result.chat.id).catch(() => {});
+
+      try {
+        const run = await start(
+          runAgentWorkflow,
+          [
+            {
+              messages: [initialUserMessage],
+              chatId: result.chat.id,
+              sessionId: result.session.id,
+              userId: session.user.id,
+              requestUrl: req.url,
+              authSession: session ?? null,
+              assistantId: generateId(),
+              inputMessagesPersisted: true,
+              maxSteps: isHobbyResourceProfile() ? 50 : 500,
+            },
+          ],
+          {
+            attributes: {
+              chatId: result.chat.id,
+              sessionId: result.session.id,
+              userId: session.user.id,
+            },
+          },
+        );
+        workflowRunId = run.runId;
+        await claimChatActiveStreamId(result.chat.id, run.runId).catch(
+          () => false,
+        );
+      } catch (workflowError) {
+        await setChatRunStatus(result.chat.id, "failed", {
+          onlyIfActiveStreamId: null,
+        }).catch(() => {});
+        console.error(
+          `Failed to start initial workflow for chat ${result.chat.id}:`,
+          workflowError,
+        );
+      }
+    }
+
+    const scheduleBackgroundWork = (task: () => Promise<void>) => {
+      try {
+        after(task);
+      } catch {
+        void task();
+      }
+    };
+
+    scheduleBackgroundWork(async () => {
       await kickSandboxProvisioningWorkflow(result.session.id).catch(
         (error) => {
           console.error(
@@ -491,9 +602,60 @@ export async function POST(req: Request) {
           );
         },
       );
+
+      if (
+        rawInitialMessage &&
+        typeof rawInitialMessage === "object" &&
+        Array.isArray(rawInitialMessage.parts)
+      ) {
+        const promptText = rawInitialMessage.parts
+          .filter(
+            (p): p is { type: "text"; text: string } =>
+              p != null &&
+              typeof p === "object" &&
+              (p as { type?: unknown }).type === "text" &&
+              typeof (p as { text?: unknown }).text === "string",
+          )
+          .map((p) => p.text)
+          .join(" ")
+          .trim();
+
+        if (promptText.length > 0 && (!body.title || body.title === title)) {
+          try {
+            const [{ generateSessionTitle }, { updateChat, updateSession }] =
+              await Promise.all([
+                import("@/app/api/generate-title/route"),
+                import("@/lib/db/sessions"),
+              ]);
+            const generatedTitle = await generateSessionTitle(promptText);
+            if (generatedTitle && generatedTitle.trim().length > 0) {
+              const cleanGenerated = generatedTitle.trim();
+              await Promise.all([
+                updateSession(result.session.id, {
+                  title: cleanGenerated,
+                }).catch(() => {}),
+                updateChat(result.chat.id, { title: cleanGenerated }).catch(
+                  () => {},
+                ),
+              ]);
+            }
+          } catch {
+            // Best-effort background title refinement
+          }
+        }
+      }
     });
 
-    return Response.json(result);
+    return Response.json({
+      ...result,
+      chat: {
+        ...result.chat,
+        ...(workflowRunId
+          ? { activeStreamId: workflowRunId, status: "running" as const }
+          : {}),
+      },
+      ...(workflowRunId ? { workflowRunId } : {}),
+    });
   } catch (error) {
     if (isVercelInvalidTokenError(error)) {
       console.warn(

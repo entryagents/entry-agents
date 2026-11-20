@@ -69,6 +69,7 @@ import {
   kickSandboxLifecycleStep,
   persistFinalAssistantMessage,
   persistAssistantMessage,
+  persistAssistantMessageInternal,
   persistAssistantMessageWithToolResults,
   persistSandboxState,
   persistUserMessage,
@@ -4049,6 +4050,12 @@ const runAgentStep = async (
   const streamedTextOrder: string[] = [];
   const streamedReasoningById = new Map<string, string>();
   const streamedReasoningOrder: string[] = [];
+  let hasEmittedStepStartInInvocation = false;
+  const liveStepToolOrder: string[] = [];
+  const liveStepToolParts = new Map<
+    string,
+    WebAgentUIMessage["parts"][number]
+  >();
   let lastStepUsage: LanguageModelUsage | undefined;
   let lastStepCost: number | undefined;
   let stepFinishReasons: WebAgentStepFinishMetadata[] = [];
@@ -5160,6 +5167,91 @@ const runAgentStep = async (
         coalescingWriter =
           createCoalescingStreamWriter<UIMessageChunk>(streamWriter);
 
+        let lastMidStepCheckpointAt = 0;
+        let midStepCheckpointInFlight = false;
+        const baseStepParts: WebAgentUIMessage["parts"] =
+          lastOriginalMessage?.role === "assistant" &&
+          Array.isArray(lastOriginalMessage.parts)
+            ? [...lastOriginalMessage.parts]
+            : [];
+
+        const buildLiveAssistantSnapshot = (): WebAgentUIMessage | null => {
+          const reasoningParts = streamedReasoningOrder
+            .map((id) => streamedReasoningById.get(id) ?? "")
+            .filter((text) => text.length > 0)
+            .map((text) => ({ type: "reasoning" as const, text }));
+          const textParts = streamedTextOrder
+            .map((id) => streamedTextById.get(id) ?? "")
+            .filter((text) => text.length > 0)
+            .map((text) => ({ type: "text" as const, text }));
+          const toolParts = liveStepToolOrder
+            .map((id) => liveStepToolParts.get(id))
+            .filter(
+              (p): p is WebAgentUIMessage["parts"][number] => p !== undefined,
+            );
+          if (
+            reasoningParts.length === 0 &&
+            textParts.length === 0 &&
+            toolParts.length === 0
+          ) {
+            return null;
+          }
+          const stepStartPrefix: WebAgentUIMessage["parts"] =
+            hasEmittedStepStartInInvocation || baseStepParts.length > 0
+              ? [{ type: "step-start" as const }]
+              : [];
+          const snapshotParts: WebAgentUIMessage["parts"] = [
+            ...baseStepParts,
+            ...stepStartPrefix,
+            ...reasoningParts,
+            ...textParts,
+            ...toolParts,
+          ];
+          const baseMeta = withModelMetadata(
+            lastOriginalMessage?.role === "assistant"
+              ? lastOriginalMessage.metadata
+              : undefined,
+            selectedModelId,
+            modelId,
+          );
+          let snapshot: WebAgentUIMessage = {
+            id: messageId,
+            role: "assistant",
+            parts: snapshotParts,
+            metadata: {
+              ...baseMeta,
+              ...(totalMessageUsage ? { totalMessageUsage } : {}),
+              ...(lastStepUsage ? { lastStepUsage } : {}),
+              ...(totalMessageCost !== undefined ? { totalMessageCost } : {}),
+              ...(lastStepCost !== undefined ? { lastStepCost } : {}),
+              ...(liveStepBreakdown.length > 0
+                ? { stepBreakdown: liveStepBreakdown }
+                : {}),
+            },
+          };
+          if (stepSecretRedactor?.hasSecrets()) {
+            snapshot = stepSecretRedactor.redactUnknown(snapshot);
+          }
+          return snapshot;
+        };
+
+        const maybeScheduleMidStepCheckpoint = (force = false) => {
+          if (midStepCheckpointInFlight) return;
+          const now = Date.now();
+          if (!force && now - lastMidStepCheckpointAt < 1_500) {
+            return;
+          }
+          const snapshot = buildLiveAssistantSnapshot();
+          if (!snapshot) return;
+          lastMidStepCheckpointAt = now;
+          midStepCheckpointInFlight = true;
+          void persistAssistantMessageInternal(chatId, snapshot)
+            .catch(() => {})
+            .finally(() => {
+              midStepCheckpointInFlight = false;
+            });
+        };
+
         for await (const part of stream.toUIMessageStream<WebAgentUIMessage>({
           originalMessages,
           generateMessageId: () => messageId,
@@ -5325,6 +5417,7 @@ const runAgentStep = async (
             }
 
             if (streamPart.type === "finish-step") {
+              stepFinishedThisInvocation = true;
               const stepDecodeMs =
                 stepFirstTokenMs !== null && stepLastTokenMs !== null
                   ? Math.max(0, stepLastTokenMs - stepFirstTokenMs)
@@ -5475,7 +5568,12 @@ const runAgentStep = async (
             responseMessage = finishedResponseMessage;
           },
         })) {
-          if (part.type === "text-start" && typeof part.id === "string") {
+          if (part.type === "start-step") {
+            hasEmittedStepStartInInvocation = true;
+          } else if (
+            part.type === "text-start" &&
+            typeof part.id === "string"
+          ) {
             if (!streamedTextById.has(part.id)) {
               streamedTextById.set(part.id, "");
               streamedTextOrder.push(part.id);
@@ -5493,6 +5591,7 @@ const runAgentStep = async (
               part.id,
               (streamedTextById.get(part.id) ?? "") + part.delta,
             );
+            maybeScheduleMidStepCheckpoint(false);
           } else if (
             part.type === "reasoning-start" &&
             typeof part.id === "string"
@@ -5514,6 +5613,64 @@ const runAgentStep = async (
               part.id,
               (streamedReasoningById.get(part.id) ?? "") + part.delta,
             );
+            maybeScheduleMidStepCheckpoint(false);
+          } else if (
+            part.type === "tool-input-available" &&
+            typeof part.toolCallId === "string" &&
+            typeof part.toolName === "string"
+          ) {
+            if (!liveStepToolParts.has(part.toolCallId)) {
+              liveStepToolOrder.push(part.toolCallId);
+            }
+            liveStepToolParts.set(part.toolCallId, {
+              type: `tool-${part.toolName}`,
+              toolCallId: part.toolCallId,
+              state: "input-available",
+              input: part.input,
+            } as unknown as WebAgentUIMessage["parts"][number]);
+            maybeScheduleMidStepCheckpoint(true);
+          } else if (
+            part.type === "tool-output-available" &&
+            typeof part.toolCallId === "string"
+          ) {
+            const existing = liveStepToolParts.get(part.toolCallId) as
+              | {
+                  type?: string;
+                  toolCallId?: string;
+                  input?: unknown;
+                }
+              | undefined;
+            if (existing?.type) {
+              liveStepToolParts.set(part.toolCallId, {
+                type: existing.type,
+                toolCallId: part.toolCallId,
+                state: "output-available",
+                input: existing.input,
+                output: part.output,
+              } as unknown as WebAgentUIMessage["parts"][number]);
+              maybeScheduleMidStepCheckpoint(!part.preliminary);
+            }
+          } else if (
+            part.type === "tool-output-error" &&
+            typeof part.toolCallId === "string"
+          ) {
+            const existing = liveStepToolParts.get(part.toolCallId) as
+              | {
+                  type?: string;
+                  toolCallId?: string;
+                  input?: unknown;
+                }
+              | undefined;
+            if (existing?.type) {
+              liveStepToolParts.set(part.toolCallId, {
+                type: existing.type,
+                toolCallId: part.toolCallId,
+                state: "output-error",
+                input: existing.input,
+                errorText: part.errorText,
+              } as unknown as WebAgentUIMessage["parts"][number]);
+              maybeScheduleMidStepCheckpoint(true);
+            }
           }
           if (part.type === "error") {
             const errorText =
@@ -5580,10 +5737,15 @@ const runAgentStep = async (
         if (
           combinedStreamedText.length > 0 ||
           combinedStreamedReasoning.length > 0 ||
+          liveStepToolOrder.length > 0 ||
           stepFinishedThisInvocation
         ) {
           if (responseMessage == null) {
             const recoveredParts: WebAgentUIMessage["parts"] = [
+              ...baseStepParts,
+              ...(hasEmittedStepStartInInvocation || baseStepParts.length > 0
+                ? [{ type: "step-start" as const }]
+                : []),
               ...streamedReasoningOrder
                 .map((id) => streamedReasoningById.get(id) ?? "")
                 .filter((text) => text.length > 0)
@@ -5592,6 +5754,12 @@ const runAgentStep = async (
                 .map((id) => streamedTextById.get(id) ?? "")
                 .filter((text) => text.length > 0)
                 .map((text) => ({ type: "text" as const, text })),
+              ...liveStepToolOrder
+                .map((id) => liveStepToolParts.get(id))
+                .filter(
+                  (p): p is WebAgentUIMessage["parts"][number] =>
+                    p !== undefined,
+                ),
             ];
             responseMessage = {
               id: messageId,
@@ -6021,6 +6189,12 @@ const runAgentStep = async (
     // recovering or rethrowing, so a page reload never loses the streamed reply.
     let partialMessage: WebAgentUIMessage | undefined;
     try {
+      const priorAssistantMsg = originalMessages.at(-1);
+      const priorParts: WebAgentUIMessage["parts"] =
+        priorAssistantMsg?.role === "assistant" &&
+        Array.isArray(priorAssistantMsg.parts)
+          ? [...priorAssistantMsg.parts]
+          : [];
       const combinedStreamedText = streamedTextOrder
         .map((id) => streamedTextById.get(id) ?? "")
         .join("")
@@ -6029,7 +6203,21 @@ const runAgentStep = async (
         .map((id) => streamedReasoningById.get(id) ?? "")
         .join("")
         .trim();
+      const liveTools = liveStepToolOrder
+        .map((id) => liveStepToolParts.get(id))
+        .filter(
+          (p): p is WebAgentUIMessage["parts"][number] => p !== undefined,
+        );
+      const hasNewStepOutput =
+        combinedStreamedReasoning.length > 0 ||
+        combinedStreamedText.length > 0 ||
+        liveTools.length > 0;
       const fallbackParts: WebAgentUIMessage["parts"] = [
+        ...priorParts,
+        ...(hasNewStepOutput &&
+        (hasEmittedStepStartInInvocation || priorParts.length > 0)
+          ? [{ type: "step-start" as const }]
+          : []),
         ...(combinedStreamedReasoning.length > 0
           ? streamedReasoningOrder
               .map((id) => streamedReasoningById.get(id) ?? "")
@@ -6042,6 +6230,7 @@ const runAgentStep = async (
               .filter((text) => text.length > 0)
               .map((text) => ({ type: "text" as const, text }))
           : []),
+        ...liveTools,
       ];
       const partialParts =
         responseMessage &&
@@ -6070,7 +6259,7 @@ const runAgentStep = async (
         if (stepSecretRedactor?.hasSecrets()) {
           partialMessage = stepSecretRedactor.redactUnknown(partialMessage);
         }
-        await persistAssistantMessage(chatId, partialMessage);
+        await persistAssistantMessageInternal(chatId, partialMessage);
       }
     } catch {
       // Best-effort checkpoint; never mask the original step error.

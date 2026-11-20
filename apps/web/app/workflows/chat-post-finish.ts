@@ -198,12 +198,10 @@ export async function persistAssistantMessageWithToolResults(
   await persistAssistantMessageWithToolResultsInternal(chatId, message);
 }
 
-export async function persistAssistantMessage(
+export async function persistAssistantMessageInternal(
   chatId: string,
   message: WebAgentUIMessage,
 ): Promise<void> {
-  "use step";
-
   try {
     const { updateChatAssistantActivity, upsertChatMessageScoped } =
       await import("@/lib/db/sessions");
@@ -229,6 +227,15 @@ export async function persistAssistantMessage(
   } catch (error) {
     console.error("[workflow] Failed to persist assistant message:", error);
   }
+}
+
+export async function persistAssistantMessage(
+  chatId: string,
+  message: WebAgentUIMessage,
+): Promise<void> {
+  "use step";
+
+  await persistAssistantMessageInternal(chatId, message);
 }
 
 /**

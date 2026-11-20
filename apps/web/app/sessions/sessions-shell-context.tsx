@@ -7,9 +7,11 @@ import type { CreateSessionInput } from "@/hooks/use-sessions";
 
 type SessionsShellContextValue = {
   openNewSessionDialog: () => void;
-  createSession: (
-    input: CreateSessionInput,
-  ) => Promise<{ session: { id: string }; chat: { id: string } }>;
+  createSession: (input: CreateSessionInput) => Promise<{
+    session: { id: string };
+    chat: { id: string };
+    workflowRunId?: string | null;
+  }>;
 };
 
 const SessionsShellContext = createContext<

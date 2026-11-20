@@ -351,7 +351,7 @@ describe("getDeadTurnRetryAction (hard strategy)", () => {
     expect(action).toBe("regenerate");
   });
 
-  test("continues when the last assistant message has completed tool calls", () => {
+  test("regenerates when the last assistant message has completed tool calls without injecting a synthetic continue prompt", () => {
     const action = getDeadTurnRetryAction(
       [
         { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
@@ -377,10 +377,10 @@ describe("getDeadTurnRetryAction (hard strategy)", () => {
       ],
       "hard",
     );
-    expect(action).toBe("continue");
+    expect(action).toBe("regenerate");
   });
 
-  test("continues when the last assistant message has real partial text", () => {
+  test("regenerates when the last assistant message has partial text without injecting a synthetic continue prompt", () => {
     const action = getDeadTurnRetryAction(
       [
         { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
@@ -394,10 +394,10 @@ describe("getDeadTurnRetryAction (hard strategy)", () => {
       ],
       "hard",
     );
-    expect(action).toBe("continue");
+    expect(action).toBe("regenerate");
   });
 
-  test("continues when the last assistant message has data parts", () => {
+  test("regenerates when the last assistant message has data parts", () => {
     const action = getDeadTurnRetryAction(
       [
         { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
@@ -415,10 +415,10 @@ describe("getDeadTurnRetryAction (hard strategy)", () => {
       ],
       "hard",
     );
-    expect(action).toBe("continue");
+    expect(action).toBe("regenerate");
   });
 
-  test("continues when an error notice coexists with real work", () => {
+  test("regenerates when an error notice coexists with partial work", () => {
     const action = getDeadTurnRetryAction(
       [
         { id: "u1", role: "user", parts: [{ type: "text", text: "hi" }] },
@@ -447,7 +447,7 @@ describe("getDeadTurnRetryAction (hard strategy)", () => {
       ],
       "hard",
     );
-    expect(action).toBe("continue");
+    expect(action).toBe("regenerate");
   });
 });
 
@@ -469,18 +469,13 @@ describe("getDeadTurnRetryAction (soft strategy / auto recovery)", () => {
     },
   ];
 
-  // OWNER 2026-10-13: automatic recovery never injects the canned
-  // "continue" prompt into the conversation anymore -- it read as a fake
-  // user message telling the AI "just carry the task forward". Soft
-  // recovery leaves the error visible; only the manual Retry (hard)
-  // continues a turn with partial work.
   test("soft recovery leaves a dead turn with partial work untouched", () => {
     expect(getDeadTurnRetryAction(partialWorkMessages, "soft")).toBe("none");
   });
 
-  test("manual retry still continues a dead turn with partial work", () => {
+  test("manual retry regenerates a dead turn cleanly without synthetic prompt injection", () => {
     expect(getDeadTurnRetryAction(partialWorkMessages, "hard")).toBe(
-      "continue",
+      "regenerate",
     );
   });
 
@@ -548,10 +543,7 @@ describe("getDeadTurnRetryAction (stacking guard)", () => {
     );
   });
 
-  test("hard resubmits the existing continuation prompt instead of stacking", () => {
-    // regenerate() with a trailing user message keeps it and resubmits it
-    // (verified against the AI SDK implementation), so the partial
-    // assistant work below it stays in history.
+  test("hard resubmits the existing prompt instead of stacking", () => {
     expect(getDeadTurnRetryAction(messagesAfterFailedContinue, "hard")).toBe(
       "regenerate",
     );
@@ -589,8 +581,7 @@ describe("getDeadTurnRetryAction (stacking guard)", () => {
 });
 
 describe("CONTINUE_AFTER_ERROR_PROMPT", () => {
-  test("is a non-empty instruction that mentions not repeating", () => {
-    expect(CONTINUE_AFTER_ERROR_PROMPT.length).toBeGreaterThan(20);
-    expect(CONTINUE_AFTER_ERROR_PROMPT.toLowerCase()).toContain("repeat");
+  test("is empty so no synthetic generic continuation prompt is ever injected", () => {
+    expect(CONTINUE_AFTER_ERROR_PROMPT).toBe("");
   });
 });
