@@ -112,16 +112,45 @@ export function ModelSelectorCompact({
     setOpen(false);
   };
 
-  const selectedOption = modelOptions.find(
-    (option) => option.id === optimisticModelId,
-  );
-  const displayText = selectedOption?.shortLabel ?? optimisticModelId;
-
-  const groups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
   const latestModelId = useMemo(
     () => selectLatestGatewayModelId(modelOptions),
     [modelOptions],
   );
+  const fallbackOption = useMemo(
+    () =>
+      modelOptions.find((option) => option.id === latestModelId) ??
+      modelOptions[0],
+    [modelOptions, latestModelId],
+  );
+
+  const selectedOption = modelOptions.find(
+    (option) => option.id === optimisticModelId,
+  );
+
+  useEffect(() => {
+    if (
+      modelOptions.length > 0 &&
+      !selectedOption &&
+      fallbackOption &&
+      fallbackOption.id !== optimisticModelId
+    ) {
+      setOptimisticModelId(fallbackOption.id);
+      onChange(fallbackOption.id);
+    }
+  }, [
+    modelOptions.length,
+    selectedOption,
+    fallbackOption,
+    optimisticModelId,
+    onChange,
+  ]);
+
+  const displayText =
+    selectedOption?.shortLabel ??
+    fallbackOption?.shortLabel ??
+    optimisticModelId;
+
+  const groups = useMemo(() => groupByProvider(modelOptions), [modelOptions]);
 
   return (
     <>
