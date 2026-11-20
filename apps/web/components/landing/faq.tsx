@@ -12,9 +12,9 @@ const faqs: readonly { question: string; answer: string }[] = [
       "By default, Entry executes directly in a fast single-agent loop so focused fixes finish immediately. For broad multi-file builds, Team Mode coordinates dependency waves visibly inside your main chat: Wave 0 locks interface contracts, parallel builders edit disjoint files, and reviewers verify tests and diffs.",
   },
   {
-    question: "What do plans cost and how does 99% prompt caching work",
+    question: "How does prompt caching and usage work",
     answer:
-      "Paid plans are $3/mo Plus ($6 credit, 2x value, $1.50/5h & $3.50/7d windows, 1 vCPU shared VM) and $10/mo Builder ($28 credit, 2.8x value, $6/5h & $14/7d windows, dedicated 2 vCPU / 8 GiB sandboxes up to 3 concurrent VMs) with zero per-token markup. We achieve a 90% to 99% cache hit rate across all models we support, reusing repository context and workspace history across turns.",
+      "We achieve a 90% to 99% cache hit rate across all models we support, reusing repository context, tool schemas, and workspace history across turns. Combined with zero per-token markup and affordable plans with generous usage allowances, your credits go significantly further. Visit the Pricing page for full plan details.",
   },
   {
     question: "What happens if I lose internet or close my browser mid-turn",

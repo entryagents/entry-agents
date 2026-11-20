@@ -273,10 +273,10 @@ export function DesktopCodexBillingStatus() {
     return null;
   }
 
-  const grantCents = data.creditGrantCents > 0 ? data.creditGrantCents : 5000;
+  const grantCents = data.creditGrantCents > 0 ? data.creditGrantCents : 2800;
   const windows = data.usageWindows ?? {
-    fiveHour: { usedCents: 0, limitCents: 1000 },
-    weekly: { usedCents: 0, limitCents: 2500 },
+    fiveHour: { usedCents: 0, limitCents: 600 },
+    weekly: { usedCents: 0, limitCents: 1400 },
     monthly: {
       usedCents: Math.max(0, grantCents - data.creditBalanceCents),
       limitCents: grantCents,

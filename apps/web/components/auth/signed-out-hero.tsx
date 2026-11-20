@@ -97,7 +97,7 @@ export function SignedOutHero() {
                   href="/pricing"
                   className="inline-flex h-10 items-center rounded-lg border border-(--l-border) bg-(--l-surface)/90 px-4 text-sm font-medium text-(--l-fg-2) backdrop-blur-xs transition-[border-color,color,background-color] duration-150 hover:border-(--l-fg-4) hover:text-(--l-fg)"
                 >
-                  Plans from $5/mo
+                  Plans from $3/mo
                 </Link>
               </motion.div>
             </div>

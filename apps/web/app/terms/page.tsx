@@ -31,7 +31,7 @@ const SECTIONS = [
   },
   {
     heading: "2. Subscriptions, credits, and usage limits",
-    body: "Entry Agents offers a free tier with $1 trial credit as well as paid subscription plans (Plus, Entry, Pro, and Max) that allocate compute credits billed according to published model token rates. Usage exceeding active plan windows or credit balances may be paused until replenished or renewed.",
+    body: "Entry Agents offers a free tier with $1 trial credit as well as paid subscription plans (Plus and Builder) that allocate compute credits billed according to published model token rates. Usage exceeding active plan windows or credit balances may be paused until replenished or renewed.",
   },
   {
     heading: "3. Code ownership and output review",

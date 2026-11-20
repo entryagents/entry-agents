@@ -191,17 +191,24 @@ export default function AiCodingAgentPage() {
                     className="size-4 text-(--l-accent)"
                     strokeWidth={1.5}
                   />
-                  <span>Caching &amp; plans</span>
+                  <span>Prompt caching</span>
                 </span>
                 <span className="font-mono tabular-nums">Zero markup</span>
               </div>
               <h2 className="mt-3 text-xl font-semibold tracking-tight">
-                Up to 99% prompt caching and $5–$40 builder plans
+                90% to 99% cache hit rate across all models we support
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-(--l-fg-2)">
-                Start with $1 free trial credit, then scale across Plus ($3/mo
-                for $6 credit) and Builder ($10/mo for $28 credit, 2.8x) with
-                zero per-token markup.
+                Repository context, tool schemas, and multi-turn history stay
+                cached across every model with zero per-token markup, paired
+                with affordable plans and generous usage allowances on{" "}
+                <Link
+                  href="/pricing"
+                  className="font-medium text-(--l-fg) underline underline-offset-4"
+                >
+                  Pricing
+                </Link>
+                .
               </p>
             </div>
             <div className="mt-5 border-t border-(--l-border) pt-4 font-mono text-xs text-(--l-fg-3) tabular-nums">
