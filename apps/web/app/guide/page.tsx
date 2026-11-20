@@ -373,20 +373,28 @@ Reproduce the bug, inspect network and server route responses, apply the smalles
 
           <Section id="credits" title="7. Plans, $5–$40 pricing & 99% caching">
             <p>
-              Entry charges zero token markup. Every workspace also benefits
-              from multi-turn prompt caching that reuses up to 99% of unchanged
-              repo and conversation context on subsequent tool calls.
+              Entry charges zero token markup. We achieve a 90% to 99% cache hit
+              rate across all models we support, reusing unchanged repo and
+              conversation context on subsequent tool calls.
             </p>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-3">
               {[
-                { plan: "Plus", price: "$5/mo", detail: "$10 credit (2.0x)" },
                 {
-                  plan: "Entry",
-                  price: "$13/mo",
-                  detail: "$28 credit (2.8x) · $6/5h, $14/7d",
+                  plan: "Free",
+                  price: "$0/mo",
+                  detail: "$1 trial · 5 msgs/day · 1 vCPU shared VM",
                 },
-                { plan: "Pro", price: "$20/mo", detail: "$100 credit (5.0x)" },
-                { plan: "Max", price: "$40/mo", detail: "$180 credit (4.5x)" },
+                {
+                  plan: "Plus",
+                  price: "$3/mo",
+                  detail: "$6 credit (2x) · $1.50/5h, $3.50/7d · 1 vCPU shared",
+                },
+                {
+                  plan: "Builder",
+                  price: "$10/mo",
+                  detail:
+                    "$28 credit (2.8x) · $6/5h, $14/7d · 2 vCPU dedicated (3 VMs)",
+                },
               ].map((tier) => (
                 <div
                   key={tier.plan}

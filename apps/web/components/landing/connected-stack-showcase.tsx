@@ -301,12 +301,12 @@ export function ConnectedStackShowcase() {
                     <span>Prompt caching</span>
                   </span>
                   <span className="font-mono text-xs tabular-nums">
-                    99% cache hit rate
+                    90%–99% cache hit rate
                   </span>
                 </div>
 
                 <h2 className="mt-3 text-balance text-2xl font-semibold tracking-tight">
-                  99% cache hit rate across all models
+                  90% to 99% cache hit rate across all models we support
                 </h2>
                 <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
                   Repository context, tool definitions, and multi-turn history
@@ -321,21 +321,22 @@ export function ConnectedStackShowcase() {
                       Multi-turn context reuse
                     </span>
                     <span className="font-semibold text-(--l-fg)">
-                      99% hit rate
+                      90%–99% hit rate
                     </span>
                   </div>
                   <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-(--l-fg-6)">
                     <div
                       className="h-full rounded-full bg-(--l-fg)"
-                      style={{ width: "99%" }}
+                      style={{ width: "96%" }}
                     />
                   </div>
                   <p className="mt-2.5 text-xs text-(--l-fg-3)">
-                    Start free with $1 credit and zero card required.
+                    Start free with 5 messages/day and $1 trial credit — no card
+                    required.
                   </p>
                 </div>
 
-                {/* $5 Plan Highlight */}
+                {/* $3 Plus Plan Highlight */}
                 <div className="mt-4 rounded-xl border border-(--l-border) bg-(--l-surface-2) p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
@@ -343,24 +344,25 @@ export function ConnectedStackShowcase() {
                         Plus plan
                       </div>
                       <div className="mt-0.5 text-xs text-(--l-fg-3)">
-                        $10 AI credit every month for daily builds
+                        $6 monthly AI credit (2x) + shared 1 vCPU / 4 GiB VM
                       </div>
                     </div>
                     <div className="shrink-0 text-right font-mono tabular-nums">
                       <div className="text-base font-semibold text-(--l-fg)">
-                        $5/mo
+                        $3/mo
                       </div>
                     </div>
                   </div>
                   <p className="mt-3 border-t border-(--l-border-subtle) pt-2.5 text-xs text-(--l-fg-2)">
-                    Need higher limits or rolling windows? Visit the{" "}
+                    Need dedicated 2 vCPU / 8 GiB sandboxes and $28 credit? See
+                    the{" "}
                     <Link
                       href="/pricing"
                       className="font-medium text-(--l-fg) underline underline-offset-4"
                     >
-                      pricing page
-                    </Link>{" "}
-                    to explore bigger plans.
+                      Builder ($10/mo) plan
+                    </Link>
+                    .
                   </p>
                 </div>
               </div>
