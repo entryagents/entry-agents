@@ -55,8 +55,11 @@ import {
 } from "@/components/pinned-todo-panel";
 import { QueuedPromptsPanel } from "@/components/queued-prompts-panel";
 import { ReviewBar } from "@/components/review/review-bar";
+import { toast } from "sonner";
 import { UntilStrip } from "@/components/composer/until-strip";
+import { RaceView, type RaceSessionConfig } from "@/components/race/race-view";
 import { useTriage } from "@/components/triage/triage-context";
+import { parseRaceCommand, pickRaceModels } from "@/lib/race/parse";
 import { extractTriagePromptsFromMessages } from "@/lib/triage/deck";
 import { useUntilLoop } from "./hooks/use-until-loop";
 import { OpenFileProvider } from "@/components/tool-call/open-file-context";
@@ -1308,6 +1311,7 @@ export function SessionChatContent({
       });
     },
   });
+  const [raceConfig, setRaceConfig] = useState<RaceSessionConfig | null>(null);
   const {
     unreadCount: inboxUnreadCount,
     isSending: isSendingInbox,
@@ -1880,6 +1884,51 @@ export function SessionChatContent({
 
     if (tryHandleUntilCommand(messageText)) {
       return true;
+    }
+
+    const raceParsed = parseRaceCommand(messageText);
+    if (raceParsed) {
+      if (raceParsed.kind === "empty") {
+        toast.info("Add a task after /race, like /race fix the login bug");
+        return true;
+      }
+      try {
+        const [resA, resB] = await Promise.all([
+          fetch(`/api/sessions/${session.id}/chats`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          }),
+          fetch(`/api/sessions/${session.id}/chats`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          }),
+        ]);
+        if (!resA.ok || !resB.ok) {
+          toast.error("Could not create race chats");
+          return false;
+        }
+        const [dataA, dataB] = (await Promise.all([
+          resA.json(),
+          resB.json(),
+        ])) as [{ chat: { id: string } }, { chat: { id: string } }];
+        const [leftModelId, rightModelId] = pickRaceModels(
+          chatInfo.modelId ?? "",
+          modelOptions,
+        );
+        setRaceConfig({
+          task: raceParsed.task,
+          leftChatId: dataA.chat.id,
+          rightChatId: dataB.chat.id,
+          leftModelId,
+          rightModelId,
+        });
+        return true;
+      } catch {
+        toast.error("Could not start race");
+        return false;
+      }
     }
 
     const isFirstChatInSession = initialIsOnlyChatInSession;
@@ -3505,9 +3554,23 @@ export function SessionChatContent({
               />
             ) : null}
 
+            {activeView === "chat" && raceConfig ? (
+              <RaceView
+                sessionId={session.id}
+                config={raceConfig}
+                modelOptions={modelOptions}
+                onOpenFile={openFileTab}
+                onKeepChat={(keptId) => {
+                  setRaceConfig(null);
+                  router.push(`/sessions/${session.id}/chats/${keptId}`);
+                }}
+                onClose={() => setRaceConfig(null)}
+              />
+            ) : null}
+
             <div
               className={
-                activeView === "chat"
+                activeView === "chat" && !raceConfig
                   ? "flex min-w-0 flex-1 flex-col overflow-hidden"
                   : "hidden"
               }
