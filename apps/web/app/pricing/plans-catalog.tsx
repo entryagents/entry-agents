@@ -217,7 +217,7 @@ export function PlansCatalog() {
                         </p>
                         <p>
                           {plan.id === "plus"
-                            ? "High-allowance open models + Free models"
+                            ? "High-allowance open models"
                             : plan.modelAccess === "all"
                               ? "Every model, full access"
                               : "Included starter models · 5 msgs/day"}
