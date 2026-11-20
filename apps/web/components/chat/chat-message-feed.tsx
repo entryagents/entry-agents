@@ -450,6 +450,8 @@ const ChatMessageRow = memo(function ChatMessageRow({
           toolName === "task" ||
           p.type === "tool-visualize" ||
           toolName === "visualize" ||
+          p.type === "tool-skill" ||
+          toolName === "skill" ||
           isWidgetTool ||
           isFileShareTool;
         if (!isToolCallsExpanded && !isAlwaysVisibleTool) return null;
