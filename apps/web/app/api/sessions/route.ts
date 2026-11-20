@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { nanoid } from "nanoid";
 import {
   DEFAULT_SANDBOX_PROVIDER,
@@ -481,10 +482,14 @@ export async function POST(req: Request) {
       },
     });
 
-    await kickSandboxProvisioningWorkflow(result.session.id).catch((error) => {
-      console.error(
-        `Failed to kick sandbox provisioning for session ${result.session.id}:`,
-        error,
+    after(async () => {
+      await kickSandboxProvisioningWorkflow(result.session.id).catch(
+        (error) => {
+          console.error(
+            `Failed to kick sandbox provisioning for session ${result.session.id}:`,
+            error,
+          );
+        },
       );
     });
 
