@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { SandboxState } from "@entry-agents/sandbox";
 import {
+  getSandboxPlanPolicy,
   isSandboxSharedAcrossSessions,
   resolveFreeTierSandboxReuse,
   resolveSandboxVcpusForPlan,
@@ -176,5 +177,64 @@ describe("resolveSandboxVcpusForPlan", () => {
         isHobbyProfile: true,
       }),
     ).toBe(1);
+  });
+});
+
+describe("getSandboxPlanPolicy (all tier scenarios)", () => {
+  test("free tier enforces 1 shared 1-vCPU VM, 3m suspend, 10m hibernate, 7d TTL, 5 hrs/mo", () => {
+    expect(getSandboxPlanPolicy("free")).toEqual({
+      sharedVm: true,
+      vcpus: 1,
+      maxConcurrentActiveVms: 1,
+      autoSuspendSeconds: 180,
+      autoHibernateSeconds: 600,
+      autoDestroySeconds: 7 * 24 * 3600,
+      monthlyActiveHoursLimit: 5,
+    });
+  });
+
+  test("plus ($3) enforces 1 shared 1-vCPU VM, 3m suspend, 10m hibernate, 14d TTL, 25 hrs/mo", () => {
+    expect(getSandboxPlanPolicy("plus")).toEqual({
+      sharedVm: true,
+      vcpus: 1,
+      maxConcurrentActiveVms: 1,
+      autoSuspendSeconds: 180,
+      autoHibernateSeconds: 600,
+      autoDestroySeconds: 14 * 24 * 3600,
+      monthlyActiveHoursLimit: 25,
+    });
+  });
+
+  test("builder ($10 / entry) gets dedicated 2-vCPU VMs up to 3 concurrent, 3m suspend, 10m hibernate, 14d TTL, 50 hrs/mo", () => {
+    expect(getSandboxPlanPolicy("entry")).toEqual({
+      sharedVm: false,
+      vcpus: 2,
+      maxConcurrentActiveVms: 3,
+      autoSuspendSeconds: 180,
+      autoHibernateSeconds: 600,
+      autoDestroySeconds: 14 * 24 * 3600,
+      monthlyActiveHoursLimit: 50,
+    });
+
+    const shared = boxdState("mach_shared_1");
+    const upgradeRes = resolveFreeTierSandboxReuse({
+      currentSessionId: "s_builder",
+      currentSandboxState: shared,
+      requestedProviderType: "boxd",
+      userPlan: "entry",
+      isAdmin: false,
+      userSessions: [
+        { id: "s_old", status: "running", sandboxState: shared },
+        { id: "s_builder", status: "running", sandboxState: shared },
+      ],
+    });
+    expect(upgradeRes.mode).toBe("detach-and-provision-fresh");
+  });
+
+  test("admin gets elevated dedicated 2-vCPU policy", () => {
+    const policy = getSandboxPlanPolicy("free", true);
+    expect(policy.sharedVm).toBe(false);
+    expect(policy.vcpus).toBe(2);
+    expect(policy.maxConcurrentActiveVms).toBe(10);
   });
 });
