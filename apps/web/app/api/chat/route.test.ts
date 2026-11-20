@@ -636,6 +636,24 @@ describe("/api/chat route", () => {
     );
   });
 
+  test("refuses to clear activeStreamId on transient lookup error while a sleeping or resuming workflow is recently active", async () => {
+    if (!chatRecord) throw new Error("chatRecord must be set");
+    chatRecord.activeStreamId = "wrun_sleeping-123";
+    chatRecord.status = "sleeping";
+    (chatRecord as { runStatusUpdatedAt?: Date | null }).runStatusUpdatedAt =
+      new Date();
+    getRunShouldThrow = true;
+    getRunErrorName = "WorkflowWorldError";
+
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createValidRequest());
+
+    expect(response.status).toBe(409);
+    expect(startCalls).toHaveLength(0);
+    expect(compareAndSetChatActiveStreamIdSpy).not.toHaveBeenCalled();
+  });
+
   test("clears the stream id and starts fresh only when the run is definitively gone", async () => {
     if (!chatRecord) throw new Error("chatRecord must be set");
     chatRecord.activeStreamId = "wrun_missing-789";
