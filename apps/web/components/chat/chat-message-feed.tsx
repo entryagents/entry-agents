@@ -23,6 +23,11 @@ import { MessageAttachmentChip } from "@/components/message-attachment-chip";
 import { MessageModelPill } from "@/components/message-model-pill";
 import { SnippetChip } from "@/components/snippet-chip";
 import { ToolCall } from "@/components/tool-call/tool-call";
+import { WidgetBlock } from "@/components/genui/widget-block";
+import {
+  FileShare,
+  type SharedFileItem,
+} from "@/components/timeline/file-card";
 import {
   hasRenderableAssistantPart,
   isGitDataPart,
@@ -438,11 +443,15 @@ const ChatMessageRow = memo(function ChatMessageRow({
 
       if (isToolUIPart(p)) {
         const toolName = getToolPartName(p);
+        const isWidgetTool = toolName === "show_widget";
+        const isFileShareTool = toolName === "send_user_file";
         const isAlwaysVisibleTool =
           p.type === "tool-task" ||
           toolName === "task" ||
           p.type === "tool-visualize" ||
-          toolName === "visualize";
+          toolName === "visualize" ||
+          isWidgetTool ||
+          isFileShareTool;
         if (!isToolCallsExpanded && !isAlwaysVisibleTool) return null;
         const hasLaterStepOrProse = m.parts
           .slice(group.index + 1)
@@ -454,6 +463,83 @@ const ChatMessageRow = memo(function ChatMessageRow({
                 Boolean((laterPart.text ?? "").trim())),
           );
         const isToolPartStreaming = isMessageStreaming && !hasLaterStepOrProse;
+
+        if (isWidgetTool) {
+          const inp =
+            typeof p.input === "object" && p.input !== null
+              ? (p.input as Record<string, unknown>)
+              : null;
+          const code =
+            (typeof inp?.widget_code === "string" && inp.widget_code) ||
+            (typeof inp?.code === "string" && inp.code) ||
+            (typeof inp?.html === "string" && inp.html) ||
+            "";
+          const title = typeof inp?.title === "string" ? inp.title : undefined;
+          if (code) {
+            return (
+              <div
+                key={`${m.id}-${group.renderKey}`}
+                className="min-w-0 w-full py-1"
+              >
+                <WidgetBlock
+                  id={p.toolCallId}
+                  title={title}
+                  code={code}
+                  isStreaming={isToolPartStreaming}
+                />
+              </div>
+            );
+          }
+        }
+
+        if (isFileShareTool) {
+          const inp =
+            typeof p.input === "object" && p.input !== null
+              ? (p.input as Record<string, unknown>)
+              : null;
+          const out =
+            typeof p.output === "object" && p.output !== null
+              ? (p.output as Record<string, unknown>)
+              : null;
+          const rawFiles = Array.isArray(out?.files)
+            ? out.files
+            : Array.isArray(inp?.files)
+              ? inp.files
+              : typeof inp?.file_path === "string"
+                ? [{ path: inp.file_path }]
+                : typeof inp?.path === "string"
+                  ? [{ path: inp.path }]
+                  : [];
+          const files: SharedFileItem[] = rawFiles
+            .filter(
+              (f): f is Record<string, unknown> =>
+                typeof f === "object" && f !== null,
+            )
+            .map((f) => ({
+              path: typeof f.path === "string" ? f.path : "",
+              name: typeof f.name === "string" ? f.name : undefined,
+              size: typeof f.size === "number" ? f.size : undefined,
+            }))
+            .filter((f) => f.path.length > 0);
+          const caption =
+            typeof inp?.caption === "string" ? inp.caption : undefined;
+          if (files.length > 0) {
+            return (
+              <div
+                key={`${m.id}-${group.renderKey}`}
+                className="min-w-0 w-full py-1"
+              >
+                <FileShare
+                  files={files}
+                  caption={caption}
+                  failed={p.state === "output-error"}
+                  onOpenFile={onOpenFile}
+                />
+              </div>
+            );
+          }
+        }
+
         return (
           <div
             key={`${m.id}-${group.renderKey}`}
