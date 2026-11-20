@@ -193,4 +193,20 @@ describe("startNextQueuedWorkflowInternal / startNextQueuedWorkflowStep", () => 
     expect(spies.startWorkflow).toHaveBeenCalledTimes(1);
     expect((queuedPrompts ?? []).map((item) => item.id)).toEqual(["q-2"]);
   });
+
+  test("cancels started run and restores prompt if claimChatActiveStreamId throws", async () => {
+    spies.claimChatActiveStreamId.mockImplementationOnce(() =>
+      Promise.reject(new Error("DB connection reset during claim")),
+    );
+
+    await expect(startNextQueuedWorkflowStep(baseParams)).rejects.toThrow(
+      "DB connection reset during claim",
+    );
+
+    expect(spies.cancelRun).toHaveBeenCalledTimes(1);
+    expect((queuedPrompts ?? []).map((item) => item.id)).toEqual([
+      "q-1",
+      "q-2",
+    ]);
+  });
 });

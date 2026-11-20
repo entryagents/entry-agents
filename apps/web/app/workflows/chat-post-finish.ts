@@ -1158,6 +1158,7 @@ export async function startNextQueuedWorkflowInternal(
       onlyIfActiveStreamId: null,
     }).catch(() => {});
 
+    let startedRunId: string | undefined;
     try {
       const storedRows = await getChatMessages(params.chatId);
       const messages = storedRows.map((row) => normalizeStoredChatMessage(row));
@@ -1211,6 +1212,8 @@ export async function startNextQueuedWorkflowInternal(
         },
       );
 
+      startedRunId = nextRun.runId;
+
       const claimed = await claimChatActiveStreamId(
         params.chatId,
         nextRun.runId,
@@ -1227,6 +1230,14 @@ export async function startNextQueuedWorkflowInternal(
 
       return { started: true, runId: nextRun.runId };
     } catch (error) {
+      if (startedRunId) {
+        try {
+          const { getRun } = await import("workflow/api");
+          await getRun(startedRunId).cancel();
+        } catch {
+          // Best-effort cleanup so an unclaimed run cannot execute twice on retry.
+        }
+      }
       // Restore the popped item to the front of queuedPrompts on workflow start failure.
       await restoreQueuedPromptToFront(params.chatId, dequeued.rawItem);
       await setChatRunStatus(
