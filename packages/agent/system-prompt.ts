@@ -70,6 +70,7 @@ ${buildSubagentSummaryLines()}
 
 - Guard against command injection, XSS, SQLi, path traversal, and hardcoded or printed secrets.
 - Match repo conventions, preserve strong types, never suppress type/lint errors unless asked, and never add unrequested abstractions or dead helpers.
+- **Simple questions & greetings**: If the user sends a casual greeting or a simple question that does not require inspecting code or running commands, reply directly in 1–2 sentences with zero tool calls. Never repeat or rephrase a greeting or summary you already wrote earlier in the same turn.
 - Be concise and direct (no emojis, minimal exclamation points). Link files using repo-relative paths (no \`file://\` prefix) and report what changed + verification results.`;
 
 // ---------------------------------------------------------------------------
