@@ -41,6 +41,11 @@ export const inboxTool = tool({
       markAsRead: action !== "list",
     });
 
+    const hasNewItems =
+      result.unreadCount > 0 ||
+      result.newlyReadCount > 0 ||
+      subagentUpdates.length > 0;
+
     return {
       success: true,
       action,
@@ -57,6 +62,9 @@ export const inboxTool = tool({
         readAt: msg.readAt,
       })),
       subagentUpdates,
+      notice: hasNewItems
+        ? "Unread steering messages have now been marked read. Follow them and do NOT call inbox again unless a new unread intervention arrives."
+        : "No unread steering messages. All prior inbox messages have already been read — do NOT call inbox again; proceed directly with the user's task.",
     };
   },
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { TurnLoopGuard } from "./loop-guard";
+import { normalizeToolCallSignature, TurnLoopGuard } from "./loop-guard";
 
 describe("TurnLoopGuard", () => {
   it("catches alternating A/B/A/B/A/B tool-call loops and breaks cleanly", () => {
@@ -33,5 +33,32 @@ describe("TurnLoopGuard", () => {
         { toolName: "grep", signature: 'grep:{"pattern":"p11"}' },
       ]).action,
     ).toBe("warn");
+  });
+
+  it("normalizes inbox default and explicit check signatures identically and breaks loops", () => {
+    expect(normalizeToolCallSignature("inbox", {})).toBe(
+      'inbox:{"action":"check"}',
+    );
+    expect(normalizeToolCallSignature("inbox", { action: "check" })).toBe(
+      'inbox:{"action":"check"}',
+    );
+    expect(normalizeToolCallSignature("inbox", { action: "list" })).toBe(
+      'inbox:{"action":"list"}',
+    );
+
+    const guard = new TurnLoopGuard();
+    const s1 = {
+      toolName: "inbox",
+      signature: normalizeToolCallSignature("inbox", {}),
+    };
+    const s2 = {
+      toolName: "inbox",
+      signature: normalizeToolCallSignature("inbox", { action: "check" }),
+    };
+
+    expect(guard.recordStep([s1]).action).toBe("continue");
+    expect(guard.recordStep([s2]).action).toBe("continue");
+    expect(guard.recordStep([s1]).action).toBe("warn");
+    expect(guard.recordStep([s2]).action).toBe("break");
   });
 });
