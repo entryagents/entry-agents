@@ -215,17 +215,18 @@ export function summarizeUserAgent(ua: string | null | undefined): string {
               ? "Desktop App"
               : "Browser";
 
-  const os = ua.includes("iPhone") || ua.includes("iPad")
-    ? "iOS"
-    : ua.includes("Android")
-      ? "Android"
-      : ua.includes("Mac OS X") || ua.includes("Macintosh")
-        ? "macOS"
-        : ua.includes("Windows")
-          ? "Windows"
-          : ua.includes("Linux")
-            ? "Linux"
-            : "OS";
+  const os =
+    ua.includes("iPhone") || ua.includes("iPad")
+      ? "iOS"
+      : ua.includes("Android")
+        ? "Android"
+        : ua.includes("Mac OS X") || ua.includes("Macintosh")
+          ? "macOS"
+          : ua.includes("Windows")
+            ? "Windows"
+            : ua.includes("Linux")
+              ? "Linux"
+              : "OS";
 
   return `${browser} · ${os}`;
 }
@@ -236,19 +237,19 @@ function toIsoOrNull(value: Date | string | null | undefined): string | null {
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
 }
 
-function extractMessagePartsList(partsCol: unknown): Array<Record<string, unknown>> {
+function extractMessagePartsList(
+  partsCol: unknown,
+): Array<Record<string, unknown>> {
   if (Array.isArray(partsCol)) {
-    return partsCol.filter(
-      (item): item is Record<string, unknown> =>
-        Boolean(item && typeof item === "object"),
+    return partsCol.filter((item): item is Record<string, unknown> =>
+      Boolean(item && typeof item === "object"),
     );
   }
   if (partsCol && typeof partsCol === "object") {
     const record = partsCol as Record<string, unknown>;
     if (Array.isArray(record.parts)) {
-      return record.parts.filter(
-        (item): item is Record<string, unknown> =>
-          Boolean(item && typeof item === "object"),
+      return record.parts.filter((item): item is Record<string, unknown> =>
+        Boolean(item && typeof item === "object"),
       );
     }
   }
@@ -524,12 +525,18 @@ export async function getAdminUserDeepTelemetry(
 
   const cacheHitRatePercent =
     totalInputTokens > 0
-      ? Math.min(100, Math.round((totalCachedInputTokens / totalInputTokens) * 1000) / 10)
+      ? Math.min(
+          100,
+          Math.round((totalCachedInputTokens / totalInputTokens) * 1000) / 10,
+        )
       : 0;
 
   let compactionTokensSaved = 0;
   for (const c of compactionRows) {
-    compactionTokensSaved += Math.max(0, c.preCompactTokens - c.postCompactTokens);
+    compactionTokensSaved += Math.max(
+      0,
+      c.preCompactTokens - c.postCompactTokens,
+    );
   }
 
   // Group messages and runs by chatId
@@ -620,7 +627,10 @@ export async function getAdminUserDeepTelemetry(
 
     const chatCacheHitPercent =
       chatInputTokens > 0
-        ? Math.min(100, Math.round((chatCachedTokens / chatInputTokens) * 1000) / 10)
+        ? Math.min(
+            100,
+            Math.round((chatCachedTokens / chatInputTokens) * 1000) / 10,
+          )
         : 0;
 
     const sbState = s?.sandboxState as
@@ -730,8 +740,7 @@ export async function getAdminUserDeepTelemetry(
       failedRuns,
     },
     authSessions: authSessionRows.map((s) => {
-      const expiresIso =
-        toIsoOrNull(s.expiresAt) ?? new Date(0).toISOString();
+      const expiresIso = toIsoOrNull(s.expiresAt) ?? new Date(0).toISOString();
       return {
         id: s.id,
         ipAddress: s.ipAddress ?? null,

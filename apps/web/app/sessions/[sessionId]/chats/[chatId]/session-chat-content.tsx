@@ -3328,6 +3328,16 @@ export function SessionChatContent({
       refreshFiles={refreshFiles}
       isWorkspaceExpanded={isWorkspaceExpanded}
       onToggleWorkspaceExpand={() => setIsWorkspaceExpanded((prev) => !prev)}
+      modelId={chatInfo.modelId}
+      modelOptions={modelOptions}
+      isParentStreaming={effectiveStatus === "streaming"}
+      teamRoleModels={teamRoleModels}
+      onUpdateRoleModel={updateTeamRoleModel}
+      isFreeTierLocked={userPlan?.modelAccess === "starter-only"}
+      freePlanModelId={freePlanModelId}
+      freeTierAllowedModelIds={freeTierAllowedModelIds}
+      onSelectSubagent={(subagentId) => openSubagentTab(subagentId)}
+      onStopRun={handleStopStream}
     />
   ) : null;
 
