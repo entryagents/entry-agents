@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getAdminSubscriptionOverview } from "@/lib/admin/subscriptions";
 import { AdminStatCard } from "../admin-stat-card";
 
+export const dynamic = "force-dynamic";
+
 function formatUsd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
