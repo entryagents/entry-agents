@@ -1,0 +1,105 @@
+/*
+ * Sable Desktop Sidebar 1:1 Stylesheet
+ * Ported from Leonxlnx/sable src/features/sidebar/sidebar.css.
+ */
+
+.sable-side {
+  --side-bg: var(--sidebar, var(--background));
+  --side-line: rgba(0, 0, 0, 0.08);
+  --side-fill-1: rgba(0, 0, 0, 0.03);
+  --side-fill-2: rgba(0, 0, 0, 0.055);
+  --side-fill-3: rgba(0, 0, 0, 0.085);
+  --side-text: var(--foreground);
+  --side-text-2: var(--muted-foreground);
+  --side-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  user-select: none;
+  background-color: var(--side-bg);
+}
+
+.dark .sable-side {
+  --side-bg: #0c0c0e;
+  --side-line: rgba(255, 255, 255, 0.06);
+  --side-fill-1: rgba(255, 255, 255, 0.035);
+  --side-fill-2: rgba(255, 255, 255, 0.06);
+  --side-fill-3: rgba(255, 255, 255, 0.09);
+}
+
+.sable-side-list {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 6px;
+}
+
+.sable-side-list::before,
+.sable-side-list::after {
+  content: "";
+  position: sticky;
+  z-index: 2;
+  display: block;
+  pointer-events: none;
+}
+
+.sable-side-list::before {
+  top: 0;
+  height: 10px;
+  margin-bottom: -10px;
+  background: linear-gradient(to bottom, var(--side-bg), transparent);
+}
+
+.sable-side-list::after {
+  bottom: 0;
+  height: 26px;
+  background: linear-gradient(to top, var(--side-bg), transparent);
+}
+
+.sable-child-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 0 6px 18px;
+  padding-left: 10px;
+  border-left: 1px solid var(--side-line);
+}
+
+.sable-child-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: var(--side-text-2);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 110ms var(--side-ease),
+    color 110ms var(--side-ease);
+}
+
+.sable-child-row:hover {
+  background-color: var(--side-fill-2);
+  color: var(--side-text);
+}
+
+.sable-child-row[data-on] {
+  background-color: var(--side-fill-3);
+  color: var(--side-text);
+  font-weight: 500;
+}
+
+.sable-child-new {
+  color: var(--side-text-2);
+  opacity: 0.85;
+}
+
+.sable-child-new:hover {
+  opacity: 1;
+}
