@@ -55,8 +55,10 @@ import {
 } from "@/components/pinned-todo-panel";
 import { QueuedPromptsPanel } from "@/components/queued-prompts-panel";
 import { ReviewBar } from "@/components/review/review-bar";
+import { UntilStrip } from "@/components/composer/until-strip";
 import { useTriage } from "@/components/triage/triage-context";
 import { extractTriagePromptsFromMessages } from "@/lib/triage/deck";
+import { useUntilLoop } from "./hooks/use-until-loop";
 import { OpenFileProvider } from "@/components/tool-call/open-file-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -1288,6 +1290,24 @@ export function SessionChatContent({
   // fetch abort doesn't cleanly settle the hook status).
   const [userStopped, setUserStopped] = useState(false);
   const isChatInFlight = isChatInFlightStatus(status) && !userStopped;
+
+  const {
+    until: untilState,
+    ended: untilEnded,
+    stopUntil,
+    checkNow: checkUntilNow,
+    tryHandleUntilCommand,
+  } = useUntilLoop({
+    sessionId: session.id,
+    chatId: chatInfo.id,
+    isChatInFlight,
+    onSendFixPrompt: async (prompt) => {
+      await submitBuiltMessage({
+        payload: { text: prompt },
+        displayText: prompt,
+      });
+    },
+  });
   const {
     unreadCount: inboxUnreadCount,
     isSending: isSendingInbox,
@@ -1857,6 +1877,10 @@ export function SessionChatContent({
     built: BuiltComposerMessage,
   ): Promise<boolean> {
     const { payload: messagePayload, displayText: messageText } = built;
+
+    if (tryHandleUntilCommand(messageText)) {
+      return true;
+    }
 
     const isFirstChatInSession = initialIsOnlyChatInSession;
     const isFirstMessageInChat = !hadInitialMessages && messages.length === 0;
@@ -3665,6 +3689,12 @@ export function SessionChatContent({
                     }
                     topPanelsSlot={
                       <>
+                        <UntilStrip
+                          until={untilState}
+                          ended={untilEnded}
+                          onCheckNow={checkUntilNow}
+                          onStop={stopUntil}
+                        />
                         <ReviewBar
                           onSendReview={async (formatted) => {
                             await submitBuiltMessage({
