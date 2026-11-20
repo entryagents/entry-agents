@@ -12,6 +12,7 @@ import {
   useTransition,
 } from "react";
 import { InboxSidebar } from "@/components/inbox-sidebar";
+import { SidebarResize } from "@/components/sidebar/sidebar-resize";
 import { NewSessionDialog } from "@/components/new-session-dialog";
 import {
   Sidebar,
@@ -316,6 +317,7 @@ export function SessionsRouteShell({
             />
           </SidebarContent>
         </Sidebar>
+        <SidebarResize />
         <RouteContentShell>{children}</RouteContentShell>
       </SidebarProvider>
 
