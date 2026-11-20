@@ -255,7 +255,7 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
     (filePath: string) => {
       setFocusedDiffFile(filePath);
       setFocusedDiffRequestId((prev) => prev + 1);
-      setActiveWorkspaceTab("diff");
+      setActiveWorkspaceTab("review");
       setGitPanelOpen(true);
       if (isMobile) {
         setActiveView("diff");

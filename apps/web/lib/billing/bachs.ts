@@ -28,7 +28,7 @@ const PRODUCTION_BASE_URL = "https://api.bachs.io";
 export const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 300;
 
 function getApiKey(): string {
-  const key = process.env.BACHS_API_KEY;
+  const key = process.env.BACHS_API_KEY || process.env.BACHS_LIVE_API_KEY;
   if (!key) {
     throw new Error(
       "BACHS_API_KEY is not configured -- set it in Vercel project env vars from the Bachs Developer Portal (API Keys).",
@@ -37,23 +37,82 @@ function getApiKey(): string {
   return key;
 }
 
-function resolveBaseUrl(apiKey: string): string {
-  // BACHS_BASE_URL wins when set. This matters during the Paystack ->
-  // Bachs cutover: production runs with a live domain but deliberately
-  // charges through the SANDBOX first, so the target must be an explicit
-  // operator choice rather than something inferred from the key prefix --
-  // a live key pointed at sandbox (or the reverse) has to be spelled out
-  // in env, not guessed.
-  const configured = process.env.BACHS_BASE_URL;
-  if (configured) {
-    return configured.replace(/\/+$/, "");
+export function isSandboxBachsKey(apiKey: string): boolean {
+  return apiKey.startsWith("sk_sandbox_") || apiKey.startsWith("sk_test_");
+}
+
+export function isLiveBachsKey(apiKey: string): boolean {
+  return apiKey.startsWith("sk_live_");
+}
+
+export function resolveBaseUrl(apiKey: string): string {
+  const configured = process.env.BACHS_BASE_URL?.trim().replace(/\/+$/, "");
+
+  // Prevent environment-mixing bugs when swapping BACHS_API_KEY between
+  // sk_sandbox_ and sk_live_: a live key must never hit sandbox-api.bachs.io
+  // and a sandbox key must never hit api.bachs.io, even if BACHS_BASE_URL
+  // was left set from an earlier deployment.
+  if (isLiveBachsKey(apiKey)) {
+    if (configured && configured !== SANDBOX_BASE_URL) {
+      return configured;
+    }
+    return PRODUCTION_BASE_URL;
   }
 
-  // Fall back to the prefix rule from the docs: sk_sandbox_ keys route to
-  // the sandbox deployment, sk_live_ keys to production.
-  return apiKey.startsWith("sk_sandbox_")
-    ? SANDBOX_BASE_URL
-    : PRODUCTION_BASE_URL;
+  if (isSandboxBachsKey(apiKey)) {
+    if (configured && configured !== PRODUCTION_BASE_URL) {
+      return configured;
+    }
+    return SANDBOX_BASE_URL;
+  }
+
+  if (configured) {
+    return configured;
+  }
+
+  return PRODUCTION_BASE_URL;
+}
+
+export interface BachsEnvironmentStatus {
+  mode: "live" | "sandbox" | "unconfigured";
+  baseUrl: string;
+  keyPrefix: string | null;
+  webhookSecretConfigured: boolean;
+}
+
+export function getBachsEnvironmentStatus(): BachsEnvironmentStatus {
+  const rawKey = (
+    process.env.BACHS_API_KEY ||
+    process.env.BACHS_LIVE_API_KEY ||
+    ""
+  ).trim();
+  const webhookSecretConfigured = Boolean(
+    process.env.BACHS_WEBHOOK_SECRET?.trim() ||
+    process.env.BACHS_LIVE_WEBHOOK_SECRET?.trim(),
+  );
+
+  if (!rawKey) {
+    return {
+      mode: "unconfigured",
+      baseUrl: process.env.BACHS_BASE_URL?.trim() || SANDBOX_BASE_URL,
+      keyPrefix: null,
+      webhookSecretConfigured,
+    };
+  }
+
+  const baseUrl = resolveBaseUrl(rawKey);
+  const mode =
+    isSandboxBachsKey(rawKey) || baseUrl.includes("sandbox-api.bachs.io")
+      ? "sandbox"
+      : "live";
+  const keyPrefix = `${rawKey.slice(0, Math.min(14, rawKey.length))}…`;
+
+  return {
+    mode,
+    baseUrl,
+    keyPrefix,
+    webhookSecretConfigured,
+  };
 }
 
 /**
@@ -364,8 +423,13 @@ export interface VerifyBachsSignatureParams {
 export function verifyBachsSignature(
   params: VerifyBachsSignatureParams,
 ): boolean {
-  const secret = params.secret ?? process.env.BACHS_WEBHOOK_SECRET;
-  if (!secret) return false;
+  const secrets = params.secret
+    ? [params.secret]
+    : [
+        process.env.BACHS_WEBHOOK_SECRET,
+        process.env.BACHS_LIVE_WEBHOOK_SECRET,
+      ].filter((value): value is string => Boolean(value && value.trim()));
+  if (secrets.length === 0) return false;
 
   const tolerance =
     params.toleranceSeconds ?? WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS;
@@ -405,17 +469,19 @@ export function verifyBachsSignature(
   }
   if (candidates.length === 0) return false;
 
-  const expected = createHmac("sha256", secret)
-    .update(`${timestamp}.${params.rawBody}`, "utf8")
-    .digest("hex");
+  return secrets.some((secret) => {
+    const expected = createHmac("sha256", secret)
+      .update(`${timestamp}.${params.rawBody}`, "utf8")
+      .digest("hex");
 
-  const expectedBuffer = Buffer.from(expected, "utf8");
-  return candidates.some((candidate) => {
-    const provided = Buffer.from(candidate, "utf8");
-    return (
-      expectedBuffer.length === provided.length &&
-      timingSafeEqual(expectedBuffer, provided)
-    );
+    const expectedBuffer = Buffer.from(expected, "utf8");
+    return candidates.some((candidate) => {
+      const provided = Buffer.from(candidate, "utf8");
+      return (
+        expectedBuffer.length === provided.length &&
+        timingSafeEqual(expectedBuffer, provided)
+      );
+    });
   });
 }
 

@@ -73,7 +73,6 @@ import type { SessionWithUnread } from "@/hooks/use-sessions";
 import { signOut } from "@/lib/auth/actions";
 import type { Project } from "@/lib/db/schema";
 import type { Session as AuthSession } from "@/lib/session/types";
-import { formatRelativeTime } from "@/lib/format-relative-time";
 import { groupSessionsByProject } from "@/lib/sessions/group-projects";
 
 type InboxSidebarProps = {
@@ -237,117 +236,6 @@ function getSessionStatusIcon(session: SessionWithUnread) {
   );
 }
 
-function getSessionStatusLabel(session: SessionWithUnread): {
-  text: string;
-  prNumber: number | null;
-} {
-  if (session.hasStreaming) return { text: "Working", prNumber: null };
-  if (session.prNumber && session.prStatus === "merged")
-    return { text: `PR #${session.prNumber}`, prNumber: session.prNumber };
-  if (session.prNumber && session.prStatus === "open")
-    return { text: `PR #${session.prNumber}`, prNumber: session.prNumber };
-  if (session.prNumber && session.prStatus === "closed")
-    return { text: `PR #${session.prNumber}`, prNumber: session.prNumber };
-  const hasDiff = session.linesAdded || session.linesRemoved;
-  if (session.branch && hasDiff)
-    return { text: "Needs attention", prNumber: null };
-  if (session.branch) return { text: "New session", prNumber: null };
-  if (session.status === "running")
-    return { text: "Setting up", prNumber: null };
-  if (session.status === "completed")
-    return { text: "Completed", prNumber: null };
-  if (session.status === "failed") return { text: "Failed", prNumber: null };
-  if (session.status === "archived")
-    return { text: "Archived", prNumber: null };
-  return { text: "Idle", prNumber: null };
-}
-
-function getSessionBranchUrl(session: SessionWithUnread): string | null {
-  // Only link if the branch is known to exist on GitHub (has a PR).
-  // Local-only branches that haven't been pushed would 404.
-  if (
-    !session.branch ||
-    !session.repoOwner ||
-    !session.repoName ||
-    !session.prNumber
-  )
-    return null;
-  return `https://github.com/${session.repoOwner}/${session.repoName}/tree/${session.branch}`;
-}
-
-function getSessionPrUrl(session: SessionWithUnread): string | null {
-  if (!session.prNumber || !session.repoOwner || !session.repoName) return null;
-  return `https://github.com/${session.repoOwner}/${session.repoName}/pull/${session.prNumber}`;
-}
-
-function SessionPopoverContent({ session }: { session: SessionWithUnread }) {
-  const lastActivityLabel = formatRelativeTime(
-    session.lastActivityAt ?? session.createdAt,
-  );
-  const branchUrl = getSessionBranchUrl(session);
-  const prUrl = getSessionPrUrl(session);
-  const hasDiff = session.linesAdded !== null || session.linesRemoved !== null;
-  const statusLabel = getSessionStatusLabel(session);
-
-  return (
-    <div className="space-y-2">
-      {/* Title */}
-      <p className="text-sm font-medium text-foreground leading-snug">
-        {session.title}
-      </p>
-
-      {/* Status + branch */}
-      <div className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap text-xs text-muted-foreground">
-        <span className="shrink-0">{getSessionStatusIcon(session)}</span>
-        {prUrl && statusLabel.prNumber ? (
-          <a
-            href={prUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="shrink-0 hover:text-foreground transition-colors"
-          >
-            {statusLabel.text}
-          </a>
-        ) : (
-          <span className="shrink-0">{statusLabel.text}</span>
-        )}
-        {session.branch ? (
-          <span className="flex min-w-0 items-center gap-1 ml-1">
-            <GitBranch className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
-            {branchUrl ? (
-              <a
-                href={branchUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="min-w-0 truncate font-mono text-[11px] hover:text-foreground transition-colors"
-              >
-                {session.branch}
-              </a>
-            ) : (
-              <span className="min-w-0 truncate font-mono text-[11px]">
-                {session.branch}
-              </span>
-            )}
-          </span>
-        ) : null}
-      </div>
-
-      {/* Diff stats + time ago */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        {hasDiff ? (
-          <DiffStats
-            added={session.linesAdded}
-            removed={session.linesRemoved}
-          />
-        ) : (
-          <span />
-        )}
-        <span className="shrink-0">{lastActivityLabel}</span>
-      </div>
-    </div>
-  );
-}
-
 function getRepoGroupLabel(session: SessionWithUnread): string {
   const repoName = session.repoName?.trim();
   const repoOwner = session.repoOwner?.trim();
@@ -392,13 +280,11 @@ const SessionRow = memo(function SessionRow({
   const isMobile = useIsMobile();
   const { setOpenMobile } = useSidebar();
   const [isHovered, setIsHovered] = useState(false);
-  const [popoverOpen, setPopoverOpen] = useState(false);
+  const [moveMenuOpen, setMoveMenuOpen] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(session.title);
   const [renamePending, setRenamePending] = useState(false);
   const renameInputRef = useRef<HTMLInputElement | null>(null);
-  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const leaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isRenaming) {
@@ -416,30 +302,15 @@ const SessionRow = memo(function SessionRow({
   }, [isRenaming]);
 
   const hasDiff = session.linesAdded !== null || session.linesRemoved !== null;
-  const showActionButtons = isHovered;
+  const showActionButtons = isHovered || moveMenuOpen;
 
   const handleMouseEnter = useCallback(() => {
-    if (leaveTimeoutRef.current) {
-      clearTimeout(leaveTimeoutRef.current);
-      leaveTimeoutRef.current = null;
-    }
     setIsHovered(true);
-    if (!isMobile && !isRenaming) {
-      hoverTimeoutRef.current = setTimeout(() => {
-        setPopoverOpen(true);
-      }, 500);
-    }
-  }, [isMobile, isRenaming]);
+    onSessionPrefetch(session);
+  }, [onSessionPrefetch, session]);
 
   const handleMouseLeave = useCallback(() => {
-    if (hoverTimeoutRef.current) {
-      clearTimeout(hoverTimeoutRef.current);
-      hoverTimeoutRef.current = null;
-    }
     setIsHovered(false);
-    leaveTimeoutRef.current = setTimeout(() => {
-      setPopoverOpen(false);
-    }, 200);
   }, []);
 
   const handleCancelRename = useCallback(() => {
@@ -480,13 +351,6 @@ const SessionRow = memo(function SessionRow({
     session.title,
   ]);
 
-  useEffect(() => {
-    return () => {
-      if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-      if (leaveTimeoutRef.current) clearTimeout(leaveTimeoutRef.current);
-    };
-  }, []);
-
   const repoOwner = session.repoOwner?.trim() ?? "";
   const repoName = session.repoName?.trim() ?? "";
   const hasRepo = Boolean(repoOwner && repoName);
@@ -502,11 +366,6 @@ const SessionRow = memo(function SessionRow({
               aria-label={`Create session from branch for ${repoName}`}
               onClick={(event) => {
                 event.stopPropagation();
-                if (hoverTimeoutRef.current) {
-                  clearTimeout(hoverTimeoutRef.current);
-                  hoverTimeoutRef.current = null;
-                }
-                setPopoverOpen(false);
                 onOpenBranchPicker(repoOwner, repoName);
               }}
             >
@@ -527,11 +386,6 @@ const SessionRow = memo(function SessionRow({
               aria-label="Rename session"
               onClick={(event) => {
                 event.stopPropagation();
-                if (hoverTimeoutRef.current) {
-                  clearTimeout(hoverTimeoutRef.current);
-                  hoverTimeoutRef.current = null;
-                }
-                setPopoverOpen(false);
                 setRenameValue(session.title);
                 setIsRenaming(true);
               }}
@@ -545,7 +399,7 @@ const SessionRow = memo(function SessionRow({
         </Tooltip>
       ) : null}
       {folders && folders.length > 0 && onMoveSessionToFolder ? (
-        <DropdownMenu>
+        <DropdownMenu open={moveMenuOpen} onOpenChange={setMoveMenuOpen}>
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
@@ -636,6 +490,7 @@ const SessionRow = memo(function SessionRow({
   const sessionButton = (
     <button
       type="button"
+      title={session.title}
       className={`group relative flex w-full items-start gap-1.5 rounded-lg px-2 py-1.5 text-left outline-none transition-[background-color,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
         isActive ? "bg-sidebar-active text-foreground" : "hover:bg-muted/50"
       } ${isPending ? "opacity-80" : "opacity-100"} ${actionButtons ? "pr-14" : ""}`}
@@ -749,39 +604,7 @@ const SessionRow = memo(function SessionRow({
     </div>
   );
 
-  if (isMobile || isRenaming) {
-    return rowButton;
-  }
-
-  return (
-    <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
-      <div
-        className="relative"
-        style={sessionRowPerformanceStyle}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
-        <PopoverTrigger asChild>{sessionButton}</PopoverTrigger>
-        {actionButtonsContainer}
-      </div>
-      <PopoverContent
-        side="right"
-        align="start"
-        sideOffset={12}
-        className="w-72 p-3"
-        onMouseEnter={() => {
-          if (leaveTimeoutRef.current) {
-            clearTimeout(leaveTimeoutRef.current);
-            leaveTimeoutRef.current = null;
-          }
-        }}
-        onMouseLeave={handleMouseLeave}
-        onOpenAutoFocus={(e) => e.preventDefault()}
-      >
-        <SessionPopoverContent session={session} />
-      </PopoverContent>
-    </Popover>
-  );
+  return rowButton;
 }, areSessionRowsEqual);
 
 function areSessionRowsEqual(
@@ -1091,7 +914,20 @@ export function InboxSidebar({
       <div className="flex h-full min-h-0 flex-col bg-sidebar p-2 select-none">
         {/* Top Mark */}
         <div className="mb-2 flex items-center justify-between px-1.5 py-1">
-          <EntryMark className="h-4 w-4 shrink-0 text-foreground" />
+          <button
+            type="button"
+            onClick={() => {
+              if (isMobile) setOpenMobile(false);
+              onOpenNewSession();
+            }}
+            className="flex items-center gap-2 rounded-md px-1 py-0.5 text-left transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-foreground/80 cursor-pointer"
+            title="Entry — New chat"
+          >
+            <EntryMark className="h-4 w-4 shrink-0 text-foreground" />
+            <span className="text-[13px] font-semibold tracking-tight text-foreground">
+              Entry
+            </span>
+          </button>
         </div>
 
         {/* New Chat Split Dropdown (Blank Chat + Import from GitHub) */}

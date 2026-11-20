@@ -195,9 +195,18 @@ export function SidebarBalancePill() {
   );
 }
 
+function hasPlanUsageWindows(data: BillingMeResponse): boolean {
+  return (
+    Boolean(data.usageWindows) ||
+    data.plan === "entry" ||
+    data.plan === "goat" ||
+    data.plan === "plus"
+  );
+}
+
 /**
  * Rounded-rectangle balance badge rendered on the right side of the desktop
- * profile footer row (e.g. "$5" or "$20"). Hidden for "entry" plan users since
+ * profile footer row (e.g. "$1"). Hidden for plans with usage windows since
  * their balance and usage windows are displayed in DesktopCodexBillingStatus.
  */
 export function DesktopBalanceBox() {
@@ -205,7 +214,7 @@ export function DesktopBalanceBox() {
   const { isMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
 
-  if (isLoading || !data || data.plan === "entry" || data.plan === "goat") {
+  if (isLoading || !data || hasPlanUsageWindows(data)) {
     return null;
   }
 
@@ -252,9 +261,9 @@ export function SidebarPlanBadge({ showIcon = false }: { showIcon?: boolean }) {
 }
 
 /**
- * Improved Method 1 Rolling Usage Windows Telemetry for the Desktop Sidebar.
- * Exclusively rendered when the user is on the "entry" (Entry) plan.
- * Does not render a redundant plan badge or blinking indicator dot.
+ * Usage Windows Telemetry for the Desktop Sidebar.
+ * Rendered when the user is on a paid plan with 5h / 7d / 30d usage windows
+ * (Plus $3/mo and Builder $10/mo).
  */
 function getUsageWindowPercent(usedCents: number, limitCents: number): number {
   if (limitCents <= 0) return 0;
@@ -269,14 +278,17 @@ export function DesktopCodexBillingStatus() {
   const { isMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
 
-  if (isLoading || !data || (data.plan !== "entry" && data.plan !== "goat")) {
+  if (isLoading || !data || !hasPlanUsageWindows(data)) {
     return null;
   }
 
-  const grantCents = data.creditGrantCents > 0 ? data.creditGrantCents : 2800;
+  const isPlusPlan = data.plan === "plus";
+  const defaultGrantCents = isPlusPlan ? 600 : 2800;
+  const grantCents =
+    data.creditGrantCents > 0 ? data.creditGrantCents : defaultGrantCents;
   const windows = data.usageWindows ?? {
-    fiveHour: { usedCents: 0, limitCents: 600 },
-    weekly: { usedCents: 0, limitCents: 1400 },
+    fiveHour: { usedCents: 0, limitCents: isPlusPlan ? 150 : 600 },
+    weekly: { usedCents: 0, limitCents: isPlusPlan ? 350 : 1400 },
     monthly: {
       usedCents: Math.max(0, grantCents - data.creditBalanceCents),
       limitCents: grantCents,
@@ -291,6 +303,9 @@ export function DesktopCodexBillingStatus() {
     data.creditBalanceCents >= 0
       ? Math.min(data.creditBalanceCents, monthlyRemainingCents)
       : 0;
+  const cardStyle =
+    (isPlusPlan ? PLAN_STYLES.plus?.card : PLAN_STYLES.entry.card) ??
+    PLAN_STYLES.entry.card;
 
   return (
     <button
@@ -302,7 +317,7 @@ export function DesktopCodexBillingStatus() {
       title="View detailed usage & balance"
       className={cn(
         "w-full text-left space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer hover:border-foreground/30",
-        PLAN_STYLES.entry.card,
+        cardStyle,
       )}
     >
       <div className="flex items-center justify-between gap-1.5 px-0.5">

@@ -2,10 +2,14 @@
 
 import { CreditCard } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNav } from "@/components/landing/nav";
 import { formatUsdCents } from "@/lib/format-usd";
+import {
+  buildPricingLoginRedirectUrl,
+  parsePricingSubscribeIntent,
+} from "./pricing-auth-redirect";
 
 interface PlanRow {
   id: string;
@@ -26,7 +30,7 @@ interface BillingMeResponse {
   planName: string;
   creditBalanceCents: number;
   creditGrantCents: number;
-  /** Live window usage; non-null ONLY for plans with windows (the Entry plan). */
+  /** Live window usage; non-null for plans with usage windows. */
   usageWindows: {
     mode?: "rolling" | "fixed";
     fiveHour: WindowUsage;
@@ -51,6 +55,10 @@ export function PlansCatalog() {
   const [selectedEntryMode, setSelectedEntryMode] = useState<
     "rolling" | "fixed"
   >("rolling");
+  const [highlightedPlanId, setHighlightedPlanId] = useState<string | null>(
+    null,
+  );
+  const handledReturnIntentRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/billing/plans")
@@ -66,11 +74,46 @@ export function PlansCatalog() {
       .catch(() => setMe(null));
   }, []);
 
+  useEffect(() => {
+    if (handledReturnIntentRef.current || me === undefined) {
+      return;
+    }
+    const intent = parsePricingSubscribeIntent(window.location.search);
+    if (!intent.planId) {
+      return;
+    }
+
+    // If user is still logged out on /pricing?subscribe=..., keep the intent until authenticated
+    if (me === null) {
+      return;
+    }
+
+    handledReturnIntentRef.current = true;
+    window.history.replaceState({}, "", "/pricing");
+
+    if (me.plan === intent.planId) {
+      return;
+    }
+
+    setHighlightedPlanId(intent.planId);
+    if (intent.planId === "entry") {
+      if (intent.windowMode) {
+        setSelectedEntryMode(intent.windowMode);
+      }
+      setEntryModalOpen(true);
+    }
+  }, [me]);
+
   async function handleSubscribe(
     planId: string,
     windowMode?: "rolling" | "fixed",
   ) {
     if (planId === "free") {
+      return;
+    }
+    if (me === null) {
+      setPendingPlan(planId);
+      window.location.href = buildPricingLoginRedirectUrl(planId, windowMode);
       return;
     }
     if (planId === "entry" && !windowMode) {
@@ -89,6 +132,10 @@ export function PlansCatalog() {
           ...(windowMode ? { windowMode } : {}),
         }),
       });
+      if (res.status === 401) {
+        window.location.href = buildPricingLoginRedirectUrl(planId, windowMode);
+        return;
+      }
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error ?? "Checkout failed");
@@ -167,11 +214,12 @@ export function PlansCatalog() {
               {(plans ?? []).map((plan) => {
                 const isCurrentPlan = me?.plan === plan.id;
                 const isFlagship = plan.id === "entry";
+                const isHighlighted = highlightedPlanId === plan.id;
                 return (
                   <div
                     key={plan.id}
                     className={`flex flex-col justify-between rounded-2xl border bg-(--l-surface) p-5 sm:p-6 ${
-                      isCurrentPlan || isFlagship
+                      isCurrentPlan || isFlagship || isHighlighted
                         ? "border-(--l-fg) ring-1 ring-(--l-fg)/20"
                         : "border-(--l-border)"
                     }`}

@@ -83,6 +83,7 @@ function SessionLayoutInner({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [chatWidthPercent, setChatWidthPercent] = useState<number>(46);
+  const liveWidthRef = useRef<number>(46);
   const [isDragging, setIsDragging] = useState(false);
 
   const persistSplit = useCallback((nextWidth: number) => {
@@ -100,6 +101,7 @@ function SessionLayoutInner({
       if (saved) {
         const parsed = parseFloat(saved);
         if (!isNaN(parsed) && parsed >= 22 && parsed <= 78) {
+          liveWidthRef.current = parsed;
           setChatWidthPercent(parsed);
         }
       }
@@ -108,30 +110,54 @@ function SessionLayoutInner({
     }
   }, []);
 
-  // Dragging event listeners
+  useEffect(() => {
+    liveWidthRef.current = chatWidthPercent;
+  }, [chatWidthPercent]);
+
+  // Dragging event listeners — update CSS custom properties directly on DOM
+  // during mousemove so we never trigger full React tree re-renders per pixel.
   useEffect(() => {
     if (!isDragging) return;
 
+    let rafId = 0;
     const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
+      const container = containerRef.current;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      if (rect.width <= 0) return;
       const newWidth = ((e.clientX - rect.left) / rect.width) * 100;
       const clamped = Math.min(Math.max(newWidth, 22), 78);
-      setChatWidthPercent(clamped);
+      liveWidthRef.current = clamped;
+
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+      rafId = window.requestAnimationFrame(() => {
+        container.style.setProperty("--chat-width", `${clamped}%`);
+        container.style.setProperty("--workspace-width", `${100 - clamped}%`);
+      });
     };
 
     const handleMouseUp = () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
+      const finalWidth = liveWidthRef.current;
       setIsDragging(false);
-      persistSplit(chatWidthPercent);
+      setChatWidthPercent(finalWidth);
+      persistSplit(finalWidth);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
+      if (rafId) {
+        window.cancelAnimationFrame(rafId);
+      }
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isDragging, chatWidthPercent, persistSplit]);
+  }, [isDragging, persistSplit]);
 
   const splitStyles = useMemo(
     () =>
