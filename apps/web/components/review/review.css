@@ -1,0 +1,140 @@
+/*
+ * ReviewBar & inline diff review cards, ported 1:1 from Sable's review.css.
+ */
+
+.rv-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 8px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+
+.dark .rv-bar {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.rv-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 450;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  transition: background-color 120ms cubic-bezier(0.22, 1, 0.36, 1);
+  cursor: pointer;
+}
+
+.rv-count:hover {
+  background: var(--muted);
+}
+
+.rv-count-caret {
+  color: var(--muted-foreground);
+  transition: transform 150ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rv-count[aria-expanded="true"] .rv-count-caret {
+  transform: rotate(180deg);
+}
+
+.rv-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background-color 110ms ease;
+}
+
+.rv-item:hover {
+  background: var(--muted);
+}
+
+.rv-item-where {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.rv-item-path {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.rv-item-dir {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.rv-item-range {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.rv-item-text {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+/* Inline diff annotation card & composer */
+.rv-card {
+  margin: 6px 10px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 12.5px;
+  line-height: 1.45;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.dark .rv-card {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.rv-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+
+.rv-card-range {
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+.rv-card-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rv-card-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--foreground);
+}

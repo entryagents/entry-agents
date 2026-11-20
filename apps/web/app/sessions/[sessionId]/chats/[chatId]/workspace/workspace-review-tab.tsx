@@ -49,8 +49,16 @@ import {
   type MergeReadinessResponse,
 } from "@/lib/github/queries/pr";
 import { cn } from "@/lib/utils";
+import type { DiffLineAnnotation, FileDiffOptions } from "@pierre/diffs";
+import {
+  type DiffAnnotationMetadata,
+  DiffCommentCard,
+  DiffCommentComposer,
+} from "@/components/review/diff-comment-card";
+import { extractPatchLines } from "@/lib/review/model";
 import type { GitPanelProps } from "../git-panel";
 import { useGitPanel } from "../git-panel-context";
+import { useReview } from "../review-context";
 import { FileTypeIcon } from "@/components/file-type-icons";
 
 export type WorkspaceReviewTabProps = GitPanelProps & {
@@ -109,6 +117,15 @@ export function WorkspaceReviewTab({
 }: WorkspaceReviewTabProps) {
   const { resolvedTheme } = useTheme();
   const { focusedDiffFile, focusedDiffRequestId } = useGitPanel();
+  const {
+    comments: reviewComments,
+    draft: reviewDraft,
+    openDraft,
+    closeDraft,
+    addComment,
+    editComment,
+    removeComment,
+  } = useReview();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Diff View Mode: unified or split
@@ -686,10 +703,85 @@ export function WorkspaceReviewTab({
                           Generated file &mdash; diff hidden
                         </div>
                       ) : patch ? (
-                        <PatchDiff
+                        <PatchDiff<DiffAnnotationMetadata>
                           key={`${file.path}-${diffStyle}-${resolvedTheme}`}
                           patch={patch}
-                          options={baseDiffOptions}
+                          options={
+                            {
+                              ...baseDiffOptions,
+                              enableLineSelection: true,
+                              enableGutterUtility: true,
+                              onGutterUtilityClick: (range) => {
+                                const extracted = extractPatchLines(
+                                  patch,
+                                  range,
+                                );
+                                openDraft({
+                                  path: file.path,
+                                  ...extracted,
+                                });
+                              },
+                              onLineSelectionEnd: (range) => {
+                                if (!range) return;
+                                const extracted = extractPatchLines(
+                                  patch,
+                                  range,
+                                );
+                                openDraft({
+                                  path: file.path,
+                                  ...extracted,
+                                });
+                              },
+                            } as FileDiffOptions<DiffAnnotationMetadata>
+                          }
+                          lineAnnotations={[
+                            ...reviewComments
+                              .filter((c) => c.path === file.path)
+                              .map(
+                                (
+                                  c,
+                                ): DiffLineAnnotation<DiffAnnotationMetadata> => ({
+                                  side: c.side,
+                                  lineNumber: c.lineNumber,
+                                  metadata: { kind: "comment", comment: c },
+                                }),
+                              ),
+                            ...(reviewDraft && reviewDraft.path === file.path
+                              ? [
+                                  {
+                                    side: reviewDraft.side,
+                                    lineNumber: reviewDraft.lineNumber,
+                                    metadata: {
+                                      kind: "draft" as const,
+                                      draft: reviewDraft,
+                                    },
+                                  },
+                                ]
+                              : []),
+                          ]}
+                          renderAnnotation={(ann) => {
+                            const meta = ann.metadata;
+                            if (meta.kind === "draft") {
+                              return (
+                                <DiffCommentComposer
+                                  draft={meta.draft}
+                                  onSave={(text) =>
+                                    addComment(meta.draft, text)
+                                  }
+                                  onCancel={closeDraft}
+                                />
+                              );
+                            }
+                            return (
+                              <DiffCommentCard
+                                comment={meta.comment}
+                                onEdit={(text) =>
+                                  editComment(meta.comment.id, text)
+                                }
+                                onRemove={() => removeComment(meta.comment.id)}
+                              />
+                            );
+                          }}
                         />
                       ) : (
                         <div className="p-8 text-center text-xs text-muted-foreground font-mono">

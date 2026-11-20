@@ -20,6 +20,7 @@ import {
   GitPanelProvider,
   useGitPanel,
 } from "./chats/[chatId]/git-panel-context";
+import { ReviewProvider } from "./chats/[chatId]/review-context";
 import { SessionHeader } from "./chats/[chatId]/session-header";
 import { ChatTabs } from "./chats/[chatId]/chat-tabs";
 import { SessionLayoutContext } from "./session-layout-context";
@@ -395,9 +396,11 @@ export function SessionLayoutShell({
   return (
     <SessionLayoutContext.Provider value={layoutContext}>
       <GitPanelProvider>
-        <SessionLayoutInner activeChatId={activeChatId}>
-          {children}
-        </SessionLayoutInner>
+        <ReviewProvider sessionId={initialSession.id}>
+          <SessionLayoutInner activeChatId={activeChatId}>
+            {children}
+          </SessionLayoutInner>
+        </ReviewProvider>
       </GitPanelProvider>
     </SessionLayoutContext.Provider>
   );

@@ -54,6 +54,7 @@ import {
   getLatestTodos,
 } from "@/components/pinned-todo-panel";
 import { QueuedPromptsPanel } from "@/components/queued-prompts-panel";
+import { ReviewBar } from "@/components/review/review-bar";
 import { OpenFileProvider } from "@/components/tool-call/open-file-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -3631,6 +3632,15 @@ export function SessionChatContent({
                     }
                     topPanelsSlot={
                       <>
+                        <ReviewBar
+                          onSendReview={async (formatted) => {
+                            await submitBuiltMessage({
+                              payload: { text: formatted },
+                              displayText: formatted,
+                            });
+                          }}
+                          disabled={Boolean(composerGate) || isArchived}
+                        />
                         <QueuedPromptsPanel
                           prompts={queuedMessages}
                           onRemove={removeQueuedMessage}
