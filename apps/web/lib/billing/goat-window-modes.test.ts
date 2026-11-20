@@ -25,9 +25,9 @@ describe("Entry plan usage window modes (rolling vs fixed)", () => {
     expect(plan.id).toBe("entry");
     expect(getPlanDefinition("goat").id).toBe("entry");
     expect(plan.usageWindows).toEqual({
-      fiveHourLimitCents: 1_000,
-      weeklyLimitCents: 2_500,
-      monthlyLimitCents: 5_000,
+      fiveHourLimitCents: 600,
+      weeklyLimitCents: 1_400,
+      monthlyLimitCents: 2_800,
     });
   });
 
@@ -154,9 +154,9 @@ describe("Entry plan usage window modes (rolling vs fixed)", () => {
     expect(
       findExceededUsageWindow(
         {
-          last5HoursCents: 999,
-          last7DaysCents: 2_500,
-          last30DaysCents: 3_000,
+          last5HoursCents: windows.fiveHourLimitCents - 1,
+          last7DaysCents: windows.weeklyLimitCents,
+          last30DaysCents: windows.monthlyLimitCents - 1,
           mode: "fixed",
         },
         windows,

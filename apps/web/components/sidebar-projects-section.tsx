@@ -2,10 +2,10 @@
 
 import {
   Check,
-  ChevronDown,
   ChevronRight,
   Folder,
   FolderGit2,
+  FolderOpen,
   FolderPlus,
   Loader2,
   MoreHorizontal,
@@ -154,20 +154,26 @@ export function SidebarProjectsSection({
 
   return (
     <div className="mb-3">
-      <div className="mb-1 flex items-center justify-between px-2 py-1">
+      <div className="group relative mb-0.5 flex h-[30px] items-center rounded-lg transition-colors duration-100 hover:bg-foreground/[0.035]">
         <button
           type="button"
           onClick={() => setSectionOpen((prev) => !prev)}
-          className="flex min-w-0 items-center gap-1.5 text-[13px] font-medium text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-foreground cursor-pointer"
+          aria-expanded={sectionOpen}
+          className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 text-left cursor-pointer"
         >
-          {sectionOpen ? (
-            <ChevronDown className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-          ) : (
-            <ChevronRight className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-          )}
-          <span>Projects</span>
+          <span className="grid w-4 shrink-0 place-items-center text-muted-foreground/60 transition-colors duration-100 group-hover:text-muted-foreground">
+            <ChevronRight
+              className={`size-3.5 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+                sectionOpen ? "rotate-90" : ""
+              }`}
+              strokeWidth={1.5}
+            />
+          </span>
+          <span className="text-[12px] font-medium text-muted-foreground/80 transition-colors duration-100 group-hover:text-muted-foreground">
+            Projects
+          </span>
           {projects.length > 0 ? (
-            <span className="ml-0.5 rounded-md bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
+            <span className="ml-auto text-[11.5px] tabular-nums text-muted-foreground/60 transition-opacity duration-100 group-hover:opacity-0">
               {projects.length}
             </span>
           ) : null}
@@ -177,11 +183,11 @@ export function SidebarProjectsSection({
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground cursor-pointer"
+              className="absolute top-1/2 right-[3px] grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground opacity-0 transition-[opacity,background-color,color] duration-100 ease-[cubic-bezier(0.2,0.8,0.2,1)] group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 hover:bg-foreground/[0.09] hover:text-foreground cursor-pointer"
               aria-label="Add project"
               title="Add project"
             >
-              <Plus className="h-4 w-4" strokeWidth={1.5} />
+              <Plus className="size-3.5" strokeWidth={1.5} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={4} className="w-48">
@@ -268,7 +274,7 @@ export function SidebarProjectsSection({
               </button>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-2">
               {projects.map((project) => {
                 const containsActive = project.sessions.some(
                   (s) => s.id === activeSessionId,
@@ -313,118 +319,106 @@ export function SidebarProjectsSection({
                 }
 
                 return (
-                  <div key={project.key} className="space-y-1">
-                    <div
-                      className={`group flex min-h-10 items-center gap-1.5 rounded-lg px-2 py-1.5 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                        containsActive ? "bg-muted/60" : "hover:bg-muted/45"
-                      }`}
-                    >
+                  <div key={project.key}>
+                    <div className="group relative flex h-[30px] items-center rounded-lg transition-colors duration-100 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:bg-foreground/[0.035]">
                       <button
                         type="button"
                         onClick={() => toggleProject(project.key)}
-                        className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer"
+                        aria-expanded={isExpanded}
+                        className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 text-left cursor-pointer"
                         title={
                           project.kind === "github"
                             ? `${project.repoOwner}/${project.repoName}`
                             : project.name
                         }
                       >
-                        {isExpanded ? (
-                          <ChevronDown
-                            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                            strokeWidth={1.5}
-                          />
-                        ) : (
-                          <ChevronRight
-                            className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                            strokeWidth={1.5}
-                          />
-                        )}
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/50 bg-background/70 text-foreground/80">
+                        <span className="grid w-4 shrink-0 place-items-center text-muted-foreground/60 transition-colors duration-100 group-hover:text-muted-foreground">
                           {project.kind === "github" ? (
-                            <FolderGit2 className="h-4 w-4" strokeWidth={1.5} />
+                            <FolderGit2 className="size-4" strokeWidth={1.5} />
+                          ) : isExpanded ? (
+                            <FolderOpen className="size-4" strokeWidth={1.5} />
                           ) : (
-                            <Folder className="h-4 w-4" strokeWidth={1.5} />
+                            <Folder className="size-4" strokeWidth={1.5} />
                           )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] font-medium leading-tight text-foreground">
-                            {project.name}
-                          </div>
-                          {project.kind === "github" ? (
-                            <div className="truncate text-[11px] leading-tight text-muted-foreground/80">
-                              {project.repoOwner}
-                            </div>
-                          ) : null}
-                        </div>
-                        <span className="shrink-0 rounded-md bg-muted/70 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
+                        </span>
+                        <span
+                          className={`truncate text-[12px] font-medium transition-colors duration-100 group-hover:text-muted-foreground ${
+                            containsActive
+                              ? "text-muted-foreground"
+                              : "text-muted-foreground/80"
+                          }`}
+                        >
+                          {project.name}
+                        </span>
+                        <span className="ml-auto shrink-0 text-[11.5px] tabular-nums text-muted-foreground/60 transition-opacity duration-100 group-hover:opacity-0">
                           {project.sessions.length}
                         </span>
                       </button>
 
-                      {project.kind === "folder" ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              onClick={(event) => event.stopPropagation()}
-                              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-100 md:opacity-0 transition-[opacity,color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 focus:opacity-100 hover:bg-muted hover:text-foreground cursor-pointer"
-                              aria-label={`Folder options for ${project.name}`}
-                              title="Folder options"
+                      <span className="absolute top-1/2 right-[3px] flex -translate-y-1/2 opacity-0 transition-opacity duration-100 ease-[cubic-bezier(0.2,0.8,0.2,1)] group-hover:opacity-100 focus-within:opacity-100">
+                        {project.kind === "folder" ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={(event) => event.stopPropagation()}
+                                className="grid size-6 place-items-center rounded-md text-muted-foreground transition-[background-color,color] duration-100 hover:bg-foreground/[0.09] hover:text-foreground cursor-pointer"
+                                aria-label={`Folder options for ${project.name}`}
+                                title="Folder options"
+                              >
+                                <MoreHorizontal
+                                  className="size-3.5"
+                                  strokeWidth={1.5}
+                                />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              sideOffset={4}
+                              className="w-40"
                             >
-                              <MoreHorizontal
-                                className="h-4 w-4"
-                                strokeWidth={1.5}
-                              />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent
-                            align="end"
-                            sideOffset={4}
-                            className="w-40"
-                          >
-                            <DropdownMenuItem
-                              onSelect={() => {
-                                setRenameValue(project.name);
-                                setRenamingProjectId(project.projectId);
-                              }}
-                            >
-                              <Pencil className="h-4 w-4" strokeWidth={1.5} />
-                              <span>Rename</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onSelect={() => {
-                                void onDeleteFolder(project.projectId);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" strokeWidth={1.5} />
-                              <span>Delete folder</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : null}
-
-                      <button
-                        type="button"
-                        onClick={(event) =>
-                          handleNewChatInProject(event, project)
-                        }
-                        disabled={isCreating}
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground opacity-100 md:opacity-0 transition-[opacity,color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 focus:opacity-100 hover:bg-muted hover:text-foreground cursor-pointer"
-                        aria-label={`New chat in ${project.name}`}
-                        title={`New chat in ${project.name}`}
-                      >
-                        {isCreating ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Plus className="h-4 w-4" strokeWidth={1.5} />
-                        )}
-                      </button>
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setRenameValue(project.name);
+                                  setRenamingProjectId(project.projectId);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" strokeWidth={1.5} />
+                                <span>Rename</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() => {
+                                  void onDeleteFolder(project.projectId);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" strokeWidth={1.5} />
+                                <span>Delete folder</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={(event) =>
+                            handleNewChatInProject(event, project)
+                          }
+                          disabled={isCreating}
+                          className="grid size-6 place-items-center rounded-md text-muted-foreground transition-[background-color,color] duration-100 hover:bg-foreground/[0.09] hover:text-foreground cursor-pointer"
+                          aria-label={`New chat in ${project.name}`}
+                          title={`New chat in ${project.name}`}
+                        >
+                          {isCreating ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Plus className="size-3.5" strokeWidth={1.5} />
+                          )}
+                        </button>
+                      </span>
                     </div>
 
                     {isExpanded ? (
-                      <div className="ml-4 space-y-1 border-l border-border/50 pl-2.5 py-0.5">
+                      <div className="space-y-px pt-px">
                         {project.sessions.length === 0 &&
                         project.kind === "folder" ? (
                           <button
