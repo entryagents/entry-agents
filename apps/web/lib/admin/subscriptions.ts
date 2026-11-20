@@ -1,7 +1,16 @@
 import "server-only";
 
-import { and, count, desc, eq, gte, sql } from "drizzle-orm";
-import { addOneCalendarMonth, getPlanDefinition } from "@/lib/billing/plans";
+import { and, count, desc, eq, gte } from "drizzle-orm";
+import {
+  getBachsEnvironmentStatus,
+  type BachsEnvironmentStatus,
+} from "@/lib/billing/bachs";
+import {
+  PLAN_CATALOG,
+  addOneCalendarMonth,
+  getPlanDefinition,
+  resolveProductIdForPlan,
+} from "@/lib/billing/plans";
 import { resolveSandboxVcpusForPlan } from "@/lib/billing/sandbox-limits";
 import { db } from "@/lib/db/client";
 import {
@@ -22,6 +31,7 @@ export interface AdminSubscriptionRow {
   priceUsdCents: number;
   creditBalanceCents: number;
   subscriptionGrantCents: number;
+  customerCode: string | null;
   subscriptionCode: string | null;
   billingCycleAnchor: string | null;
   nextRenewalAt: string | null;
@@ -40,17 +50,27 @@ export interface AdminSubscriptionOverview {
   planCounts: Record<string, number>;
   totalActiveSessions: number;
   twoVcpuUsers: number;
+  bachsStatus: BachsEnvironmentStatus;
+  plusProductId: string | null;
+  builderProductId: string | null;
   subscribers: AdminSubscriptionRow[];
+}
+
+function toValidIsoString(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
 }
 
 export async function getAdminSubscriptionOverview(): Promise<AdminSubscriptionOverview> {
   const now = Date.now();
   const cutoff24h = new Date(now - 24 * 60 * 60 * 1000);
-  const cutoff5h = new Date(now - 5 * 60 * 60 * 1000);
-  const cutoff7d = new Date(now - 7 * 24 * 60 * 60 * 1000);
+  const cutoff5hMs = now - 5 * 60 * 60 * 1000;
+  const cutoff7dMs = now - 7 * 24 * 60 * 60 * 1000;
   const cutoff30d = new Date(now - 30 * 24 * 60 * 60 * 1000);
 
-  const [allUsers, dailyMsgRows, spendRows, activeSessionRows] =
+  const [allUsers, dailyMsgRows, recentDebitRows, activeSessionRows] =
     await Promise.all([
       db
         .select({
@@ -61,12 +81,17 @@ export async function getAdminSubscriptionOverview(): Promise<AdminSubscriptionO
           plan: users.plan,
           creditBalanceCents: users.creditBalanceCents,
           planGrantBalanceCents: users.planGrantBalanceCents,
+          billingCustomerCode: users.billingCustomerCode,
           billingSubscriptionCode: users.billingSubscriptionCode,
           billingCycleAnchor: users.billingCycleAnchor,
         })
         .from(users)
         .orderBy(desc(users.createdAt))
-        .limit(200),
+        .limit(300)
+        .catch((err) => {
+          console.error("[admin/subscriptions] Failed to query users:", err);
+          return [];
+        }),
       db
         .select({
           userId: sessions.userId,
@@ -81,13 +106,19 @@ export async function getAdminSubscriptionOverview(): Promise<AdminSubscriptionO
             gte(chatMessages.createdAt, cutoff24h),
           ),
         )
-        .groupBy(sessions.userId),
+        .groupBy(sessions.userId)
+        .catch((err) => {
+          console.error(
+            "[admin/subscriptions] Failed to query 24h messages:",
+            err,
+          );
+          return [];
+        }),
       db
         .select({
           userId: creditTransactions.userId,
-          spend5h: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} >= ${cutoff5h} then abs(${creditTransactions.amountCents}) else 0 end), 0)`,
-          spend7d: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} >= ${cutoff7d} then abs(${creditTransactions.amountCents}) else 0 end), 0)`,
-          spend30d: sql<number>`coalesce(sum(case when ${creditTransactions.createdAt} >= ${cutoff30d} then abs(${creditTransactions.amountCents}) else 0 end), 0)`,
+          amountCents: creditTransactions.amountCents,
+          createdAt: creditTransactions.createdAt,
         })
         .from(creditTransactions)
         .where(
@@ -96,7 +127,13 @@ export async function getAdminSubscriptionOverview(): Promise<AdminSubscriptionO
             gte(creditTransactions.createdAt, cutoff30d),
           ),
         )
-        .groupBy(creditTransactions.userId),
+        .catch((err) => {
+          console.error(
+            "[admin/subscriptions] Failed to query 30d credit debits:",
+            err,
+          );
+          return [];
+        }),
       db
         .select({
           userId: sessions.userId,
@@ -104,24 +141,45 @@ export async function getAdminSubscriptionOverview(): Promise<AdminSubscriptionO
         })
         .from(sessions)
         .where(eq(sessions.status, "running"))
-        .groupBy(sessions.userId),
+        .groupBy(sessions.userId)
+        .catch((err) => {
+          console.error(
+            "[admin/subscriptions] Failed to query active sessions:",
+            err,
+          );
+          return [];
+        }),
     ]);
 
   const dailyMsgMap = new Map(
-    dailyMsgRows.map((r) => [r.userId, Number(r.total)]),
+    dailyMsgRows.map((r) => [r.userId, Number(r.total) || 0]),
   );
-  const spendMap = new Map(
-    spendRows.map((r) => [
-      r.userId,
-      {
-        spend5h: Number(r.spend5h),
-        spend7d: Number(r.spend7d),
-        spend30d: Number(r.spend30d),
-      },
-    ]),
-  );
+
+  const spendMap = new Map<
+    string,
+    { spend5h: number; spend7d: number; spend30d: number }
+  >();
+  for (const row of recentDebitRows) {
+    const debitCents = Math.abs(Number(row.amountCents) || 0);
+    if (debitCents <= 0) continue;
+    const createdMs = new Date(row.createdAt).getTime();
+    const current = spendMap.get(row.userId) ?? {
+      spend5h: 0,
+      spend7d: 0,
+      spend30d: 0,
+    };
+    current.spend30d += debitCents;
+    if (createdMs >= cutoff7dMs) {
+      current.spend7d += debitCents;
+    }
+    if (createdMs >= cutoff5hMs) {
+      current.spend5h += debitCents;
+    }
+    spendMap.set(row.userId, current);
+  }
+
   const sessionMap = new Map(
-    activeSessionRows.map((r) => [r.userId, Number(r.total)]),
+    activeSessionRows.map((r) => [r.userId, Number(r.total) || 0]),
   );
 
   let estimatedMrrCents = 0;
@@ -154,11 +212,9 @@ export async function getAdminSubscriptionOverview(): Promise<AdminSubscriptionO
     }
 
     const spend = spendMap.get(u.id);
-    const anchorIso = u.billingCycleAnchor
-      ? new Date(u.billingCycleAnchor).toISOString()
-      : null;
-    const nextRenewalAt = u.billingCycleAnchor
-      ? addOneCalendarMonth(u.billingCycleAnchor).toISOString()
+    const anchorIso = toValidIsoString(u.billingCycleAnchor);
+    const nextRenewalAt = anchorIso
+      ? toValidIsoString(addOneCalendarMonth(anchorIso))
       : null;
 
     return {
@@ -171,7 +227,8 @@ export async function getAdminSubscriptionOverview(): Promise<AdminSubscriptionO
       priceUsdCents: plan.priceUsdCents,
       creditBalanceCents: u.creditBalanceCents,
       subscriptionGrantCents: u.planGrantBalanceCents,
-      subscriptionCode: u.billingSubscriptionCode,
+      customerCode: u.billingCustomerCode ?? null,
+      subscriptionCode: u.billingSubscriptionCode ?? null,
       billingCycleAnchor: anchorIso,
       nextRenewalAt,
       dailyMessages24h: dailyMsgMap.get(u.id) ?? 0,
@@ -198,6 +255,9 @@ export async function getAdminSubscriptionOverview(): Promise<AdminSubscriptionO
     planCounts,
     totalActiveSessions,
     twoVcpuUsers,
+    bachsStatus: getBachsEnvironmentStatus(),
+    plusProductId: resolveProductIdForPlan(PLAN_CATALOG.plus),
+    builderProductId: resolveProductIdForPlan(PLAN_CATALOG.entry),
     subscribers,
   };
 }
