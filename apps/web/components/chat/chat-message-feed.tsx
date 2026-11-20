@@ -298,6 +298,9 @@ const ChatMessageRow = memo(function ChatMessageRow({
         return (
           <div
             key={`${m.id}-${group.renderKey}`}
+            data-nav-msg-id={
+              m.role === "user" && group.index === 0 ? m.id : undefined
+            }
             className={cn(
               "flex min-w-0 py-2",
               m.role === "user" ? "justify-end" : "justify-start",
