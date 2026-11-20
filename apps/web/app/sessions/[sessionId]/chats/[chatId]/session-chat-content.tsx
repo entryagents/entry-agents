@@ -48,6 +48,7 @@ import { SubagentThreadView } from "@/components/team/subagent-thread-view";
 import { TeamStatusButton } from "@/components/team/team-status-button";
 import { TeamWorkspace } from "@/components/team/team-workspace";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
+import { ChatNavigator } from "@/components/chat/chat-navigator";
 import {
   PinnedTodoPanel,
   getLatestTodos,
@@ -3516,6 +3517,11 @@ export function SessionChatContent({
                     </OpenFileProvider>
                   </div>
                 </div>
+                <ChatNavigator
+                  messages={renderMessages}
+                  scrollerRef={containerRef}
+                  isAtBottom={isAtBottom}
+                />
                 {!isAtBottom && (
                   <Button
                     variant="ghost"

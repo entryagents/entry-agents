@@ -1,0 +1,191 @@
+/*
+ * Conversation Minimap (ChatNavigator): ported 1:1 from Sable's navigator.css.
+ * A slim strip along the right edge of the conversation, left of the scrollbar's
+ * gutter and clear of the reading column.
+ */
+
+.sable-nav {
+  --nav-line: rgba(15, 23, 42, 0.12);
+  --nav-fill: rgba(15, 23, 42, 0.05);
+  --nav-fill-2: rgba(15, 23, 42, 0.09);
+  --nav-text: var(--foreground);
+  --nav-text-3: var(--muted-foreground);
+  --nav-amber: oklch(0.72 0.16 70);
+  --nav-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --nav-d-2: 140ms;
+  --nav-d-3: 200ms;
+
+  position: absolute;
+  z-index: 20;
+  top: 52px;
+  right: 9px;
+  bottom: calc(var(--dock-h, 150px) - 14px);
+  width: 16px;
+  contain: strict;
+  touch-action: none;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--nav-d-3) var(--nav-ease),
+    visibility 0s linear var(--nav-d-3);
+}
+
+.dark .sable-nav {
+  --nav-line: rgba(255, 255, 255, 0.1);
+  --nav-fill: rgba(255, 255, 255, 0.04);
+  --nav-fill-2: rgba(255, 255, 255, 0.09);
+  --nav-amber: oklch(0.78 0.15 72);
+}
+
+.sable-nav[data-show] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity var(--nav-d-3) var(--nav-ease);
+}
+
+.sable-nav-travel {
+  position: absolute;
+  inset: 0 0 auto;
+}
+
+.sable-nav[data-end] .sable-nav-travel {
+  transform: translateY(100%);
+}
+
+/* The view: a quiet band behind the ticks. */
+.sable-nav-band {
+  position: absolute;
+  inset: 0 0 auto;
+  border-radius: 5px;
+  background-color: var(--nav-fill);
+  box-shadow: inset 0 0 0 1px var(--nav-line);
+  transition: background-color var(--nav-d-2) var(--nav-ease);
+}
+
+.sable-nav:hover .sable-nav-band,
+.sable-nav[data-held] .sable-nav-band {
+  background-color: var(--nav-fill-2);
+}
+
+/* Ticks: placed by transform from the top of the track, drawn centred on their place. */
+.sable-nav-ticks,
+.sable-nav-waits {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.sable-nav-ticks {
+  opacity: 0.28;
+  transition: opacity var(--nav-d-2) var(--nav-ease);
+}
+
+.sable-nav:hover .sable-nav-ticks {
+  opacity: 0.65;
+}
+
+.sable-nav[data-held] .sable-nav-ticks {
+  opacity: 0.85;
+}
+
+.sable-nav-tick,
+.sable-nav-lit {
+  position: absolute;
+  top: -1px;
+  right: 3px;
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--nav-text);
+}
+
+/* A turn that changed files: a dot before its tick. */
+.sable-nav-tick[data-files]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: calc(100% + 2px);
+  width: 2px;
+  height: 2px;
+  border-radius: 1px;
+  background-color: inherit;
+}
+
+/* Waiting on you: amber, at full strength. */
+.sable-nav-waits .sable-nav-tick {
+  width: 10px;
+  background-color: var(--nav-amber);
+}
+
+/* The tick under the pointer. */
+.sable-nav-lit {
+  right: 2px;
+  width: 12px;
+  transition: transform 80ms var(--nav-ease);
+}
+
+/* The preview: left of the track, centred on the tick. */
+.sable-nav-peek {
+  position: absolute;
+  z-index: 25;
+  top: 52px;
+  right: 33px;
+  width: max-content;
+  max-width: min(320px, calc(100% - 96px));
+  padding: 7px 12px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.14),
+    0 1px 3px rgba(0, 0, 0, 0.08);
+  translate: 0 -50%;
+  pointer-events: none;
+  transition: transform 120ms var(--nav-ease);
+  animation: sable-nav-peek-in 120ms var(--nav-ease);
+}
+
+@keyframes sable-nav-peek-in {
+  from {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+
+.sable-nav-peek-text {
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--popover-foreground);
+  word-break: break-word;
+}
+
+.sable-nav-peek-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.sable-nav-peek-wait {
+  color: var(--nav-amber);
+}
+
+@media (max-width: 767px) {
+  .sable-nav,
+  .sable-nav-peek {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sable-nav-lit,
+  .sable-nav-peek {
+    transition: none;
+    animation: none;
+  }
+}
