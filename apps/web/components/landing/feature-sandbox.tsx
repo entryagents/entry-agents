@@ -7,31 +7,31 @@ const STAGES = [
     state: "provisioning",
     description: "Cloning repository into an isolated Linux container",
     snapshot: "—",
-    cost: "$0.02/m",
+    cost: "included",
   },
   {
     state: "active",
     description: "Filesystem, terminal, editor, and preview server ready",
     snapshot: "—",
-    cost: "$0.02/m",
+    cost: "included",
   },
   {
     state: "hibernating",
     description: "Saving disk snapshot automatically after idle timeout",
     snapshot: "syncing",
-    cost: "$0.01/m",
+    cost: "pausing",
   },
   {
     state: "hibernated",
-    description: "Zero compute billed while full disk state stays intact",
+    description: "Zero compute consumed while full disk state stays intact",
     snapshot: "snap_a1b2c3",
-    cost: "$0.00",
+    cost: "paused",
   },
   {
     state: "restoring",
     description: "Resuming from snapshot immediately on your next message",
     snapshot: "snap_a1b2c3",
-    cost: "$0.02/m",
+    cost: "included",
   },
 ] as const;
 

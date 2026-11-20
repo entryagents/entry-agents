@@ -7,7 +7,7 @@ import { GuideJumpNav, type GuideJumpSection } from "./guide-jump-nav";
 
 const title = "Entry Agents Complete Builder Guide";
 const description =
-  "Learn Entry Agents from scratch: signing in, starting with or without GitHub, using Direct or Team Wave mode inside chat, connecting workplace apps, understanding 99% prompt caching and $5–$40 plans, and reviewing live previews and diffs.";
+  "Learn Entry Agents from scratch: signing in, starting with or without GitHub, using Direct or Team Wave mode inside chat, connecting workplace apps, understanding 90% to 99% prompt caching, and reviewing live previews and diffs.";
 
 export const metadata: Metadata = {
   title,
@@ -77,10 +77,10 @@ const structuredData = {
         },
         {
           "@type": "Question",
-          name: "How do plans and 99% prompt caching work",
+          name: "How does 90% to 99% prompt caching work",
           acceptedAnswer: {
             "@type": "Answer",
-            text: "Paid plans are $3/mo Plus ($6 credit, 2x) and $10/mo Builder ($28 credit, 2.8x) with zero per-token markup, while we achieve a 90% to 99% cache hit rate across all models we support.",
+            text: "We achieve a 90% to 99% cache hit rate across all models we support with zero per-token markup, reusing repository context and conversation history across turns.",
           },
         },
       ],
@@ -95,7 +95,7 @@ const GUIDE_SECTIONS: readonly GuideJumpSection[] = [
   { id: "navigation", index: "04", label: "Pages & settings" },
   { id: "session", index: "05", label: "Inside a session" },
   { id: "connections", index: "06", label: "Connected stack & MCP" },
-  { id: "credits", index: "07", label: "Plans & 99% caching" },
+  { id: "credits", index: "07", label: "90%–99% caching" },
   { id: "glossary", index: "08", label: "Glossary" },
 ];
 
@@ -371,46 +371,16 @@ Reproduce the bug, inspect network and server route responses, apply the smalles
             </ul>
           </Section>
 
-          <Section id="credits" title="7. Plans, $5–$40 pricing & 99% caching">
+          <Section id="credits" title="7. 90% to 99% prompt caching & usage">
             <p>
               Entry charges zero token markup. We achieve a 90% to 99% cache hit
-              rate across all models we support, reusing unchanged repo and
-              conversation context on subsequent tool calls.
+              rate across all models we support, reusing unchanged repository
+              files, tool schemas, and conversation context on subsequent tool
+              calls so your usage goes much further.
             </p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                {
-                  plan: "Free",
-                  price: "$0/mo",
-                  detail: "$1 trial · 5 msgs/day · 1 vCPU shared VM",
-                },
-                {
-                  plan: "Plus",
-                  price: "$3/mo",
-                  detail: "$6 credit (2x) · $1.50/5h, $3.50/7d · 1 vCPU shared",
-                },
-                {
-                  plan: "Builder",
-                  price: "$10/mo",
-                  detail:
-                    "$28 credit (2.8x) · $6/5h, $14/7d · 2 vCPU dedicated (3 VMs)",
-                },
-              ].map((tier) => (
-                <div
-                  key={tier.plan}
-                  className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4 font-mono text-xs tabular-nums"
-                >
-                  <div className="font-semibold text-(--l-fg)">{tier.plan}</div>
-                  <div className="mt-1 text-base font-semibold text-(--l-fg)">
-                    {tier.price}
-                  </div>
-                  <div className="mt-1 text-(--l-fg-3)">{tier.detail}</div>
-                </div>
-              ))}
-            </div>
             <p className="text-sm">
-              Free accounts start with a $1 trial credit and no card required.
-              See live balances on <PageLink href="/pricing">Pricing</PageLink>{" "}
+              We offer affordable plans with generous usage allowances. See live
+              plans and balances on <PageLink href="/pricing">Pricing</PageLink>{" "}
               and per-model rates on <PageLink href="/model">Models</PageLink>.
             </p>
           </Section>

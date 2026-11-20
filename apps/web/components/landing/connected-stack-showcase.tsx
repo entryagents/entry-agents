@@ -283,7 +283,7 @@ export function ConnectedStackShowcase() {
               )}
             </motion.div>
 
-            {/* Prompt Caching & $5 Plan Card */}
+            {/* Prompt Caching Card */}
             <motion.div
               initial={{ opacity: 0, transform: "translateY(12px)" }}
               whileInView={{ opacity: 1, transform: "translateY(0px)" }}
@@ -310,8 +310,9 @@ export function ConnectedStackShowcase() {
                 </h2>
                 <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
                   Repository context, tool definitions, and multi-turn history
-                  stay cached across every model so your credits go much
-                  further.
+                  stay cached across every model so your usage goes much
+                  further. We offer affordable plans with generous usage
+                  allowances and zero per-token markup.
                 </p>
 
                 {/* Caching Bar Visual */}
@@ -331,39 +332,8 @@ export function ConnectedStackShowcase() {
                     />
                   </div>
                   <p className="mt-2.5 text-xs text-(--l-fg-3)">
-                    Start free with 5 messages/day and $1 trial credit — no card
-                    required.
-                  </p>
-                </div>
-
-                {/* $3 Plus Plan Highlight */}
-                <div className="mt-4 rounded-xl border border-(--l-border) bg-(--l-surface-2) p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-(--l-fg)">
-                        Plus plan
-                      </div>
-                      <div className="mt-0.5 text-xs text-(--l-fg-3)">
-                        $6 credit (2x) · $1.50/5h &amp; $3.50/7d · shared 1 vCPU
-                        / 4 GiB VM (25 hrs/mo)
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-right font-mono tabular-nums">
-                      <div className="text-base font-semibold text-(--l-fg)">
-                        $3/mo
-                      </div>
-                    </div>
-                  </div>
-                  <p className="mt-3 border-t border-(--l-border-subtle) pt-2.5 text-xs text-(--l-fg-2)">
-                    Need dedicated 2 vCPU / 8 GiB sandboxes and $28 credit? See
-                    the{" "}
-                    <Link
-                      href="/pricing"
-                      className="font-medium text-(--l-fg) underline underline-offset-4"
-                    >
-                      Builder ($10/mo) plan
-                    </Link>
-                    .
+                    Unchanged repository context and tool schemas are reused
+                    automatically across turns.
                   </p>
                 </div>
               </div>
@@ -373,7 +343,7 @@ export function ConnectedStackShowcase() {
                   href="/pricing"
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-opacity duration-150 hover:opacity-90"
                 >
-                  <span>Compare all plans</span>
+                  <span>View pricing</span>
                   <ArrowRight className="size-3.5" strokeWidth={1.5} />
                 </Link>
                 <Link

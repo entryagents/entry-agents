@@ -281,8 +281,8 @@ export function ModelSelectorCompact({
               {lockedModel?.shortLabel ?? "This model"} is a paid model
             </DialogTitle>
             <DialogDescription>
-              Your Free plan only includes starter models. Upgrade to Plus, Pro,
-              or Max to unlock every model, including{" "}
+              Your Free plan only includes starter models. Upgrade to Plus or
+              Builder to unlock paid models, including{" "}
               {lockedModel?.shortLabel ?? "this one"}.
             </DialogDescription>
           </DialogHeader>
