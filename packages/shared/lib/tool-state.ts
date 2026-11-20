@@ -31,6 +31,7 @@ export type ToolRenderState = {
  */
 export type GenericToolPart = {
   state: string;
+  preliminary?: boolean;
   approval?: {
     id?: string;
     approved?: boolean;
@@ -50,7 +51,9 @@ export function extractRenderState(
   isStreaming: boolean,
 ): ToolRenderState {
   const isRunningState =
-    part.state === "input-streaming" || part.state === "input-available";
+    part.state === "input-streaming" ||
+    part.state === "input-available" ||
+    (part.state === "output-available" && part.preliminary === true);
   const approval = part.approval;
   const denied = part.state === "output-denied" || approval?.approved === false;
   const denialReason = denied ? approval?.reason : undefined;

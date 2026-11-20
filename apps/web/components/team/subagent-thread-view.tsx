@@ -82,6 +82,7 @@ export function buildSubagentThreadMessages(
 export interface SubagentThreadViewProps {
   subagentId: string;
   messages: WebAgentUIMessage[];
+  isParentStreaming?: boolean;
   onOpenFile?: (filePath: string) => void;
   onClose: () => void;
   onStopRun?: () => void;
@@ -92,6 +93,7 @@ export interface SubagentThreadViewProps {
 export function SubagentThreadView({
   subagentId,
   messages,
+  isParentStreaming,
   onOpenFile,
   onClose,
   onStopRun: _onStopRun,
@@ -99,8 +101,8 @@ export function SubagentThreadView({
   onDenyTool,
 }: SubagentThreadViewProps) {
   const data = useMemo(
-    () => deriveSubagentTabData(messages, subagentId),
-    [messages, subagentId],
+    () => deriveSubagentTabData(messages, subagentId, { isParentStreaming }),
+    [messages, subagentId, isParentStreaming],
   );
 
   const isLive =
@@ -116,9 +118,10 @@ export function SubagentThreadView({
 
   const roleName = getSubagentRoleTag(data?.subagentType);
   const modelTag = formatSubagentModelTag(data?.modelId ?? null);
+  const elapsedEndMs = data?.completedAt ?? (isLive ? now : null);
   const elapsedMs =
-    data?.startedAt != null
-      ? Math.max(0, (data.completedAt ?? now) - data.startedAt)
+    data?.startedAt != null && elapsedEndMs != null
+      ? Math.max(0, elapsedEndMs - data.startedAt)
       : null;
 
   return (
