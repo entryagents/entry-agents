@@ -165,7 +165,7 @@ export function PlansCatalog() {
               </div>
             )}
 
-            <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <div className="mt-10 grid gap-4 sm:mt-12 sm:grid-cols-2 lg:grid-cols-3">
               {(plans ?? []).map((plan) => {
                 const isCurrentPlan = me?.plan === plan.id;
                 const isFlagship = plan.id === "entry";
@@ -188,7 +188,7 @@ export function PlansCatalog() {
                         ) : (
                           isFlagship && (
                             <span className="rounded-md border border-(--l-border) bg-(--l-surface-2) px-2 py-0.5 text-[11px] font-medium text-(--l-fg-2)">
-                              3.8x credit
+                              2.8x credit
                             </span>
                           )
                         )}
