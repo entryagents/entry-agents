@@ -1,7 +1,7 @@
 "use client";
 
 import "./rail.css";
-import { Maximize2, Minimize2, PanelRightClose, Search, X } from "lucide-react";
+import { Maximize2, Minimize2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 import type { WebAgentUIMessage } from "@/app/types";
@@ -90,7 +90,6 @@ export function WorkspacePanel({
     openFiles,
     openWorkspaceFile,
     closeWorkspaceFile,
-    setGitPanelOpen,
   } = useGitPanel();
 
   const resolvedModelId = modelId ?? "";
@@ -99,12 +98,16 @@ export function WorkspacePanel({
   const [dir, setDir] = useState<"fwd" | "back">("fwd");
   const prevTabRef = useRef<RailTabId>("review");
 
-  const activeBuiltinTab: RailTabId = isBuiltinRailTab(activeWorkspaceTab)
-    ? activeWorkspaceTab
+  const normalizedTab =
+    activeWorkspaceTab === "diff" || activeWorkspaceTab === "git"
+      ? "review"
+      : activeWorkspaceTab;
+
+  const activeBuiltinTab: RailTabId = isBuiltinRailTab(normalizedTab)
+    ? normalizedTab
     : "files";
   const isViewingOpenFile =
-    !isBuiltinRailTab(activeWorkspaceTab) &&
-    openFiles.includes(activeWorkspaceTab);
+    !isBuiltinRailTab(normalizedTab) && openFiles.includes(normalizedTab);
 
   // Track which panes have been visited so we mount lazily and keep alive.
   const [mountedPanes, setMountedPanes] = useState<Set<RailTabId>>(
@@ -205,22 +208,8 @@ export function WorkspacePanel({
           isPreviewLive={isPreviewLive}
           onPick={pickBuiltinTab}
         />
-        <div className="flex items-center gap-0.5 shrink-0 ml-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="rail-btn"
-                onClick={() => setQuickOpen(true)}
-                aria-label="Quick open file"
-              >
-                <Search size={14} strokeWidth={1.6} aria-hidden="true" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Quick open file (⌘P)</TooltipContent>
-          </Tooltip>
-
-          {onToggleWorkspaceExpand && (
+        {onToggleWorkspaceExpand && (
+          <div className="flex items-center shrink-0">
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -242,26 +231,8 @@ export function WorkspacePanel({
                 {isWorkspaceExpanded ? "Restore width" : "Expand panel"}
               </TooltipContent>
             </Tooltip>
-          )}
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="rail-btn"
-                onClick={() => setGitPanelOpen(false)}
-                aria-label="Hide workspace panel"
-              >
-                <PanelRightClose
-                  size={14}
-                  strokeWidth={1.6}
-                  aria-hidden="true"
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Hide panel</TooltipContent>
-          </Tooltip>
-        </div>
+          </div>
+        )}
       </div>
 
       {openFiles.length > 0 && (
@@ -316,7 +287,11 @@ export function WorkspacePanel({
           RAIL_TABS.map((def, idx) => {
             const isActive = def.id === activeBuiltinTab;
             const isBefore = idx < activeIdx;
-            const shouldRender = mountedPanes.has(def.id) || isActive;
+            const keepAlive = def.id === "preview" || def.id === "terminal";
+            const shouldRender =
+              isActive || (keepAlive && mountedPanes.has(def.id));
+
+            if (!shouldRender) return null;
 
             return (
               <div
