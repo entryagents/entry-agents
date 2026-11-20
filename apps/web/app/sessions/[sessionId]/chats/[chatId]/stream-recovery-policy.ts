@@ -1,6 +1,5 @@
 import type { WebAgentUIMessage } from "@/app/types";
 import type { ChatUiStatus } from "@/lib/chat-streaming-state";
-import { isFriendlyChatErrorText } from "@/lib/chat/friendly-error";
 
 export const STREAM_RECOVERY_STALL_MS = 4_000;
 export const STREAM_RECOVERY_MIN_INTERVAL_MS = 8_000;
@@ -174,8 +173,7 @@ export function isChatStreamingProbeResponse(
 // history and re-submits it (verified against the SDK's regenerate()
 // implementation) -- so the partial assistant work below it survives.
 
-export const CONTINUE_AFTER_ERROR_PROMPT =
-  "Continue from exactly where you left off. Do not repeat any completed work, tool calls, or text you already produced -- just carry the task forward.";
+export const CONTINUE_AFTER_ERROR_PROMPT = "";
 
 export type RetryStrategy = "hard" | "soft";
 
@@ -183,61 +181,16 @@ export type DeadTurnRetryAction = "continue" | "regenerate" | "none";
 
 /**
  * Decides what to do once we know the server-side stream for the
- * current turn is dead (resumeStream() attached to nothing). See the
- * block comment above for the full action semantics.
+ * current turn is dead (resumeStream() attached to nothing).
+ * Never injects synthetic user continuation messages into the chat.
  */
 export function getDeadTurnRetryAction(
   messages: WebAgentUIMessage[],
   strategy: RetryStrategy,
 ): DeadTurnRetryAction {
   const last = messages[messages.length - 1];
-
-  // A previous continue attempt already failed -- never stack another
-  // continuation prompt on top of the existing one.
-  if (
-    last?.role === "user" &&
-    last.parts.some(
-      (part) =>
-        part.type === "text" && part.text === CONTINUE_AFTER_ERROR_PROMPT,
-    )
-  ) {
-    return strategy === "hard" ? "regenerate" : "none";
-  }
-
-  // No assistant response at all (turn died before any output) -- a
-  // continuation prompt would have nothing to continue from.
   if (!last || last.role !== "assistant") {
     return strategy === "hard" ? "regenerate" : "none";
-  }
-
-  const hasRealPartialWork = last.parts.some((part) => {
-    // Completed (or in-flight) tool calls, data parts, files, sources,
-    // and reasoning all represent real work worth keeping.
-    if (
-      part.type.startsWith("tool-") ||
-      part.type.startsWith("data-") ||
-      part.type.startsWith("source-") ||
-      part.type === "file" ||
-      part.type === "reasoning"
-    ) {
-      return true;
-    }
-    if (part.type === "text") {
-      const text = part.text.trim();
-      // Real partial text counts; the workflow's setup-error notice
-      // (a friendly-error string) does NOT -- continuing from an
-      // error-only message would keep the useless notice in history.
-      return text.length > 0 && !isFriendlyChatErrorText(text);
-    }
-    return false;
-  });
-
-  if (hasRealPartialWork) {
-    // HARD (manual Retry, user asked for it) continues from the partial
-    // work. SOFT (automatic recovery) never fires a synthetic continue
-    // prompt into the conversation on its own -- it keeps the error
-    // visible so the user decides.
-    return strategy === "hard" ? "continue" : "none";
   }
   return strategy === "hard" ? "regenerate" : "none";
 }

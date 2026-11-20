@@ -216,9 +216,11 @@ export function PlansCatalog() {
                             : "No credit included"}
                         </p>
                         <p>
-                          {plan.modelAccess === "all"
-                            ? "Every model, full access"
-                            : "Included starter models"}
+                          {plan.id === "plus"
+                            ? "High-allowance open models + Free models"
+                            : plan.modelAccess === "all"
+                              ? "Every model, full access"
+                              : "Included starter models · 5 msgs/day"}
                         </p>
                       </div>
                     </div>
@@ -259,10 +261,10 @@ export function PlansCatalog() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs">
           <div className="w-full max-w-md rounded-2xl border border-(--l-border) bg-(--l-bg) p-6 text-(--l-fg) shadow-2xl">
             <h2 className="text-lg font-semibold">
-              Choose your Entry window method
+              Choose your Builder window method
             </h2>
             <p className="mt-1.5 text-xs leading-relaxed text-(--l-fg-2)">
-              Select how your 5-hour ($10), 7-day ($25), and 30-day ($50) usage
+              Select how your 5-hour ($6), 7-day ($14), and 30-day ($28) usage
               windows replenish during your subscription:
             </p>
 
