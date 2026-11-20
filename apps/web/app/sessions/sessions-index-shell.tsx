@@ -88,13 +88,15 @@ export function SessionsIndexShell() {
           ...(reasoningEffort !== null ? { reasoningEffort } : {}),
         });
 
-        // Start the agent workflow directly on submit so background execution
-        // begins immediately even if the user navigates away or closes the tab
-        // before the chat page mounts.
-        await startInitialChatOnServer({
+        // Kick off the agent workflow in parallel with route navigation so the
+        // transition to the new chat page feels instant while background
+        // execution starts immediately.
+        void startInitialChatOnServer({
           sessionId: createdSession.id,
           chatId: chat.id,
           built,
+        }).catch((error) => {
+          console.error("Failed to start initial chat on server:", error);
         });
 
         void globalMutate<{

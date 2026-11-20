@@ -344,7 +344,8 @@ export function ConnectedStackShowcase() {
                         Plus plan
                       </div>
                       <div className="mt-0.5 text-xs text-(--l-fg-3)">
-                        $6 monthly AI credit (2x) + shared 1 vCPU / 4 GiB VM
+                        $6 credit (2x) · $1.50/5h &amp; $3.50/7d · shared 1 vCPU
+                        / 4 GiB VM (25 hrs/mo)
                       </div>
                     </div>
                     <div className="shrink-0 text-right font-mono tabular-nums">
