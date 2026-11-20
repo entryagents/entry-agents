@@ -218,6 +218,33 @@ function SubagentRow({
   );
 }
 
+function DoneRow({
+  entry,
+  onSelectSubagent,
+}: {
+  entry: AgentHubEntry;
+  onSelectSubagent: TeamWorkspaceProps["onSelectSubagent"];
+}) {
+  const failed = entry.status === "failed" || entry.status === "denied";
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        onSelectSubagent(entry.id, entry.title, entry.subagentType)
+      }
+      className="flex h-8 w-full cursor-pointer items-center gap-2.5 px-4 text-left text-[13px] text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/45 hover:text-foreground"
+    >
+      <span className="flex size-3.5 shrink-0 items-center justify-center">
+        <EntryStatusIcon entry={entry} />
+      </span>
+      <span className="min-w-0 flex-1 truncate">{entry.title}</span>
+      <span className="shrink-0 font-mono text-[11px] tabular-nums">
+        {failed ? "Failed" : getSubagentRoleTag(entry.subagentType)}
+      </span>
+    </button>
+  );
+}
+
 function SubagentsTab({
   entries,
   now,
@@ -269,15 +296,14 @@ function SubagentsTab({
         <div>
           {active.length > 0 ? (
             <div className="bg-muted/30 px-4 py-1.5 text-[11px] font-medium text-muted-foreground">
-              Completed ({finished.length})
+              Done ({finished.length})
             </div>
           ) : null}
           <div className="divide-y divide-border/60">
             {finished.map((entry) => (
-              <SubagentRow
+              <DoneRow
                 key={entry.id}
                 entry={entry}
-                now={now}
                 onSelectSubagent={onSelectSubagent}
               />
             ))}
