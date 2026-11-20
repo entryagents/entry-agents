@@ -819,7 +819,9 @@ export function useSessionChatRuntime({
     // skip the 0ms duplicate probe so we don't attach twice simultaneously.
     const delaysMs = shouldResumeOnMountRef.current
       ? [1_500, 3_500, 7_000]
-      : [0, 1_000, 2_500, 5_500, 10_000];
+      : initialChatStatus === "queued"
+        ? [150, 400, 800, 1_500, 3_000, 6_000]
+        : [0, 1_000, 2_500, 5_500, 10_000];
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
     const attemptResume = async () => {

@@ -11,6 +11,7 @@ type SessionsShellContextValue = {
     session: { id: string };
     chat: { id: string };
     workflowRunId?: string | null;
+    initialWorkflowScheduled?: boolean;
   }>;
 };
 

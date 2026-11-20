@@ -98,7 +98,8 @@ export async function createSession(data: NewSession) {
 interface CreateSessionWithInitialChatInput {
   session: NewSession;
   initialChat: Pick<NewChat, "id" | "title" | "modelId"> &
-    Partial<Pick<NewChat, "reasoningEffort">>;
+    Partial<Pick<NewChat, "reasoningEffort" | "status" | "runStatusUpdatedAt">>;
+  initialMessage?: Omit<NewChatMessage, "chatId">;
 }
 
 export async function createSessionWithInitialChat(
@@ -123,10 +124,26 @@ export async function createSessionWithInitialChat(
         ...(input.initialChat.reasoningEffort !== undefined
           ? { reasoningEffort: input.initialChat.reasoningEffort }
           : {}),
+        ...(input.initialChat.status !== undefined
+          ? { status: input.initialChat.status }
+          : {}),
+        ...(input.initialChat.runStatusUpdatedAt !== undefined
+          ? { runStatusUpdatedAt: input.initialChat.runStatusUpdatedAt }
+          : {}),
       })
       .returning();
     if (!chat) {
       throw new Error("Failed to create chat");
+    }
+
+    if (input.initialMessage) {
+      await tx
+        .insert(chatMessages)
+        .values({
+          ...input.initialMessage,
+          chatId: chat.id,
+        })
+        .onConflictDoNothing({ target: chatMessages.id });
     }
 
     return { session: normalizeSessionRecord(session), chat };

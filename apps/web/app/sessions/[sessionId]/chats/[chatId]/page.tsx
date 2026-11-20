@@ -17,7 +17,7 @@ import {
   filterModelsForSession,
   sanitizeSelectedModelIdForSession,
 } from "@/lib/model-access";
-import { fetchAvailableLanguageModelsWithContext } from "@/lib/models-with-context";
+import { fetchAvailableLanguageModelsWithCachedContext } from "@/lib/models-with-context";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { isUserAdmin } from "@/lib/db/users";
 import { getInitialIsOnlyChatInSession } from "./only-chat-in-session";
@@ -97,7 +97,7 @@ function normalizeStoredMessage(m: {
 
 async function getInitialModels() {
   try {
-    return await fetchAvailableLanguageModelsWithContext();
+    return await fetchAvailableLanguageModelsWithCachedContext();
   } catch {
     return [];
   }
@@ -139,18 +139,33 @@ export default async function SessionChatPage({
 }: SessionChatPageProps) {
   const { sessionId, chatId } = await params;
 
-  // Start independent fetches in parallel
+  // Start all independent reads immediately in parallel so auth, session,
+  // chat, messages, models, and headers overlap in a single wave.
+  // Auth & ownership checks below strictly gate access before any data is used.
   const sessionPromise = getServerSession();
   const sessionRecordPromise = getSessionByIdCached(sessionId);
+  const headersPromise = headers();
+  const chatPromise = getChatByIdWithRetry(chatId, sessionId);
+  const messagesPromise = getChatMessages(chatId);
+  const modelsPromise = getInitialModels();
+  const sessionChatsPromise = sessionRecordPromise.then((rec) =>
+    rec ? getChatSummariesBySessionId(sessionId, rec.userId) : [],
+  );
 
-  // Server-side auth check
-  const session = await sessionPromise;
+  // Prevent unhandled rejections if auth/existence checks redirect early.
+  void chatPromise.catch(() => {});
+  void messagesPromise.catch(() => {});
+  void modelsPromise.catch(() => {});
+  void sessionChatsPromise.catch(() => {});
+
+  const [session, sessionRecord] = await Promise.all([
+    sessionPromise,
+    sessionRecordPromise,
+  ]);
   if (!session?.user) {
     redirect("/");
   }
 
-  // Fetch session record
-  const sessionRecord = await sessionRecordPromise;
   if (!sessionRecord) {
     notFound();
   }
@@ -164,15 +179,15 @@ export default async function SessionChatPage({
     redirect("/");
   }
 
-  const requestHost = (await headers()).get("host") ?? "";
-
-  // Fetch chat, messages, models, and session chats in parallel
-  const [chat, dbMessages, initialModels, sessionChats] = await Promise.all([
-    getChatByIdWithRetry(chatId, sessionId),
-    getChatMessages(chatId),
-    getInitialModels(),
-    getChatSummariesBySessionId(sessionId, sessionRecord.userId),
-  ]);
+  const [requestHeaders, chat, dbMessages, initialModels, sessionChats] =
+    await Promise.all([
+      headersPromise,
+      chatPromise,
+      messagesPromise,
+      modelsPromise,
+      sessionChatsPromise,
+    ]);
+  const requestHost = requestHeaders.get("host") ?? "";
 
   if (!chat) {
     if (isOptimisticChatId(chatId)) {

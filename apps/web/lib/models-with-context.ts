@@ -145,11 +145,16 @@ let modelsDevCache: {
   promise: Promise<Map<string, ModelsDevMetadata>>;
   expiresAt: number;
 } | null = null;
+let modelsDevResolvedCache: {
+  map: Map<string, ModelsDevMetadata>;
+  expiresAt: number;
+} | null = null;
 
 /** Test-only hook: drops the models.dev metadata cache (see above).
  * Production code must never call this. */
 export function __resetModelsDevCacheForTests(): void {
   modelsDevCache = null;
+  modelsDevResolvedCache = null;
 }
 
 async function fetchModelsDevMetadataMap(): Promise<
@@ -169,6 +174,8 @@ async function fetchModelsDevMetadataMap(): Promise<
   promise.then((map) => {
     if (map.size === 0 && modelsDevCache === entry) {
       modelsDevCache = null;
+    } else if (map.size > 0 && modelsDevCache === entry) {
+      modelsDevResolvedCache = { map, expiresAt: entry.expiresAt };
     }
   });
   return promise;
@@ -622,6 +629,26 @@ export async function fetchAvailableLanguageModelsWithContext(): Promise<
   return models.map((model) =>
     addModelsDevMetadata(model, modelsDevMetadataMap),
   );
+}
+
+/**
+ * Navigation-path variant for SSR chat pages: never blocks page render on a
+ * cold/slow models.dev HTTP fetch (up to 750ms). Uses the resolved in-memory
+ * models.dev map synchronously when already warm, and triggers a non-blocking
+ * background warm-up otherwise.
+ */
+export async function fetchAvailableLanguageModelsWithCachedContext(): Promise<
+  AvailableModel[]
+> {
+  const models = await fetchAvailableLanguageModels();
+  const now = Date.now();
+  if (modelsDevResolvedCache && modelsDevResolvedCache.expiresAt > now) {
+    return models.map((model) =>
+      addModelsDevMetadata(model, modelsDevResolvedCache!.map),
+    );
+  }
+  void fetchModelsDevMetadataMap().catch(() => {});
+  return models.map((model) => applyFallbackCachePricing(model));
 }
 
 /**

@@ -90,6 +90,7 @@ export function SessionsIndexShell() {
           session: createdSession,
           chat,
           workflowRunId,
+          initialWorkflowScheduled,
         } = await createSession({
           ...(initialTitle ? { title: initialTitle } : {}),
           ...(selectedProjectId ? { projectId: selectedProjectId } : {}),
@@ -103,9 +104,19 @@ export function SessionsIndexShell() {
           initialMessage,
         });
 
-        // If POST /api/sessions did not already start the workflow on the server,
-        // fall back to starting it via POST /api/chat.
-        if (!workflowRunId) {
+        // Navigate immediately while background cache updates / workflow startup
+        // proceed asynchronously.
+        router.push(`/sessions/${createdSession.id}/chats/${chat.id}`, {
+          scroll: false,
+        });
+
+        const serverStartedWorkflow = Boolean(
+          workflowRunId || initialWorkflowScheduled,
+        );
+
+        // If POST /api/sessions did not already schedule/start the workflow on
+        // the server, fall back to starting it via POST /api/chat.
+        if (!serverStartedWorkflow) {
           void startInitialChatOnServer({
             sessionId: createdSession.id,
             chatId: chat.id,
@@ -151,35 +162,36 @@ export function SessionsIndexShell() {
           { revalidate: false },
         );
 
-        void generateAndApplyInitialTitle({
-          sessionId: createdSession.id,
-          chatId: chat.id,
-          displayText: built.displayText,
-          onTitleResolved: (finalTitle) => {
-            void globalMutate<{
-              sessions: SessionWithUnread[];
-              archivedCount?: number;
-            }>(
-              "/api/sessions",
-              (current) => {
-                if (!current) return current;
-                return {
-                  ...current,
-                  sessions: current.sessions.map((s) =>
-                    s.id === createdSession.id
-                      ? { ...s, title: finalTitle }
-                      : s,
-                  ),
-                };
-              },
-              { revalidate: false },
-            );
-          },
-        });
-
-        router.push(`/sessions/${createdSession.id}/chats/${chat.id}`, {
-          scroll: false,
-        });
+        // POST /api/sessions already schedules background title refinement when
+        // it schedules the initial workflow; only invoke client-side fallback if
+        // the server did not handle initialMessage startup.
+        if (!serverStartedWorkflow) {
+          void generateAndApplyInitialTitle({
+            sessionId: createdSession.id,
+            chatId: chat.id,
+            displayText: built.displayText,
+            onTitleResolved: (finalTitle) => {
+              void globalMutate<{
+                sessions: SessionWithUnread[];
+                archivedCount?: number;
+              }>(
+                "/api/sessions",
+                (current) => {
+                  if (!current) return current;
+                  return {
+                    ...current,
+                    sessions: current.sessions.map((s) =>
+                      s.id === createdSession.id
+                        ? { ...s, title: finalTitle }
+                        : s,
+                    ),
+                  };
+                },
+                { revalidate: false },
+              );
+            },
+          });
+        }
       } catch (error) {
         setIsCreating(false);
         toast.error(
