@@ -1,329 +1,457 @@
 "use client";
 
 import { formatTokens } from "@entry-agents/shared";
-import { Gauge } from "lucide-react";
-import { type CSSProperties, useMemo } from "react";
+import { Gauge, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+} from "react";
 import type { WebAgentUIMessage } from "@/app/types";
-import { extractCachedInputTokens } from "@/lib/chat/usage-extract";
+import { EntryMark } from "@/components/entry-mark";
+import {
+  triggerBillingSync,
+  useBillingMe,
+} from "@/components/sidebar-billing-widget";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { ModelOption } from "@/lib/model-options";
-import { DEFAULT_CONTEXT_LIMIT, estimateModelUsageCost } from "@/lib/models";
+import {
+  type ContextSegment,
+  deriveContextWindowBreakdown,
+  derivePlanLimitWindows,
+  formatCostUsd,
+  formatPercentDisplay,
+  formatShare,
+  type PlanLimitWindow,
+} from "./context-usage-model";
 
 interface WorkspaceContextTabProps {
   messages: WebAgentUIMessage[];
   modelId: string;
   modelOptions: ModelOption[];
+  contextLimit?: number | null;
 }
 
-const R = 50;
-const STROKE = 14;
+const R = 52;
+const STROKE = 11;
 const C = 2 * Math.PI * R;
+const GAP = 2.2;
 
-const STEPS = [
-  "var(--text)",
-  "var(--text-2)",
-  "var(--text-3)",
-  "color-mix(in oklab, var(--text-3) 55%, transparent)",
-] as const;
+/**
+ * The context window as a ring, ported 1:1 from Sable's `ContextTab.tsx`:
+ * used categories as monochrome ivory arcs with gaps, the autocompact buffer
+ * hatched at 45°, free space as the track.
+ */
+export function ContextWindowRing({
+  segments,
+  max,
+  buffer,
+  size = 128,
+  className = "cx-ring",
+}: {
+  segments: ContextSegment[];
+  max: number;
+  buffer: number;
+  size?: number;
+  className?: string;
+}) {
+  const hatchId = useId();
+  let offset = 0;
+  const arcs = segments.map((s) => {
+    const len = max > 0 ? (s.tokens / max) * C : 0;
+    const arc = { ...s, len, offset };
+    offset += len;
+    return arc;
+  });
+  const bufLen = max > 0 ? (buffer / max) * C : 0;
+  const bufStart = C - bufLen;
 
-function useContextBreakdown(
-  messages: WebAgentUIMessage[],
-  modelId: string,
-  modelOptions: ModelOption[],
-) {
-  return useMemo(() => {
-    let latestUncached = 0;
-    let latestCached = 0;
-    let latestOutput = 0;
-    let latestTotal = 0;
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 128 128"
+      width={size}
+      height={size}
+      aria-hidden="true"
+    >
+      <defs>
+        <pattern
+          id={hatchId}
+          width="4"
+          height="4"
+          patternUnits="userSpaceOnUse"
+          patternTransform="rotate(45)"
+        >
+          <rect width="4" height="4" fill="var(--ring-hatch-bg)" />
+          <line
+            x1="0"
+            y1="0"
+            x2="0"
+            y2="4"
+            stroke="var(--ring-hatch-line)"
+            strokeWidth="1.4"
+          />
+        </pattern>
+      </defs>
+      <g transform="rotate(-90 64 64)">
+        <circle
+          cx="64"
+          cy="64"
+          r={R}
+          fill="none"
+          stroke="var(--ring-track)"
+          strokeWidth={STROKE}
+        />
+        {bufLen > 0 && (
+          <circle
+            cx="64"
+            cy="64"
+            r={R}
+            fill="none"
+            stroke={`url(#${hatchId})`}
+            strokeWidth={STROKE}
+            strokeDasharray={`${Math.max(0, bufLen - GAP)} ${C}`}
+            strokeDashoffset={-bufStart}
+          />
+        )}
+        {arcs.map((a) => (
+          <circle
+            key={a.name}
+            className="cx-arc"
+            cx="64"
+            cy="64"
+            r={R}
+            fill="none"
+            stroke={a.color}
+            strokeWidth={STROKE}
+            strokeDasharray={`${Math.max(0.8, a.len - (arcs.length > 1 ? GAP : 0))} ${C}`}
+            strokeDashoffset={-a.offset}
+          />
+        ))}
+      </g>
+    </svg>
+  );
+}
 
-    let totalInput = 0;
-    let totalCached = 0;
-    let totalOutput = 0;
-    let totalCost = 0;
-    let hasAnyCost = false;
-    let turns = 0;
-    let activeModelId = modelId;
+function Stat({
+  label,
+  value,
+  wide,
+}: {
+  label: string;
+  value: string;
+  wide?: boolean;
+}) {
+  return (
+    <div className="sable-card cx-stat" data-wide={wide ? "" : undefined}>
+      <span className="cx-stat-value num">{value}</span>
+      <span className="cx-stat-label">{label}</span>
+    </div>
+  );
+}
 
-    for (const msg of messages) {
-      if (msg.role === "user") {
-        turns += 1;
-        continue;
-      }
-      if (msg.role !== "assistant") continue;
+function WindowLine({ window: w }: { window: PlanLimitWindow }) {
+  const fillRatio = Math.max(w.percent, w.percent > 0 ? 1.5 : 0) / 100;
+  return (
+    <div
+      className="ulw"
+      data-level={w.level}
+      data-past={w.past ? "" : undefined}
+    >
+      <span className="ulw-label truncate">{w.label}</span>
+      <span className="ulw-bar">
+        <span
+          className="meter ulw-meter"
+          data-level={w.level}
+          role="progressbar"
+          aria-label={w.label}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={w.percent}
+        >
+          <span
+            className="meter-fill"
+            style={{ "--p": fillRatio } as CSSProperties}
+          />
+        </span>
+        <span className="ulw-pct num">{w.percent}%</span>
+      </span>
+      <span className="ulw-reset num">{w.resetsIn ?? "—"}</span>
+      <span
+        className="ulw-note"
+        data-warn={w.level !== undefined ? "" : undefined}
+      >
+        {w.note}
+      </span>
+    </div>
+  );
+}
 
-      const meta = msg.metadata;
-      if (!meta) continue;
-      if (meta.modelId) {
-        activeModelId = meta.modelId;
-      }
+function PlanLimitsSection({
+  onRefresh,
+  refreshing,
+}: {
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
+  const router = useRouter();
+  const { data: billing } = useBillingMe();
+  const [now, setNow] = useState(() => Date.now());
 
-      const lastUsage = meta.lastStepUsage;
-      if (lastUsage) {
-        const inp = lastUsage.inputTokens ?? 0;
-        const cached = extractCachedInputTokens(lastUsage);
-        const out = lastUsage.outputTokens ?? 0;
-        latestCached = Math.min(cached, inp);
-        latestUncached = Math.max(0, inp - latestCached);
-        latestOutput = out;
-        latestTotal = inp + out;
-      }
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
-      const msgUsage = meta.totalMessageUsage ?? meta.lastStepUsage;
-      if (msgUsage) {
-        const inp = msgUsage.inputTokens ?? 0;
-        const cached = extractCachedInputTokens(msgUsage);
-        const out = msgUsage.outputTokens ?? 0;
-        totalInput += inp;
-        totalCached += cached;
-        totalOutput += out;
+  const limits = useMemo(
+    () => derivePlanLimitWindows(billing, now),
+    [billing, now],
+  );
 
-        if (typeof meta.totalMessageCost === "number") {
-          totalCost += meta.totalMessageCost;
-          hasAnyCost = true;
-        } else {
-          const msgModel = meta.modelId ?? modelId;
-          const costSpec = modelOptions.find((m) => m.id === msgModel)?.cost;
-          const est = estimateModelUsageCost(
-            {
-              inputTokens: inp,
-              cachedInputTokens: cached,
-              outputTokens: out,
-            },
-            costSpec,
-          );
-          if (typeof est === "number") {
-            totalCost += est;
-            hasAnyCost = true;
-          }
-        }
-      }
-    }
+  if (!limits) return null;
 
-    const activeOption = modelOptions.find((m) => m.id === activeModelId);
-    const limit = activeOption?.contextWindow ?? DEFAULT_CONTEXT_LIMIT;
-
-    return {
-      latestUncached,
-      latestCached,
-      latestOutput,
-      latestTotal,
-      totalInput,
-      totalCached,
-      totalOutput,
-      turns,
-      costUsd: hasAnyCost ? totalCost : undefined,
-      activeModelId,
-      limit,
-    };
-  }, [messages, modelId, modelOptions]);
+  return (
+    <section aria-label="Plan limits">
+      <div className="rail-h">
+        <span>Plan limits</span>
+        <span className="ul-rail-actions">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="rail-btn"
+                aria-label="Usage"
+                onClick={() => router.push("/settings/usage")}
+              >
+                <Gauge size={13} strokeWidth={1.6} aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Usage</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="rail-btn"
+                aria-label="Refresh limits"
+                onClick={onRefresh}
+              >
+                <RefreshCw
+                  size={13}
+                  strokeWidth={1.6}
+                  className={refreshing ? "animate-spin" : undefined}
+                  aria-hidden="true"
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Refresh limits</TooltipContent>
+          </Tooltip>
+        </span>
+      </div>
+      <div className="sable-card ul-rail">
+        <div className="ul-glance">
+          <div className="ul-glance-head">
+            <EntryMark className="ul-glance-mark h-3.5 w-3.5 text-[var(--text)]" />
+            <span className="ul-glance-name truncate">Entry</span>
+            <span className="ul-glance-plan">{limits.planName}</span>
+            {limits.hasResetColumn && (
+              <span className="ul-glance-col">Resets in</span>
+            )}
+          </div>
+          <div className="ulw-list" data-compact="">
+            {limits.windows.map((w) => (
+              <WindowLine key={w.id} window={w} />
+            ))}
+          </div>
+          {limits.footerNote && (
+            <p className="ul-glance-foot num">{limits.footerNote}</p>
+          )}
+        </div>
+      </div>
+    </section>
+  );
 }
 
 export function WorkspaceContextTab({
   messages,
   modelId,
   modelOptions,
+  contextLimit,
 }: WorkspaceContextTabProps) {
-  const data = useContextBreakdown(messages, modelId, modelOptions);
+  const [refreshing, setRefreshing] = useState(false);
 
-  if (data.latestTotal === 0 && data.totalInput === 0) {
-    return (
-      <div className="rail-col">
-        <div className="rail-bar">
-          <span className="rail-bar-title">Context</span>
-        </div>
-        <div className="rail-empty">
-          <Gauge size={22} strokeWidth={1.3} aria-hidden="true" />
-          <p className="rail-empty-title">No context usage yet</p>
-          <p>
-            Context window breakdown appears after the first assistant turn.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  const view = useMemo(
+    () =>
+      deriveContextWindowBreakdown(
+        messages,
+        modelId,
+        modelOptions,
+        contextLimit,
+      ),
+    [messages, modelId, modelOptions, contextLimit],
+  );
 
-  const pct = data.limit > 0 ? Math.min(1, data.latestTotal / data.limit) : 0;
-  const pctRounded = Math.round(pct * 100);
-  const free = Math.max(0, data.limit - data.latestTotal);
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    triggerBillingSync();
+    window.setTimeout(() => setRefreshing(false), 500);
+  }, []);
 
-  const segments = [
-    {
-      key: "input",
-      label: "Input",
-      value: data.latestUncached,
-      color: STEPS[0],
-    },
-    {
-      key: "cached",
-      label: "Cached",
-      value: data.latestCached,
-      color: STEPS[1],
-    },
-    {
-      key: "output",
-      label: "Output",
-      value: data.latestOutput,
-      color: STEPS[2],
-    },
-  ];
-
-  const costLabel =
-    data.costUsd === undefined
-      ? "—"
-      : data.costUsd < 0.01
-        ? `$${data.costUsd.toFixed(4)}`
-        : `$${data.costUsd.toFixed(2)}`;
-
-  const activeLabel =
-    modelOptions.find((m) => m.id === data.activeModelId)?.shortLabel ??
-    data.activeModelId;
+  const hasContext = view.total > 0;
+  const pctDisplay = formatPercentDisplay(view.pct);
 
   return (
     <div className="rail-col">
       <div className="rail-bar">
-        <span className="rail-bar-title">Context</span>
-        <span className="rail-bar-meta ml-auto">{pctRounded}% used</span>
+        <span className="rail-bar-title truncate">
+          {view.modelName || "Context window"}
+        </span>
+        <span className="rail-bar-actions">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="rail-btn"
+                aria-label="Refresh"
+                onClick={handleRefresh}
+              >
+                <RefreshCw
+                  size={14}
+                  strokeWidth={1.6}
+                  className={refreshing ? "animate-spin" : undefined}
+                  aria-hidden="true"
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Refresh</TooltipContent>
+          </Tooltip>
+        </span>
       </div>
       <div className="rail-scroll">
         <div className="rail-stack cx-stack">
-          <div className="sable-card cx-card">
-            <div className="cx-figure">
-              <div className="cx-ring">
-                <Ring segments={segments} limit={data.limit} />
-              </div>
-              <div className="cx-numbers">
-                <div
-                  className="cx-pct"
-                  data-warn={pctRounded >= 80 ? "" : undefined}
-                >
-                  {pctRounded}
-                  <span className="cx-pct-sign">%</span>
-                </div>
-                <div className="cx-of">
-                  {formatTokens(data.latestTotal)} / {formatTokens(data.limit)}
-                </div>
-                <div className="cx-left">{formatTokens(free)} remaining</div>
-              </div>
-            </div>
-
-            <div className="cx-legend">
-              {segments.map((s) => {
-                const share =
-                  data.limit > 0 ? Math.round((s.value / data.limit) * 100) : 0;
-                return (
-                  <div key={s.key} className="cx-row">
-                    <span
-                      className="cx-swatch"
-                      style={{ "--c": s.color } as CSSProperties}
-                    />
-                    <span className="cx-name">{s.label}</span>
-                    <span className="cx-tokens">{formatTokens(s.value)}</span>
-                    <span className="cx-share">{share}%</span>
+          <section className="sable-card cx-card" aria-label="Context window">
+            {hasContext ? (
+              <>
+                <div className="cx-figure">
+                  <ContextWindowRing
+                    segments={view.segments}
+                    max={view.max}
+                    buffer={view.buffer}
+                  />
+                  <div className="cx-numbers">
+                    <div
+                      className="cx-pct num"
+                      data-warn={view.warn ? "" : undefined}
+                    >
+                      {pctDisplay}
+                      <span className="cx-pct-sign">%</span>
+                    </div>
+                    <div className="cx-of num">
+                      {formatTokens(view.total)} of {formatTokens(view.max)}{" "}
+                      tokens
+                    </div>
+                    <div className="cx-left num">
+                      {view.buffer > 0
+                        ? `${formatTokens(view.free)} left before it compacts`
+                        : `${formatTokens(view.free)} free`}
+                    </div>
                   </div>
-                );
-              })}
-              <div className="cx-row cx-row-quiet">
-                <span className="cx-swatch cx-swatch-free" />
-                <span className="cx-name">Free</span>
-                <span className="cx-tokens">{formatTokens(free)}</span>
-                <span className="cx-share">
-                  {Math.max(0, 100 - pctRounded)}%
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div className="rail-h">This session</div>
-            <div className="cx-stats">
-              <div className="sable-card cx-stat">
-                <span className="cx-stat-value">{data.turns}</span>
-                <span className="cx-stat-label">Turns</span>
-              </div>
-              <div className="sable-card cx-stat">
-                <span className="cx-stat-value">
-                  {formatTokens(data.totalInput)}
-                </span>
-                <span className="cx-stat-label">Total in</span>
-              </div>
-              <div className="sable-card cx-stat">
-                <span className="cx-stat-value">
-                  {formatTokens(data.totalOutput)}
-                </span>
-                <span className="cx-stat-label">Total out</span>
-              </div>
-              <div className="sable-card cx-stat" data-wide="">
-                <span className="cx-stat-value">
-                  {formatTokens(data.totalCached)}
-                </span>
-                <span className="cx-stat-label">Cached input</span>
-              </div>
-              <div className="sable-card cx-stat" data-wide="">
-                <span className="cx-stat-value">{costLabel}</span>
-                <span className="cx-stat-label">Est. cost</span>
-              </div>
-              {activeLabel ? (
-                <div className="sable-card cx-stat col-span-6">
-                  <span
-                    className="cx-stat-value truncate"
-                    title={data.activeModelId}
-                  >
-                    {activeLabel}
-                  </span>
-                  <span className="cx-stat-label">Active model</span>
                 </div>
-              ) : null}
+                {view.detailed && (
+                  <ul className="cx-legend">
+                    {view.segments.map((s) => (
+                      <li key={s.name} className="cx-row">
+                        <span
+                          className="cx-swatch"
+                          style={{ "--c": s.color } as CSSProperties}
+                        />
+                        <span className="cx-name truncate">{s.name}</span>
+                        <span className="cx-tokens num">
+                          {formatTokens(s.tokens)}
+                        </span>
+                        <span className="cx-share num">
+                          {formatShare(s.tokens, view.max)}
+                        </span>
+                      </li>
+                    ))}
+                    {view.buffer > 0 && (
+                      <li className="cx-row cx-row-quiet">
+                        <span className="cx-swatch cx-swatch-buffer" />
+                        <span className="cx-name truncate">
+                          Autocompact buffer
+                        </span>
+                        <span className="cx-tokens num">
+                          {formatTokens(view.buffer)}
+                        </span>
+                        <span className="cx-share num">
+                          {formatShare(view.buffer, view.max)}
+                        </span>
+                      </li>
+                    )}
+                    <li className="cx-row cx-row-quiet">
+                      <span className="cx-swatch cx-swatch-free" />
+                      <span className="cx-name truncate">Free space</span>
+                      <span className="cx-tokens num">
+                        {formatTokens(view.free)}
+                      </span>
+                      <span className="cx-share num">
+                        {formatShare(view.free, view.max)}
+                      </span>
+                    </li>
+                  </ul>
+                )}
+              </>
+            ) : (
+              <p className="cx-note">
+                Context usage appears after the first reply.
+              </p>
+            )}
+          </section>
+
+          <section aria-label="Session totals">
+            <div className="rail-h">
+              <span>This session</span>
             </div>
-          </div>
+            <div className="cx-stats">
+              <Stat
+                label="Input"
+                value={formatTokens(view.sessionTotals.inputTokens)}
+              />
+              <Stat
+                label="Output"
+                value={formatTokens(view.sessionTotals.outputTokens)}
+              />
+              <Stat
+                label="Cached"
+                value={formatTokens(view.sessionTotals.cacheReadTokens)}
+              />
+              <Stat
+                label="Turns"
+                value={String(view.sessionTotals.turns)}
+                wide
+              />
+              <Stat
+                label="Cost"
+                value={formatCostUsd(view.sessionTotals.costUsd)}
+                wide
+              />
+            </div>
+          </section>
+
+          <PlanLimitsSection
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
+          />
         </div>
       </div>
     </div>
-  );
-}
-
-function Ring({
-  segments,
-  limit,
-}: {
-  segments: Array<{ key: string; value: number; color: string }>;
-  limit: number;
-}) {
-  let offset = 0;
-
-  return (
-    <svg viewBox="0 0 130 130" width="116" height="116" aria-hidden="true">
-      <circle
-        cx="65"
-        cy="65"
-        r={R}
-        fill="none"
-        stroke="var(--ring-track)"
-        strokeWidth={STROKE}
-      />
-      <g transform="rotate(-90 65 65)">
-        {segments.map((seg) => {
-          if (seg.value <= 0 || limit <= 0) return null;
-          const frac = Math.min(1, seg.value / limit);
-          const len = frac * C;
-          const dashOffset = -offset;
-          offset += len;
-          return (
-            <circle
-              key={seg.key}
-              className="cx-arc"
-              cx="65"
-              cy="65"
-              r={R}
-              fill="none"
-              stroke={seg.color}
-              strokeWidth={STROKE}
-              strokeDasharray={`${len} ${C}`}
-              strokeDashoffset={dashOffset}
-              strokeLinecap="butt"
-            />
-          );
-        })}
-      </g>
-    </svg>
   );
 }
