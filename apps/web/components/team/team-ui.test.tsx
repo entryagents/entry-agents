@@ -69,7 +69,7 @@ const SAMPLE_MESSAGES: WebAgentUIMessage[] = [
 ];
 
 describe("Team & Subagent UI", () => {
-  test("TaskRenderer renders only the subagent name in a dense inline row", () => {
+  test("TaskRenderer renders the role and task in a dense inline row", () => {
     const part = SAMPLE_MESSAGES[1]!.parts[0] as Extract<
       WebAgentUIMessage["parts"][number],
       { type: "tool-task" }
@@ -88,7 +88,7 @@ describe("Team & Subagent UI", () => {
     );
 
     expect(html).toContain("Architect");
-    expect(html).not.toContain("Design auth contracts");
+    expect(html).toContain("Design auth contracts");
     expect(html).not.toContain("Team execution");
   });
 
