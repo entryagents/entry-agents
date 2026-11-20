@@ -3048,13 +3048,15 @@ export async function runAgentWorkflow(options: Options) {
       }
 
       stepTimings.push(result.stepTiming);
-      pendingAssistantResponse =
-        result.responseMessage ?? pendingAssistantResponse;
-      shouldRefreshCachedDiff =
-        shouldRefreshCachedDiff ||
-        shouldRefreshDiffCacheForParts(pendingAssistantResponse.parts);
-      originalMessagesForStep = [pendingAssistantResponse];
-      modelMessages.push(...result.responseMessages);
+      if (!("recoverableStepError" in result && result.recoverableStepError)) {
+        pendingAssistantResponse =
+          result.responseMessage ?? pendingAssistantResponse;
+        shouldRefreshCachedDiff =
+          shouldRefreshCachedDiff ||
+          shouldRefreshDiffCacheForParts(pendingAssistantResponse.parts);
+        originalMessagesForStep = [pendingAssistantResponse];
+        modelMessages.push(...result.responseMessages);
+      }
 
       if ("recoverableStepError" in result && result.recoverableStepError) {
         if (pendingAssistantResponse) {
@@ -5907,11 +5909,18 @@ const runAgentStep = async (
     // non-retryable SerializationError). Strip them before returning.
     await Promise.allSettled(pendingDebits);
 
+    const hasCompletedTextReply = Boolean(
+      responseMessage?.parts?.some(
+        (part) => part.type === "text" && part.text.trim().length > 0,
+      ),
+    );
+
     if (
       !abortController.signal.aborted &&
       !creditExhausted &&
       !windowExhausted &&
       !turnSpendCapped &&
+      !hasCompletedTextReply &&
       (inStreamErrorText !== undefined || finishReason === "error")
     ) {
       const recoverableErrorText =
@@ -6124,14 +6133,13 @@ const runAgentStep = async (
         ? ("compact" as const)
         : errorCategory === "invalid_prompt"
           ? ("sanitize" as const)
-          : didWriteOutputToWritable
-            ? ("sanitize" as const)
-            : undefined;
+          : undefined;
 
     if (
-      recoveryAction !== undefined ||
-      isRecoverableStepError(errorWithStepTiming) ||
-      isWorkflowStepAutoRecoverable(errorWithStepTiming)
+      !didWriteOutputToWritable &&
+      (recoveryAction !== undefined ||
+        isRecoverableStepError(errorWithStepTiming) ||
+        isWorkflowStepAutoRecoverable(errorWithStepTiming))
     ) {
       await Promise.allSettled(pendingDebits);
       return withoutUndefined({
