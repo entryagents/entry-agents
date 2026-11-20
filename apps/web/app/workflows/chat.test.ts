@@ -1890,6 +1890,65 @@ describe("runAgentWorkflow", () => {
     expect(spies.persistFinalAssistantMessage).toHaveBeenCalledTimes(1);
   });
 
+  test("preserves preliminary: true on mid-step tool-output-available checkpoints", async () => {
+    agentStreamParts = [
+      { type: "start-step" },
+      {
+        type: "tool-input-available",
+        toolCallId: "tool_task_prelim_1",
+        toolName: "task",
+        input: { subagentType: "explorer", task: "Audit routes" },
+      },
+      {
+        type: "tool-output-available",
+        toolCallId: "tool_task_prelim_1",
+        preliminary: true,
+        output: { status: "running", streamedText: "Inspecting..." },
+      },
+      {
+        type: "tool-input-available",
+        toolCallId: "tool_read_trigger",
+        toolName: "read",
+        input: { filePath: "README.md" },
+      },
+      {
+        type: "finish-step",
+        finishReason: "stop",
+        rawFinishReason: "stop",
+        usage: { inputTokens: 15, outputTokens: 5, totalTokens: 20 },
+      },
+    ];
+    agentAssistantParts = [
+      { type: "step-start" },
+      {
+        type: "tool-task",
+        toolCallId: "tool_task_prelim_1",
+        state: "output-available",
+        preliminary: false,
+        input: { subagentType: "explorer", task: "Audit routes" },
+        output: { status: "completed" },
+      },
+      { type: "text", text: "Done." },
+    ];
+
+    await runAgentWorkflow(makeOptions());
+
+    const checkpointPayloads =
+      spies.persistAssistantMessageInternal.mock.calls.map(
+        (call) => call[1] as { parts?: Array<Record<string, unknown>> },
+      );
+    const sawPreliminaryTask = checkpointPayloads.some((msg) =>
+      msg?.parts?.some(
+        (p) =>
+          p.type === "tool-task" &&
+          p.toolCallId === "tool_task_prelim_1" &&
+          p.state === "output-available" &&
+          p.preliminary === true,
+      ),
+    );
+    expect(sawPreliminaryTask).toBe(true);
+  });
+
   test("still clears stream and sends finish even on step error", async () => {
     // Mock the agent to throw
     mock.module("@/app/config", () => ({

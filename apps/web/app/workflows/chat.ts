@@ -3061,8 +3061,22 @@ export async function runAgentWorkflow(options: Options) {
         modelMessages.push(...result.responseMessages);
       }
 
+      if (result.failedDebits && result.failedDebits.length > 0) {
+        await flushStepDebitsStep(options.userId, result.failedDebits).catch(
+          (err) => {
+            console.error(
+              `[chat-workflow] Failed to flush ${result.failedDebits?.length} deferred debit(s) for chat ${options.chatId}:`,
+              err,
+            );
+          },
+        );
+      }
+
       if ("recoverableStepError" in result && result.recoverableStepError) {
-        if (pendingAssistantResponse) {
+        if (
+          pendingAssistantResponse &&
+          pendingAssistantResponse.parts.length > 0
+        ) {
           await persistAssistantMessage(
             options.chatId,
             pendingAssistantResponse,
@@ -3179,16 +3193,6 @@ export async function runAgentWorkflow(options: Options) {
       // not the turn.
       if (pendingAssistantResponse) {
         await persistAssistantMessage(options.chatId, pendingAssistantResponse);
-      }
-      if (result.failedDebits && result.failedDebits.length > 0) {
-        await flushStepDebitsStep(options.userId, result.failedDebits).catch(
-          (err) => {
-            console.error(
-              `[chat-workflow] Failed to flush ${result.failedDebits?.length} deferred debit(s) for chat ${options.chatId}:`,
-              err,
-            );
-          },
-        );
       }
 
       const prunedLoopMessages = withoutUndefined(
@@ -5672,6 +5676,9 @@ const runAgentStep = async (
                 state: "output-available",
                 input: existing.input,
                 output: part.output,
+                ...(part.preliminary !== undefined
+                  ? { preliminary: part.preliminary }
+                  : {}),
               } as unknown as WebAgentUIMessage["parts"][number]);
               maybeScheduleMidStepCheckpoint(!part.preliminary);
             }
