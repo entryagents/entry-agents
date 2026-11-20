@@ -17,6 +17,11 @@
   --text-3: #71717a;
   --text-4: #a1a1aa;
   --text-inverse: #fafafa;
+  --ink: var(--text);
+  --ink-2: var(--text-2);
+  --ink-3: var(--text-3);
+  --surface: var(--sheet);
+  --surface-2: var(--fill-2);
   --amber: oklch(0.68 0.14 78);
   --red: oklch(0.58 0.2 24);
   --green: oklch(0.58 0.16 150);
@@ -84,6 +89,11 @@
   --text-3: #7a7975;
   --text-4: #54534f;
   --text-inverse: #0a0a0b;
+  --ink: var(--text);
+  --ink-2: var(--text-2);
+  --ink-3: var(--text-3);
+  --surface: var(--sheet);
+  --surface-2: var(--fill-2);
   --amber: oklch(0.84 0.135 82);
   --red: oklch(0.71 0.175 24);
   --green: oklch(0.8 0.15 150);
@@ -109,6 +119,39 @@
   padding: 0 8px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--line);
+}
+
+.sable-rail .rail-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: var(--ctl-h-sm);
+  min-width: var(--ctl-h-sm);
+  padding: 0 6px;
+  border-radius: var(--r-ctl-sm);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  color: var(--text-3);
+  background-color: transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--d-1) var(--ease),
+    color var(--d-1) var(--ease);
+}
+
+.sable-rail .rail-btn:hover:not(:disabled) {
+  background-color: var(--fill-2);
+  color: var(--text);
+}
+
+.sable-rail .rail-btn:active:not(:disabled) {
+  background-color: var(--fill-3);
+}
+
+.sable-rail .rail-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .sable-rail .rail-tabs {
@@ -285,7 +328,8 @@
   }
 }
 
-.sable-rail .rail-pane[data-active] {
+.sable-rail .rail-pane[data-active],
+.sable-rail .rail-pane[data-on] {
   opacity: 1;
   visibility: visible;
   transform: none;
@@ -293,7 +337,8 @@
   animation: sable-rail-pane-in var(--d-3) var(--ease-out) backwards;
 }
 
-.sable-rail .rail-body[data-dir="back"] > .rail-pane[data-active] {
+.sable-rail .rail-body[data-dir="back"] > .rail-pane[data-active],
+.sable-rail .rail-body[data-dir="back"] > .rail-pane[data-on] {
   --pane-from: -12px;
 }
 
@@ -305,7 +350,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sable-rail .rail-pane[data-active] {
+  .sable-rail .rail-pane[data-active],
+  .sable-rail .rail-pane[data-on] {
     animation: none;
   }
 }
@@ -380,10 +426,28 @@
 }
 
 .sable-rail .rail-empty {
-  padding: 28px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  min-height: 200px;
+  padding: 28px 20px;
   font-size: var(--t-small);
   color: var(--text-3);
   text-align: center;
+}
+
+.sable-rail .rail-empty p {
+  max-width: 28ch;
+  line-height: 1.5;
+}
+
+.sable-rail .rail-empty-title {
+  font-size: var(--t-ui);
+  font-weight: var(--w-medium);
+  color: var(--text);
 }
 
 .sable-rail .sable-card {

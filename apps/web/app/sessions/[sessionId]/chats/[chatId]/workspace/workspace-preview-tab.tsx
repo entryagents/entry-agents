@@ -352,10 +352,12 @@ export function WorkspacePreviewTab({
             />
             <div>
               <h3 className="text-sm font-medium text-foreground">
-                Application preview
+                {canRun ? "Application preview" : "Preview unavailable"}
               </h3>
               <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                Start the dev server to preview and interact with the app.
+                {canRun
+                  ? "Start the dev server to preview and interact with the app."
+                  : "No active sandbox or deployment yet. Preview becomes available once the workspace sandbox starts."}
               </p>
             </div>
 

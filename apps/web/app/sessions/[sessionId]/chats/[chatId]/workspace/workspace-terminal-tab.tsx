@@ -424,9 +424,13 @@ export function WorkspaceTerminalTab({
         {logs.length === 0 ? (
           <div className="flex h-full min-h-[160px] flex-col items-start justify-end gap-3 pb-1 font-sans">
             <div className="space-y-1">
-              <p className="text-xs font-medium text-zinc-300">Sandbox shell</p>
+              <p className="text-xs font-medium text-zinc-300">
+                {canRun ? "Sandbox shell" : "Sandbox offline"}
+              </p>
               <p className="text-xs text-zinc-500">
-                Run a command below or start with a common check
+                {canRun
+                  ? "Run a command below or start with a common check"
+                  : "Start or resume a workspace sandbox to run shell commands"}
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5 font-mono">

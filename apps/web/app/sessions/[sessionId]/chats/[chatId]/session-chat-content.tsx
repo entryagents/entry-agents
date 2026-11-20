@@ -159,7 +159,22 @@ const FileTabView = dynamic(
 );
 const WorkspacePanel = dynamic(
   () => import("./workspace/workspace-panel").then((m) => m.WorkspacePanel),
-  { ssr: false },
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full flex-col bg-background">
+        <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 px-3">
+          <div className="h-6 w-20 animate-pulse rounded-md bg-muted" />
+          <div className="h-6 w-7 animate-pulse rounded-md bg-muted" />
+          <div className="h-6 w-7 animate-pulse rounded-md bg-muted" />
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          <span>Loading workspace…</span>
+        </div>
+      </div>
+    ),
+  },
 );
 
 const emptySubscribe = () => () => {};

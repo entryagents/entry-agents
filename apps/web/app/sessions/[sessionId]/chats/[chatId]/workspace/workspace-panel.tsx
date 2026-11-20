@@ -1,7 +1,8 @@
 "use client";
 
 import "./rail.css";
-import { Maximize2, Minimize2, X } from "lucide-react";
+import { Loader2, Maximize2, Minimize2, X } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 import type { WebAgentUIMessage } from "@/app/types";
@@ -18,6 +19,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  deriveAgentHubRoster,
+  isLiveStatus,
+} from "@/lib/agent-hub/derive-roster";
 import type { ModelOption } from "@/lib/model-options";
 import { cn } from "@/lib/utils";
 import type { GitPanelProps } from "../git-panel";
@@ -29,15 +34,48 @@ import {
   railTabAt,
   type RailTabId,
 } from "./rail-tabs";
-import { useLiveAgentCount, WorkspaceAgentsTab } from "./workspace-agents-tab";
 import { WorkspaceContextTab } from "./workspace-context-tab";
-import { WorkspaceFileTab } from "./workspace-file-tab";
-import { WorkspaceFilesTab } from "./workspace-files-tab";
-import { WorkspacePreviewTab } from "./workspace-preview-tab";
 import { WorkspaceRailTabs } from "./workspace-rail-tabs";
-import { WorkspaceReviewTab } from "./workspace-review-tab";
 import { WorkspaceTasksTab } from "./workspace-tasks-tab";
-import { WorkspaceTerminalTab } from "./workspace-terminal-tab";
+
+function RailPaneLoading() {
+  return (
+    <div className="rail-empty">
+      <Loader2
+        size={18}
+        strokeWidth={1.5}
+        className="animate-spin"
+        aria-hidden="true"
+      />
+      <p>Loading panel…</p>
+    </div>
+  );
+}
+
+const WorkspaceReviewTab = dynamic(
+  () => import("./workspace-review-tab").then((m) => m.WorkspaceReviewTab),
+  { ssr: false, loading: RailPaneLoading },
+);
+const WorkspaceFileTab = dynamic(
+  () => import("./workspace-file-tab").then((m) => m.WorkspaceFileTab),
+  { ssr: false, loading: RailPaneLoading },
+);
+const WorkspaceFilesTab = dynamic(
+  () => import("./workspace-files-tab").then((m) => m.WorkspaceFilesTab),
+  { ssr: false, loading: RailPaneLoading },
+);
+const WorkspacePreviewTab = dynamic(
+  () => import("./workspace-preview-tab").then((m) => m.WorkspacePreviewTab),
+  { ssr: false, loading: RailPaneLoading },
+);
+const WorkspaceTerminalTab = dynamic(
+  () => import("./workspace-terminal-tab").then((m) => m.WorkspaceTerminalTab),
+  { ssr: false, loading: RailPaneLoading },
+);
+const WorkspaceAgentsTab = dynamic(
+  () => import("./workspace-agents-tab").then((m) => m.WorkspaceAgentsTab),
+  { ssr: false, loading: RailPaneLoading },
+);
 
 export type WorkspacePanelProps = GitPanelProps & {
   devServer: DevServerControls;
@@ -109,7 +147,8 @@ export function WorkspacePanel({
   const isViewingOpenFile =
     !isBuiltinRailTab(normalizedTab) && openFiles.includes(normalizedTab);
 
-  // Track which panes have been visited so we mount lazily and keep alive.
+  // Track which panes have been visited so we mount lazily on first visit and
+  // keep them alive for 0ms instant tab switches without losing state.
   const [mountedPanes, setMountedPanes] = useState<Set<RailTabId>>(
     () => new Set([activeBuiltinTab]),
   );
@@ -156,7 +195,14 @@ export function WorkspacePanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [pickBuiltinTab]);
 
-  const liveAgents = useLiveAgentCount(messages);
+  const liveAgents = useMemo(() => {
+    const roster = deriveAgentHubRoster(messages);
+    let live = 0;
+    for (const entry of roster) {
+      if (isLiveStatus(entry.status)) live += 1;
+    }
+    return live;
+  }, [messages]);
   const todos = useMemo(() => getLatestTodos(messages), [messages]);
   const openTodos = useMemo(
     () => todos.filter((t) => t.status !== "completed").length,
@@ -271,9 +317,87 @@ export function WorkspacePanel({
         </div>
       )}
 
-      <div className="rail-body">
-        {isViewingOpenFile ? (
-          <div className="rail-pane" data-on="">
+      <div className="rail-body" data-dir={dir}>
+        {RAIL_TABS.map((def, idx) => {
+          const isActive = !isViewingOpenFile && def.id === activeBuiltinTab;
+          const isBefore = idx < activeIdx;
+          const shouldRender = isActive || mountedPanes.has(def.id);
+
+          if (!shouldRender) return null;
+
+          return (
+            <div
+              key={def.id}
+              id={`rail-pane-${def.id}`}
+              role="tabpanel"
+              className="rail-pane"
+              data-active={isActive ? "" : undefined}
+              data-side={isBefore ? "before" : undefined}
+              inert={!isActive}
+            >
+              {def.id === "review" && (
+                <WorkspaceReviewTab
+                  {...gitPanelProps}
+                  onOpenFile={openWorkspaceFile}
+                />
+              )}
+              {def.id === "files" && (
+                <WorkspaceFilesTab
+                  sessionId={gitPanelProps.session.id}
+                  files={files}
+                  filesLoading={filesLoading}
+                  hasSandbox={gitPanelProps.hasSandbox}
+                  refreshFiles={refreshFiles}
+                  diffFiles={diffFiles}
+                  onOpenDiff={() => pickBuiltinTab("review")}
+                  onOpenQuickOpen={() => setQuickOpen(true)}
+                />
+              )}
+              {def.id === "preview" && (
+                <WorkspacePreviewTab
+                  devServer={devServer}
+                  sessionId={gitPanelProps.session.id}
+                  previewDeploymentTargetUrl={previewTargetUrl}
+                  isDeploymentStale={gitPanelProps.isDeploymentStale}
+                  isDeploymentFailed={gitPanelProps.isDeploymentFailed}
+                  canRun={gitPanelProps.hasSandbox}
+                />
+              )}
+              {def.id === "terminal" && (
+                <WorkspaceTerminalTab
+                  sessionId={gitPanelProps.session.id}
+                  canRun={gitPanelProps.hasSandbox}
+                />
+              )}
+              {def.id === "tasks" && <WorkspaceTasksTab messages={messages} />}
+              {def.id === "context" && (
+                <WorkspaceContextTab
+                  messages={messages}
+                  modelId={resolvedModelId}
+                  modelOptions={modelOptions}
+                />
+              )}
+              {def.id === "agents" && (
+                <WorkspaceAgentsTab
+                  messages={messages}
+                  isParentStreaming={isParentStreaming}
+                  defaultModelId={resolvedModelId}
+                  teamRoleModels={teamRoleModels}
+                  onUpdateRoleModel={onUpdateRoleModel ?? (() => {})}
+                  modelOptions={modelOptions}
+                  isFreeTierLocked={isFreeTierLocked}
+                  freePlanModelId={freePlanModelId ?? ""}
+                  freeTierAllowedModelIds={freeTierAllowedModelIds}
+                  onSelectSubagent={onSelectSubagent ?? (() => {})}
+                  onStopRun={onStopRun ?? (() => {})}
+                />
+              )}
+            </div>
+          );
+        })}
+
+        {isViewingOpenFile && (
+          <div className="rail-pane" role="tabpanel" data-active="">
             <WorkspaceFileTab
               sessionId={gitPanelProps.session.id}
               filePath={activeWorkspaceTab}
@@ -283,90 +407,6 @@ export function WorkspacePanel({
               }}
             />
           </div>
-        ) : (
-          RAIL_TABS.map((def, idx) => {
-            const isActive = def.id === activeBuiltinTab;
-            const isBefore = idx < activeIdx;
-            const keepAlive = def.id === "preview" || def.id === "terminal";
-            const shouldRender =
-              isActive || (keepAlive && mountedPanes.has(def.id));
-
-            if (!shouldRender) return null;
-
-            return (
-              <div
-                key={def.id}
-                className="rail-pane"
-                data-on={isActive ? "" : undefined}
-                data-dir={dir}
-                data-side={isBefore ? "before" : undefined}
-                inert={!isActive}
-              >
-                {shouldRender && (
-                  <>
-                    {def.id === "review" && (
-                      <WorkspaceReviewTab
-                        {...gitPanelProps}
-                        onOpenFile={openWorkspaceFile}
-                      />
-                    )}
-                    {def.id === "files" && (
-                      <WorkspaceFilesTab
-                        sessionId={gitPanelProps.session.id}
-                        files={files}
-                        filesLoading={filesLoading}
-                        refreshFiles={refreshFiles}
-                        diffFiles={diffFiles}
-                        onOpenDiff={() => pickBuiltinTab("review")}
-                        onOpenQuickOpen={() => setQuickOpen(true)}
-                      />
-                    )}
-                    {def.id === "preview" && (
-                      <WorkspacePreviewTab
-                        devServer={devServer}
-                        sessionId={gitPanelProps.session.id}
-                        previewDeploymentTargetUrl={previewTargetUrl}
-                        isDeploymentStale={gitPanelProps.isDeploymentStale}
-                        isDeploymentFailed={gitPanelProps.isDeploymentFailed}
-                        canRun={gitPanelProps.hasSandbox}
-                      />
-                    )}
-                    {def.id === "terminal" && (
-                      <WorkspaceTerminalTab
-                        sessionId={gitPanelProps.session.id}
-                        canRun={gitPanelProps.hasSandbox}
-                      />
-                    )}
-                    {def.id === "tasks" && (
-                      <WorkspaceTasksTab messages={messages} />
-                    )}
-                    {def.id === "context" && (
-                      <WorkspaceContextTab
-                        messages={messages}
-                        modelId={resolvedModelId}
-                        modelOptions={modelOptions}
-                      />
-                    )}
-                    {def.id === "agents" && (
-                      <WorkspaceAgentsTab
-                        messages={messages}
-                        isParentStreaming={isParentStreaming}
-                        defaultModelId={resolvedModelId}
-                        teamRoleModels={teamRoleModels}
-                        onUpdateRoleModel={onUpdateRoleModel ?? (() => {})}
-                        modelOptions={modelOptions}
-                        isFreeTierLocked={isFreeTierLocked}
-                        freePlanModelId={freePlanModelId ?? ""}
-                        freeTierAllowedModelIds={freeTierAllowedModelIds}
-                        onSelectSubagent={onSelectSubagent ?? (() => {})}
-                        onStopRun={onStopRun ?? (() => {})}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })
         )}
       </div>
 

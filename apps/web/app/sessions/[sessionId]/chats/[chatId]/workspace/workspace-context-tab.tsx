@@ -2,7 +2,7 @@
 
 import { formatTokens } from "@entry-agents/shared";
 import { Gauge } from "lucide-react";
-import { useMemo } from "react";
+import { type CSSProperties, useMemo } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
 import { extractCachedInputTokens } from "@/lib/chat/usage-extract";
 import type { ModelOption } from "@/lib/model-options";
@@ -14,35 +14,22 @@ interface WorkspaceContextTabProps {
   modelOptions: ModelOption[];
 }
 
-const R = 52;
-const STROKE = 11;
+const R = 50;
+const STROKE = 14;
 const C = 2 * Math.PI * R;
 
 const STEPS = [
-  "var(--ink)",
-  "color-mix(in oklch, var(--ink) 68%, transparent)",
-  "color-mix(in oklch, var(--ink) 40%, transparent)",
+  "var(--text)",
+  "var(--text-2)",
+  "var(--text-3)",
+  "color-mix(in oklab, var(--text-3) 55%, transparent)",
 ] as const;
-
-interface ContextBreakdown {
-  latestUncached: number;
-  latestCached: number;
-  latestOutput: number;
-  latestTotal: number;
-  totalInput: number;
-  totalCached: number;
-  totalOutput: number;
-  turns: number;
-  costUsd: number | undefined;
-  activeModelId: string;
-  limit: number;
-}
 
 function useContextBreakdown(
   messages: WebAgentUIMessage[],
   modelId: string,
   modelOptions: ModelOption[],
-): ContextBreakdown {
+) {
   return useMemo(() => {
     let latestUncached = 0;
     let latestCached = 0;
@@ -140,14 +127,23 @@ export function WorkspaceContextTab({
 
   if (data.latestTotal === 0 && data.totalInput === 0) {
     return (
-      <div className="rail-empty">
-        <Gauge size={22} strokeWidth={1.3} aria-hidden="true" />
-        <p>Context window usage appears after the first assistant turn.</p>
+      <div className="rail-col">
+        <div className="rail-bar">
+          <span className="rail-bar-title">Context</span>
+        </div>
+        <div className="rail-empty">
+          <Gauge size={22} strokeWidth={1.3} aria-hidden="true" />
+          <p className="rail-empty-title">No context usage yet</p>
+          <p>
+            Context window breakdown appears after the first assistant turn.
+          </p>
+        </div>
       </div>
     );
   }
 
   const pct = data.limit > 0 ? Math.min(1, data.latestTotal / data.limit) : 0;
+  const pctRounded = Math.round(pct * 100);
   const free = Math.max(0, data.limit - data.latestTotal);
 
   const segments = [
@@ -184,65 +180,100 @@ export function WorkspaceContextTab({
 
   return (
     <div className="rail-col">
+      <div className="rail-bar">
+        <span className="rail-bar-title">Context</span>
+        <span className="rail-bar-meta ml-auto">{pctRounded}% used</span>
+      </div>
       <div className="rail-scroll">
-        <div className="cx-wrap">
-          <div className="cx-ring">
-            <Ring segments={segments} limit={data.limit} />
-            <div className="cx-center">
-              <div className="cx-pct">{Math.round(pct * 100)}%</div>
-              <div className="cx-sub">of {formatTokens(data.limit)}</div>
+        <div className="rail-stack cx-stack">
+          <div className="sable-card cx-card">
+            <div className="cx-figure">
+              <div className="cx-ring">
+                <Ring segments={segments} limit={data.limit} />
+              </div>
+              <div className="cx-numbers">
+                <div
+                  className="cx-pct"
+                  data-warn={pctRounded >= 80 ? "" : undefined}
+                >
+                  {pctRounded}
+                  <span className="cx-pct-sign">%</span>
+                </div>
+                <div className="cx-of">
+                  {formatTokens(data.latestTotal)} / {formatTokens(data.limit)}
+                </div>
+                <div className="cx-left">{formatTokens(free)} remaining</div>
+              </div>
+            </div>
+
+            <div className="cx-legend">
+              {segments.map((s) => {
+                const share =
+                  data.limit > 0 ? Math.round((s.value / data.limit) * 100) : 0;
+                return (
+                  <div key={s.key} className="cx-row">
+                    <span
+                      className="cx-swatch"
+                      style={{ "--c": s.color } as CSSProperties}
+                    />
+                    <span className="cx-name">{s.label}</span>
+                    <span className="cx-tokens">{formatTokens(s.value)}</span>
+                    <span className="cx-share">{share}%</span>
+                  </div>
+                );
+              })}
+              <div className="cx-row cx-row-quiet">
+                <span className="cx-swatch cx-swatch-free" />
+                <span className="cx-name">Free</span>
+                <span className="cx-tokens">{formatTokens(free)}</span>
+                <span className="cx-share">
+                  {Math.max(0, 100 - pctRounded)}%
+                </span>
+              </div>
             </div>
           </div>
 
-          <ul className="cx-legend">
-            {segments.map((s) => (
-              <li key={s.key}>
-                <span className="cx-dot" style={{ background: s.color }} />
-                <span>{s.label}</span>
-                <span className="cx-val">{formatTokens(s.value)}</span>
-              </li>
-            ))}
-            <li>
-              <span
-                className="cx-dot"
-                style={{
-                  background: "var(--surface-2)",
-                  boxShadow: "inset 0 0 0 1px var(--line)",
-                }}
-              />
-              <span>Free</span>
-              <span className="cx-val">{formatTokens(free)}</span>
-            </li>
-          </ul>
-
-          <div className="cx-section">
-            <div className="cx-h">This session</div>
-            <dl className="cx-stats">
-              <div>
-                <dt>Turns</dt>
-                <dd>{data.turns}</dd>
+          <div>
+            <div className="rail-h">This session</div>
+            <div className="cx-stats">
+              <div className="sable-card cx-stat">
+                <span className="cx-stat-value">{data.turns}</span>
+                <span className="cx-stat-label">Turns</span>
               </div>
-              <div>
-                <dt>Total in</dt>
-                <dd>{formatTokens(data.totalInput)}</dd>
+              <div className="sable-card cx-stat">
+                <span className="cx-stat-value">
+                  {formatTokens(data.totalInput)}
+                </span>
+                <span className="cx-stat-label">Total in</span>
               </div>
-              <div>
-                <dt>Cached</dt>
-                <dd>{formatTokens(data.totalCached)}</dd>
+              <div className="sable-card cx-stat">
+                <span className="cx-stat-value">
+                  {formatTokens(data.totalOutput)}
+                </span>
+                <span className="cx-stat-label">Total out</span>
               </div>
-              <div>
-                <dt>Total out</dt>
-                <dd>{formatTokens(data.totalOutput)}</dd>
+              <div className="sable-card cx-stat" data-wide="">
+                <span className="cx-stat-value">
+                  {formatTokens(data.totalCached)}
+                </span>
+                <span className="cx-stat-label">Cached input</span>
               </div>
-              <div>
-                <dt>Cost</dt>
-                <dd>{costLabel}</dd>
+              <div className="sable-card cx-stat" data-wide="">
+                <span className="cx-stat-value">{costLabel}</span>
+                <span className="cx-stat-label">Est. cost</span>
               </div>
-              <div>
-                <dt>Model</dt>
-                <dd title={data.activeModelId}>{activeLabel}</dd>
-              </div>
-            </dl>
+              {activeLabel ? (
+                <div className="sable-card cx-stat col-span-6">
+                  <span
+                    className="cx-stat-value truncate"
+                    title={data.activeModelId}
+                  >
+                    {activeLabel}
+                  </span>
+                  <span className="cx-stat-label">Active model</span>
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       </div>
@@ -260,13 +291,13 @@ function Ring({
   let offset = 0;
 
   return (
-    <svg viewBox="0 0 130 130" width="130" height="130" aria-hidden="true">
+    <svg viewBox="0 0 130 130" width="116" height="116" aria-hidden="true">
       <circle
         cx="65"
         cy="65"
         r={R}
         fill="none"
-        stroke="var(--surface-2)"
+        stroke="var(--ring-track)"
         strokeWidth={STROKE}
       />
       <g transform="rotate(-90 65 65)">
@@ -279,6 +310,7 @@ function Ring({
           return (
             <circle
               key={seg.key}
+              className="cx-arc"
               cx="65"
               cy="65"
               r={R}
