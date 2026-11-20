@@ -111,7 +111,7 @@ export function WorkspaceReviewTab({
   refreshGitStatus,
   onCommitted: _onCommitted,
   onMerged,
-  hasSandbox: _hasSandbox,
+  hasSandbox,
   onOpenFile,
   onCreateRepoClick,
 }: WorkspaceReviewTabProps) {
@@ -566,27 +566,47 @@ export function WorkspaceReviewTab({
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
         ) : uncommittedFiles.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center text-muted-foreground">
-            <CheckCircle2 className="h-8 w-8 text-emerald-500/80" />
+          <div className="flex h-full flex-col items-center justify-center gap-2 px-5 py-16 text-center text-muted-foreground">
+            <CheckCircle2 className="h-7 w-7 text-emerald-500/80" />
             <p className="text-sm font-medium text-foreground">
-              {hasRepo ? "Working tree clean" : "No local changes"}
+              {!hasSandbox
+                ? "No changes yet"
+                : hasRepo
+                  ? "Working tree clean"
+                  : "No local changes"}
             </p>
             <p className="text-xs text-muted-foreground max-w-[260px]">
-              {hasRepo
-                ? "All files are synchronized with your active branch."
-                : "No modified or uncommitted files in this sandbox."}
+              {!hasSandbox
+                ? "File edits and diffs will appear here once the agent modifies files in a sandbox."
+                : hasRepo
+                  ? "All files are synchronized with your active branch."
+                  : "No modified or uncommitted files in this sandbox."}
             </p>
-            {!hasRepo && onCreateRepoClick && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onCreateRepoClick}
-                className="mt-3 gap-1.5 text-xs cursor-pointer"
-              >
-                <Github className="h-3.5 w-3.5" />
-                <span>Connect GitHub Repository</span>
-              </Button>
-            )}
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              {hasSandbox && refreshDiff && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refreshDiff()}
+                  disabled={diffRefreshing}
+                  className="gap-1.5 text-xs cursor-pointer"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  <span>Refresh changes</span>
+                </Button>
+              )}
+              {!hasRepo && onCreateRepoClick && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onCreateRepoClick}
+                  className="gap-1.5 text-xs cursor-pointer"
+                >
+                  <Github className="h-3.5 w-3.5" />
+                  <span>Connect GitHub Repository</span>
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="divide-y divide-border">

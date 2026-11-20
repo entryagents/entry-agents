@@ -30,12 +30,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  RAIL_TABS,
-  railTabAt,
-  railTabShortcut,
-  type RailTabId,
-} from "./rail-tabs";
+import { RAIL_TABS, railTabShortcut, type RailTabId } from "./rail-tabs";
 
 const TAB = 28;
 const TAB_GAP = 2;
@@ -216,21 +211,6 @@ export function WorkspaceRailTabs({
     );
   }, [tab, labels, fit, counts, isPreviewLive]);
 
-  // Global Alt+1..7 shortcut listener matching Sable
-  useEffect(() => {
-    const onGlobalKey = (e: globalThis.KeyboardEvent) => {
-      if (!e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
-      const n = Number(e.key);
-      if (!Number.isInteger(n) || n < 1 || n > RAIL_TABS.length) return;
-      const target = railTabAt(n);
-      if (!target) return;
-      e.preventDefault();
-      onPick(target);
-    };
-    window.addEventListener("keydown", onGlobalKey);
-    return () => window.removeEventListener("keydown", onGlobalKey);
-  }, [onPick]);
-
   const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
     if (
       e.key !== "ArrowRight" &&
@@ -314,45 +294,39 @@ export function WorkspaceRailTabs({
       </div>
 
       <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="rail-tab rail-more"
-                data-tab={inRow ? "more" : current.id}
-                data-on={!inRow || undefined}
-                aria-label={inRow ? "More tabs" : `${current.label}, more tabs`}
-              >
-                {inRow ? (
-                  <MoreHorizontal size={16} strokeWidth={1.5} />
-                ) : (
-                  <>
-                    <TabFace
-                      id={current.id}
-                      label={current.label}
-                      named={labels}
-                      count={counts[current.id]}
-                      liveDot={
-                        current.id === "preview" && Boolean(isPreviewLive)
-                      }
-                    />
-                    <ChevronDown
-                      size={11}
-                      strokeWidth={2}
-                      className="rail-more-caret"
-                    />
-                  </>
-                )}
-              </button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {inRow
-              ? "More tabs"
-              : `${current.label} · ${railTabShortcut(current.id)}`}
-          </TooltipContent>
-        </Tooltip>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="rail-tab rail-more"
+            data-tab={inRow ? "more" : current.id}
+            data-on={!inRow || undefined}
+            aria-label={inRow ? "More tabs" : `${current.label}, more tabs`}
+            title={
+              inRow
+                ? "More tabs"
+                : `${current.label} · ${railTabShortcut(current.id)}`
+            }
+          >
+            {inRow ? (
+              <MoreHorizontal size={16} strokeWidth={1.5} />
+            ) : (
+              <>
+                <TabFace
+                  id={current.id}
+                  label={current.label}
+                  named={labels}
+                  count={counts[current.id]}
+                  liveDot={current.id === "preview" && Boolean(isPreviewLive)}
+                />
+                <ChevronDown
+                  size={11}
+                  strokeWidth={2}
+                  className="rail-more-caret"
+                />
+              </>
+            )}
+          </button>
+        </DropdownMenuTrigger>
 
         <DropdownMenuContent align="start" className="w-52 text-xs">
           {rest.map((t) => {
