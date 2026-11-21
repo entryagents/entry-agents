@@ -351,7 +351,7 @@ export function WorkspaceContextTab({
             </div>
             <div className="cx-stats">
               <Stat
-                label="Input"
+                label="New input"
                 value={formatTokens(view.sessionTotals.inputTokens)}
               />
               <Stat
@@ -359,8 +359,24 @@ export function WorkspaceContextTab({
                 value={formatTokens(view.sessionTotals.outputTokens)}
               />
               <Stat
-                label="Cached"
+                label="Cache read"
                 value={formatTokens(view.sessionTotals.cacheReadTokens)}
+              />
+              <Stat
+                label="Cache write"
+                value={formatTokens(view.sessionTotals.cacheWriteTokens)}
+              />
+              <Stat
+                label="Reasoning"
+                value={formatTokens(view.sessionTotals.reasoningTokens)}
+              />
+              <Stat
+                label="Cache hit"
+                value={
+                  view.sessionTotals.cacheHitRate !== null
+                    ? `${view.sessionTotals.cacheHitRate}%`
+                    : "—"
+                }
               />
               <Stat
                 label="Turns"
