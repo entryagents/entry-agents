@@ -1,14 +1,15 @@
 "use client";
 
-import { ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
-import { useState } from "react";
-import { cn } from "@/lib/utils";
 import { isToolUIPart } from "ai";
+import { Check, ChevronUp, Loader2 } from "lucide-react";
+import { useId, useState } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
+import { cn } from "@/lib/utils";
 
 export type TodoItem = {
   id?: string;
   content?: string;
+  activeForm?: string;
   status?: string;
 };
 
@@ -41,156 +42,186 @@ export function getLatestTodos(messages: WebAgentUIMessage[]): TodoItem[] {
   return latestTodos;
 }
 
-/** Completed: check inside a circle */
-function CompletedIcon({ className }: { className?: string }) {
+/**
+ * Circular SVG progress ring (1:1 Sable `TaskStrip.tsx` Ring).
+ * Draws a gentle track + filled arc with smooth stroke-dashoffset transition,
+ * and fades in a checkmark when all tasks are complete.
+ */
+function TaskProgressRing({ done, total }: { done: number; total: number }) {
+  const r = 6.5;
+  const c = 2 * Math.PI * r;
+  const progress = total ? done / total : 0;
   return (
     <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      className={cn("h-4 w-4", className)}
-      aria-hidden="true"
-    >
-      <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
-      <path
-        d="M5 8.5L7 10.5L11 6"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** In-progress: filled circle with arrow-right icon inside */
-function InProgressIcon({ className }: { className?: string }) {
-  return (
-    <span
-      className={cn(
-        "relative inline-flex h-4 w-4 items-center justify-center",
-        className,
-      )}
-    >
-      {/* Filled circle background */}
-      <svg
-        viewBox="0 0 16 16"
-        fill="none"
-        className="absolute inset-0 h-4 w-4"
-        aria-hidden="true"
-      >
-        <circle cx="8" cy="8" r="7.25" fill="currentColor" />
-      </svg>
-      {/* Arrow icon on top, colored to contrast */}
-      <ArrowRight className="relative h-2.5 w-2.5 text-muted" strokeWidth={3} />
-    </span>
-  );
-}
-
-/** Pending: dashed circle */
-function PendingIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      className={cn("h-4 w-4", className)}
+      className="h-[18px] w-[18px] shrink-0"
+      width="18"
+      height="18"
+      viewBox="0 0 18 18"
       aria-hidden="true"
     >
       <circle
-        cx="8"
-        cy="8"
-        r="7"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeDasharray="3.5 2.5"
+        cx="9"
+        cy="9"
+        r={r}
+        fill="none"
+        strokeWidth="2.2"
+        className="stroke-foreground/12"
       />
+      <circle
+        cx="9"
+        cy="9"
+        r={r}
+        fill="none"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeDasharray={c}
+        strokeDashoffset={c * (1 - progress)}
+        transform="rotate(-90 9 9)"
+        className="stroke-foreground/70 transition-[stroke-dashoffset] duration-300 ease-out"
+      />
+      {total > 0 && done === total && (
+        <path
+          d="M6.1 9.3l1.9 1.9 3.9-4"
+          fill="none"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="stroke-foreground/75"
+        />
+      )}
     </svg>
   );
 }
 
-export type PinnedTodoPanelProps = {
+/**
+ * Sable 1:1 TaskStrip docked directly above the composer.
+ * Single compact header row with circular progress ring, tabular done/total
+ * count, current task label, and collapsible checklist.
+ */
+export function PinnedTodoPanel({
+  todos,
+  isRunning = false,
+}: {
   todos: TodoItem[];
-};
+  isRunning?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
 
-export function PinnedTodoPanel({ todos }: PinnedTodoPanelProps) {
-  const [isMinimized, setIsMinimized] = useState(false);
+  if (todos.length === 0) {
+    return null;
+  }
 
-  const completedCount = todos.filter((t) => t.status === "completed").length;
+  const doneCount = todos.filter((t) => t.status === "completed").length;
   const totalCount = todos.length;
-  const allDone = completedCount === totalCount && totalCount > 0;
-  const hasActiveWork = todos.some(
-    (t) => t.status === "in_progress" || t.status === "pending",
-  );
-
-  // Hide when: no todos, all done, or no work started yet (all pending, agent still building list)
-  if (totalCount === 0 || allDone || !hasActiveWork) return null;
-
-  // Find the active task name for the minimized summary
-  const activeTask = todos.find((t) => t.status === "in_progress");
+  const current =
+    todos.find((t) => t.status === "in_progress") ??
+    todos.find((t) => t.status !== "completed");
+  const currentLabel =
+    doneCount === totalCount
+      ? "All done"
+      : current?.status === "in_progress"
+        ? (current.activeForm ?? current.content ?? "Working…")
+        : (current?.content ?? "Tasks");
 
   return (
-    <div className="mx-4 overflow-hidden rounded-t-xl border border-b-0 border-border/60 bg-card transition-all">
-      {/* Header bar — always visible */}
+    <section
+      className="mx-3 overflow-hidden rounded-t-xl border border-b-0 border-border/60 bg-card/95 backdrop-blur-sm sm:mx-4"
+      aria-label="Tasks"
+      data-open={open ? "" : undefined}
+    >
       <button
         type="button"
-        onClick={() => setIsMinimized((v) => !v)}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted-foreground/5"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((prev) => !prev)}
+        className="flex h-[38px] w-full items-center gap-2.5 px-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
-        {/* Chevron on the left */}
-        {isMinimized ? (
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-        ) : (
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-        )}
-        {/* Counter + label — always visible */}
-        <span className="shrink-0 text-xs font-semibold text-muted-foreground/70">
-          {completedCount}/{totalCount} Tasks
+        <TaskProgressRing done={doneCount} total={totalCount} />
+        <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+          {doneCount}/{totalCount}
         </span>
-        {/* Active task name — only when minimized */}
-        {isMinimized && activeTask?.content && (
-          <span className="min-w-0 flex-1 truncate font-mono text-xs font-normal text-muted-foreground/50">
-            {activeTask.content}
-          </span>
-        )}
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate text-xs text-muted-foreground",
+            isRunning &&
+              current?.status === "in_progress" &&
+              "animate-pulse text-foreground/85",
+          )}
+        >
+          {currentLabel}
+        </span>
+        <ChevronUp
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-muted-foreground/70 transition-transform duration-200",
+            !open && "rotate-180",
+          )}
+        />
       </button>
 
-      {/* Expanded todo list */}
-      {!isMinimized && (
-        <div className="max-h-48 overflow-y-auto border-t border-border/40 px-3 py-2">
-          <div className="space-y-1">
-            {todos.map((todo, index) => {
-              if (!todo) return null;
-              return (
-                <div
-                  key={`pinned-todo-${todo.id ?? index}`}
-                  className="flex items-center gap-2.5"
+      {open && (
+        <ul
+          id={listId}
+          className="flex max-h-[34vh] flex-col gap-0.5 overflow-y-auto border-t border-border/40 px-3 pt-1.5 pb-2.5"
+        >
+          {todos.map((todo, idx) => {
+            const isCompleted = todo.status === "completed";
+            const isInProgress = todo.status === "in_progress";
+            const text = isInProgress
+              ? (todo.activeForm ?? todo.content)
+              : todo.content;
+
+            return (
+              <li
+                key={todo.id ?? `${todo.content ?? "todo"}-${idx}`}
+                data-status={todo.status ?? "pending"}
+                className={cn(
+                  "flex items-start gap-2.5 py-1 text-xs leading-[1.45]",
+                  isCompleted
+                    ? "text-muted-foreground/55"
+                    : isInProgress
+                      ? "text-foreground"
+                      : "text-muted-foreground",
+                )}
+              >
+                <span
+                  className="grid h-[18px] w-[18px] shrink-0 place-items-center"
+                  aria-hidden="true"
                 >
-                  <span className="shrink-0">
-                    {todo.status === "completed" ? (
-                      <CompletedIcon className="text-muted-foreground/50" />
-                    ) : todo.status === "in_progress" ? (
-                      <InProgressIcon className="text-muted-foreground/50" />
-                    ) : (
-                      <PendingIcon className="text-muted-foreground/30" />
-                    )}
-                  </span>
-                  <span
-                    className={cn(
-                      "text-sm leading-normal",
-                      todo.status === "completed"
-                        ? "text-muted-foreground/40 line-through"
-                        : todo.status === "in_progress"
-                          ? "text-muted-foreground"
-                          : "text-muted-foreground/50",
-                    )}
-                  >
-                    {todo.content}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                  {isCompleted ? (
+                    <Check className="h-3 w-3 text-muted-foreground/70" />
+                  ) : isInProgress ? (
+                    <Loader2
+                      className={cn(
+                        "h-3 w-3 text-foreground/80",
+                        isRunning && "animate-spin",
+                      )}
+                    />
+                  ) : (
+                    <i className="block h-[11px] w-[11px] rounded-full border-[1.5px] border-muted-foreground/40" />
+                  )}
+                </span>
+                <span
+                  className={cn(
+                    "min-w-0 flex-1",
+                    isCompleted &&
+                      "line-through decoration-muted-foreground/35 decoration-1",
+                  )}
+                >
+                  {text}
+                </span>
+                <span className="sr-only">
+                  {isCompleted
+                    ? "Done"
+                    : isInProgress
+                      ? "In progress"
+                      : "Pending"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
       )}
-    </div>
+    </section>
   );
 }

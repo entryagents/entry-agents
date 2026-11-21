@@ -12,6 +12,7 @@ interface FileSuggestionsDropdownProps {
   selectedIndex: number;
   onSelect: (suggestion: FileSuggestion) => void;
   isLoading?: boolean;
+  originX?: number;
 }
 
 const MAX_VISIBLE_ITEMS = 10;
@@ -21,6 +22,7 @@ export function FileSuggestionsDropdown({
   selectedIndex,
   onSelect,
   isLoading,
+  originX = 24,
 }: FileSuggestionsDropdownProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
@@ -54,7 +56,10 @@ export function FileSuggestionsDropdown({
   }
 
   return (
-    <div className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+    <div
+      style={{ transformOrigin: `${originX}px bottom` }}
+      className="animate-in fade-in-0 zoom-in-95 duration-150 absolute bottom-full left-0 right-0 z-30 mb-2 max-w-[560px] overflow-hidden rounded-2xl border border-border/80 bg-popover/95 shadow-xl backdrop-blur-md"
+    >
       <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[11px] text-muted-foreground">
         <span className="font-medium text-foreground/80">
           Tag specialist teammate or reference repository file

@@ -16,6 +16,15 @@ export interface UseSessionSkillsReturn {
   refresh: () => Promise<SkillsResponse | undefined>;
 }
 
+const BUILTIN_CHAT_COMMANDS: SkillSuggestion[] = [
+  {
+    name: "compact",
+    description:
+      "Summarize earlier turns into a compact checkpoint to free context window space",
+    source: "command",
+  },
+];
+
 const TEAM_SPECIALIST_COMMANDS: SkillSuggestion[] = [
   {
     name: "team",
@@ -126,6 +135,12 @@ export function useSessionSkills(
       });
     }
 
+    for (const builtinCmd of BUILTIN_CHAT_COMMANDS) {
+      const key = builtinCmd.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push(builtinCmd);
+    }
     for (const cmd of pluginCmds) {
       const key = cmd.name.toLowerCase();
       if (seen.has(key)) continue;

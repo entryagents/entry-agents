@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { Blocks, Bot, Settings2, Terminal, Users } from "lucide-react";
+import {
+  Blocks,
+  Bot,
+  BrushCleaning,
+  Settings2,
+  Terminal,
+  Users,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SkillSuggestion } from "@/app/api/sessions/[sessionId]/skills/route";
 
@@ -11,6 +18,7 @@ interface SlashCommandDropdownProps {
   selectedIndex: number;
   onSelect: (suggestion: SkillSuggestion) => void;
   isLoading?: boolean;
+  originX?: number;
 }
 
 const MAX_VISIBLE_ITEMS = 9;
@@ -20,6 +28,7 @@ export function SlashCommandDropdown({
   selectedIndex,
   onSelect,
   isLoading,
+  originX = 24,
 }: SlashCommandDropdownProps) {
   const listRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
@@ -53,7 +62,10 @@ export function SlashCommandDropdown({
   }
 
   return (
-    <div className="absolute bottom-full left-0 right-0 z-30 mb-2 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+    <div
+      style={{ transformOrigin: `${originX}px bottom` }}
+      className="animate-in fade-in-0 zoom-in-95 duration-150 absolute bottom-full left-0 right-0 z-30 mb-2 max-w-[560px] overflow-hidden rounded-2xl border border-border/80 bg-popover/95 shadow-xl backdrop-blur-md"
+    >
       <div className="flex items-center justify-between border-b border-border/60 bg-muted/30 px-3 py-1.5 text-[11px] text-muted-foreground">
         <span className="font-medium text-foreground/80">
           Invoke skill, subagent, or /team
@@ -77,6 +89,7 @@ export function SlashCommandDropdown({
             isTeam &&
             (suggestion.name === "team" || suggestion.name === "team-plan");
           const isPlugin = suggestion.source === "plugin";
+          const isCommand = suggestion.source === "command";
           return (
             <button
               key={suggestion.name}
@@ -90,7 +103,12 @@ export function SlashCommandDropdown({
                   : "hover:bg-muted/70",
               )}
             >
-              {isPlugin ? (
+              {isCommand ? (
+                <BrushCleaning
+                  className="size-4 shrink-0 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
+              ) : isPlugin ? (
                 <Blocks
                   className="size-4 shrink-0 text-muted-foreground"
                   strokeWidth={1.5}
@@ -116,7 +134,11 @@ export function SlashCommandDropdown({
                   <span className="truncate font-mono text-xs font-semibold">
                     /{suggestion.name}
                   </span>
-                  {isPlugin ? (
+                  {isCommand ? (
+                    <span className="shrink-0 rounded border border-border/70 bg-muted/60 px-1.5 py-0 font-mono text-[10px] font-medium text-muted-foreground">
+                      Command
+                    </span>
+                  ) : isPlugin ? (
                     <span className="shrink-0 rounded border border-border/70 bg-muted/60 px-1.5 py-0 font-mono text-[10px] text-muted-foreground">
                       {suggestion.pluginName ?? "Plugin"}
                     </span>

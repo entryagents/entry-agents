@@ -1,14 +1,7 @@
 "use client";
 
 import { isReasoningUIPart, isToolUIPart } from "ai";
-import {
-  Check,
-  Copy,
-  GitBranch,
-  Loader2,
-  RotateCcw,
-  Trash2,
-} from "lucide-react";
+import { Check, Copy, GitBranch, Loader2 } from "lucide-react";
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   WebAgentCommitDataPart,
@@ -41,6 +34,8 @@ import {
 import { cn } from "@/lib/utils";
 import { UserMessageFold } from "@/components/user-message-fold";
 import { GitDataPartCard } from "./git-data-part-card";
+import { UserMessageAgain } from "./user-message-again";
+import { UserMessageRewind } from "./user-message-rewind";
 import {
   SmoothedAssistantMarkdown,
   SmoothedThinkingBlock,
@@ -139,9 +134,11 @@ export interface ChatMessageFeedProps {
   forkingAssistantMessageId?: string | null;
   onCopyUserMessage?: (messageId: string, text: string) => void;
   copiedUserMessageId?: string | null;
-  onResendUserMessage?: (messageId: string) => void;
+  onEditUserMessage?: (messageId: string) => void | Promise<void>;
+  editingMessageId?: string | null;
+  onResendUserMessage?: (messageId: string) => void | Promise<void>;
   resendingMessageId?: string | null;
-  onDeleteMessage?: (messageId: string) => void;
+  onDeleteMessage?: (messageId: string) => void | Promise<void>;
   deletingMessageId?: string | null;
   hasMessageActionInFlight?: boolean;
   modelOptions?: Parameters<typeof MessageModelPill>[0]["modelOptions"];
@@ -179,9 +176,12 @@ interface ChatMessageRowProps {
   isForkingAssistant: boolean;
   onCopyUserMessage?: (messageId: string, text: string) => void;
   isCopiedUser: boolean;
-  onResendUserMessage?: (messageId: string) => void;
+  onEditUserMessage?: (messageId: string) => void | Promise<void>;
+  isEditingUser: boolean;
+  isLastUserMessage: boolean;
+  onResendUserMessage?: (messageId: string) => void | Promise<void>;
   isResendingUser: boolean;
-  onDeleteMessage?: (messageId: string) => void;
+  onDeleteMessage?: (messageId: string) => void | Promise<void>;
   isDeletingMessage: boolean;
   hasMessageActionInFlight: boolean;
   modelOptions: NonNullable<
@@ -210,6 +210,9 @@ const ChatMessageRow = memo(function ChatMessageRow({
   isForkingAssistant,
   onCopyUserMessage,
   isCopiedUser,
+  onEditUserMessage,
+  isEditingUser,
+  isLastUserMessage,
   onResendUserMessage,
   isResendingUser,
   onDeleteMessage,
@@ -223,6 +226,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   isActionsActive,
   onToggleActions,
 }: ChatMessageRowProps) {
+  const [userPopoverOpen, setUserPopoverOpen] = useState(false);
   const renderGroups = (isToolCallsExpanded: boolean) =>
     groups.map((group) => {
       if (group.type === "reasoning-group") {
@@ -344,9 +348,10 @@ const ChatMessageRow = memo(function ChatMessageRow({
                 </div>
                 {!readOnly && group.index === 0 && (
                   <div
+                    data-open={userPopoverOpen || undefined}
                     className={cn(
                       "mt-1 flex items-center gap-1 text-muted-foreground opacity-0 transition group-hover:opacity-100 focus-within:opacity-100",
-                      isActionsActive && "opacity-100",
+                      (isActionsActive || userPopoverOpen) && "opacity-100",
                     )}
                   >
                     {onCopyUserMessage && (
@@ -356,51 +361,34 @@ const ChatMessageRow = memo(function ChatMessageRow({
                           event.stopPropagation();
                           onCopyUserMessage(m.id, p.text);
                         }}
-                        aria-label="Copy message text"
-                        className="rounded p-1 transition-colors hover:text-foreground"
+                        aria-label="Copy message"
+                        className="rounded p-1 transition-colors hover:text-foreground cursor-pointer"
                       >
                         {isCopiedUser ? (
-                          <Check className="h-4 w-4 text-emerald-500" />
+                          <Check className="h-3.5 w-3.5 text-emerald-500" />
                         ) : (
-                          <Copy className="h-4 w-4" />
+                          <Copy className="h-3.5 w-3.5" />
                         )}
                       </button>
                     )}
-                    {onResendUserMessage && (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onResendUserMessage(m.id);
-                        }}
-                        disabled={hasMessageActionInFlight}
-                        aria-label="Resend this message"
-                        className="rounded p-1 transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {isResendingUser ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RotateCcw className="h-4 w-4" />
-                        )}
-                      </button>
-                    )}
+                    <UserMessageAgain
+                      messageId={m.id}
+                      isLast={isLastUserMessage}
+                      disabled={hasMessageActionInFlight}
+                      isEditing={isEditingUser}
+                      isRetrying={isResendingUser}
+                      onEditAndSendAgain={onEditUserMessage}
+                      onRetry={onResendUserMessage}
+                      onPopoverOpenChange={setUserPopoverOpen}
+                    />
                     {onDeleteMessage && (
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onDeleteMessage(m.id);
-                        }}
+                      <UserMessageRewind
+                        messageId={m.id}
                         disabled={hasMessageActionInFlight}
-                        aria-label="Delete this message and everything after it"
-                        className="rounded p-1 transition-colors hover:text-destructive disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        {isDeletingMessage ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </button>
+                        isRewinding={isDeletingMessage}
+                        onRewind={onDeleteMessage}
+                        onPopoverOpenChange={setUserPopoverOpen}
+                      />
                     )}
                     <TimelineStamp timestamp={startedAt} className="ml-1" />
                   </div>
@@ -658,6 +646,24 @@ const ChatMessageRow = memo(function ChatMessageRow({
       return null;
     });
 
+  if (m.role === "assistant" && m.metadata?.isCompactionNotice) {
+    const summaryLabel =
+      m.parts
+        .filter(
+          (part): part is { type: "text"; text: string } =>
+            part.type === "text" && part.text.trim().length > 0,
+        )
+        .map((part) => part.text.trim())
+        .join(" ") || "Conversation compacted";
+    return (
+      <div className="my-3 flex items-center gap-3 select-none text-xs text-muted-foreground">
+        <span className="h-px flex-1 bg-border/60" aria-hidden="true" />
+        <span className="shrink-0 font-medium">{summaryLabel}</span>
+        <span className="h-px flex-1 bg-border/60" aria-hidden="true" />
+      </div>
+    );
+  }
+
   if (m.role === "assistant") {
     return (
       <AssistantMessageGroups
@@ -769,6 +775,8 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
   forkingAssistantMessageId = null,
   onCopyUserMessage,
   copiedUserMessageId = null,
+  onEditUserMessage,
+  editingMessageId = null,
   onResendUserMessage,
   resendingMessageId = null,
   onDeleteMessage,
@@ -798,6 +806,15 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
       current === messageId ? null : messageId,
     );
   }, []);
+
+  const lastUserMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i]?.role === "user") {
+        return messages[i]?.id ?? null;
+      }
+    }
+    return null;
+  }, [messages]);
 
   const groupedRenderMessages = useMemo<GroupedRenderMessage[]>(() => {
     return messages.map((message, messageIndex) => {
@@ -936,6 +953,11 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
                 isForkingAssistant={forkingAssistantMessageId === m.id}
                 onCopyUserMessage={onCopyUserMessage}
                 isCopiedUser={copiedUserMessageId === m.id}
+                onEditUserMessage={onEditUserMessage}
+                isEditingUser={editingMessageId === m.id}
+                isLastUserMessage={
+                  m.role === "user" && m.id === lastUserMessageId
+                }
                 onResendUserMessage={onResendUserMessage}
                 isResendingUser={resendingMessageId === m.id}
                 onDeleteMessage={onDeleteMessage}

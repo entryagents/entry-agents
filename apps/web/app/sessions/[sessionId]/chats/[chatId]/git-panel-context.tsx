@@ -142,6 +142,15 @@ type GitPanelContextValue = {
 
   /** Ref to the DOM node where header action buttons should be portaled into */
   headerActionsRef: RefObject<HTMLDivElement | null>;
+
+  /** Active chat model ID displayed as provider mark in the topbar */
+  headerModelId: string | null;
+  setHeaderModelId: (modelId: string | null) => void;
+
+  /** Lazy Markdown transcript builder registered by the active chat view */
+  exportMarkdownRef: RefObject<
+    (() => { title: string; markdown: string } | null) | null
+  >;
 };
 
 const GitPanelContext = createContext<GitPanelContextValue | undefined>(
@@ -233,8 +242,12 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
   const [fileTabDismissed, setFileTabDismissed] = useState(false);
   const [shareRequested, setShareRequested] = useState(false);
   const [changeRepoRequested, setChangeRepoRequested] = useState(false);
+  const [headerModelId, setHeaderModelId] = useState<string | null>(null);
   const panelPortalRef = useRef<HTMLDivElement | null>(null);
   const headerActionsRef = useRef<HTMLDivElement | null>(null);
+  const exportMarkdownRef = useRef<
+    (() => { title: string; markdown: string } | null) | null
+  >(null);
 
   const closeWorkspaceFile = useCallback(
     (filePath: string) => {
@@ -397,6 +410,9 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
       setChangeRepoRequested,
       panelPortalRef,
       headerActionsRef,
+      headerModelId,
+      setHeaderModelId,
+      exportMarkdownRef,
     }),
     [
       gitPanelOpen,
@@ -430,6 +446,7 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
       hasCommittedChanges,
       shareRequested,
       changeRepoRequested,
+      headerModelId,
     ],
   );
 
