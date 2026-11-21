@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { tool, type ToolSet } from "ai";
+import { buildSubagentExperimentalContext } from "../../subagents/call-options";
+import { webFetchTool } from "../../tools/fetch";
 import { z } from "zod";
 import {
   BUILTIN_PLUGIN_CATALOG,
@@ -261,5 +263,145 @@ describe("applyPluginHooksToTools", () => {
     };
     expect(yielded[0]).toEqual({ phase: "running", detail: "work" });
     expect(last.detail).toBe("key=[REDACTED_BY_PLUGIN]");
+  });
+
+  test("respects autoAccept and fullAccess permissionMode even when security-auditor plugin requires web_fetch approval", async () => {
+    const securityAuditorManifest = getBuiltinPluginBySlug("security-auditor");
+    expect(securityAuditorManifest).toBeDefined();
+    const securityAuditor: ResolvedEntryPlugin = {
+      id: "p_sec",
+      slug: "security-auditor",
+      name: securityAuditorManifest!.name,
+      enabled: true,
+      config: {},
+      manifest: securityAuditorManifest!,
+    };
+    const runner = createPluginRunner([securityAuditor]);
+    const hooked = applyPluginHooksToTools(
+      { web_fetch: webFetchTool },
+      runner,
+      { agentId: "main", sessionId: "sess_perm" },
+    );
+    const gate = hooked.web_fetch.needsApproval as (
+      input: unknown,
+      ctx: {
+        toolCallId: string;
+        messages: unknown[];
+        experimental_context?: unknown;
+      },
+    ) => Promise<boolean>;
+
+    expect(typeof gate).toBe("function");
+    expect(
+      await gate(
+        { url: "https://example.com" },
+        {
+          toolCallId: "tc-1",
+          messages: [],
+          experimental_context: { permissionMode: "ask" },
+        },
+      ),
+    ).toBe(true);
+    expect(
+      await gate(
+        { url: "https://example.com" },
+        {
+          toolCallId: "tc-2",
+          messages: [],
+          experimental_context: { permissionMode: "autoAccept" },
+        },
+      ),
+    ).toBe(false);
+    expect(
+      await gate(
+        { url: "https://example.com" },
+        {
+          toolCallId: "tc-3",
+          messages: [],
+          experimental_context: { permissionMode: "fullAccess" },
+        },
+      ),
+    ).toBe(false);
+  });
+
+  test("plugin requireApprovalTools still gates non-fetch tools in autoAccept, but never in fullAccess", async () => {
+    const customGate = makePlugin({
+      slug: "bash-gate",
+      name: "Bash Gate",
+      rules: { requireApprovalTools: ["custom_shell"] },
+    });
+    const customTool = tool({
+      description: "Custom shell",
+      inputSchema: z.object({ cmd: z.string() }),
+      execute: async ({ cmd }) => ({ cmd }),
+    });
+    const runner = createPluginRunner([customGate]);
+    const hooked = applyPluginHooksToTools(
+      { custom_shell: customTool },
+      runner,
+      { agentId: "main" },
+    );
+    const gate = hooked.custom_shell.needsApproval as (
+      input: unknown,
+      ctx: {
+        toolCallId: string;
+        messages: unknown[];
+        experimental_context?: unknown;
+      },
+    ) => Promise<boolean>;
+
+    expect(
+      await gate(
+        { cmd: "ls" },
+        {
+          toolCallId: "tc-1",
+          messages: [],
+          experimental_context: { permissionMode: "ask" },
+        },
+      ),
+    ).toBe(true);
+    expect(
+      await gate(
+        { cmd: "ls" },
+        {
+          toolCallId: "tc-2",
+          messages: [],
+          experimental_context: { permissionMode: "autoAccept" },
+        },
+      ),
+    ).toBe(true);
+    expect(
+      await gate(
+        { cmd: "ls" },
+        {
+          toolCallId: "tc-3",
+          messages: [],
+          experimental_context: { permissionMode: "fullAccess" },
+        },
+      ),
+    ).toBe(false);
+  });
+
+  test("buildSubagentExperimentalContext propagates permissionMode to subagents", () => {
+    const fakeSandbox = { workingDirectory: "/workspace" } as never;
+    const fakeModel = {} as never;
+    const autoCtx = buildSubagentExperimentalContext(
+      { sandbox: fakeSandbox, permissionMode: "autoAccept" },
+      fakeModel,
+      "executor",
+    );
+    const fullCtx = buildSubagentExperimentalContext(
+      { sandbox: fakeSandbox, permissionMode: "fullAccess" },
+      fakeModel,
+      "design",
+    );
+    const defaultCtx = buildSubagentExperimentalContext(
+      { sandbox: fakeSandbox },
+      fakeModel,
+      "explorer",
+    );
+    expect(autoCtx.permissionMode).toBe("autoAccept");
+    expect(fullCtx.permissionMode).toBe("fullAccess");
+    expect(defaultCtx.permissionMode).toBe("ask");
   });
 });

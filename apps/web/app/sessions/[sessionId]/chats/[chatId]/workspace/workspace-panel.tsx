@@ -1,7 +1,7 @@
 "use client";
 
 import "./rail.css";
-import { Loader2, Maximize2, Minimize2, X } from "lucide-react";
+import { Loader2, Maximize2, Minimize2, PanelRight, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
@@ -87,14 +87,21 @@ export type WorkspacePanelProps = GitPanelProps & {
   messages?: WebAgentUIMessage[];
   modelId?: string | null;
   modelOptions?: ModelOption[];
+  contextLimit?: number | null;
   isParentStreaming?: boolean;
   teamRoleModels?: Record<string, string>;
   onUpdateRoleModel?: (role: string, modelId: string | null) => void;
   isFreeTierLocked?: boolean;
   freePlanModelId?: string | null;
   freeTierAllowedModelIds?: string[];
-  onSelectSubagent?: (toolCallId: string) => void;
+  onSelectSubagent?: (
+    toolCallId: string,
+    title?: string,
+    subagentType?: string,
+  ) => void;
   onStopRun?: () => void;
+  onCompactConversation?: () => void;
+  isCompacting?: boolean;
 };
 
 function fileBasename(filePath: string): string {
@@ -112,6 +119,7 @@ export function WorkspacePanel({
   messages = [],
   modelId = "",
   modelOptions = [],
+  contextLimit = null,
   isParentStreaming = false,
   teamRoleModels = {},
   onUpdateRoleModel,
@@ -120,9 +128,12 @@ export function WorkspacePanel({
   freeTierAllowedModelIds = [],
   onSelectSubagent,
   onStopRun,
+  onCompactConversation,
+  isCompacting = false,
   ...gitPanelProps
 }: WorkspacePanelProps) {
   const {
+    setGitPanelOpen,
     activeWorkspaceTab,
     setActiveWorkspaceTab,
     openFiles,
@@ -196,13 +207,13 @@ export function WorkspacePanel({
   }, [pickBuiltinTab]);
 
   const liveAgents = useMemo(() => {
-    const roster = deriveAgentHubRoster(messages);
+    const roster = deriveAgentHubRoster(messages, { isParentStreaming });
     let live = 0;
     for (const entry of roster) {
       if (isLiveStatus(entry.status)) live += 1;
     }
     return live;
-  }, [messages]);
+  }, [messages, isParentStreaming]);
   const todos = useMemo(() => getLatestTodos(messages), [messages]);
   const openTodos = useMemo(
     () => todos.filter((t) => t.status !== "completed").length,
@@ -254,8 +265,8 @@ export function WorkspacePanel({
           isPreviewLive={isPreviewLive}
           onPick={pickBuiltinTab}
         />
-        {onToggleWorkspaceExpand && (
-          <div className="flex items-center shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
+          {onToggleWorkspaceExpand && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -277,8 +288,22 @@ export function WorkspacePanel({
                 {isWorkspaceExpanded ? "Restore width" : "Expand panel"}
               </TooltipContent>
             </Tooltip>
-          </div>
-        )}
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="rail-btn"
+                data-active="true"
+                onClick={() => setGitPanelOpen(false)}
+                aria-label="Hide panel"
+              >
+                <PanelRight size={15} strokeWidth={1.6} aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Hide panel · ⌘⇧B</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       {openFiles.length > 0 && (
@@ -376,6 +401,10 @@ export function WorkspacePanel({
                   messages={messages}
                   modelId={resolvedModelId}
                   modelOptions={modelOptions}
+                  contextLimit={contextLimit}
+                  onCompactConversation={onCompactConversation}
+                  isCompacting={isCompacting}
+                  isBusy={isParentStreaming}
                 />
               )}
               {def.id === "agents" && (
@@ -391,6 +420,7 @@ export function WorkspacePanel({
                   freeTierAllowedModelIds={freeTierAllowedModelIds}
                   onSelectSubagent={onSelectSubagent ?? (() => {})}
                   onStopRun={onStopRun ?? (() => {})}
+                  onClosePanel={() => setGitPanelOpen(false)}
                 />
               )}
             </div>

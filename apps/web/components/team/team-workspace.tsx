@@ -387,7 +387,7 @@ function TaskCard({ task }: { task: TeamFeedTask }) {
   );
 }
 
-function BoardTab({ feed }: { feed: TeamFeedState }) {
+export function BoardTab({ feed }: { feed: TeamFeedState }) {
   const [filter, setFilter] = useState<FeedFilter>("all");
 
   if (feed.tasks.length === 0 && feed.entries.length === 0) {
@@ -562,7 +562,7 @@ function BoardTab({ feed }: { feed: TeamFeedState }) {
   );
 }
 
-function ModelsTab({
+export function ModelsTab({
   defaultModelId,
   teamRoleModels,
   onUpdateRoleModel,

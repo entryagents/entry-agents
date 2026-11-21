@@ -92,6 +92,17 @@ export type WebAgentMessageMetadata = {
    * and subsequent recovery steps are never split by an inline error string.
    */
   turnError?: string;
+  /**
+   * True for synthetic compaction confirmation messages persisted after manual
+   * `/compact` so context usage drops immediately without inflating session
+   * token/cost totals or sending the notice back into LLM history.
+   */
+  isCompactionNotice?: boolean;
+  compactionMeta?: {
+    preTokens: number;
+    postTokens: number;
+    focus?: string;
+  };
 };
 
 export type WebAgentGitDataStatus = "pending" | "success" | "error" | "skipped";
