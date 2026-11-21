@@ -1,22 +1,16 @@
 "use client";
 
 import { formatTokens } from "@entry-agents/shared";
-import { Gauge, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   type CSSProperties,
   useCallback,
-  useEffect,
   useId,
   useMemo,
   useState,
 } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
-import { EntryMark } from "@/components/entry-mark";
-import {
-  triggerBillingSync,
-  useBillingMe,
-} from "@/components/sidebar-billing-widget";
 import {
   Tooltip,
   TooltipContent,
@@ -26,11 +20,9 @@ import type { ModelOption } from "@/lib/model-options";
 import {
   type ContextSegment,
   deriveContextWindowBreakdown,
-  derivePlanLimitWindows,
   formatCostUsd,
   formatPercentDisplay,
   formatShare,
-  type PlanLimitWindow,
 } from "./context-usage-model";
 
 interface WorkspaceContextTabProps {
@@ -158,134 +150,13 @@ function Stat({
   );
 }
 
-function WindowLine({ window: w }: { window: PlanLimitWindow }) {
-  const fillRatio = Math.max(w.percent, w.percent > 0 ? 1.5 : 0) / 100;
-  return (
-    <div
-      className="ulw"
-      data-level={w.level}
-      data-past={w.past ? "" : undefined}
-    >
-      <span className="ulw-label truncate">{w.label}</span>
-      <span className="ulw-bar">
-        <span
-          className="meter ulw-meter"
-          data-level={w.level}
-          role="progressbar"
-          aria-label={w.label}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={w.percent}
-        >
-          <span
-            className="meter-fill"
-            style={{ "--p": fillRatio } as CSSProperties}
-          />
-        </span>
-        <span className="ulw-pct num">{w.percent}%</span>
-      </span>
-      <span className="ulw-reset num">{w.resetsIn ?? "—"}</span>
-      <span
-        className="ulw-note"
-        data-warn={w.level !== undefined ? "" : undefined}
-      >
-        {w.note}
-      </span>
-    </div>
-  );
-}
-
-function PlanLimitsSection({
-  onRefresh,
-  refreshing,
-}: {
-  onRefresh: () => void;
-  refreshing: boolean;
-}) {
-  const router = useRouter();
-  const { data: billing } = useBillingMe();
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 30_000);
-    return () => window.clearInterval(id);
-  }, []);
-
-  const limits = useMemo(
-    () => derivePlanLimitWindows(billing, now),
-    [billing, now],
-  );
-
-  if (!limits) return null;
-
-  return (
-    <section aria-label="Plan limits">
-      <div className="rail-h">
-        <span>Plan limits</span>
-        <span className="ul-rail-actions">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="rail-btn"
-                aria-label="Usage"
-                onClick={() => router.push("/settings/usage")}
-              >
-                <Gauge size={13} strokeWidth={1.6} aria-hidden="true" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Usage</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="rail-btn"
-                aria-label="Refresh limits"
-                onClick={onRefresh}
-              >
-                <RefreshCw
-                  size={13}
-                  strokeWidth={1.6}
-                  className={refreshing ? "animate-spin" : undefined}
-                  aria-hidden="true"
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Refresh limits</TooltipContent>
-          </Tooltip>
-        </span>
-      </div>
-      <div className="sable-card ul-rail">
-        <div className="ul-glance">
-          <div className="ul-glance-head">
-            <EntryMark className="ul-glance-mark h-3.5 w-3.5 text-[var(--text)]" />
-            <span className="ul-glance-name truncate">Entry</span>
-            <span className="ul-glance-plan">{limits.planName}</span>
-            {limits.hasResetColumn && (
-              <span className="ul-glance-col">Resets in</span>
-            )}
-          </div>
-          <div className="ulw-list" data-compact="">
-            {limits.windows.map((w) => (
-              <WindowLine key={w.id} window={w} />
-            ))}
-          </div>
-          {limits.footerNote && (
-            <p className="ul-glance-foot num">{limits.footerNote}</p>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export function WorkspaceContextTab({
   messages,
   modelId,
   modelOptions,
   contextLimit,
 }: WorkspaceContextTabProps) {
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
   const view = useMemo(
@@ -301,9 +172,9 @@ export function WorkspaceContextTab({
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
-    triggerBillingSync();
-    window.setTimeout(() => setRefreshing(false), 500);
-  }, []);
+    router.refresh();
+    window.setTimeout(() => setRefreshing(false), 450);
+  }, [router]);
 
   const hasContext = view.total > 0;
   const pctDisplay = formatPercentDisplay(view.pct);
@@ -335,6 +206,7 @@ export function WorkspaceContextTab({
           </Tooltip>
         </span>
       </div>
+
       <div className="rail-scroll">
         <div className="rail-stack cx-stack">
           <section className="sable-card cx-card" aria-label="Context window">
@@ -365,6 +237,7 @@ export function WorkspaceContextTab({
                     </div>
                   </div>
                 </div>
+
                 {view.detailed && (
                   <ul className="cx-legend">
                     {view.segments.map((s) => (
@@ -445,11 +318,6 @@ export function WorkspaceContextTab({
               />
             </div>
           </section>
-
-          <PlanLimitsSection
-            onRefresh={handleRefresh}
-            refreshing={refreshing}
-          />
         </div>
       </div>
     </div>

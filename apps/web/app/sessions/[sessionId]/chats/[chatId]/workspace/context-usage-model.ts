@@ -1,7 +1,9 @@
-import type { WebAgentUIMessage } from "@/app/types";
-import type { BillingMeResponse } from "@/components/sidebar-billing-widget";
-import { extractCachedInputTokens } from "@/lib/chat/usage-extract";
-import { formatUsdCents } from "@/lib/format-usd";
+import type { LanguageModelUsage } from "ai";
+import type { WebAgentUIMessage, WebAgentStepCostBreakdown } from "@/app/types";
+import {
+  extractCachedInputTokens,
+  extractCacheWriteTokens,
+} from "@/lib/chat/usage-extract";
 import type { ModelOption } from "@/lib/model-options";
 import { DEFAULT_CONTEXT_LIMIT, estimateModelUsageCost } from "@/lib/models";
 
@@ -15,9 +17,10 @@ export const CONTEXT_STEPS = [
 
 /**
  * Matches Entry's `AUTO_COMPACT_THRESHOLD = 0.95` from
- * `packages/agent/context-management/auto-compact.ts` (5% autocompact buffer).
+ * `packages/agent/context-management/auto-compact.ts`.
  */
-export const AUTO_COMPACT_BUFFER_RATIO = 0.05;
+export const AUTO_COMPACT_THRESHOLD = 0.95;
+export const AUTO_COMPACT_BUFFER_RATIO = 1 - AUTO_COMPACT_THRESHOLD;
 
 export function contextStepTint(index: number): string {
   const step = CONTEXT_STEPS[Math.min(index, CONTEXT_STEPS.length - 1)] ?? 0.1;
@@ -33,22 +36,27 @@ export interface ContextSegment {
 export type CostSource = "gateway" | "estimated" | "mixed";
 
 export interface SessionUsageTotals {
+  /** Uncached / new input tokens across the session (never double-counts cache reads). */
   inputTokens: number;
+  /** Output tokens across the session. */
   outputTokens: number;
+  /** Cached input (prompt cache read) tokens across the session. */
   cacheReadTokens: number;
+  /** Number of user turns in this conversation. */
   turns: number;
+  /** Cumulative session cost in USD, if known. */
   costUsd: number | undefined;
   costSource: CostSource | undefined;
 }
 
 export interface ContextWindowBreakdown {
-  /** Active context window tokens from the most recent assistant step. */
+  /** Active context window tokens from the most recent non-empty assistant step. */
   total: number;
   /** Maximum model context window in tokens. */
   max: number;
   /** Reserved autocompact buffer in tokens. */
   buffer: number;
-  /** Remaining tokens before auto-compaction triggers. */
+  /** Remaining tokens before auto-compaction triggers (or free space if buffer === 0). */
   free: number;
   /** Exact utilization percentage (0..100). */
   pct: number;
@@ -99,18 +107,61 @@ export function formatCostUsd(usd: number | undefined): string {
   });
 }
 
-/**
- * Format milliseconds until a plan window reset, ported 1:1 from Sable's
- * `src/features/usage/format.ts` (`duration()`): `"<1m"`, `"38m"`, `"2h 14m"`, `"3d 4h"`.
- */
-export function formatResetDuration(ms: number): string {
-  const m = Math.round(ms / 60_000);
-  if (m < 1) return "<1m";
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return m % 60 ? `${h}h ${m % 60}m` : `${h}h`;
-  const d = Math.floor(h / 24);
-  return h % 24 ? `${d}d ${h % 24}h` : `${d}d`;
+function aggregateStepsUsage(
+  steps: WebAgentStepCostBreakdown[] | undefined,
+): LanguageModelUsage | undefined {
+  if (!steps || steps.length === 0) return undefined;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheWriteTokens = 0;
+  let reasoningTokens = 0;
+  let totalTokens = 0;
+  let any = false;
+  for (const s of steps) {
+    if (!s.usage) continue;
+    any = true;
+    const inp = Math.max(0, s.usage.inputTokens ?? 0);
+    const out = Math.max(0, s.usage.outputTokens ?? 0);
+    const cr = extractCachedInputTokens(s.usage);
+    const cw = extractCacheWriteTokens(s.usage);
+    const rt =
+      s.usage.outputTokenDetails?.reasoningTokens ??
+      s.usage.reasoningTokens ??
+      0;
+    inputTokens += inp;
+    outputTokens += out;
+    cacheReadTokens += cr;
+    cacheWriteTokens += cw;
+    reasoningTokens += rt;
+    totalTokens += s.usage.totalTokens ?? inp + out;
+  }
+  if (!any) return undefined;
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cachedInputTokens: cacheReadTokens,
+    inputTokenDetails: {
+      noCacheTokens: Math.max(
+        0,
+        inputTokens - cacheReadTokens - cacheWriteTokens,
+      ),
+      cacheReadTokens,
+      cacheWriteTokens,
+    },
+    outputTokenDetails: {
+      textTokens: Math.max(0, outputTokens - reasoningTokens),
+      reasoningTokens,
+    },
+  };
+}
+
+function usageTokenSum(usage: LanguageModelUsage | undefined): number {
+  if (!usage) return 0;
+  return (
+    Math.max(0, usage.inputTokens ?? 0) + Math.max(0, usage.outputTokens ?? 0)
+  );
 }
 
 export function deriveContextWindowBreakdown(
@@ -119,19 +170,19 @@ export function deriveContextWindowBreakdown(
   modelOptions: ModelOption[],
   contextLimitOverride?: number | null,
 ): ContextWindowBreakdown {
-  let latestUncached = 0;
+  let latestNewInput = 0;
   let latestCached = 0;
   let latestOutput = 0;
   let latestTotal = 0;
 
-  let totalInput = 0;
+  let totalNewInput = 0;
   let totalCached = 0;
   let totalOutput = 0;
   let totalCost = 0;
   let hasGatewayCost = false;
   let hasEstimatedCost = false;
   let turns = 0;
-  let activeModelId = modelId;
+  let lastMessageModelId = "";
 
   for (const msg of messages) {
     if (msg.role === "user") {
@@ -141,40 +192,97 @@ export function deriveContextWindowBreakdown(
     if (msg.role !== "assistant") continue;
     const meta = msg.metadata;
     if (!meta) continue;
+
     if (meta.modelId) {
-      activeModelId = meta.modelId;
+      lastMessageModelId = meta.modelId;
     }
 
-    const lastUsage = meta.lastStepUsage ?? meta.totalMessageUsage;
-    if (lastUsage) {
-      const inp = lastUsage.inputTokens ?? 0;
-      const cached = extractCachedInputTokens(lastUsage);
-      const out = lastUsage.outputTokens ?? 0;
-      latestCached = Math.min(cached, inp);
-      latestUncached = Math.max(0, inp - latestCached);
+    // Active context window occupancy = the last non-empty step sent to the model.
+    // Ignore trailing aborted/error messages with 0 tokens so the meter never resets to 0.
+    const lastUsage =
+      meta.lastStepUsage ??
+      meta.stepBreakdown?.at(-1)?.usage ??
+      meta.totalMessageUsage;
+    if (usageTokenSum(lastUsage) > 0 && lastUsage) {
+      const inp = Math.max(0, lastUsage.inputTokens ?? 0);
+      const cacheRead = Math.min(extractCachedInputTokens(lastUsage), inp);
+      const out = Math.max(0, lastUsage.outputTokens ?? 0);
+      // AI SDK `inputTokens` = total prompt size (uncached + cacheRead + cacheWrite).
+      // Splitting into Cached (= cacheRead) and Input (= inp - cacheRead) guarantees
+      // Input + Cached + Output === total without double-counting or dropping cacheWrite.
+      latestCached = cacheRead;
+      latestNewInput = Math.max(0, inp - cacheRead);
       latestOutput = out;
       latestTotal = inp + out;
     }
 
-    const msgUsage = meta.totalMessageUsage ?? meta.lastStepUsage;
+    // Cumulative session totals across all steps of the conversation.
+    const msgUsage =
+      meta.totalMessageUsage ??
+      aggregateStepsUsage(meta.stepBreakdown) ??
+      meta.lastStepUsage;
     if (msgUsage) {
-      const inp = msgUsage.inputTokens ?? 0;
-      const cached = extractCachedInputTokens(msgUsage);
-      const out = msgUsage.outputTokens ?? 0;
-      totalInput += inp;
-      totalCached += cached;
+      const inp = Math.max(0, msgUsage.inputTokens ?? 0);
+      const cacheRead = Math.min(extractCachedInputTokens(msgUsage), inp);
+      const cacheWrite = Math.min(
+        extractCacheWriteTokens(msgUsage),
+        Math.max(0, inp - cacheRead),
+      );
+      const out = Math.max(0, msgUsage.outputTokens ?? 0);
+
+      totalNewInput += Math.max(0, inp - cacheRead);
+      totalCached += cacheRead;
       totalOutput += out;
 
-      if (typeof meta.totalMessageCost === "number") {
+      if (
+        typeof meta.totalMessageCost === "number" &&
+        Number.isFinite(meta.totalMessageCost)
+      ) {
         totalCost += meta.totalMessageCost;
         hasGatewayCost = true;
+      } else if (meta.stepBreakdown && meta.stepBreakdown.length > 0) {
+        // Price per-step whenever stepBreakdown is available so multi-step summed
+        // input tokens never falsely trigger single-step context pricing tiers.
+        for (const step of meta.stepBreakdown) {
+          if (typeof step.cost === "number" && Number.isFinite(step.cost)) {
+            totalCost += step.cost;
+            hasGatewayCost = true;
+            continue;
+          }
+          if (!step.usage) continue;
+          const stepModelId = step.modelId ?? meta.modelId ?? modelId;
+          const costSpec = modelOptions.find((m) => m.id === stepModelId)?.cost;
+          const sInp = Math.max(0, step.usage.inputTokens ?? 0);
+          const sCacheRead = Math.min(
+            extractCachedInputTokens(step.usage),
+            sInp,
+          );
+          const sCacheWrite = Math.min(
+            extractCacheWriteTokens(step.usage),
+            Math.max(0, sInp - sCacheRead),
+          );
+          const est = estimateModelUsageCost(
+            {
+              inputTokens: sInp,
+              cachedInputTokens: sCacheRead,
+              cacheWriteInputTokens: sCacheWrite,
+              outputTokens: Math.max(0, step.usage.outputTokens ?? 0),
+            },
+            costSpec,
+          );
+          if (typeof est === "number") {
+            totalCost += est;
+            hasEstimatedCost = true;
+          }
+        }
       } else {
         const msgModel = meta.modelId ?? modelId;
         const costSpec = modelOptions.find((m) => m.id === msgModel)?.cost;
         const est = estimateModelUsageCost(
           {
             inputTokens: inp,
-            cachedInputTokens: cached,
+            cachedInputTokens: cacheRead,
+            cacheWriteInputTokens: cacheWrite,
             outputTokens: out,
           },
           costSpec,
@@ -187,7 +295,10 @@ export function deriveContextWindowBreakdown(
     }
   }
 
-  const activeOption = modelOptions.find((m) => m.id === activeModelId);
+  // Always follow the live selected model so switching models updates the window
+  // limit and model label immediately before the next message completes.
+  const effectiveModelId = modelId || lastMessageModelId;
+  const activeOption = modelOptions.find((m) => m.id === effectiveModelId);
   const max =
     (typeof contextLimitOverride === "number" && contextLimitOverride > 0
       ? contextLimitOverride
@@ -195,12 +306,19 @@ export function deriveContextWindowBreakdown(
     activeOption?.contextWindow ??
     DEFAULT_CONTEXT_LIMIT;
 
-  const buffer = max > 0 ? Math.round(max * AUTO_COMPACT_BUFFER_RATIO) : 0;
+  const thresholdRatio =
+    typeof activeOption?.compactionThreshold === "number" &&
+    activeOption.compactionThreshold > 0 &&
+    activeOption.compactionThreshold <= 1
+      ? activeOption.compactionThreshold
+      : AUTO_COMPACT_THRESHOLD;
+  const compactAt = max > 0 ? Math.round(max * thresholdRatio) : 0;
+  const buffer = max > 0 ? Math.max(0, max - compactAt) : 0;
   const free = Math.max(0, max - latestTotal - buffer);
   const pct = max > 0 ? Math.min(100, (latestTotal / max) * 100) : 0;
 
   const rawCategories: Array<{ name: string; tokens: number }> = [
-    { name: "Input", tokens: latestUncached },
+    { name: "Input", tokens: latestNewInput },
     { name: "Cached", tokens: latestCached },
     { name: "Output", tokens: latestOutput },
   ];
@@ -224,7 +342,7 @@ export function deriveContextWindowBreakdown(
           : undefined;
 
   const modelName =
-    activeOption?.label ?? activeOption?.shortLabel ?? activeModelId ?? "";
+    activeOption?.label ?? activeOption?.shortLabel ?? effectiveModelId ?? "";
 
   return {
     total: latestTotal,
@@ -235,137 +353,15 @@ export function deriveContextWindowBreakdown(
     warn: pct > 80,
     segments,
     detailed: segments.length > 0,
-    modelId: activeModelId,
+    modelId: effectiveModelId,
     modelName,
     sessionTotals: {
-      inputTokens: totalInput,
+      inputTokens: totalNewInput,
       outputTokens: totalOutput,
       cacheReadTokens: totalCached,
       turns,
       costUsd: costSource ? totalCost : undefined,
       costSource,
     },
-  };
-}
-
-export type PlanWindowLevel = "amber" | "red" | undefined;
-
-export interface PlanLimitWindow {
-  id: string;
-  label: string;
-  percent: number;
-  level: PlanWindowLevel;
-  resetsIn: string | null;
-  past: boolean;
-  note: string;
-}
-
-export interface PlanLimitsView {
-  planName: string;
-  windows: PlanLimitWindow[];
-  hasResetColumn: boolean;
-  footerNote: string | null;
-}
-
-function parseIsoMs(iso: string | null | undefined): number | null {
-  if (!iso) return null;
-  const ms = Date.parse(iso);
-  return Number.isFinite(ms) ? ms : null;
-}
-
-function windowLevelForPercent(
-  percent: number,
-  past: boolean,
-): PlanWindowLevel {
-  if (past) return undefined;
-  if (percent >= 100) return "red";
-  if (percent >= 80) return "amber";
-  return undefined;
-}
-
-/**
- * Maps Entry's `/api/billing/me` payload into Sable's compact `LimitsGlance`
- * window lines so the Workspace Context tab renders real Entry plan limits
- * with Sable's exact 1:1 visual structure.
- */
-export function derivePlanLimitWindows(
-  billing: BillingMeResponse | undefined,
-  now: number,
-): PlanLimitsView | null {
-  if (!billing) return null;
-
-  const windows: PlanLimitWindow[] = [];
-
-  if (billing.usageWindows) {
-    const entries = [
-      { id: "five_hour", label: "5-hour", win: billing.usageWindows.fiveHour },
-      { id: "weekly", label: "Weekly", win: billing.usageWindows.weekly },
-      { id: "monthly", label: "Monthly", win: billing.usageWindows.monthly },
-    ] as const;
-
-    for (const { id, label, win } of entries) {
-      if (win.limitCents <= 0) continue;
-      const rawPct = (win.usedCents / win.limitCents) * 100;
-      const percent = Math.max(0, Math.min(100, Math.round(rawPct)));
-      const resetMs =
-        parseIsoMs(win.resetsAt) ??
-        (id === "monthly" ? parseIsoMs(billing.expiresAt) : null);
-      const past = resetMs !== null && resetMs <= now;
-      const resetsIn =
-        resetMs === null
-          ? null
-          : past
-            ? "Resetting"
-            : formatResetDuration(resetMs - now);
-
-      windows.push({
-        id,
-        label,
-        percent: past ? 0 : percent,
-        level: windowLevelForPercent(percent, past),
-        resetsIn,
-        past,
-        note: `${formatUsdCents(win.usedCents)} of ${formatUsdCents(win.limitCents)}`,
-      });
-    }
-  } else if (billing.creditGrantCents > 0) {
-    const grant = billing.creditGrantCents;
-    const remaining = Math.max(0, Math.min(billing.creditBalanceCents, grant));
-    const used = Math.max(0, grant - remaining);
-    const percent = Math.max(
-      0,
-      Math.min(100, Math.round((used / grant) * 100)),
-    );
-    const resetMs = parseIsoMs(billing.expiresAt);
-    const past = resetMs !== null && resetMs <= now;
-    const resetsIn =
-      resetMs === null
-        ? null
-        : past
-          ? "Resetting"
-          : formatResetDuration(resetMs - now);
-
-    windows.push({
-      id: "plan_credits",
-      label: "Plan credits",
-      percent: past ? 0 : percent,
-      level: windowLevelForPercent(percent, past),
-      resetsIn,
-      past,
-      note: `${formatUsdCents(remaining)} left of ${formatUsdCents(grant)}`,
-    });
-  }
-
-  if (windows.length === 0) return null;
-
-  const topUpCents = billing.topUpBalanceCents ?? 0;
-  const footerNote =
-    topUpCents > 0 ? `Top-up balance: ${formatUsdCents(topUpCents)}` : null;
-
-  return {
-    planName: billing.planName || billing.plan,
-    windows,
-    hasResetColumn: windows.some((w) => w.resetsIn !== null),
-    footerNote,
   };
 }

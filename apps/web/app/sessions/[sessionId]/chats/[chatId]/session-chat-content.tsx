@@ -99,7 +99,6 @@ import {
   type ChatComposerHandle,
   type ComposerMessagePayload,
 } from "./components/chat-composer";
-import { DEFAULT_CONTEXT_LIMIT } from "@/lib/models";
 import { getPrDeploymentRefreshInterval } from "@/lib/pr-deployment-polling";
 import {
   type SandboxInfo,
@@ -3119,7 +3118,7 @@ export function SessionChatContent({
       onToggleWorkspaceExpand={() => setIsWorkspaceExpanded((prev) => !prev)}
       modelId={chatInfo.modelId}
       modelOptions={modelOptions}
-      contextLimit={contextLimit ?? DEFAULT_CONTEXT_LIMIT}
+      contextLimit={contextLimit}
       isParentStreaming={effectiveStatus === "streaming"}
       teamRoleModels={teamRoleModels}
       onUpdateRoleModel={updateTeamRoleModel}
@@ -3141,7 +3140,7 @@ export function SessionChatContent({
               messages={renderMessages}
               modelId={chatInfo.modelId ?? ""}
               modelOptions={modelOptions}
-              contextLimit={contextLimit ?? DEFAULT_CONTEXT_LIMIT}
+              contextLimit={contextLimit}
               onOpenContextPanel={() => {
                 setActiveWorkspaceTab("context");
                 setGitPanelOpen(true);
