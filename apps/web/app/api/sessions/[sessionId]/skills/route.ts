@@ -21,7 +21,7 @@ import {
 export type SkillSuggestion = {
   name: string;
   description: string;
-  source?: "skill" | "plugin" | "team";
+  source?: "skill" | "plugin" | "team" | "command";
   pluginName?: string;
 };
 

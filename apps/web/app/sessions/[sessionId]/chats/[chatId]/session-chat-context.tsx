@@ -1060,6 +1060,13 @@ export function SessionChatProvider({
 
       const nextSession = data.session ?? { ...sessionRecord, title };
       setSessionRecord(nextSession);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("entry:session-title-updated", {
+            detail: { sessionId: sessionRecord.id, title: nextSession.title },
+          }),
+        );
+      }
       await mutate<SessionsResponse>(
         "/api/sessions",
         (current) =>
