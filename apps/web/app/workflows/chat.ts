@@ -14,7 +14,10 @@ import {
   reportUndefined,
   withoutUndefined,
 } from "@/app/workflows/serialization";
-import { TurnLoopGuard } from "@/app/workflows/loop-guard";
+import {
+  normalizeToolCallSignature,
+  TurnLoopGuard,
+} from "@/app/workflows/loop-guard";
 import type { PlanUsageWindows } from "@/lib/billing/plans";
 import {
   createMcpToolSet,
@@ -493,6 +496,110 @@ const convertMessages = async (
     }),
   );
 };
+
+function countToolResultsInModelMessages(messages: ModelMessage[]): number {
+  let count = 0;
+  for (const msg of messages) {
+    if (msg.role === "tool" && Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (
+          part &&
+          typeof part === "object" &&
+          (part as { type?: unknown }).type === "tool-result"
+        ) {
+          count += 1;
+        }
+      }
+    }
+  }
+  return count;
+}
+
+function reconstructStepModelMessages(params: {
+  streamedTextOrder: string[];
+  streamedTextById: Map<string, string>;
+  liveStepToolOrder: string[];
+  liveStepToolParts: Map<string, WebAgentUIMessage["parts"][number]>;
+}): { messages: ModelMessage[]; completedToolCount: number } {
+  const assistantParts: Array<Record<string, unknown>> = [];
+  const toolResultParts: Array<Record<string, unknown>> = [];
+
+  for (const id of params.streamedTextOrder) {
+    const text = params.streamedTextById.get(id) ?? "";
+    if (text.length > 0) {
+      assistantParts.push({ type: "text", text });
+    }
+  }
+
+  for (const toolCallId of params.liveStepToolOrder) {
+    const part = params.liveStepToolParts.get(toolCallId) as
+      | {
+          type?: string;
+          toolCallId?: string;
+          state?: string;
+          input?: unknown;
+          output?: unknown;
+          preliminary?: boolean;
+          errorText?: string;
+        }
+      | undefined;
+    if (!part?.type || !part.type.startsWith("tool-")) continue;
+    const toolName = part.type.slice("tool-".length);
+    if (!toolName) continue;
+
+    if (part.state === "output-available" && !part.preliminary) {
+      assistantParts.push({
+        type: "tool-call",
+        toolCallId,
+        toolName,
+        input: part.input ?? {},
+      });
+      toolResultParts.push({
+        type: "tool-result",
+        toolCallId,
+        toolName,
+        output: {
+          type: "json",
+          value: (part.output ?? null) as unknown,
+        },
+      });
+    } else if (part.state === "output-error") {
+      assistantParts.push({
+        type: "tool-call",
+        toolCallId,
+        toolName,
+        input: part.input ?? {},
+      });
+      toolResultParts.push({
+        type: "tool-result",
+        toolCallId,
+        toolName,
+        output: {
+          type: "error-text",
+          value:
+            typeof part.errorText === "string" && part.errorText.trim()
+              ? part.errorText
+              : "Tool execution failed",
+        },
+      });
+    }
+  }
+
+  const messages: ModelMessage[] = [];
+  if (assistantParts.length > 0) {
+    messages.push({
+      role: "assistant",
+      content: assistantParts,
+    } as unknown as ModelMessage);
+  }
+  if (toolResultParts.length > 0) {
+    messages.push({
+      role: "tool",
+      content: toolResultParts,
+    } as unknown as ModelMessage);
+  }
+  return { messages, completedToolCount: toolResultParts.length };
+}
 
 function appendTurnDirectiveToUserMessage(
   messages: ModelMessage[],
@@ -2431,38 +2538,59 @@ export async function runAgentWorkflow(options: Options) {
   const checkpointPromise = loadCompactionCheckpointStep(options.chatId);
   const modelMessagesPromise: Promise<ModelMessage[]> = (async () => {
     const checkpoint = await checkpointPromise;
-    let uiMessagesForConversion = options.messages;
+    const effectiveMessages = options.messages.filter(
+      (m) => !m.metadata?.isCompactionNotice,
+    );
+    let uiMessagesForConversion = effectiveMessages;
     let checkpointPrefix: ModelMessage | undefined;
+    if (checkpoint) {
+      const idIdx = checkpoint.compactedUpToMessageId
+        ? effectiveMessages.findIndex(
+            (m) => m.id === checkpoint.compactedUpToMessageId,
+          )
+        : -1;
+      const isStaleAfterRewind =
+        Boolean(checkpoint.compactedUpToMessageId) && idIdx < 0;
 
-    if (
-      checkpoint &&
-      options.messages.length > checkpoint.compactedUpToMessageCount + 4
-    ) {
-      let baseIdx = checkpoint.compactedUpToMessageCount;
-      if (checkpoint.compactedUpToMessageId) {
-        const idIdx = options.messages.findIndex(
-          (m) => m.id === checkpoint.compactedUpToMessageId,
-        );
+      if (!isStaleAfterRewind && checkpoint.exactBoundary && idIdx >= 0) {
+        const sliceStart = idIdx + 1;
+        if (sliceStart < effectiveMessages.length) {
+          uiMessagesForConversion = effectiveMessages.slice(sliceStart);
+          checkpointPrefix = {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
+              },
+            ],
+          };
+        }
+      } else if (
+        !isStaleAfterRewind &&
+        !checkpoint.exactBoundary &&
+        effectiveMessages.length > checkpoint.compactedUpToMessageCount + 4
+      ) {
+        let baseIdx = checkpoint.compactedUpToMessageCount;
         if (idIdx >= 0) {
           baseIdx = idIdx + 1;
         }
-      }
-      const maxStart = Math.max(0, options.messages.length - 4);
-      const sliceStart = Math.min(Math.max(0, baseIdx - 2), maxStart);
-      if (sliceStart > 0) {
-        uiMessagesForConversion = options.messages.slice(sliceStart);
-        checkpointPrefix = {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
-            },
-          ],
-        };
+        const maxStart = Math.max(0, effectiveMessages.length - 4);
+        const sliceStart = Math.min(Math.max(0, baseIdx - 2), maxStart);
+        if (sliceStart > 0) {
+          uiMessagesForConversion = effectiveMessages.slice(sliceStart);
+          checkpointPrefix = {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
+              },
+            ],
+          };
+        }
       }
     }
-
     const pendingImageAttachments = extractPendingImageAttachments(
       uiMessagesForConversion,
     );
@@ -2791,8 +2919,10 @@ export async function runAgentWorkflow(options: Options) {
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
+    const MAX_CONSECUTIVE_ZERO_PROGRESS_TOOL_STEPS = 2;
     const loopGuard = new TurnLoopGuard();
     let consecutiveStepRecoveries = 0;
+    let consecutiveZeroProgressToolSteps = 0;
 
     for (
       let step = 0;
@@ -2906,6 +3036,10 @@ export async function runAgentWorkflow(options: Options) {
           ],
         });
       }
+      const stepModelMessages: ModelMessage[] = modelMessages;
+
+      const toolResultsBeforeStep =
+        countToolResultsInModelMessages(modelMessages);
 
       try {
         // COMPACT TELEMETRY SCOPE (2026-09-17): the sink wraps the model
@@ -2918,7 +3052,7 @@ export async function runAgentWorkflow(options: Options) {
         // log the exact paths on the argument side before it can fail. A
         // hit here identifies the offending property by name.
         reportUndefined("chat.runAgentStep args", [
-          modelMessages,
+          stepModelMessages,
           originalMessagesForStep,
           assistantId,
           workflowRunId,
@@ -2936,7 +3070,7 @@ export async function runAgentWorkflow(options: Options) {
           remainingWindowBudgetCents,
         ]);
         result = await runAgentStep(
-          modelMessages,
+          stepModelMessages,
           originalMessagesForStep,
           assistantId,
           writable,
@@ -3063,8 +3197,22 @@ export async function runAgentWorkflow(options: Options) {
         modelMessages.push(...result.responseMessages);
       }
 
+      if (result.failedDebits && result.failedDebits.length > 0) {
+        await flushStepDebitsStep(options.userId, result.failedDebits).catch(
+          (err) => {
+            console.error(
+              `[chat-workflow] Failed to flush ${result.failedDebits?.length} deferred debit(s) for chat ${options.chatId}:`,
+              err,
+            );
+          },
+        );
+      }
+
       if ("recoverableStepError" in result && result.recoverableStepError) {
-        if (pendingAssistantResponse) {
+        if (
+          pendingAssistantResponse &&
+          pendingAssistantResponse.parts.length > 0
+        ) {
           await persistAssistantMessage(
             options.chatId,
             pendingAssistantResponse,
@@ -3182,16 +3330,6 @@ export async function runAgentWorkflow(options: Options) {
       if (pendingAssistantResponse) {
         await persistAssistantMessage(options.chatId, pendingAssistantResponse);
       }
-      if (result.failedDebits && result.failedDebits.length > 0) {
-        await flushStepDebitsStep(options.userId, result.failedDebits).catch(
-          (err) => {
-            console.error(
-              `[chat-workflow] Failed to flush ${result.failedDebits?.length} deferred debit(s) for chat ${options.chatId}:`,
-              err,
-            );
-          },
-        );
-      }
 
       const prunedLoopMessages = withoutUndefined(
         pruneMessages({
@@ -3268,6 +3406,33 @@ export async function runAgentWorkflow(options: Options) {
         break;
       }
 
+      if (options.maxSteps !== undefined && step + 1 >= options.maxSteps) {
+        exhaustedMaxSteps = true;
+        break;
+      }
+
+      // Zero-progress guard: if finishReason === "tool-calls" yet zero surviving
+      // tool-result messages were appended to modelMessages (e.g. a stream/metadata
+      // fault dropped tool history or stripDanglingToolCalls removed orphaned calls),
+      // continuing would replay the exact same prompt with amnesia and bypass
+      // signature-based loop guards.
+      const toolResultsAfterStep =
+        countToolResultsInModelMessages(modelMessages);
+      if (toolResultsAfterStep <= toolResultsBeforeStep) {
+        consecutiveZeroProgressToolSteps += 1;
+        if (
+          consecutiveZeroProgressToolSteps >=
+          MAX_CONSECUTIVE_ZERO_PROGRESS_TOOL_STEPS
+        ) {
+          console.warn(
+            `[chat-workflow] Detected ${consecutiveZeroProgressToolSteps} consecutive tool-calls steps with zero persisted tool results for chat ${options.chatId}. Breaking loop to prevent amnesia repetition.`,
+          );
+          break;
+        }
+      } else {
+        consecutiveZeroProgressToolSteps = 0;
+      }
+
       // Loop breaker (cost & token optimization): detect consecutive identical tool
       // calls across steps (e.g. model calling identical failing commands repeatedly
       // without changing args). Short-circuits runaway loops to preserve model tokens.
@@ -3290,12 +3455,10 @@ export async function runAgentWorkflow(options: Options) {
                 args?: unknown;
               };
               const name = tc.toolName ?? "unknown";
-              let sig = name;
-              try {
-                sig = `${name}:${JSON.stringify(tc.input ?? tc.args ?? {})}`;
-              } catch {
-                sig = name;
-              }
+              const sig = normalizeToolCallSignature(
+                name,
+                tc.input ?? tc.args ?? {},
+              );
               stepToolCallSignatures.push(sig);
               stepToolCallRecords.push({ toolName: name, signature: sig });
             }
@@ -3337,11 +3500,6 @@ export async function runAgentWorkflow(options: Options) {
           lastConsecutiveToolSignature = currentSignature;
           consecutiveIdenticalToolCount = 1;
         }
-      }
-
-      if (options.maxSteps !== undefined && step + 1 >= options.maxSteps) {
-        exhaustedMaxSteps = true;
-        break;
       }
     }
 
@@ -5674,6 +5832,9 @@ const runAgentStep = async (
                 state: "output-available",
                 input: existing.input,
                 output: part.output,
+                ...(part.preliminary !== undefined
+                  ? { preliminary: part.preliminary }
+                  : {}),
               } as unknown as WebAgentUIMessage["parts"][number]);
               maybeScheduleMidStepCheckpoint(!part.preliminary);
             }
@@ -5877,18 +6038,22 @@ const runAgentStep = async (
         metadataError,
       );
       rawStepUsage = totalMessageUsage ?? lastStepUsage;
-      const fallbackText = extractPlainText(responseMessage.parts).trim();
-      response = {
-        messages:
-          fallbackText.length > 0
-            ? [
-                {
-                  role: "assistant",
-                  content: [{ type: "text", text: fallbackText }],
-                },
-              ]
-            : [],
-      };
+      const reconstructed = reconstructStepModelMessages({
+        streamedTextOrder,
+        streamedTextById,
+        liveStepToolOrder,
+        liveStepToolParts,
+      });
+      response = { messages: reconstructed.messages };
+      // Never continue a tool-calls loop without at least one completed
+      // (tool-call, tool-result) pair in response.messages; otherwise the next
+      // step replays the exact same prompt with amnesia and repeats forever.
+      if (
+        finishReason === "tool-calls" &&
+        reconstructed.completedToolCount === 0
+      ) {
+        finishReason = "stop";
+      }
     }
 
     const steps = rawSteps.map((step) => ({
@@ -6301,11 +6466,23 @@ const runAgentStep = async (
       lastRecordedFinishReason !== "error"
     ) {
       await Promise.allSettled(pendingDebits);
+      const reconstructed = reconstructStepModelMessages({
+        streamedTextOrder,
+        streamedTextById,
+        liveStepToolOrder,
+        liveStepToolParts,
+      });
       const recoveredFinishReason: FinishReason =
-        lastRecordedFinishReason === "tool-calls" ? "tool-calls" : "stop";
+        lastRecordedFinishReason === "tool-calls" &&
+        reconstructed.completedToolCount > 0
+          ? "tool-calls"
+          : "stop";
+      const safeReconstructedMessages = stepSecretRedactor?.hasSecrets()
+        ? stepSecretRedactor.redactUnknown(reconstructed.messages)
+        : reconstructed.messages;
       return withoutUndefined({
         responseMessage: partialMessage,
-        responseMessages: [],
+        responseMessages: safeReconstructedMessages,
         finishReason: recoveredFinishReason,
         rawFinishReason: stepFinishReasons.at(-1)?.rawFinishReason,
         stepUsage: lastStepUsage ?? totalMessageUsage,
@@ -6389,7 +6566,21 @@ const runAgentStep = async (
       isNonRetryableApiCallError(errorWithStepTiming) ||
       didWriteOutputToWritable
     ) {
-      const fatalError = new FatalError(errorWithStepTiming.message);
+      const hasStructuredInvalidRequest =
+        errorWithStepTiming instanceof APICallError &&
+        errorWithStepTiming.statusCode === 400 &&
+        isObjectRecord(errorWithStepTiming.data) &&
+        isObjectRecord(errorWithStepTiming.data.error) &&
+        errorWithStepTiming.data.error.type === "invalid_request_error";
+      const fatalMessage =
+        hasStructuredInvalidRequest &&
+        recoveryAction === undefined &&
+        !errorWithStepTiming.message
+          .toLowerCase()
+          .includes("invalid_request_error")
+          ? `invalid_request_error: ${errorWithStepTiming.message}`
+          : errorWithStepTiming.message;
+      const fatalError = new FatalError(fatalMessage);
       Object.assign(fatalError, {
         stepTiming: (errorWithStepTiming as { stepTiming?: unknown })
           .stepTiming,

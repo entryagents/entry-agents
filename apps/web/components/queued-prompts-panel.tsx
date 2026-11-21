@@ -4,7 +4,9 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  FastForward,
   GripVertical,
+  ListOrdered,
   Pencil,
   X,
 } from "lucide-react";
@@ -35,9 +37,11 @@ export function shouldCommitOnBlur(params: {
 
 export type QueuedPromptsPanelProps<T extends QueuedPrompt> = {
   prompts: T[];
+  isBusy?: boolean;
   onRemove: (id: string) => void;
   onEdit: (id: string, nextText: string) => void;
   onReorder: (nextOrder: T[]) => void;
+  onSteerNow?: (prompt: T) => void;
 };
 
 function reorder<T>(list: T[], fromIndex: number, toIndex: number): T[] {
@@ -48,39 +52,25 @@ function reorder<T>(list: T[], fromIndex: number, toIndex: number): T[] {
 }
 
 /**
- * Shows prompts the user queued up while a turn was still running. Drained
- * durably on the server when the active workflow turn finalizes (via
- * `startNextQueuedWorkflowStep`), and kept in sync while open in the browser.
- * Sits directly above the composer, same visual language as PinnedTodoPanel.
- *
- * Each row supports:
- *  - click-to-edit the queued text in place (a queued prompt hasn't been
- *    sent yet, so it's still fully mutable)
- *  - drag-to-reorder via a dedicated grip handle, with a live drop-target
- *    highlight, plus up/down buttons as a touch-friendly fallback since
- *    native HTML5 drag is unreliable on mobile browsers
- *  - remove, same as before
+ * Shows prompts queued while a turn is running (1:1 Sable QueueTray polish).
+ * Supports inline edit, drag/button reorder, remove, and immediate Steer-now
+ * promotion into the running agent's steering inbox.
  */
 export function QueuedPromptsPanel<T extends QueuedPrompt>({
   prompts,
+  isBusy = false,
   onRemove,
   onEdit,
   onReorder,
+  onSteerNow,
 }: QueuedPromptsPanelProps<T>) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftText, setDraftText] = useState("");
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const editInputRef = useRef<HTMLTextAreaElement | null>(null);
-  // Blur fires BEFORE the click that follows it, so without this the
-  // blur-commit would land first and Cancel would never actually cancel --
-  // every X press would silently save the draft instead of discarding it.
-  // The action buttons claim the blur via onMouseDown (which precedes
-  // blur), and commitEdit honours that claim.
   const claimBlurRef = useRef(false);
 
-  // Autosize the editor to its content so a long queued prompt is fully
-  // editable instead of trapped in a fixed-height scroll box.
   useEffect(() => {
     const node = editInputRef.current;
     if (!node) {
@@ -93,38 +83,45 @@ export function QueuedPromptsPanel<T extends QueuedPrompt>({
   useEffect(() => {
     if (editingId && editInputRef.current) {
       editInputRef.current.focus();
-      editInputRef.current.select();
+      const len = editInputRef.current.value.length;
+      editInputRef.current.setSelectionRange(len, len);
     }
   }, [editingId]);
+
+  useEffect(() => {
+    if (editingId && !prompts.some((p) => p.id === editingId)) {
+      setEditingId(null);
+    }
+  }, [editingId, prompts]);
 
   if (prompts.length === 0) {
     return null;
   }
 
-  function startEditing(prompt: QueuedPrompt) {
+  function startEditing(prompt: T) {
     setEditingId(prompt.id);
     setDraftText(prompt.displayText);
   }
 
   function commitEdit() {
-    const id = editingId;
-    if (
-      !shouldCommitOnBlur({
-        editingId: id,
-        claimedByAction: claimBlurRef.current,
-      })
-    ) {
-      // Either nothing was being edited, or an explicit Save/Cancel claimed
-      // this blur and is about to run its own handler. Release the claim so a
-      // stale flag can never suppress a later edit's blur-commit.
-      claimBlurRef.current = false;
-      setEditingId(null);
+    const claimedByAction = claimBlurRef.current;
+    claimBlurRef.current = false;
+    if (!shouldCommitOnBlur({ editingId, claimedByAction })) {
       return;
     }
-    claimBlurRef.current = false;
+    const id = editingId;
+    if (!id) {
+      return;
+    }
+    const trimmed = draftText.trim();
+    const original = prompts.find((p) => p.id === id);
     setEditingId(null);
-    if (id) {
-      onEdit(id, draftText);
+    if (!trimmed) {
+      onRemove(id);
+      return;
+    }
+    if (original && trimmed !== original.displayText.trim()) {
+      onEdit(id, trimmed);
     }
   }
 
@@ -173,20 +170,28 @@ export function QueuedPromptsPanel<T extends QueuedPrompt>({
   }
 
   return (
-    <div className="mx-4 overflow-hidden rounded-t-xl border border-b-0 border-border/60 bg-card">
+    <section
+      aria-label="Queued messages"
+      className="mx-3 overflow-hidden rounded-t-xl border border-b-0 border-border/60 bg-card/95 backdrop-blur-sm sm:mx-4"
+    >
       <div className="flex items-center gap-2 px-3 py-1.5">
-        <span className="text-xs font-semibold text-muted-foreground/70">
-          Queued · {prompts.length}
+        <ListOrdered className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+        <span className="text-xs font-medium text-muted-foreground">
+          Queued
         </span>
-        <span className="text-[10px] text-muted-foreground/40">
-          edit, reorder, or remove before sending
+        <span className="text-xs font-medium tabular-nums text-muted-foreground/70">
+          {prompts.length}
         </span>
       </div>
-      <div className="max-h-40 space-y-1 overflow-y-auto border-t border-border/40 px-3 py-2">
+      <div className="max-h-[152px] space-y-0.5 overflow-y-auto border-t border-border/40 px-1.5 py-1.5">
         {prompts.map((prompt, index) => {
           const isEditing = editingId === prompt.id;
           const isDragging = dragId === prompt.id;
           const isDropTarget = dragOverId === prompt.id && dragId !== prompt.id;
+          const canSteerNow =
+            isBusy &&
+            Boolean(onSteerNow) &&
+            prompt.displayText.trim().length > 0;
 
           return (
             <div
@@ -208,7 +213,7 @@ export function QueuedPromptsPanel<T extends QueuedPrompt>({
                 handleDrop(prompt.id);
               }}
               className={cn(
-                "group relative flex items-start gap-1.5 rounded-md bg-muted-foreground/5 px-1.5 py-1 transition-all",
+                "group relative flex items-center gap-1.5 rounded-lg px-1.5 py-1 transition-colors hover:bg-muted/50 focus-within:bg-muted/50",
                 isDragging && "opacity-40",
                 isDropTarget &&
                   "ring-2 ring-primary/50 ring-offset-1 ring-offset-card",
@@ -225,18 +230,17 @@ export function QueuedPromptsPanel<T extends QueuedPrompt>({
                   setDragId(null);
                   setDragOverId(null);
                 }}
-                className="mt-0.5 shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/30 transition-colors hover:bg-muted-foreground/10 hover:text-muted-foreground active:cursor-grabbing"
+                className="hidden shrink-0 cursor-grab touch-none rounded p-0.5 text-muted-foreground/35 transition-colors hover:bg-muted hover:text-muted-foreground active:cursor-grabbing sm:inline-flex"
                 aria-label="Drag to reorder"
               >
                 <GripVertical className="h-3.5 w-3.5" />
               </button>
-
-              <div className="mt-0.5 flex shrink-0 flex-col">
+              <div className="flex shrink-0 flex-col sm:hidden">
                 <button
                   type="button"
                   onClick={() => moveBy(prompt.id, -1)}
                   disabled={index === 0}
-                  className="rounded p-0.5 text-muted-foreground/30 transition-colors hover:bg-muted-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-0"
+                  className="rounded p-0.5 text-muted-foreground/50 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-20"
                   aria-label="Move up"
                   title="Move up"
                 >
@@ -246,18 +250,16 @@ export function QueuedPromptsPanel<T extends QueuedPrompt>({
                   type="button"
                   onClick={() => moveBy(prompt.id, 1)}
                   disabled={index === prompts.length - 1}
-                  className="rounded p-0.5 text-muted-foreground/30 transition-colors hover:bg-muted-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-0"
+                  className="rounded p-0.5 text-muted-foreground/50 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-20"
                   aria-label="Move down"
                   title="Move down"
                 >
                   <ChevronDown className="h-3 w-3" />
                 </button>
               </div>
-
-              <span className="mt-0.5 shrink-0 text-xs font-mono text-muted-foreground/50">
+              <span className="w-4 shrink-0 text-center font-mono text-[11px] tabular-nums text-muted-foreground/55">
                 {index + 1}
               </span>
-
               {isEditing ? (
                 <textarea
                   ref={editInputRef}
@@ -265,21 +267,26 @@ export function QueuedPromptsPanel<T extends QueuedPrompt>({
                   onChange={(event) => setDraftText(event.target.value)}
                   onKeyDown={handleEditKeyDown}
                   onBlur={commitEdit}
-                  className="max-h-40 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent text-sm leading-snug text-foreground outline-none placeholder:text-muted-foreground/40"
+                  className="max-h-40 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent text-xs leading-snug text-foreground outline-none placeholder:text-muted-foreground/40 sm:text-[13px]"
                   placeholder="Edit queued message…"
                 />
               ) : (
                 <button
                   type="button"
                   onClick={() => startEditing(prompt)}
-                  className="min-w-0 flex-1 line-clamp-2 text-left text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  className="min-w-0 flex-1 truncate text-left text-xs text-muted-foreground transition-colors group-hover:text-foreground sm:text-[13px]"
                   title="Click to edit"
                 >
                   {prompt.displayText.trim() || "(attachment only)"}
                 </button>
               )}
-
-              <div className="flex shrink-0 items-center gap-0.5">
+              <div
+                className={cn(
+                  "flex shrink-0 items-center gap-0.5 transition-opacity",
+                  !isEditing &&
+                    "sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100",
+                )}
+              >
                 {isEditing ? (
                   <>
                     <button
@@ -291,7 +298,7 @@ export function QueuedPromptsPanel<T extends QueuedPrompt>({
                         claimBlurRef.current = true;
                       }}
                       onClick={commitEdit}
-                      className="rounded p-0.5 text-emerald-500/70 transition-colors hover:bg-emerald-500/10 hover:text-emerald-500"
+                      className="rounded p-1 text-emerald-500/80 transition-colors hover:bg-emerald-500/10 hover:text-emerald-500"
                       aria-label="Save edit"
                       title="Save (Enter)"
                     >
@@ -306,7 +313,7 @@ export function QueuedPromptsPanel<T extends QueuedPrompt>({
                         claimBlurRef.current = true;
                       }}
                       onClick={cancelEdit}
-                      className="rounded p-0.5 text-muted-foreground/50 transition-colors hover:bg-muted-foreground/10 hover:text-foreground"
+                      className="rounded p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
                       aria-label="Cancel edit"
                       title="Discard changes (Esc)"
                     >
@@ -315,19 +322,33 @@ export function QueuedPromptsPanel<T extends QueuedPrompt>({
                   </>
                 ) : (
                   <>
+                    {canSteerNow && (
+                      <button
+                        type="button"
+                        onClick={() => onSteerNow?.(prompt)}
+                        className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                        aria-label="Steer now"
+                        title="Steer now (inject into active run)"
+                      >
+                        <FastForward className="h-3 w-3" />
+                        <span className="hidden sm:inline">Steer</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => startEditing(prompt)}
-                      className="rounded p-0.5 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground/50 hover:!text-foreground hover:bg-muted-foreground/10"
+                      className="rounded-full p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
                       aria-label="Edit queued prompt"
+                      title="Edit"
                     >
-                      <Pencil className="h-3.5 w-3.5" />
+                      <Pencil className="h-3 w-3" />
                     </button>
                     <button
                       type="button"
                       onClick={() => onRemove(prompt.id)}
-                      className="rounded p-0.5 text-muted-foreground/50 transition-colors hover:bg-muted-foreground/10 hover:text-foreground"
+                      className="rounded-full p-1 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
                       aria-label="Remove queued prompt"
+                      title="Remove"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -338,6 +359,6 @@ export function QueuedPromptsPanel<T extends QueuedPrompt>({
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }

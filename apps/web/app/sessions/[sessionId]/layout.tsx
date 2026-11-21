@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 import { getChatSummariesBySessionId } from "@/lib/db/sessions";
 import { getSessionByIdCached } from "@/lib/db/sessions-cache";
 import { getUserPreferences } from "@/lib/db/user-preferences";
+import { isUserAdmin } from "@/lib/db/users";
 import { sanitizeUserPreferencesForSession } from "@/lib/model-access";
 import { getServerSession } from "@/lib/session/get-server-session";
-import { isUserAdmin } from "@/lib/db/users";
 import { SessionLayoutShell } from "./session-layout-shell";
 
 interface SessionLayoutProps {
@@ -20,15 +20,28 @@ export default async function SessionLayout({
 }: SessionLayoutProps) {
   const { sessionId } = await params;
 
+  // Kick off independent reads immediately in parallel so auth, session,
+  // headers, chat summaries, and preferences overlap instead of waterfalling.
   const sessionPromise = getServerSession();
   const sessionRecordPromise = getSessionByIdCached(sessionId);
+  const headersPromise = headers();
+  const preferencesPromise = sessionPromise
+    .then((s) => (s?.user ? getUserPreferences(s.user.id) : null))
+    .catch(() => null);
+  const chatsPromise = sessionRecordPromise
+    .then((rec) =>
+      rec ? getChatSummariesBySessionId(sessionId, rec.userId) : null,
+    )
+    .catch(() => null);
 
-  const session = await sessionPromise;
+  const [session, sessionRecord] = await Promise.all([
+    sessionPromise,
+    sessionRecordPromise,
+  ]);
   if (!session?.user) {
     redirect("/");
   }
 
-  const sessionRecord = await sessionRecordPromise;
   if (!sessionRecord) {
     notFound();
   }
@@ -49,20 +62,23 @@ export default async function SessionLayout({
     | undefined;
 
   try {
-    const requestHost = (await headers()).get("host") ?? "";
-    const [chats, rawPreferences] = await Promise.all([
-      getChatSummariesBySessionId(sessionId, sessionRecord.userId),
-      getUserPreferences(session.user.id),
+    const [requestHeaders, chats, rawPreferences] = await Promise.all([
+      headersPromise,
+      chatsPromise,
+      preferencesPromise,
     ]);
-    const preferences = sanitizeUserPreferencesForSession(
-      rawPreferences,
-      session,
-      requestHost,
-    );
-    initialChatsData = {
-      chats,
-      defaultModelId: preferences.defaultModelId,
-    };
+    if (chats && rawPreferences) {
+      const requestHost = requestHeaders.get("host") ?? "";
+      const preferences = sanitizeUserPreferencesForSession(
+        rawPreferences,
+        session,
+        requestHost,
+      );
+      initialChatsData = {
+        chats,
+        defaultModelId: preferences.defaultModelId,
+      };
+    }
   } catch (error) {
     console.error("Failed to prefetch session chat data:", error);
   }

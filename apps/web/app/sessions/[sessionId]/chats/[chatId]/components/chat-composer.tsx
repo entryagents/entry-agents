@@ -20,6 +20,7 @@ import {
   Mic,
   Paperclip,
   Square,
+  Terminal,
   WifiOff,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,11 +28,15 @@ import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route"
 import type { SkillSuggestion } from "@/app/api/sessions/[sessionId]/skills/route";
 import type { WebAgentUIMessage } from "@/app/types";
 import type { FileUIPart } from "ai";
+import { ComposerHighlight } from "@/components/chat/composer-highlight";
 import { FileSuggestionsDropdown } from "@/components/file-suggestions-dropdown";
 import { ImageAttachmentsPreview } from "@/components/image-attachments-preview";
 import { useInlineQuestion } from "@/components/inline-question-input";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
-import { PermissionModeSelector } from "@/components/permission-mode-selector";
+import {
+  nextPermissionMode,
+  PermissionModeSelector,
+} from "@/components/permission-mode-selector";
 import { ReasoningEffortSelector } from "@/components/reasoning-effort-selector";
 import { SelectedSkillsPreview } from "@/components/selected-skills-preview";
 import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
@@ -47,13 +52,26 @@ import { useFileSuggestions } from "@/hooks/use-file-suggestions";
 import { useImageAttachments } from "@/hooks/use-image-attachments";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import { useTextAttachments } from "@/hooks/use-text-attachments";
-import { ACCEPT_IMAGE_TYPES, isValidImageType } from "@/lib/image-utils";
+import { mergeRestoredDraftText } from "@/components/chat/draft-restore";
+import { parseCompactCommand } from "@/lib/compact/parse";
+import {
+  ACCEPT_IMAGE_TYPES,
+  type ImageAttachment,
+  isValidImageType,
+} from "@/lib/image-utils";
 import type { ModelOption } from "@/lib/model-options";
 import {
   getReasoningEffortLevels,
   isReasoningCapableModel,
   sanitizeReasoningEffort,
 } from "@/lib/model-reasoning";
+import {
+  clearChatDraft,
+  type PromptRecallState,
+  readChatDraft,
+  stepPromptRecall,
+  writeChatDraft,
+} from "@/lib/chat/composer-drafts";
 import { isLargeText } from "@/lib/text-attachment-utils";
 
 export type ComposerMessagePayload =
@@ -70,9 +88,17 @@ export interface BuiltComposerMessage {
   displayText: string;
 }
 
+export interface ComposerRestorePayload {
+  text: string;
+  snippets?: Array<{ content: string; filename?: string }>;
+  files?: FileUIPart[];
+}
+
 export interface ChatComposerHandle {
   focus: () => void;
   addTextAttachment: (content: string, filename?: string) => void;
+  appendMention: (mentionText: string) => void;
+  restoreDraft: (payload: ComposerRestorePayload) => void;
 }
 
 export interface ChatComposerGate {
@@ -81,6 +107,9 @@ export interface ChatComposerGate {
 }
 
 interface ChatComposerProps {
+  chatId?: string;
+  sentPrompts?: readonly string[];
+  onRunShellCommand?: (command: string) => void;
   isArchived: boolean;
   isChatInFlight: boolean;
   hasPendingResponse: boolean;
@@ -121,6 +150,9 @@ interface ChatComposerProps {
 export const ChatComposer = memo(
   forwardRef<ChatComposerHandle, ChatComposerProps>(function ChatComposer(
     {
+      chatId,
+      sentPrompts,
+      onRunShellCommand,
       isArchived,
       isChatInFlight,
       hasPendingResponse,
@@ -159,13 +191,35 @@ export const ChatComposer = memo(
     },
     ref,
   ) {
-    const [input, setInput] = useState("");
+    const [input, setInput] = useState(() => readChatDraft(chatId));
     const [cursorPosition, setCursorPosition] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
     const [isOnline, setIsOnline] = useState(() =>
       typeof navigator === "undefined" ? true : navigator.onLine !== false,
     );
+    const [recallState, setRecallState] = useState<PromptRecallState>({
+      index: null,
+      stashedDraft: "",
+    });
     const inputRef = useRef<HTMLTextAreaElement>(null);
+    const highlightRef = useRef<HTMLDivElement>(null);
+    const prevChatIdRef = useRef<string | undefined>(chatId);
+
+    // Restore persisted draft when switching between chats
+    useEffect(() => {
+      if (prevChatIdRef.current !== chatId) {
+        prevChatIdRef.current = chatId;
+        const restored = readChatDraft(chatId);
+        setInput(restored);
+        setCursorPosition(restored.length);
+        setRecallState({ index: null, stashedDraft: "" });
+      }
+    }, [chatId]);
+
+    // Persist per-chat draft text (debounced + flushed on pagehide/beforeunload)
+    useEffect(() => {
+      writeChatDraft(chatId, input);
+    }, [chatId, input]);
 
     useEffect(() => {
       if (typeof window === "undefined") return;
@@ -193,6 +247,7 @@ export const ChatComposer = memo(
       images,
       addImage,
       addImages,
+      addImageAttachments,
       removeImage,
       clearImages,
       getFileParts,
@@ -233,8 +288,66 @@ export const ChatComposer = memo(
         addTextAttachment: (content: string, filename?: string) => {
           addTextAttachment(content, filename);
         },
+        appendMention: (mentionText: string) => {
+          const clean = mentionText.trim();
+          if (!clean) {
+            inputRef.current?.focus();
+            return;
+          }
+          setInput((prev) => {
+            const sep = prev.length > 0 && !/\s$/.test(prev) ? " " : "";
+            const next = `${prev}${sep}${clean} `;
+            const caret = next.length;
+            setCursorPosition(caret);
+            requestAnimationFrame(() => {
+              const field = inputRef.current;
+              if (!field) return;
+              field.focus();
+              field.setSelectionRange(caret, caret);
+            });
+            return next;
+          });
+        },
+        restoreDraft: (payload: ComposerRestorePayload) => {
+          const caretPos = payload.text.length;
+          setInput((prev) => mergeRestoredDraftText(payload.text, prev));
+          setCursorPosition(caretPos);
+          if (payload.snippets && payload.snippets.length > 0) {
+            for (const snippet of payload.snippets) {
+              addTextAttachment(snippet.content, snippet.filename);
+            }
+          }
+          if (payload.files && payload.files.length > 0) {
+            const restoredImages: ImageAttachment[] = payload.files
+              .filter(
+                (
+                  file,
+                ): file is FileUIPart & {
+                  mediaType: ImageAttachment["mediaType"];
+                } =>
+                  isValidImageType(file.mediaType) &&
+                  typeof file.url === "string" &&
+                  file.url.length > 0,
+              )
+              .map((file, index) => ({
+                id: `restored-${Date.now()}-${index}`,
+                dataUrl: file.url,
+                mediaType: file.mediaType,
+                ...(file.filename ? { filename: file.filename } : {}),
+              }));
+            if (restoredImages.length > 0) {
+              addImageAttachments(restoredImages);
+            }
+          }
+          requestAnimationFrame(() => {
+            const field = inputRef.current;
+            if (!field) return;
+            field.focus();
+            field.setSelectionRange(caretPos, caretPos);
+          });
+        },
       }),
-      [addTextAttachment],
+      [addImageAttachments, addTextAttachment],
     );
 
     useEffect(() => {
@@ -323,7 +436,7 @@ export const ChatComposer = memo(
     const handleSlashCommandSelect = useCallback(
       (skillName: string, slashStart: number, cursorPos: number) => {
         const matched = skills?.find((s) => s.name === skillName);
-        if (matched) {
+        if (matched && matched.source !== "command") {
           setSelectedSkills((prev) =>
             prev.some((s) => s.name === matched.name)
               ? prev
@@ -390,11 +503,31 @@ export const ChatComposer = memo(
     });
 
     const showInlineQuestion = inlineQuestion.isActive;
-    const hasComposerContent =
-      input.trim().length > 0 ||
-      images.length > 0 ||
-      textAttachments.length > 0 ||
-      selectedSkills.length > 0;
+    const isShellMode =
+      !isArchived &&
+      !showInlineQuestion &&
+      !composerGate &&
+      Boolean(onRunShellCommand) &&
+      input.startsWith("!");
+    const canRunShell = isShellMode && input.slice(1).trim().length > 0;
+    const skillNames = useMemo(
+      () => (skills ?? []).map((s) => s.name),
+      [skills],
+    );
+    const suggestOriginX = useMemo(() => {
+      const triggerPos =
+        mentionInfo?.mentionStart ?? slashInfo?.slashStart ?? 0;
+      const lineStart =
+        input.lastIndexOf("\n", Math.max(0, triggerPos - 1)) + 1;
+      const col = Math.max(0, triggerPos - lineStart);
+      return Math.max(16, Math.min(480, 16 + col * 8));
+    }, [input, mentionInfo?.mentionStart, slashInfo?.slashStart]);
+    const hasComposerContent = isShellMode
+      ? canRunShell
+      : input.trim().length > 0 ||
+        images.length > 0 ||
+        textAttachments.length > 0 ||
+        selectedSkills.length > 0;
 
     const buildPayload = useCallback((): BuiltComposerMessage | null => {
       const hasContent =
@@ -509,10 +642,11 @@ export const ChatComposer = memo(
           className="hidden"
         />
         <div className="relative">
-          {showSuggestions && (
+          {!isShellMode && showSuggestions && (
             <FileSuggestionsDropdown
               suggestions={suggestions}
               selectedIndex={selectedIndex}
+              originX={suggestOriginX}
               onSelect={(suggestion) => {
                 if (mentionInfo) {
                   handleFileSelect(
@@ -525,10 +659,11 @@ export const ChatComposer = memo(
               isLoading={filesLoading}
             />
           )}
-          {showSlashCommands && !showSuggestions && (
+          {!isShellMode && showSlashCommands && !showSuggestions && (
             <SlashCommandDropdown
               suggestions={slashSuggestions}
               selectedIndex={selectedSlashIndex}
+              originX={suggestOriginX}
               onSelect={(suggestion) => {
                 if (slashInfo) {
                   handleSlashCommandSelect(
@@ -570,16 +705,33 @@ export const ChatComposer = memo(
                 if (isArchived) return;
                 if (composerGate) return;
 
+                if (isShellMode) {
+                  const command = input.slice(1).trim();
+                  if (!command) return;
+                  setInput("");
+                  clearChatDraft(chatId);
+                  setRecallState({ index: null, stashedDraft: "" });
+                  onRunShellCommand?.(command);
+                  return;
+                }
+
                 const built = buildPayload();
                 if (!built) return;
 
                 const rawText = input.trim();
                 setInput("");
+                clearChatDraft(chatId);
+                setRecallState({ index: null, stashedDraft: "" });
                 clearImages();
                 clearTextAttachments();
                 clearSelectedSkills();
 
                 if (isBusy) {
+                  if (parseCompactCommand(rawText)) {
+                    setInput(rawText);
+                    toast.info("Available when this turn ends");
+                    return;
+                  }
                   if (/^\/inbox\s+/i.test(rawText)) {
                     const inboxText = rawText
                       .replace(/^\/inbox\s+/i, "")
@@ -659,89 +811,187 @@ export const ChatComposer = memo(
               {showInlineQuestion && inlineQuestion.questionHeaderUI}
 
               <div className="px-4 pb-2 pt-3">
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  placeholder={
-                    composerGate
-                      ? composerGate.reason ||
-                        "Free tier ended — upgrade your account to use Entry"
-                      : showInlineQuestion
-                        ? inlineQuestion.placeholder
-                        : ""
-                  }
-                  rows={1}
-                  onFocus={handleTextareaFocus}
-                  onChange={(e) => {
-                    setInput(e.currentTarget.value);
-                    setCursorPosition(e.currentTarget.selectionStart ?? 0);
-                  }}
-                  onKeyDown={(e) => {
-                    if (
-                      showInlineQuestion &&
-                      e.key === "Enter" &&
-                      !e.shiftKey
-                    ) {
-                      e.preventDefault();
-                      inlineQuestion.handleNext();
-                      return;
+                <div className="relative">
+                  <ComposerHighlight
+                    ref={highlightRef}
+                    text={input}
+                    skillNames={skillNames}
+                    shell={isShellMode}
+                    className={
+                      isShellMode
+                        ? "font-mono text-[13.5px] leading-6 [font-variant-ligatures:none]"
+                        : "text-base leading-6"
                     }
-                    if (handleSuggestionsKeyDown(e)) {
-                      return;
+                  />
+                  {isShellMode && input === "!" && (
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-y-0 left-0 select-none truncate font-mono text-[13.5px] leading-6 text-muted-foreground/55"
+                    >
+                      <span className="invisible">!</span> Run a shell command
+                      in the terminal
+                    </span>
+                  )}
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    placeholder={
+                      composerGate
+                        ? composerGate.reason ||
+                          "Free tier ended — upgrade your account to use Entry"
+                        : showInlineQuestion
+                          ? inlineQuestion.placeholder
+                          : ""
                     }
-                    if (handleSlashKeyDown(e)) {
-                      return;
-                    }
-                    if (e.key === "Enter" && !e.shiftKey && !isIosDevice) {
-                      e.preventDefault();
-                      if (!isArchived) {
-                        e.currentTarget.form?.requestSubmit();
+                    rows={1}
+                    onFocus={handleTextareaFocus}
+                    onScroll={(e) => {
+                      if (highlightRef.current) {
+                        highlightRef.current.scrollTop =
+                          e.currentTarget.scrollTop;
                       }
-                    }
-                  }}
-                  onKeyUp={(e) => {
-                    setCursorPosition(e.currentTarget.selectionStart ?? 0);
-                  }}
-                  onClick={(e) => {
-                    setCursorPosition(e.currentTarget.selectionStart ?? 0);
-                  }}
-                  onPaste={(e) => {
-                    const items = e.clipboardData?.items;
-                    if (items) {
-                      for (const item of items) {
-                        if (isValidImageType(item.type)) {
-                          const file = item.getAsFile();
-                          if (file) {
+                    }}
+                    onChange={(e) => {
+                      setInput(e.currentTarget.value);
+                      setCursorPosition(e.currentTarget.selectionStart ?? 0);
+                      if (recallState.index !== null) {
+                        setRecallState({ index: null, stashedDraft: "" });
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "Tab" &&
+                        e.shiftKey &&
+                        !e.metaKey &&
+                        !e.ctrlKey &&
+                        !e.altKey
+                      ) {
+                        e.preventDefault();
+                        if (!isTogglingPermissionMode) {
+                          onPermissionModeChange(
+                            nextPermissionMode(permissionMode),
+                          );
+                        }
+                        return;
+                      }
+                      if (
+                        showInlineQuestion &&
+                        e.key === "Enter" &&
+                        !e.shiftKey
+                      ) {
+                        e.preventDefault();
+                        inlineQuestion.handleNext();
+                        return;
+                      }
+                      if (!isShellMode && handleSuggestionsKeyDown(e)) {
+                        return;
+                      }
+                      if (!isShellMode && handleSlashKeyDown(e)) {
+                        return;
+                      }
+                      if (
+                        !showInlineQuestion &&
+                        !e.shiftKey &&
+                        !e.altKey &&
+                        !e.ctrlKey &&
+                        !e.metaKey &&
+                        sentPrompts &&
+                        sentPrompts.length > 0 &&
+                        (e.key === "ArrowUp" || e.key === "ArrowDown")
+                      ) {
+                        const ta = e.currentTarget;
+                        const selStart = ta.selectionStart ?? 0;
+                        const selEnd = ta.selectionEnd ?? 0;
+                        const atStart = selStart === 0 && selEnd === 0;
+                        const atEnd =
+                          selStart === ta.value.length &&
+                          selEnd === ta.value.length;
+                        if (
+                          (e.key === "ArrowUp" && atStart) ||
+                          (e.key === "ArrowDown" &&
+                            recallState.index !== null &&
+                            atEnd)
+                        ) {
+                          const stepped = stepPromptRecall({
+                            direction: e.key === "ArrowUp" ? "up" : "down",
+                            history: sentPrompts,
+                            currentInput: input,
+                            state: recallState,
+                          });
+                          if (stepped) {
                             e.preventDefault();
-                            if (images.length + textAttachments.length >= 5) {
-                              toast.error(
-                                "Maximum 5 attachments allowed per message",
+                            setInput(stepped.nextInput);
+                            setRecallState(stepped.nextState);
+                            const nextPos =
+                              e.key === "ArrowUp"
+                                ? 0
+                                : stepped.nextInput.length;
+                            setCursorPosition(nextPos);
+                            window.requestAnimationFrame(() => {
+                              inputRef.current?.setSelectionRange(
+                                nextPos,
+                                nextPos,
                               );
-                              return;
-                            }
-                            addImage(file).catch(() => {});
+                            });
                             return;
                           }
                         }
                       }
-                    }
-
-                    const pastedText = e.clipboardData?.getData("text/plain");
-                    if (pastedText && isLargeText(pastedText)) {
-                      e.preventDefault();
-                      if (images.length + textAttachments.length >= 5) {
-                        toast.error(
-                          "Maximum 5 attachments allowed per message",
-                        );
-                        return;
+                      if (e.key === "Enter" && !e.shiftKey && !isIosDevice) {
+                        e.preventDefault();
+                        if (!isArchived) {
+                          e.currentTarget.form?.requestSubmit();
+                        }
                       }
-                      addTextAttachment(pastedText);
-                    }
-                  }}
-                  disabled={isArchived || Boolean(composerGate)}
-                  className={`w-full resize-none overflow-y-auto bg-transparent text-foreground placeholder:text-muted-foreground focus:outline-none ${composerGate ? "pointer-events-none select-none blur-[2px]" : ""}`}
-                  style={{ minHeight: "24px" }}
-                />
+                    }}
+                    onKeyUp={(e) => {
+                      setCursorPosition(e.currentTarget.selectionStart ?? 0);
+                    }}
+                    onClick={(e) => {
+                      setCursorPosition(e.currentTarget.selectionStart ?? 0);
+                    }}
+                    onPaste={(e) => {
+                      const items = e.clipboardData?.items;
+                      if (items) {
+                        for (const item of items) {
+                          if (isValidImageType(item.type)) {
+                            const file = item.getAsFile();
+                            if (file) {
+                              e.preventDefault();
+                              if (images.length + textAttachments.length >= 5) {
+                                toast.error(
+                                  "Maximum 5 attachments allowed per message",
+                                );
+                                return;
+                              }
+                              addImage(file).catch(() => {});
+                              return;
+                            }
+                          }
+                        }
+                      }
+
+                      const pastedText = e.clipboardData?.getData("text/plain");
+                      if (pastedText && isLargeText(pastedText)) {
+                        e.preventDefault();
+                        if (images.length + textAttachments.length >= 5) {
+                          toast.error(
+                            "Maximum 5 attachments allowed per message",
+                          );
+                          return;
+                        }
+                        addTextAttachment(pastedText);
+                      }
+                    }}
+                    disabled={isArchived || Boolean(composerGate)}
+                    className={`relative block w-full resize-none overflow-y-auto bg-transparent leading-6 text-foreground placeholder:text-muted-foreground focus:outline-none ${
+                      isShellMode
+                        ? "font-mono text-[13.5px] [font-variant-ligatures:none]"
+                        : "text-base"
+                    } ${composerGate ? "pointer-events-none select-none blur-[2px]" : ""}`}
+                    style={{ minHeight: "24px" }}
+                  />
+                </div>
               </div>
 
               <div className="flex items-center justify-between gap-2 px-3 pb-2">
@@ -869,13 +1119,19 @@ export const ChatComposer = memo(
                             disabled={
                               isArchived ||
                               Boolean(composerGate) ||
-                              (!isBusy && !hasComposerContent)
+                              (isShellMode
+                                ? !canRunShell
+                                : !isBusy && !hasComposerContent)
                             }
                             className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
                           >
-                            <ArrowUp className="h-4 w-4" />
+                            {isShellMode ? (
+                              <Terminal className="h-4 w-4" />
+                            ) : (
+                              <ArrowUp className="h-4 w-4" />
+                            )}
                           </Button>
-                          {isBusy && (
+                          {isBusy && !isShellMode && (
                             <span
                               className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-background"
                               aria-hidden="true"
@@ -886,13 +1142,15 @@ export const ChatComposer = memo(
                         </span>
                       </TooltipTrigger>
                       <TooltipContent side="top">
-                        {isBusy
-                          ? `Queue message (position ${queuedCount + 1})`
-                          : "Send message"}
+                        {isShellMode
+                          ? "Run in terminal"
+                          : isBusy
+                            ? `Queue message (position ${queuedCount + 1})`
+                            : "Send message"}
                       </TooltipContent>
                     </Tooltip>
                   )}
-                  {isBusy && input.trim().length > 0 && (
+                  {isBusy && !isShellMode && input.trim().length > 0 && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span className="relative inline-flex">

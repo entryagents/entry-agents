@@ -56,6 +56,7 @@ interface CreateSessionResponse {
   session: Session;
   chat: Chat;
   workflowRunId?: string | null;
+  initialWorkflowScheduled?: boolean;
 }
 
 function cloneSessionsResponse(
@@ -153,6 +154,7 @@ export function useSessions(options?: {
         session?: Session;
         chat?: Chat;
         workflowRunId?: string | null;
+        initialWorkflowScheduled?: boolean;
         error?: string;
       };
 
@@ -168,7 +170,12 @@ export function useSessions(options?: {
         typeof responseData.workflowRunId === "string"
           ? responseData.workflowRunId
           : null;
-      const startedStreaming = Boolean(workflowRunId);
+      const initialWorkflowScheduled = Boolean(
+        responseData.initialWorkflowScheduled,
+      );
+      const startedStreaming = Boolean(
+        workflowRunId || initialWorkflowScheduled,
+      );
 
       void globalMutate(
         `/api/sessions/${createdSession.id}/chats`,
@@ -185,7 +192,7 @@ export function useSessions(options?: {
         { revalidate: false },
       );
 
-      await mutate(
+      void mutate(
         (current) => {
           const source = current ?? previousData;
 
@@ -210,6 +217,7 @@ export function useSessions(options?: {
         session: createdSession,
         chat: createdChat,
         ...(workflowRunId ? { workflowRunId } : {}),
+        ...(initialWorkflowScheduled ? { initialWorkflowScheduled: true } : {}),
       } satisfies CreateSessionResponse;
     },
     [data, globalMutate, mutate],

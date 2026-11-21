@@ -83,4 +83,43 @@ describe("inboxTool", () => {
       ],
     });
   });
+
+  test("includes explicit stop-re-calling notice when there are no unread messages", async () => {
+    const res = await inboxTool.execute!(
+      { action: "check" },
+      {
+        toolCallId: "tc-3",
+        messages: [],
+        experimental_context: {
+          inboxHooks: {
+            checkInbox: async () => ({
+              unreadCount: 0,
+              totalCount: 1,
+              newlyReadCount: 0,
+              messages: [
+                {
+                  id: "inb_1",
+                  sequence: 1,
+                  content: "Already read steering note",
+                  status: "read",
+                  isNew: false,
+                  createdAt: "2026-11-12T10:00:00.000Z",
+                  readAt: "2026-11-12T10:01:00.000Z",
+                },
+              ],
+            }),
+          },
+        },
+      },
+    );
+
+    expect(res).toMatchObject({
+      success: true,
+      unreadCount: 0,
+      newlyReadCount: 0,
+    });
+    expect((res as { notice?: string }).notice).toContain(
+      "do NOT call inbox again",
+    );
+  });
 });

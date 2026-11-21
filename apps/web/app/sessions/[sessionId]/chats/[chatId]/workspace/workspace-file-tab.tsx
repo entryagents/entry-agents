@@ -2,11 +2,11 @@
 
 import { File as DiffsFile } from "@pierre/diffs/react";
 import {
+  ArrowLeft,
+  AtSign,
   Check,
-  Code2,
   Copy,
   Download,
-  Eye,
   FileText,
   GitCompare,
   Loader2,
@@ -20,13 +20,6 @@ import { toast } from "sonner";
 import useSWR from "swr";
 import type { WorkspaceFileContentResponse } from "@/app/api/sessions/[sessionId]/files/content/route";
 import { useTheme } from "@/app/providers";
-import { FileTypeIcon } from "@/components/file-type-icons";
-import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import {
   HtmlArtifactPreview,
   MarkdownArtifactPreview,
@@ -35,17 +28,21 @@ import {
 } from "@/components/workspace/artifact-preview";
 import {
   computeFileMetrics,
-  getFileLanguage,
+  formatBytes,
 } from "@/components/workspace/workspace-file-stats";
 import { getFileOptions } from "@/lib/diffs-config";
 import { fetcher } from "@/lib/swr";
 import { cn } from "@/lib/utils";
+import { splitFileSegments, toChangeLetter } from "./sable-rail-helpers";
 
 type WorkspaceFileTabProps = {
   sessionId: string;
   filePath: string;
+  status?: string | null;
+  onBack?: () => void;
   onClose?: () => void;
   onOpenDiff?: (filePath: string) => void;
+  onMentionInChat?: (mention: string) => void;
 };
 
 type ViewMode = "preview" | "code";
@@ -94,38 +91,17 @@ function getDefaultViewMode(filePath: string): ViewMode {
   return "code";
 }
 
-function CodeLoadingSkeleton() {
-  const widths = [
-    "w-2/5",
-    "w-3/4",
-    "w-1/2",
-    "w-4/5",
-    "w-1/3",
-    "w-3/5",
-    "w-2/3",
-    "w-1/2",
-    "w-4/5",
-    "w-2/5",
-  ];
-  return (
-    <div className="space-y-2.5 p-4" aria-label="Loading file">
-      {widths.map((w, idx) => (
-        <div key={idx} className="flex items-center gap-3">
-          <div className="h-3 w-6 shrink-0 rounded bg-muted/40" />
-          <div className={cn("h-3 rounded bg-muted/50", w)} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function WorkspaceFileTab({
   sessionId,
   filePath,
-  onClose: _onClose,
+  status,
+  onBack,
+  onClose,
   onOpenDiff,
+  onMentionInChat,
 }: WorkspaceFileTabProps) {
-  const [copied, setCopied] = useState(false);
+  const [copiedPath, setCopiedPath] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
     getDefaultViewMode(filePath),
   );
@@ -137,6 +113,8 @@ export function WorkspaceFileTab({
   const [isEditing, setIsEditing] = useState(false);
   const [draftContent, setDraftContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [imageDims, setImageDims] = useState<[number, number] | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   const requestUrl = useMemo(() => {
@@ -154,11 +132,23 @@ export function WorkspaceFileTab({
 
   useEffect(() => {
     setIsEditing(false);
+    setImageDims(null);
+    setViewMode(getDefaultViewMode(filePath));
+    setWrapLines(
+      [...wrappedFileExtensions].some((ext) =>
+        filePath.toLowerCase().endsWith(ext),
+      ),
+    );
+    rootRef.current
+      ?.querySelector<HTMLButtonElement>("[data-fp-back]")
+      ?.focus({ preventScroll: true });
   }, [filePath]);
 
-  const fileName = filePath.split("/").pop() ?? filePath;
-  const pathParts = filePath.split("/");
-  const dirParts = pathParts.slice(0, -1);
+  const { segments, fileName } = useMemo(
+    () => splitFileSegments(filePath),
+    [filePath],
+  );
+  const statusLetter = useMemo(() => toChangeLetter(status), [status]);
 
   const { resolvedTheme } = useTheme();
   const fileOptions = useMemo(
@@ -169,7 +159,6 @@ export function WorkspaceFileTab({
     [resolvedTheme, wrapLines],
   );
 
-  const language = useMemo(() => getFileLanguage(filePath), [filePath]);
   const isTextEditable =
     data?.kind === "text" ||
     (data !== undefined &&
@@ -179,9 +168,15 @@ export function WorkspaceFileTab({
 
   const metrics = useMemo(() => {
     const content = isEditing ? draftContent : data?.content;
-    if (!content) return null;
+    if (typeof content !== "string") return null;
     return computeFileMetrics(content, isEditing ? content.length : data?.size);
   }, [data, draftContent, isEditing]);
+
+  const formattedSize = useMemo(() => {
+    if (metrics) return metrics.formattedSize;
+    if (typeof data?.size === "number") return formatBytes(data.size);
+    return null;
+  }, [data?.size, metrics]);
 
   const binaryPreview = useMemo(() => {
     if (!data?.contentBase64) return null;
@@ -189,13 +184,23 @@ export function WorkspaceFileTab({
     return `data:${mime};base64,${data.contentBase64}`;
   }, [data]);
 
-  const handleCopy = async () => {
+  const handleCopyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(filePath);
+      setCopiedPath(true);
+      setTimeout(() => setCopiedPath(false), 1800);
+    } catch {
+      // Ignore clipboard write failure
+    }
+  };
+
+  const handleCopyCode = async () => {
     const text = isEditing ? draftContent : data?.content;
     if (!text) return;
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 1800);
     } catch {
       // Ignore clipboard write failure
     }
@@ -259,6 +264,7 @@ export function WorkspaceFileTab({
 
     if (event.key === "Escape") {
       event.preventDefault();
+      event.stopPropagation();
       handleCancelEdit();
       return;
     }
@@ -288,357 +294,376 @@ export function WorkspaceFileTab({
     () => (isEditing ? draftContent.split("\n").length : 0),
     [draftContent, isEditing],
   );
+  const handleBack = onBack ?? onClose;
+
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || !handleBack) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (isEditing) return;
+      if (e.key === "Escape" || (e.key === "ArrowLeft" && e.altKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleBack();
+      }
+    };
+    el.addEventListener("keydown", onKey);
+    return () => el.removeEventListener("keydown", onKey);
+  }, [handleBack, isEditing]);
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
-      {/* File Action Bar */}
-      <div className="flex h-9 shrink-0 items-center justify-between gap-2 border-b border-border bg-muted/20 px-3">
-        {/* Left: File Icon + Path Breadcrumbs + Language & Metrics */}
-        <div className="flex min-w-0 items-center gap-2">
-          <FileTypeIcon path={fileName} className="h-4 w-4 shrink-0" />
-
-          <div className="flex min-w-0 items-center gap-1 overflow-hidden font-mono text-xs">
-            {dirParts.length > 0 ? (
-              <span className="hidden md:inline truncate text-muted-foreground">
-                {dirParts.join("/")}/
-              </span>
-            ) : null}
-            <span className="truncate font-medium text-foreground">
-              {fileName}
+    <div ref={rootRef} className="rail-col fp outline-none">
+      {/* 1:1 Sable .fp-head: Back arrow + truncating breadcrumbs + status letter */}
+      <div className="rail-bar rail-bar-field fp-head">
+        {handleBack && (
+          <button
+            type="button"
+            data-fp-back="true"
+            className="rail-btn"
+            onClick={handleBack}
+            aria-label="Back to files"
+            title="Back to files (Esc)"
+          >
+            <ArrowLeft size={14} strokeWidth={1.7} aria-hidden="true" />
+          </button>
+        )}
+        <nav className="fp-crumbs" aria-label="File path">
+          {segments.map((seg, i) => (
+            <span
+              key={`${seg}-${i}`}
+              className={
+                i === segments.length - 1
+                  ? "fp-crumb fp-crumb-last"
+                  : "fp-crumb"
+              }
+              title={filePath}
+            >
+              {seg}
             </span>
-            {isDirty ? (
-              <span
-                className="ml-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
-                title="Unsaved changes"
-              />
-            ) : null}
-          </div>
-
-          <span className="hidden sm:inline-flex shrink-0 rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-            {language}
+          ))}
+        </nav>
+        {isDirty ? (
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+            title="Unsaved changes"
+          />
+        ) : null}
+        {statusLetter ? (
+          <span
+            className="st-letter"
+            data-small=""
+            data-status={statusLetter}
+            title={`Changed (${statusLetter})`}
+          >
+            {statusLetter}
           </span>
+        ) : null}
+      </div>
 
-          {metrics ? (
-            <span className="hidden lg:inline-flex shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/80">
-              {metrics.lines} {metrics.lines === 1 ? "line" : "lines"} ·{" "}
-              {metrics.formattedSize}
-            </span>
-          ) : null}
-        </div>
+      {/* 1:1 Sable .fp-actions bar (wraps cleanly on mobile) */}
+      <div className="fp-actions">
+        {isEditing ? (
+          <>
+            <button
+              type="button"
+              className="sable-btn-sm"
+              onClick={handleCancelEdit}
+              disabled={isSaving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="sable-btn-sm"
+              onClick={() => void handleSave()}
+              disabled={isSaving || !isDirty}
+            >
+              {isSaving ? (
+                <Loader2
+                  size={12}
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Save size={12} strokeWidth={1.7} aria-hidden="true" />
+              )}
+              <span>Save</span>
+            </button>
+            <span className="flex-1" />
+            {formattedSize ? (
+              <span className="fp-size num">{formattedSize}</span>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {onMentionInChat && (
+              <button
+                type="button"
+                className="sable-btn-sm"
+                onClick={() => onMentionInChat(`@${filePath}`)}
+              >
+                <AtSign size={13} strokeWidth={1.7} aria-hidden="true" />
+                <span>Mention in chat</span>
+              </button>
+            )}
 
-        {/* Right: Controls & Actions */}
-        <div className="flex shrink-0 items-center gap-1">
-          {isEditing ? (
-            <>
-              <Button
+            <button
+              type="button"
+              className="rail-btn"
+              onClick={handleCopyPath}
+              aria-label="Copy file path"
+              title={copiedPath ? "Copied path" : "Copy path"}
+            >
+              {copiedPath ? (
+                <Check
+                  size={13.5}
+                  strokeWidth={1.8}
+                  className="text-emerald-500"
+                  aria-hidden="true"
+                />
+              ) : (
+                <Copy size={13.5} strokeWidth={1.6} aria-hidden="true" />
+              )}
+            </button>
+
+            <span className="flex-1" />
+
+            {hasPreviewSupport && data?.content ? (
+              <div className="seg" role="group" aria-label="View mode">
+                <button
+                  type="button"
+                  className="seg-item"
+                  data-active={viewMode === "preview" || undefined}
+                  onClick={() => setViewMode("preview")}
+                >
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  className="seg-item"
+                  data-active={viewMode === "code" || undefined}
+                  onClick={() => setViewMode("code")}
+                >
+                  Source
+                </button>
+              </div>
+            ) : null}
+
+            {isTextEditable ? (
+              <button
                 type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleCancelEdit}
-                disabled={isSaving}
-                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
+                className="rail-btn"
+                onClick={handleEnterEdit}
+                aria-label="Edit file"
+                title="Edit file"
               >
-                Cancel
-              </Button>
-              <Button
+                <Pencil size={13} strokeWidth={1.6} aria-hidden="true" />
+              </button>
+            ) : null}
+
+            {onOpenDiff && statusLetter ? (
+              <button
                 type="button"
-                size="sm"
-                onClick={() => void handleSave()}
-                disabled={isSaving || !isDirty}
-                className="h-7 gap-1 px-2.5 text-xs cursor-pointer"
+                className="rail-btn"
+                onClick={() => onOpenDiff(filePath)}
+                aria-label="View diff"
+                title="View diff"
               >
-                {isSaving ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
+                <GitCompare size={13} strokeWidth={1.6} aria-hidden="true" />
+              </button>
+            ) : null}
+
+            {!hasPreviewSupport || viewMode === "code" ? (
+              <button
+                type="button"
+                className="rail-btn"
+                data-active={wrapLines || undefined}
+                onClick={() => setWrapLines((prev) => !prev)}
+                aria-label={wrapLines ? "Disable line wrap" : "Wrap long lines"}
+                title={wrapLines ? "Disable line wrap" : "Wrap long lines"}
+              >
+                <WrapText size={13} strokeWidth={1.6} aria-hidden="true" />
+              </button>
+            ) : null}
+
+            {data?.content ? (
+              <button
+                type="button"
+                className="rail-btn"
+                onClick={handleCopyCode}
+                aria-label="Copy file contents"
+                title={copiedCode ? "Copied contents" : "Copy contents"}
+              >
+                {copiedCode ? (
+                  <Check
+                    size={13}
+                    strokeWidth={1.8}
+                    className="text-emerald-500"
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <Save className="h-3 w-3" strokeWidth={1.5} />
+                  <FileText size={13} strokeWidth={1.6} aria-hidden="true" />
                 )}
-                <span>Save</span>
-              </Button>
-            </>
-          ) : (
-            <>
-              {hasPreviewSupport && data?.content ? (
-                <div className="mr-1 flex items-center rounded-md border border-border bg-muted/40 p-0.5">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setViewMode("preview")}
-                    className={cn(
-                      "h-6 gap-1 px-2 text-xs cursor-pointer",
-                      viewMode === "preview" &&
-                        "bg-background text-foreground font-medium",
-                    )}
-                  >
-                    <Eye className="h-3 w-3" strokeWidth={1.5} />
-                    <span>Preview</span>
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setViewMode("code")}
-                    className={cn(
-                      "h-6 gap-1 px-2 text-xs cursor-pointer",
-                      viewMode === "code" &&
-                        "bg-background text-foreground font-medium",
-                    )}
-                  >
-                    <Code2 className="h-3 w-3" strokeWidth={1.5} />
-                    <span>Code</span>
-                  </Button>
-                </div>
-              ) : null}
+              </button>
+            ) : null}
 
-              {isTextEditable ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
-                      onClick={handleEnterEdit}
-                      aria-label="Edit file"
-                    >
-                      <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Edit file</TooltipContent>
-                </Tooltip>
-              ) : null}
+            {downloadUrl ? (
+              <a
+                href={downloadUrl}
+                download={fileName}
+                className="rail-btn"
+                aria-label={`Download ${fileName}`}
+                title="Download"
+              >
+                <Download size={13} strokeWidth={1.6} aria-hidden="true" />
+              </a>
+            ) : null}
 
-              {onOpenDiff ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
-                      onClick={() => onOpenDiff(filePath)}
-                      aria-label="View diff"
-                    >
-                      <GitCompare className="h-3.5 w-3.5" strokeWidth={1.5} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">View diff</TooltipContent>
-                </Tooltip>
-              ) : null}
+            <button
+              type="button"
+              className="rail-btn"
+              onClick={() => void mutate()}
+              disabled={isLoading || isValidating}
+              aria-label="Refresh file"
+              title="Refresh file"
+            >
+              <RefreshCw
+                size={13}
+                strokeWidth={1.6}
+                className={cn((isLoading || isValidating) && "animate-spin")}
+                aria-hidden="true"
+              />
+            </button>
 
-              {!hasPreviewSupport || viewMode === "code" ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={cn(
-                        "h-7 w-7 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
-                        wrapLines
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                      onClick={() => setWrapLines((prev) => !prev)}
-                      aria-label={
-                        wrapLines ? "Disable line wrap" : "Wrap long lines"
-                      }
-                    >
-                      <WrapText className="h-3.5 w-3.5" strokeWidth={1.5} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {wrapLines ? "Disable line wrap" : "Wrap long lines"}
-                  </TooltipContent>
-                </Tooltip>
-              ) : null}
-
-              {data?.content ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
-                      onClick={handleCopy}
-                      aria-label="Copy file contents"
-                    >
-                      {copied ? (
-                        <Check
-                          className="h-3.5 w-3.5 text-emerald-500"
-                          strokeWidth={1.5}
-                        />
-                      ) : (
-                        <Copy className="h-3.5 w-3.5" strokeWidth={1.5} />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {copied ? "Copied" : "Copy"}
-                  </TooltipContent>
-                </Tooltip>
-              ) : null}
-
-              {downloadUrl ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      asChild
-                      variant="ghost"
-                      size="icon"
-                      className="hidden sm:inline-flex h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
-                    >
-                      <a
-                        href={downloadUrl}
-                        download={fileName}
-                        aria-label={`Download ${fileName}`}
-                      >
-                        <Download className="h-3.5 w-3.5" strokeWidth={1.5} />
-                      </a>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Download</TooltipContent>
-                </Tooltip>
-              ) : null}
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
-                    onClick={() => void mutate()}
-                    disabled={isLoading || isValidating}
-                    aria-label="Refresh file"
-                  >
-                    <RefreshCw
-                      className={cn(
-                        "h-3.5 w-3.5",
-                        (isLoading || isValidating) && "animate-spin",
-                      )}
-                      strokeWidth={1.5}
-                    />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">Refresh</TooltipContent>
-              </Tooltip>
-            </>
-          )}
-        </div>
+            {formattedSize ? (
+              <span className="fp-size num">{formattedSize}</span>
+            ) : null}
+          </>
+        )}
       </div>
 
       {/* File Content Area */}
-      <div className="flex-1 min-h-0 overflow-auto bg-background">
+      <div className="rail-scroll fp-body">
         {isLoading && !data ? (
-          <CodeLoadingSkeleton />
-        ) : error ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 p-8 text-center">
-            <p className="text-sm font-medium text-destructive">
-              Failed to load file
-            </p>
-            <p className="max-w-sm text-xs text-muted-foreground">
-              {error.message ||
-                "An unexpected error occurred while loading this file."}
-            </p>
+          <div className="rail-loading">
+            <Loader2
+              size={15}
+              strokeWidth={1.6}
+              className="animate-spin"
+              aria-hidden="true"
+            />
+            <span>Opening…</span>
           </div>
+        ) : error ? (
+          <p className="rail-empty">
+            {error.message || "Could not load this file."}
+          </p>
         ) : data ? (
-          <div className="h-full">
-            {isEditing ? (
-              <div className="flex min-h-full w-full bg-background font-mono text-xs leading-5">
-                <div
-                  aria-hidden="true"
-                  className="select-none border-r border-border/60 bg-muted/20 px-3 py-3 text-right tabular-nums text-muted-foreground/60"
-                >
-                  {Array.from({ length: lineCount }, (_, idx) => (
-                    <div key={idx}>{idx + 1}</div>
-                  ))}
-                </div>
-                <textarea
-                  ref={editorRef}
-                  value={draftContent}
-                  onChange={(e) => setDraftContent(e.target.value)}
-                  onKeyDown={handleEditorKeyDown}
-                  spellCheck={false}
-                  autoCapitalize="off"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  className="min-h-full w-full flex-1 resize-none bg-transparent p-3 font-mono text-base sm:text-xs leading-5 text-foreground outline-none"
-                />
+          isEditing ? (
+            <div className="flex min-h-full w-full font-mono text-xs leading-5">
+              <div
+                aria-hidden="true"
+                className="select-none border-r border-[var(--line)] bg-[var(--fill-1)] px-3 py-3 text-right tabular-nums text-[var(--text-4)]"
+              >
+                {Array.from({ length: lineCount }, (_, idx) => (
+                  <div key={idx}>{idx + 1}</div>
+                ))}
               </div>
-            ) : data.kind === "image" && binaryPreview ? (
-              <div className="flex min-h-full items-center justify-center p-8 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px] dark:bg-[radial-gradient(#27272a_1px,transparent_1px)]">
+              <textarea
+                ref={editorRef}
+                value={draftContent}
+                onChange={(e) => setDraftContent(e.target.value)}
+                onKeyDown={handleEditorKeyDown}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+                autoCorrect="off"
+                className="min-h-full w-full flex-1 resize-none bg-transparent p-3 font-mono text-base sm:text-xs leading-5 text-[var(--text)] outline-none"
+              />
+            </div>
+          ) : data.kind === "image" && binaryPreview ? (
+            <figure className="fp-image">
+              <div className="fp-image-frame">
                 {/* oxlint-disable-next-line nextjs/no-img-element */}
                 <img
                   src={binaryPreview}
                   alt={fileName}
-                  className="max-h-[calc(100vh-14rem)] max-w-full rounded-md object-contain border border-border"
+                  onLoad={(e) =>
+                    setImageDims([
+                      e.currentTarget.naturalWidth,
+                      e.currentTarget.naturalHeight,
+                    ])
+                  }
                 />
               </div>
-            ) : data.kind === "pdf" && binaryPreview ? (
-              // oxlint-disable-next-line react/iframe-missing-sandbox
-              <iframe
-                title={fileName}
+              {imageDims ? (
+                <figcaption className="num">
+                  {imageDims[0]} × {imageDims[1]}
+                </figcaption>
+              ) : null}
+            </figure>
+          ) : data.kind === "pdf" && binaryPreview ? (
+            // oxlint-disable-next-line react/iframe-missing-sandbox
+            <iframe
+              title={fileName}
+              src={binaryPreview}
+              className="h-[calc(100vh-11rem)] w-full border-0"
+            />
+          ) : data.kind === "audio" && binaryPreview ? (
+            <div className="flex justify-center p-6">
+              <audio controls src={binaryPreview} className="w-full max-w-xl">
+                <track kind="captions" />
+              </audio>
+            </div>
+          ) : data.kind === "video" && binaryPreview ? (
+            <div className="flex justify-center p-6">
+              <video
+                controls
                 src={binaryPreview}
-                className="h-[calc(100vh-10rem)] w-full border-0"
-              />
-            ) : data.kind === "audio" && binaryPreview ? (
-              <div className="flex justify-center p-8">
-                <audio controls src={binaryPreview} className="w-full max-w-xl">
-                  <track kind="captions" />
-                </audio>
-              </div>
-            ) : data.kind === "video" && binaryPreview ? (
-              <div className="flex justify-center p-6">
-                <video
-                  controls
-                  src={binaryPreview}
-                  className="max-h-[calc(100vh-14rem)] max-w-full rounded-md"
-                >
-                  <track kind="captions" />
-                </video>
-              </div>
-            ) : data.kind === "binary" && binaryPreview ? (
-              <div className="flex flex-col items-center gap-3 px-4 py-16 text-center">
-                <FileText
-                  className="h-8 w-8 text-muted-foreground opacity-50"
-                  strokeWidth={1.5}
-                />
-                <p className="text-sm text-muted-foreground">
-                  Binary file cannot be displayed inline
-                </p>
-                <a
-                  href={binaryPreview}
-                  download={fileName}
-                  className="text-xs font-medium text-primary underline underline-offset-4"
-                >
-                  Download {fileName}
-                </a>
-              </div>
-            ) : data.content && data.content.length > 0 ? (
-              viewMode === "preview" && isMarkdown(filePath) ? (
+                className="max-h-[calc(100vh-14rem)] max-w-full rounded-md"
+              >
+                <track kind="captions" />
+              </video>
+            </div>
+          ) : data.kind === "binary" && binaryPreview ? (
+            <div className="rail-empty">
+              <FileText size={24} strokeWidth={1.4} aria-hidden="true" />
+              <p>A binary file has no inline preview.</p>
+              <a
+                href={binaryPreview}
+                download={fileName}
+                className="rail-link text-xs"
+              >
+                Download {fileName}
+              </a>
+            </div>
+          ) : data.content && data.content.length > 0 ? (
+            viewMode === "preview" && isMarkdown(filePath) ? (
+              <div className="fp-md">
                 <MarkdownArtifactPreview content={data.content} />
-              ) : viewMode === "preview" && isHtml(filePath) ? (
-                <HtmlArtifactPreview
-                  htmlContent={data.content}
-                  fileName={fileName}
-                />
-              ) : viewMode === "preview" && isSvg(filePath) ? (
-                <SvgArtifactPreview
-                  svgContent={data.content}
-                  fileName={fileName}
-                />
-              ) : isUrlArtifact(filePath) ? (
-                <UrlArtifactPreview jsonContent={data.content} />
-              ) : (
-                <DiffsFile
-                  key={`${filePath}-${data.size}`}
-                  file={{ name: filePath, contents: data.content }}
-                  options={fileOptions}
-                />
-              )
-            ) : (
-              <div className="p-12 text-center text-xs text-muted-foreground">
-                This file is empty
               </div>
-            )}
-          </div>
+            ) : viewMode === "preview" && isHtml(filePath) ? (
+              <HtmlArtifactPreview
+                htmlContent={data.content}
+                fileName={fileName}
+              />
+            ) : viewMode === "preview" && isSvg(filePath) ? (
+              <SvgArtifactPreview
+                svgContent={data.content}
+                fileName={fileName}
+              />
+            ) : isUrlArtifact(filePath) ? (
+              <UrlArtifactPreview jsonContent={data.content} />
+            ) : (
+              <DiffsFile
+                key={`${filePath}-${data.size}`}
+                file={{ name: filePath, contents: data.content }}
+                options={fileOptions}
+              />
+            )
+          ) : (
+            <p className="rail-empty">This file is empty.</p>
+          )
         ) : null}
       </div>
     </div>

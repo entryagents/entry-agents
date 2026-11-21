@@ -127,4 +127,40 @@ describe("Team & Subagent UI", () => {
     expect(wsHtml).toContain("Reviewer");
     expect(wsHtml.toLowerCase()).not.toContain("swarm");
   });
+
+  test("TaskRenderer stops spinning when a preliminary task is interrupted after stream ends", () => {
+    const part = SAMPLE_MESSAGES[1]!.parts[0] as Extract<
+      WebAgentUIMessage["parts"][number],
+      { type: "tool-task" }
+    >;
+    const html = renderToStaticMarkup(
+      <TaskRenderer
+        part={part}
+        state={{
+          running: false,
+          interrupted: true,
+          denied: false,
+          approvalRequested: false,
+          isActiveApproval: false,
+        }}
+      />,
+    );
+
+    expect(html).not.toContain("animate-spin");
+    expect(html).toContain("Failed");
+  });
+
+  test("SubagentThreadView reconciles interrupted preliminary subagent when parent is not streaming", () => {
+    const html = renderToStaticMarkup(
+      <SubagentThreadView
+        subagentId="tc-arch-1"
+        messages={SAMPLE_MESSAGES}
+        isParentStreaming={false}
+        onClose={() => {}}
+      />,
+    );
+
+    expect(html).not.toContain("animate-spin");
+    expect(html).toContain("Architect");
+  });
 });

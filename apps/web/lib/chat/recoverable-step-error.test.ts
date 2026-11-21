@@ -103,4 +103,32 @@ describe("isWorkflowStepAutoRecoverable", () => {
     });
     expect(isWorkflowStepAutoRecoverable(setupFatal)).toBe(false);
   });
+
+  it("does not retry structured 400 invalid_request_error unless it is auto-fixable", () => {
+    const structuredInvalidReq = Object.assign(
+      new Error("model: invalid model id"),
+      {
+        statusCode: 400,
+        isRetryable: false,
+        data: { error: { type: "invalid_request_error" } },
+      },
+    );
+    expect(isWorkflowStepAutoRecoverable(structuredInvalidReq)).toBe(false);
+
+    const wrappedFatal = Object.assign(new Error("model: invalid model id"), {
+      name: "FatalError",
+      cause: structuredInvalidReq,
+    });
+    expect(isWorkflowStepAutoRecoverable(wrappedFatal)).toBe(false);
+
+    const overflowInvalidReq = Object.assign(
+      new Error("prompt is too long: 210000 tokens > 200000 maximum"),
+      {
+        statusCode: 400,
+        isRetryable: false,
+        data: { error: { type: "invalid_request_error" } },
+      },
+    );
+    expect(isWorkflowStepAutoRecoverable(overflowInvalidReq)).toBe(true);
+  });
 });

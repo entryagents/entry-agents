@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { CheckIcon, ShieldCheck, ShieldAlert, ShieldOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -49,6 +50,11 @@ const ICON_COLOR: Record<PermissionMode, string> = {
 
 const ORDER: PermissionMode[] = ["ask", "autoAccept", "fullAccess"];
 
+export function nextPermissionMode(current: PermissionMode): PermissionMode {
+  const idx = ORDER.indexOf(current);
+  return ORDER[(idx + 1) % ORDER.length] ?? "ask";
+}
+
 /**
  * Composer toolbar control for the 3-way tool-approval permission mode.
  * Replaces the old single on/off "full access" toggle -- see
@@ -60,10 +66,11 @@ export function PermissionModeSelector({
   onChange,
   disabled = false,
 }: PermissionModeSelectorProps) {
+  const [open, setOpen] = useState(false);
   const Icon = ICONS[value];
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
@@ -81,7 +88,7 @@ export function PermissionModeSelector({
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={8}>
-          {LABELS[value]} &ndash; {DESCRIPTIONS[value]}
+          {LABELS[value]} &ndash; {DESCRIPTIONS[value]} (Shift+Tab)
         </TooltipContent>
       </Tooltip>
       <PopoverContent className="w-64 p-1" align="end">
@@ -91,7 +98,10 @@ export function PermissionModeSelector({
             <button
               key={mode}
               type="button"
-              onClick={() => onChange(mode)}
+              onClick={() => {
+                setOpen(false);
+                onChange(mode);
+              }}
               className={cn(
                 "flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted",
               )}

@@ -7,6 +7,7 @@ import { checkBotProtection } from "@/lib/botid";
 import { start } from "workflow/api";
 import type { WebAgentUIMessage } from "@/app/types";
 import {
+  ACTIVE_CHAT_RUN_STATUSES,
   claimChatActiveStreamId,
   compareAndSetChatActiveStreamId,
   createChatMessageIfNotExists,
@@ -307,7 +308,7 @@ async function reconcileExistingActiveStream(
       const latestChat = await getChatById(chatId);
       const isRecentlyActive =
         latestChat &&
-        (latestChat.status === "running" || latestChat.status === "queued") &&
+        ACTIVE_CHAT_RUN_STATUSES.some((s) => s === latestChat.status) &&
         (latestChat.runStatusUpdatedAt
           ? Date.now() - latestChat.runStatusUpdatedAt.getTime() <
             15 * 60 * 1000

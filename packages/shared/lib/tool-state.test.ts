@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatTokens } from "./tool-state";
+import { extractRenderState, formatTokens } from "./tool-state";
 
 describe("formatTokens", () => {
   test("returns raw number for values under 1,000", () => {
@@ -55,5 +55,27 @@ describe("formatTokens", () => {
     const result1000m = formatTokens(1_000_000_000);
     expect(result1000m).toBe("1.0b");
     expect(result1000m).not.toContain("1000m");
+  });
+});
+
+describe("extractRenderState", () => {
+  test("treats preliminary output-available tool parts as running while streaming and interrupted when idle", () => {
+    const part = { state: "output-available", preliminary: true };
+
+    const streamingState = extractRenderState(part, null, true);
+    expect(streamingState.running).toBe(true);
+    expect(streamingState.interrupted).toBe(false);
+
+    const idleState = extractRenderState(part, null, false);
+    expect(idleState.running).toBe(false);
+    expect(idleState.interrupted).toBe(true);
+  });
+
+  test("treats final output-available tool parts as completed regardless of streaming state", () => {
+    const part = { state: "output-available", preliminary: false };
+
+    const idleState = extractRenderState(part, null, false);
+    expect(idleState.running).toBe(false);
+    expect(idleState.interrupted).toBe(false);
   });
 });

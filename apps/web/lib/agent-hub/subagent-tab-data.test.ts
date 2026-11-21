@@ -169,6 +169,30 @@ describe("deriveSubagentTabData", () => {
     expect(data?.pending?.name).toBe("write");
   });
 
+  test("reconciles preliminary subagent to failed when parent is no longer streaming", () => {
+    const data = deriveSubagentTabData(testMessages, "call_subagent_001", {
+      isParentStreaming: false,
+    });
+    expect(data).not.toBeNull();
+    expect(data?.status).toBe("failed");
+  });
+
+  test("reconciles preliminary subagent from an earlier assistant turn to failed even while a later turn streams", () => {
+    const multiTurnMessages = [
+      ...testMessages,
+      {
+        id: "msg_2",
+        role: "assistant",
+        parts: [{ type: "text", text: "Later turn streaming..." }],
+      },
+    ];
+    const data = deriveSubagentTabData(multiTurnMessages, "call_subagent_001", {
+      isParentStreaming: true,
+    });
+    expect(data).not.toBeNull();
+    expect(data?.status).toBe("failed");
+  });
+
   test("returns null for unknown subagent ID", () => {
     expect(deriveSubagentTabData(testMessages, "nonexistent")).toBeNull();
   });

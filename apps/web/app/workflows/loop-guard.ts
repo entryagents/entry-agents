@@ -9,6 +9,27 @@ const READ_ONLY_TOOLS = new Set([
   "inbox",
 ]);
 
+export function normalizeToolCallSignature(
+  toolName: string,
+  rawInput: unknown,
+): string {
+  const name = toolName || "unknown";
+  if (name === "inbox") {
+    const action =
+      rawInput &&
+      typeof rawInput === "object" &&
+      (rawInput as { action?: unknown }).action === "list"
+        ? "list"
+        : "check";
+    return `inbox:{"action":"${action}"}`;
+  }
+  try {
+    return `${name}:${JSON.stringify(rawInput ?? {})}`;
+  } catch {
+    return name;
+  }
+}
+
 export type LoopGuardDecision =
   | { action: "continue" }
   | { action: "warn"; reason: string }

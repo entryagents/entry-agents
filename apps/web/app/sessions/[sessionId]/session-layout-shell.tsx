@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import { useSWRConfig } from "swr";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -121,6 +122,7 @@ function SessionLayoutInner({
   // during mousemove so we never trigger full React tree re-renders per pixel.
   useEffect(() => {
     if (!isDragging) return;
+    document.documentElement.dataset.railResizing = "true";
 
     let rafId = 0;
     const handleMouseMove = (e: MouseEvent) => {
@@ -154,6 +156,7 @@ function SessionLayoutInner({
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
+      delete document.documentElement.dataset.railResizing;
       if (rafId) {
         window.cancelAnimationFrame(rafId);
       }
@@ -250,20 +253,16 @@ function SessionLayoutInner({
         >
           <div
             className={cn(
-              "w-[1px] h-full bg-border transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-foreground/30 group-focus-visible:bg-foreground/40",
-              isDragging && "bg-foreground/50 w-[2px]",
+              "w-[1px] h-full bg-border transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-foreground/25 group-focus-visible:bg-foreground/35",
+              isDragging && "bg-foreground/45",
             )}
           />
           <div
             className={cn(
-              "pointer-events-none absolute flex h-8 w-1.5 flex-col items-center justify-center gap-0.5 rounded-full border border-border/80 bg-background/95 opacity-0 transition-opacity duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 group-focus-visible:opacity-100",
-              isDragging && "opacity-100 border-foreground/30",
+              "pointer-events-none absolute h-[72px] w-[3px] rounded-full bg-foreground/25 opacity-0 scale-y-[0.56] transition-[opacity,transform,background-color] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:opacity-100 group-hover:scale-y-100 group-focus-visible:opacity-100 group-focus-visible:scale-y-100",
+              isDragging && "opacity-100 scale-y-100 bg-foreground/50",
             )}
-          >
-            <span className="h-0.5 w-0.5 rounded-full bg-muted-foreground" />
-            <span className="h-0.5 w-0.5 rounded-full bg-muted-foreground" />
-            <span className="h-0.5 w-0.5 rounded-full bg-muted-foreground" />
-          </div>
+          />
         </div>
       )}
 
@@ -287,8 +286,8 @@ function SessionLayoutInner({
             "transition-[transform,width] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
           gitPanelOpen
             ? isWorkspaceExpanded
-              ? "w-full translate-x-0"
-              : "w-full sm:w-[540px] lg:w-[var(--workspace-width)] lg:flex-none lg:shrink-0 translate-x-0"
+              ? "w-full translate-x-0 pb-[env(safe-area-inset-bottom)] lg:pb-0"
+              : "w-full sm:w-[540px] lg:w-[var(--workspace-width)] lg:flex-none lg:shrink-0 translate-x-0 pb-[env(safe-area-inset-bottom)] lg:pb-0"
             : "w-0 translate-x-full lg:translate-x-0 border-l-0 overflow-hidden pointer-events-none",
         )}
       />
@@ -302,6 +301,7 @@ export function SessionLayoutShell({
   children,
 }: SessionLayoutShellProps) {
   const router = useRouter();
+  const { mutate } = useSWRConfig();
   const params = useParams<{ chatId?: string }>();
   const routeChatId = params.chatId ?? "";
   const [optimisticActiveChatId, setOptimisticActiveChatId] = useState<
@@ -311,6 +311,73 @@ export function SessionLayoutShell({
   const prefetchedChatHrefsRef = useRef(new Set<string>());
 
   const sessionId = initialSession.id;
+  const [liveTitle, setLiveTitle] = useState(initialSession.title);
+
+  useEffect(() => {
+    setLiveTitle(initialSession.title);
+  }, [initialSession.id, initialSession.title]);
+
+  useEffect(() => {
+    const onTitleUpdated = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ sessionId?: string; title?: string }>
+      ).detail;
+      if (detail?.sessionId === sessionId && typeof detail.title === "string") {
+        setLiveTitle(detail.title);
+      }
+    };
+    window.addEventListener("entry:session-title-updated", onTitleUpdated);
+    return () => {
+      window.removeEventListener("entry:session-title-updated", onTitleUpdated);
+    };
+  }, [sessionId]);
+
+  const renameSessionTitle = useCallback(
+    async (nextTitle: string) => {
+      const trimmed = nextTitle.trim();
+      if (!trimmed || trimmed === liveTitle) return;
+      const prevTitle = liveTitle;
+      setLiveTitle(trimmed);
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: trimmed }),
+        });
+        const data = (await res.json()) as {
+          session?: Session;
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(data.error ?? "Failed to update session title");
+        }
+        const confirmed = data.session?.title ?? trimmed;
+        setLiveTitle(confirmed);
+        window.dispatchEvent(
+          new CustomEvent("entry:session-title-updated", {
+            detail: { sessionId, title: confirmed },
+          }),
+        );
+        await mutate<{ sessions: Session[] }>(
+          "/api/sessions",
+          (current) =>
+            current
+              ? {
+                  ...current,
+                  sessions: current.sessions.map((s) =>
+                    s.id === sessionId ? { ...s, title: confirmed } : s,
+                  ),
+                }
+              : current,
+          { revalidate: false },
+        );
+      } catch (err) {
+        setLiveTitle(prevTitle);
+        throw err;
+      }
+    },
+    [liveTitle, mutate, sessionId],
+  );
 
   const {
     chats,
@@ -370,7 +437,9 @@ export function SessionLayoutShell({
   const layoutContext = useMemo(
     () => ({
       session: {
-        title: initialSession.title,
+        id: initialSession.id,
+        title: liveTitle,
+        createdAt: initialSession.createdAt,
         repoName: initialSession.repoName,
         repoOwner: initialSession.repoOwner,
         cloneUrl: initialSession.cloneUrl,
@@ -387,15 +456,18 @@ export function SessionLayoutShell({
       switchChat,
       deleteChat,
       renameChat,
+      renameSessionTitle,
     }),
     [
       initialSession,
+      liveTitle,
       chats,
       chatsLoading,
       createChat,
       switchChat,
       deleteChat,
       renameChat,
+      renameSessionTitle,
     ],
   );
 

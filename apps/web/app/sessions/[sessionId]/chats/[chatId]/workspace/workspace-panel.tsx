@@ -1,7 +1,8 @@
 "use client";
 
 import "./rail.css";
-import { Maximize2, Minimize2, X } from "lucide-react";
+import { Loader2, Maximize2, Minimize2, PanelRight, X } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 import type { WebAgentUIMessage } from "@/app/types";
@@ -18,8 +19,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  deriveAgentHubRoster,
+  isLiveStatus,
+} from "@/lib/agent-hub/derive-roster";
 import type { ModelOption } from "@/lib/model-options";
-import { cn } from "@/lib/utils";
 import type { GitPanelProps } from "../git-panel";
 import { useGitPanel } from "../git-panel-context";
 import type { DevServerControls } from "../hooks/use-dev-server";
@@ -29,15 +33,44 @@ import {
   railTabAt,
   type RailTabId,
 } from "./rail-tabs";
-import { useLiveAgentCount, WorkspaceAgentsTab } from "./workspace-agents-tab";
 import { WorkspaceContextTab } from "./workspace-context-tab";
-import { WorkspaceFileTab } from "./workspace-file-tab";
-import { WorkspaceFilesTab } from "./workspace-files-tab";
-import { WorkspacePreviewTab } from "./workspace-preview-tab";
 import { WorkspaceRailTabs } from "./workspace-rail-tabs";
-import { WorkspaceReviewTab } from "./workspace-review-tab";
 import { WorkspaceTasksTab } from "./workspace-tasks-tab";
-import { WorkspaceTerminalTab } from "./workspace-terminal-tab";
+
+function RailPaneLoading() {
+  return (
+    <div className="rail-empty">
+      <Loader2
+        size={18}
+        strokeWidth={1.5}
+        className="animate-spin"
+        aria-hidden="true"
+      />
+      <p>Loading panel…</p>
+    </div>
+  );
+}
+
+const WorkspaceReviewTab = dynamic(
+  () => import("./workspace-review-tab").then((m) => m.WorkspaceReviewTab),
+  { ssr: false, loading: RailPaneLoading },
+);
+const WorkspaceFilesTab = dynamic(
+  () => import("./workspace-files-tab").then((m) => m.WorkspaceFilesTab),
+  { ssr: false, loading: RailPaneLoading },
+);
+const WorkspacePreviewTab = dynamic(
+  () => import("./workspace-preview-tab").then((m) => m.WorkspacePreviewTab),
+  { ssr: false, loading: RailPaneLoading },
+);
+const WorkspaceTerminalTab = dynamic(
+  () => import("./workspace-terminal-tab").then((m) => m.WorkspaceTerminalTab),
+  { ssr: false, loading: RailPaneLoading },
+);
+const WorkspaceAgentsTab = dynamic(
+  () => import("./workspace-agents-tab").then((m) => m.WorkspaceAgentsTab),
+  { ssr: false, loading: RailPaneLoading },
+);
 
 export type WorkspacePanelProps = GitPanelProps & {
   devServer: DevServerControls;
@@ -49,20 +82,23 @@ export type WorkspacePanelProps = GitPanelProps & {
   messages?: WebAgentUIMessage[];
   modelId?: string | null;
   modelOptions?: ModelOption[];
+  contextLimit?: number | null;
   isParentStreaming?: boolean;
   teamRoleModels?: Record<string, string>;
   onUpdateRoleModel?: (role: string, modelId: string | null) => void;
   isFreeTierLocked?: boolean;
   freePlanModelId?: string | null;
   freeTierAllowedModelIds?: string[];
-  onSelectSubagent?: (toolCallId: string) => void;
+  onSelectSubagent?: (
+    toolCallId: string,
+    title?: string,
+    subagentType?: string,
+  ) => void;
   onStopRun?: () => void;
+  onCompactConversation?: () => void;
+  isCompacting?: boolean;
+  onMentionInChat?: (mention: string) => void;
 };
-
-function fileBasename(filePath: string): string {
-  const parts = filePath.split("/");
-  return parts[parts.length - 1] || filePath;
-}
 
 export function WorkspacePanel({
   devServer,
@@ -74,6 +110,7 @@ export function WorkspacePanel({
   messages = [],
   modelId = "",
   modelOptions = [],
+  contextLimit = null,
   isParentStreaming = false,
   teamRoleModels = {},
   onUpdateRoleModel,
@@ -82,14 +119,16 @@ export function WorkspacePanel({
   freeTierAllowedModelIds = [],
   onSelectSubagent,
   onStopRun,
+  onCompactConversation,
+  isCompacting = false,
+  onMentionInChat,
   ...gitPanelProps
 }: WorkspacePanelProps) {
   const {
+    setGitPanelOpen,
     activeWorkspaceTab,
     setActiveWorkspaceTab,
-    openFiles,
     openWorkspaceFile,
-    closeWorkspaceFile,
   } = useGitPanel();
 
   const resolvedModelId = modelId ?? "";
@@ -106,10 +145,9 @@ export function WorkspacePanel({
   const activeBuiltinTab: RailTabId = isBuiltinRailTab(normalizedTab)
     ? normalizedTab
     : "files";
-  const isViewingOpenFile =
-    !isBuiltinRailTab(normalizedTab) && openFiles.includes(normalizedTab);
 
-  // Track which panes have been visited so we mount lazily and keep alive.
+  // Track which panes have been visited so we mount lazily on first visit and
+  // keep them alive for 0ms instant tab switches without losing state.
   const [mountedPanes, setMountedPanes] = useState<Set<RailTabId>>(
     () => new Set([activeBuiltinTab]),
   );
@@ -156,7 +194,14 @@ export function WorkspacePanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [pickBuiltinTab]);
 
-  const liveAgents = useLiveAgentCount(messages);
+  const liveAgents = useMemo(() => {
+    const roster = deriveAgentHubRoster(messages, { isParentStreaming });
+    let live = 0;
+    for (const entry of roster) {
+      if (isLiveStatus(entry.status)) live += 1;
+    }
+    return live;
+  }, [messages, isParentStreaming]);
   const todos = useMemo(() => getLatestTodos(messages), [messages]);
   const openTodos = useMemo(
     () => todos.filter((t) => t.status !== "completed").length,
@@ -208,13 +253,13 @@ export function WorkspacePanel({
           isPreviewLive={isPreviewLive}
           onPick={pickBuiltinTab}
         />
-        {onToggleWorkspaceExpand && (
-          <div className="flex items-center shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
+          {onToggleWorkspaceExpand && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="rail-btn"
+                  className="rail-btn hidden lg:inline-flex"
                   onClick={onToggleWorkspaceExpand}
                   aria-label={
                     isWorkspaceExpanded ? "Restore panel width" : "Expand panel"
@@ -231,143 +276,124 @@ export function WorkspacePanel({
                 {isWorkspaceExpanded ? "Restore width" : "Expand panel"}
               </TooltipContent>
             </Tooltip>
-          </div>
-        )}
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="rail-btn"
+                data-active="true"
+                onClick={() => setGitPanelOpen(false)}
+                aria-label="Hide panel"
+              >
+                <X
+                  size={16}
+                  strokeWidth={1.6}
+                  className="lg:hidden"
+                  aria-hidden="true"
+                />
+                <PanelRight
+                  size={15}
+                  strokeWidth={1.6}
+                  className="hidden lg:block"
+                  aria-hidden="true"
+                />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Hide panel · ⌘⇧B</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
-      {openFiles.length > 0 && (
-        <div className="flex items-center gap-1 overflow-x-auto border-b border-[var(--line)] bg-[var(--surface)] px-2.5 py-1.5">
-          {openFiles.map((filePath) => {
-            const isSelected = activeWorkspaceTab === filePath;
-            return (
-              <div
-                key={filePath}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-mono transition-colors shrink-0",
-                  isSelected
-                    ? "bg-[var(--surface-2)] text-[var(--ink)] border border-[var(--line-2)]"
-                    : "text-[var(--ink-3)] hover:text-[var(--ink-2)] hover:bg-[var(--surface-2)]/60 border border-transparent",
-                )}
-              >
-                <button
-                  type="button"
-                  className="truncate max-w-[140px] cursor-pointer"
-                  onClick={() => setActiveWorkspaceTab(filePath)}
-                  title={filePath}
-                >
-                  {fileBasename(filePath)}
-                </button>
-                <button
-                  type="button"
-                  className="rounded p-0.5 opacity-70 hover:opacity-100 cursor-pointer"
-                  onClick={() => closeWorkspaceFile(filePath)}
-                  aria-label={`Close ${fileBasename(filePath)}`}
-                >
-                  <X size={11} strokeWidth={1.7} aria-hidden="true" />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <div className="rail-body" data-dir={dir}>
+        {RAIL_TABS.map((def, idx) => {
+          const isActive = def.id === activeBuiltinTab;
+          const isBefore = idx < activeIdx;
+          const shouldRender = isActive || mountedPanes.has(def.id);
 
-      <div className="rail-body">
-        {isViewingOpenFile ? (
-          <div className="rail-pane" data-on="">
-            <WorkspaceFileTab
-              sessionId={gitPanelProps.session.id}
-              filePath={activeWorkspaceTab}
-              onClose={() => closeWorkspaceFile(activeWorkspaceTab)}
-              onOpenDiff={() => {
-                pickBuiltinTab("review");
-              }}
-            />
-          </div>
-        ) : (
-          RAIL_TABS.map((def, idx) => {
-            const isActive = def.id === activeBuiltinTab;
-            const isBefore = idx < activeIdx;
-            const keepAlive = def.id === "preview" || def.id === "terminal";
-            const shouldRender =
-              isActive || (keepAlive && mountedPanes.has(def.id));
+          if (!shouldRender) return null;
 
-            if (!shouldRender) return null;
-
-            return (
-              <div
-                key={def.id}
-                className="rail-pane"
-                data-on={isActive ? "" : undefined}
-                data-dir={dir}
-                data-side={isBefore ? "before" : undefined}
-                inert={!isActive}
-              >
-                {shouldRender && (
-                  <>
-                    {def.id === "review" && (
-                      <WorkspaceReviewTab
-                        {...gitPanelProps}
-                        onOpenFile={openWorkspaceFile}
-                      />
-                    )}
-                    {def.id === "files" && (
-                      <WorkspaceFilesTab
-                        sessionId={gitPanelProps.session.id}
-                        files={files}
-                        filesLoading={filesLoading}
-                        refreshFiles={refreshFiles}
-                        diffFiles={diffFiles}
-                        onOpenDiff={() => pickBuiltinTab("review")}
-                        onOpenQuickOpen={() => setQuickOpen(true)}
-                      />
-                    )}
-                    {def.id === "preview" && (
-                      <WorkspacePreviewTab
-                        devServer={devServer}
-                        sessionId={gitPanelProps.session.id}
-                        previewDeploymentTargetUrl={previewTargetUrl}
-                        isDeploymentStale={gitPanelProps.isDeploymentStale}
-                        isDeploymentFailed={gitPanelProps.isDeploymentFailed}
-                        canRun={gitPanelProps.hasSandbox}
-                      />
-                    )}
-                    {def.id === "terminal" && (
-                      <WorkspaceTerminalTab
-                        sessionId={gitPanelProps.session.id}
-                        canRun={gitPanelProps.hasSandbox}
-                      />
-                    )}
-                    {def.id === "tasks" && (
-                      <WorkspaceTasksTab messages={messages} />
-                    )}
-                    {def.id === "context" && (
-                      <WorkspaceContextTab
-                        messages={messages}
-                        modelId={resolvedModelId}
-                        modelOptions={modelOptions}
-                      />
-                    )}
-                    {def.id === "agents" && (
-                      <WorkspaceAgentsTab
-                        messages={messages}
-                        isParentStreaming={isParentStreaming}
-                        defaultModelId={resolvedModelId}
-                        teamRoleModels={teamRoleModels}
-                        onUpdateRoleModel={onUpdateRoleModel ?? (() => {})}
-                        modelOptions={modelOptions}
-                        isFreeTierLocked={isFreeTierLocked}
-                        freePlanModelId={freePlanModelId ?? ""}
-                        freeTierAllowedModelIds={freeTierAllowedModelIds}
-                        onSelectSubagent={onSelectSubagent ?? (() => {})}
-                        onStopRun={onStopRun ?? (() => {})}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })
-        )}
+          return (
+            <div
+              key={def.id}
+              id={`rail-pane-${def.id}`}
+              role="tabpanel"
+              className="rail-pane"
+              data-active={isActive ? "" : undefined}
+              data-side={isBefore ? "before" : undefined}
+              inert={!isActive}
+            >
+              {def.id === "review" && (
+                <WorkspaceReviewTab
+                  {...gitPanelProps}
+                  onOpenFile={openWorkspaceFile}
+                  onMentionInChat={onMentionInChat}
+                />
+              )}
+              {def.id === "files" && (
+                <WorkspaceFilesTab
+                  sessionId={gitPanelProps.session.id}
+                  files={files}
+                  filesLoading={filesLoading}
+                  hasSandbox={gitPanelProps.hasSandbox}
+                  refreshFiles={refreshFiles}
+                  diffFiles={diffFiles}
+                  onOpenDiff={() => pickBuiltinTab("review")}
+                  onOpenQuickOpen={() => setQuickOpen(true)}
+                  onMentionInChat={onMentionInChat}
+                />
+              )}
+              {def.id === "preview" && (
+                <WorkspacePreviewTab
+                  devServer={devServer}
+                  sessionId={gitPanelProps.session.id}
+                  previewDeploymentTargetUrl={previewTargetUrl}
+                  isDeploymentStale={gitPanelProps.isDeploymentStale}
+                  isDeploymentFailed={gitPanelProps.isDeploymentFailed}
+                  canRun={gitPanelProps.hasSandbox}
+                  onMentionInChat={onMentionInChat}
+                />
+              )}
+              {def.id === "terminal" && (
+                <WorkspaceTerminalTab
+                  sessionId={gitPanelProps.session.id}
+                  canRun={gitPanelProps.hasSandbox}
+                  repoName={gitPanelProps.session.repoName}
+                  files={files}
+                  onOpenPreview={() => pickBuiltinTab("preview")}
+                />
+              )}
+              {def.id === "tasks" && <WorkspaceTasksTab messages={messages} />}
+              {def.id === "context" && (
+                <WorkspaceContextTab
+                  messages={messages}
+                  modelId={resolvedModelId}
+                  modelOptions={modelOptions}
+                  contextLimit={contextLimit}
+                  onCompactConversation={onCompactConversation}
+                  isCompacting={isCompacting}
+                  isBusy={isParentStreaming}
+                />
+              )}
+              {def.id === "agents" && (
+                <WorkspaceAgentsTab
+                  messages={messages}
+                  isParentStreaming={isParentStreaming}
+                  defaultModelId={resolvedModelId}
+                  teamRoleModels={teamRoleModels}
+                  onUpdateRoleModel={onUpdateRoleModel ?? (() => {})}
+                  modelOptions={modelOptions}
+                  isFreeTierLocked={isFreeTierLocked}
+                  freePlanModelId={freePlanModelId ?? ""}
+                  freeTierAllowedModelIds={freeTierAllowedModelIds}
+                  onSelectSubagent={onSelectSubagent ?? (() => {})}
+                  onStopRun={onStopRun ?? (() => {})}
+                  onClosePanel={() => setGitPanelOpen(false)}
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <Dialog open={quickOpen} onOpenChange={setQuickOpen}>
@@ -383,7 +409,7 @@ export function WorkspacePanel({
               value={quickQuery}
               onChange={(e) => setQuickQuery(e.target.value)}
               placeholder="Search files by path..."
-              className="h-8 text-xs font-mono"
+              className="h-8 text-base sm:text-xs font-mono"
             />
           </div>
           <div className="max-h-72 overflow-y-auto p-1.5">
@@ -396,7 +422,7 @@ export function WorkspacePanel({
                 <button
                   key={f.value}
                   type="button"
-                  className="w-full text-left px-2.5 py-1.5 rounded-md text-xs font-mono text-foreground hover:bg-muted transition-colors truncate cursor-pointer"
+                  className="w-full text-left px-2.5 py-2 sm:py-1.5 rounded-md text-xs font-mono text-foreground hover:bg-muted transition-colors truncate cursor-pointer"
                   onClick={() => {
                     openWorkspaceFile(f.value);
                     setQuickOpen(false);
