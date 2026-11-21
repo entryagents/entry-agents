@@ -15,6 +15,7 @@ export interface ModelOption {
   shortLabel: string;
   description?: string;
   contextWindow?: number;
+  compactionThreshold?: number;
   cost?: AvailableModelCost;
   provider: string;
   reasoningEffortLevels?: Array<{ value: string; label: string }>;
@@ -35,6 +36,9 @@ function toBaseModelOption(model: AvailableModel): ModelOption {
     shortLabel: stripProviderPrefix(label, provider),
     description: model.description ?? undefined,
     contextWindow: model.context_window,
+    ...(model.compaction_threshold !== undefined
+      ? { compactionThreshold: model.compaction_threshold }
+      : {}),
     ...(model.cost ? { cost: model.cost } : {}),
     ...(model.reasoningEffortLevels
       ? { reasoningEffortLevels: model.reasoningEffortLevels }

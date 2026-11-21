@@ -1,8 +1,7 @@
 "use client";
 
 import type { AskUserQuestionInput } from "@entry-agents/agent";
-import { formatTokens } from "@entry-agents/shared";
-import { isToolUIPart, type FileUIPart, type LanguageModelUsage } from "ai";
+import { isToolUIPart, type FileUIPart } from "ai";
 import {
   AlertCircle,
   Archive,
@@ -46,7 +45,6 @@ import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work
 import { consumePendingInitialPrompt } from "@/lib/chat/pending-initial-prompt";
 import { SubagentThreadView } from "@/components/team/subagent-thread-view";
 import { TeamStatusButton } from "@/components/team/team-status-button";
-import { TeamWorkspace } from "@/components/team/team-workspace";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
 import { ChatNavigator } from "@/components/chat/chat-navigator";
 import {
@@ -59,7 +57,10 @@ import { toast } from "sonner";
 import { UntilStrip } from "@/components/composer/until-strip";
 import { RaceView, type RaceSessionConfig } from "@/components/race/race-view";
 import { useTriage } from "@/components/triage/triage-context";
+import { formatTokens } from "@entry-agents/shared";
+import { parseCompactCommand } from "@/lib/compact/parse";
 import { parseRaceCommand, pickRaceModels } from "@/lib/race/parse";
+import { collectAutoApprovableIds } from "@/lib/chat/permission-approval";
 import { extractTriagePromptsFromMessages } from "@/lib/triage/deck";
 import { useUntilLoop } from "./hooks/use-until-loop";
 import { OpenFileProvider } from "@/components/tool-call/open-file-context";
@@ -75,11 +76,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { ContextUsageHeaderButton } from "@/components/context-usage-header-button";
 import {
   Tooltip,
   TooltipContent,
@@ -104,11 +101,7 @@ import {
   type ChatComposerHandle,
   type ComposerMessagePayload,
 } from "./components/chat-composer";
-import {
-  type AvailableModelCost,
-  DEFAULT_CONTEXT_LIMIT,
-  estimateModelUsageCost,
-} from "@/lib/models";
+import { chatMarkdown } from "@/lib/export/chat-markdown";
 import { getPrDeploymentRefreshInterval } from "@/lib/pr-deployment-polling";
 import {
   type SandboxInfo,
@@ -197,326 +190,8 @@ function isSandboxValid(sandboxInfo: SandboxInfo | null): boolean {
   return Date.now() < expiresAt;
 }
 
-function formatUsd(amount: number): string {
-  if (amount >= 100) {
-    return "$" + amount.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  }
-  if (amount >= 1) {
-    return (
-      "$" +
-      amount.toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    );
-  }
-  if (amount >= 0.01) {
-    return (
-      "$" +
-      amount.toLocaleString("en-US", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
-    );
-  }
-  return (
-    "$" +
-    amount.toLocaleString("en-US", {
-      minimumFractionDigits: 4,
-      maximumFractionDigits: 4,
-    })
-  );
-}
-
-type MessageUsageTotals = {
-  inputTokens: number;
-  cachedInputTokens: number;
-  outputTokens: number;
-};
-
-function getCachedInputTokens(usage: LanguageModelUsage | undefined): number {
-  return (
-    usage?.inputTokenDetails?.cacheReadTokens ?? usage?.cachedInputTokens ?? 0
-  );
-}
-
-function getUsageTotals(
-  usage: LanguageModelUsage | undefined,
-): MessageUsageTotals {
-  return {
-    inputTokens: usage?.inputTokens ?? 0,
-    cachedInputTokens: getCachedInputTokens(usage),
-    outputTokens: usage?.outputTokens ?? 0,
-  };
-}
-
-function getLatestContextUsage(
-  messages: WebAgentUIMessage[],
-): MessageUsageTotals {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i];
-    if (message?.role === "assistant") {
-      const usage =
-        message.metadata?.lastStepUsage ?? message.metadata?.totalMessageUsage;
-      if (usage) {
-        return getUsageTotals(usage);
-      }
-    }
-  }
-
-  return getUsageTotals(undefined);
-}
-
-function getConversationUsage(
-  messages: WebAgentUIMessage[],
-): MessageUsageTotals {
-  return messages.reduce<MessageUsageTotals>((total, message) => {
-    if (message.role !== "assistant") {
-      return total;
-    }
-
-    const usage =
-      message.metadata?.totalMessageUsage ?? message.metadata?.lastStepUsage;
-    if (!usage) {
-      return total;
-    }
-
-    const usageTotals = getUsageTotals(usage);
-    return {
-      inputTokens: total.inputTokens + usageTotals.inputTokens,
-      cachedInputTokens:
-        total.cachedInputTokens + usageTotals.cachedInputTokens,
-      outputTokens: total.outputTokens + usageTotals.outputTokens,
-    };
-  }, getUsageTotals(undefined));
-}
-
-type ConversationCostSource = "gateway" | "estimate" | "mixed";
-
-type ConversationCost = {
-  total: number;
-  source: ConversationCostSource;
-};
-
-/**
- * Compute the cumulative USD cost across every assistant message in the
- * conversation. Per-message preference order:
- *   1. Gateway-reported `totalMessageCost` (authoritative when present).
- *   2. Token-based estimate from `totalMessageUsage` / `lastStepUsage`.
- *
- * Returns `undefined` when no cost can be attributed to any message (e.g. no
- * usage metadata and no gateway cost), matching the previous "hide the row"
- * behavior. The `source` discriminant lets the UI label the figure correctly.
- */
-function getConversationCost(
-  messages: WebAgentUIMessage[],
-  modelCost: AvailableModelCost | undefined,
-): ConversationCost | undefined {
-  let total = 0;
-  let hasAnyCost = false;
-  let sawGateway = false;
-  let sawEstimate = false;
-
-  for (const message of messages) {
-    if (message.role !== "assistant") {
-      continue;
-    }
-
-    const gatewayCost = message.metadata?.totalMessageCost;
-    if (
-      typeof gatewayCost === "number" &&
-      Number.isFinite(gatewayCost) &&
-      gatewayCost >= 0
-    ) {
-      total += gatewayCost;
-      hasAnyCost = true;
-      sawGateway = true;
-      continue;
-    }
-
-    const usage =
-      message.metadata?.totalMessageUsage ?? message.metadata?.lastStepUsage;
-    if (!usage) {
-      continue;
-    }
-
-    const estimatedCost = estimateModelUsageCost(
-      getUsageTotals(usage),
-      modelCost,
-    );
-    if (estimatedCost === undefined) {
-      continue;
-    }
-
-    total += estimatedCost;
-    hasAnyCost = true;
-    sawEstimate = true;
-  }
-
-  if (!hasAnyCost) {
-    return undefined;
-  }
-
-  const source: ConversationCostSource =
-    sawGateway && sawEstimate ? "mixed" : sawGateway ? "gateway" : "estimate";
-
-  return { total, source };
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function CircularProgress({
-  percentage,
-  size = 16,
-  strokeWidth = 2,
-}: {
-  percentage: number;
-  size?: number;
-  strokeWidth?: number;
-}) {
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
-
-  return (
-    <svg width={size} height={size} className="-rotate-90">
-      {/* Background circle */}
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={strokeWidth}
-        className="text-muted-foreground/20"
-      />
-      {/* Progress circle */}
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={strokeWidth}
-        strokeDasharray={circumference}
-        strokeDashoffset={strokeDashoffset}
-        strokeLinecap="round"
-        className="text-muted-foreground"
-      />
-    </svg>
-  );
-}
-
-function ContextUsageIndicator({
-  inputTokens,
-  conversationInputTokens,
-  conversationCachedInputTokens,
-  conversationOutputTokens,
-  conversationCost,
-  contextLimit,
-}: {
-  inputTokens: number;
-  conversationInputTokens: number;
-  conversationCachedInputTokens: number;
-  conversationOutputTokens: number;
-  conversationCost?: ConversationCost;
-  contextLimit: number | null;
-}) {
-  if (inputTokens === 0) {
-    return null;
-  }
-
-  const hasContextLimit = contextLimit !== null && contextLimit > 0;
-  const percentage = hasContextLimit
-    ? Math.min(100, Math.round((inputTokens / contextLimit) * 100))
-    : null;
-  const uncachedConversationInputTokens = Math.max(
-    0,
-    conversationInputTokens - conversationCachedInputTokens,
-  );
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label="View context usage breakdown"
-          className="flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-1.5 text-xs tabular-nums text-muted-foreground/85 transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background/60 hover:text-foreground active:scale-[0.97] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring sm:px-2"
-        >
-          {percentage !== null ? (
-            <>
-              <span>{percentage}%</span>
-              <CircularProgress
-                percentage={percentage}
-                size={14}
-                strokeWidth={2}
-              />
-            </>
-          ) : (
-            <span>{formatTokens(inputTokens)} tok</span>
-          )}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        side="top"
-        align="start"
-        className="min-w-[200px] p-0 shadow-lg border border-border/80 bg-popover"
-      >
-        <div className="p-3">
-          {/* Header with percentage and token count */}
-          <div className="flex items-center justify-between gap-6">
-            <span className="text-sm font-medium">
-              {percentage !== null ? `${percentage}%` : "Context"}
-            </span>
-            <span className="text-xs opacity-60">
-              {hasContextLimit
-                ? `${formatTokens(inputTokens)} / ${formatTokens(contextLimit)}`
-                : `${formatTokens(inputTokens)} tokens`}
-            </span>
-          </div>
-        </div>
-
-        {/* Divider */}
-        <div className="h-px bg-current opacity-10" />
-
-        {/* Breakdown */}
-        <div className="space-y-1 p-3 text-xs">
-          <div className="flex justify-between gap-6">
-            <span className="opacity-60">Conversation input</span>
-            <span>{formatTokens(conversationInputTokens)}</span>
-          </div>
-          <div className="flex justify-between gap-6">
-            <span className="opacity-60">Cached input</span>
-            <span>{formatTokens(conversationCachedInputTokens)}</span>
-          </div>
-          <div className="flex justify-between gap-6">
-            <span className="opacity-60">Uncached input</span>
-            <span>{formatTokens(uncachedConversationInputTokens)}</span>
-          </div>
-          <div className="flex justify-between gap-6">
-            <span className="opacity-60">Conversation output</span>
-            <span>{formatTokens(conversationOutputTokens)}</span>
-          </div>
-          {conversationCost !== undefined ? (
-            <div className="flex justify-between gap-6">
-              <span className="opacity-60">
-                {conversationCost.source === "gateway"
-                  ? "Cost"
-                  : conversationCost.source === "mixed"
-                    ? "Cost (partial est.)"
-                    : "Est. cost"}
-              </span>
-              <span className="tabular-nums">
-                {formatUsd(conversationCost.total)}
-              </span>
-            </div>
-          ) : null}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
 }
 
 function _SandboxHeaderBadge({
@@ -888,7 +563,6 @@ export function SessionChatContent({
   >(null);
   const [mobileArchiveDialogOpen, setMobileArchiveDialogOpen] = useState(false);
   const [mobileShareOpen, setMobileShareOpen] = useState(false);
-  const [teamPaneOpen, setTeamPaneOpen] = useState(false);
   const [copiedAssistantMessageId, setCopiedAssistantMessageId] = useState<
     string | null
   >(null);
@@ -908,6 +582,7 @@ export function SessionChatContent({
     closeSubagentTab,
     gitPanelOpen,
     setGitPanelOpen,
+    activeWorkspaceTab,
     setActiveWorkspaceTab,
     openFileTab,
     shareRequested,
@@ -919,6 +594,8 @@ export function SessionChatContent({
     setHasCommittedChanges,
     panelPortalRef,
     headerActionsRef,
+    setHeaderModelId,
+    exportMarkdownRef,
     isWorkspaceExpanded,
     setIsWorkspaceExpanded,
     focusedFilePath,
@@ -1189,6 +866,12 @@ export function SessionChatContent({
       }
       setIsTogglingPermissionMode(true);
       void updatePermissionMode(mode)
+        .then(() => {
+          const approvalIds = collectAutoApprovableIds(chat.messages, mode);
+          for (const id of approvalIds) {
+            void chat.addToolApprovalResponse({ id, approved: true });
+          }
+        })
         .catch((toggleError) => {
           console.error("Failed to update permission mode:", toggleError);
         })
@@ -1196,7 +879,7 @@ export function SessionChatContent({
           setIsTogglingPermissionMode(false);
         });
     },
-    [isTogglingPermissionMode, permissionMode, updatePermissionMode],
+    [chat, isTogglingPermissionMode, permissionMode, updatePermissionMode],
   );
   const { isAutoCommitting, markAutoCommitStarted } = useAutoCommitStatus(
     autoCommitEnabled,
@@ -1399,6 +1082,74 @@ export function SessionChatContent({
   );
   const hasSeenAssistantRenderableContentRef = useRef(false);
   const [hasPendingResponse, setHasPendingResponse] = useState(false);
+
+  const [isCompacting, setIsCompacting] = useState(false);
+
+  const handleCompactConversation = useCallback(
+    async (focus?: string): Promise<boolean> => {
+      if (isCompacting) return false;
+      if (isChatInFlight || hasPendingResponse) {
+        toast.info("Available when this turn ends");
+        return false;
+      }
+      setIsCompacting(true);
+      try {
+        const res = await fetch(
+          `/api/sessions/${session.id}/chats/${chatInfo.id}/compact`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(focus ? { focus } : {}),
+          },
+        );
+        const data = (await res.json().catch(() => null)) as
+          | {
+              compacted: true;
+              preTokens: number;
+              postTokens: number;
+              noticeMessage: WebAgentUIMessage;
+            }
+          | { compacted: false; reason?: string }
+          | { error?: string }
+          | null;
+
+        if (!res.ok) {
+          toast.error(
+            (data && "error" in data && data.error) ||
+              "Could not compact conversation",
+          );
+          return false;
+        }
+        if (data && "compacted" in data && data.compacted) {
+          setMessages((prev) => [...prev, data.noticeMessage]);
+          toast.success(
+            `Compacted context: ${formatTokens(data.preTokens)} → ${formatTokens(data.postTokens)} tokens`,
+          );
+          void refreshChats().catch(() => undefined);
+          return true;
+        }
+        toast.info(
+          (data && "reason" in data && data.reason) ||
+            "Nothing to compact yet.",
+        );
+        return true;
+      } catch {
+        toast.error("Could not compact conversation");
+        return false;
+      } finally {
+        setIsCompacting(false);
+      }
+    },
+    [
+      chatInfo.id,
+      hasPendingResponse,
+      isChatInFlight,
+      isCompacting,
+      refreshChats,
+      session.id,
+      setMessages,
+    ],
+  );
   /** Captures Date.now() when the user sends a message, so the streaming
    *  summary bar can show an accurate live timer from the actual send time. */
   const lastSendTimestampRef = useRef<number | null>(null);
@@ -1767,11 +1518,6 @@ export function SessionChatContent({
     [chatInfo.reasoningEffort, updateChatReasoningEffort],
   );
 
-  const selectedModelOption = useMemo(
-    () => modelOptions.find((option) => option.id === chatInfo.modelId),
-    [modelOptions, chatInfo.modelId],
-  );
-
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [sandboxCreateError, setSandboxCreateError] =
     useState<SandboxCreateErrorDetails | null>(null);
@@ -1784,15 +1530,20 @@ export function SessionChatContent({
   const [resendingMessageId, setResendingMessageId] = useState<string | null>(
     null,
   );
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
   const hasMessageActionInFlight =
-    deletingMessageId !== null || resendingMessageId !== null || isChatInFlight;
+    deletingMessageId !== null ||
+    resendingMessageId !== null ||
+    editingMessageId !== null ||
+    isChatInFlight;
 
   shouldSkipServerSnapshotOverwriteRef.current =
     hasActiveSendMessages() ||
     status === "submitted" ||
     deletingMessageId !== null ||
-    resendingMessageId !== null;
+    resendingMessageId !== null ||
+    editingMessageId !== null;
 
   const sendMessageWithPendingState = useCallback(
     async (message: Parameters<typeof sendMessage>[0]) => {
@@ -1927,6 +1678,11 @@ export function SessionChatContent({
 
     if (tryHandleUntilCommand(messageText)) {
       return true;
+    }
+
+    const compactParsed = parseCompactCommand(messageText);
+    if (compactParsed) {
+      return handleCompactConversation(compactParsed.focus);
     }
 
     const raceParsed = parseRaceCommand(messageText);
@@ -2336,13 +2092,6 @@ export function SessionChatContent({
         return;
       }
 
-      const confirmed = window.confirm(
-        "Delete this message and all following messages?",
-      );
-      if (!confirmed) {
-        return;
-      }
-
       setDeleteMessageError(null);
       setDeletingMessageId(messageId);
 
@@ -2435,13 +2184,6 @@ export function SessionChatContent({
         return;
       }
 
-      const confirmed = window.confirm(
-        "Resend this message? This will delete this message and everything after it.",
-      );
-      if (!confirmed) {
-        return;
-      }
-
       setDeleteMessageError(null);
       setResendingMessageId(messageId);
 
@@ -2488,6 +2230,85 @@ export function SessionChatContent({
       chatInfo.id,
       setMessages,
       sendMessageWithPendingState,
+      refreshChats,
+    ],
+  );
+
+  const handleEditUserMessage = useCallback(
+    async (messageId: string) => {
+      if (hasMessageActionInFlight) {
+        return;
+      }
+      const targetMessageIndex = messages.findIndex(
+        (message) => message.id === messageId,
+      );
+      const targetMessage = messages[targetMessageIndex];
+      if (!targetMessage || targetMessage.role !== "user") {
+        return;
+      }
+      const editText = targetMessage.parts
+        .filter(
+          (part): part is Extract<WebAgentUIMessagePart, { type: "text" }> =>
+            part.type === "text",
+        )
+        .map((part) => part.text)
+        .join("");
+      const editFiles = targetMessage.parts
+        .filter((part): part is FileUIPart => part.type === "file")
+        .map((part) => ({
+          type: "file" as const,
+          mediaType: part.mediaType,
+          url: part.url,
+          ...(part.filename ? { filename: part.filename } : {}),
+        }));
+      const editSnippets = targetMessage.parts
+        .filter(
+          (part): part is WebAgentSnippetDataPart =>
+            part.type === "data-snippet",
+        )
+        .map((part) => ({
+          content: part.data.content,
+          filename: part.data.filename,
+        }));
+
+      setDeleteMessageError(null);
+      setEditingMessageId(messageId);
+      try {
+        const response = await fetch(
+          `/api/sessions/${session.id}/chats/${chatInfo.id}/messages/${messageId}`,
+          { method: "DELETE" },
+        );
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          success?: boolean;
+        };
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error ?? "Failed to rewind message for edit");
+        }
+        setMessages(messages.slice(0, targetMessageIndex));
+        composerRef.current?.restoreDraft({
+          text: editText,
+          ...(editSnippets.length > 0 ? { snippets: editSnippets } : {}),
+          ...(editFiles.length > 0 ? { files: editFiles } : {}),
+        });
+        await refreshChats();
+      } catch (err) {
+        console.error("Failed to edit user message:", err);
+        setDeleteMessageError(
+          err instanceof Error
+            ? err.message
+            : "Failed to rewind message for edit",
+        );
+      } finally {
+        setEditingMessageId(null);
+      }
+    },
+    [
+      hasMessageActionInFlight,
+      messages,
+      session.id,
+      chatInfo.id,
+      setMessages,
       refreshChats,
     ],
   );
@@ -2897,19 +2718,6 @@ export function SessionChatContent({
 
   // Note: SWR handles automatic fetching when sandbox becomes available
   // and caching/deduplication of requests
-
-  const tokenUsage = useMemo(
-    () => getLatestContextUsage(renderMessages),
-    [renderMessages],
-  );
-  const conversationUsage = useMemo(
-    () => getConversationUsage(renderMessages),
-    [renderMessages],
-  );
-  const conversationCost = useMemo(
-    () => getConversationCost(renderMessages, selectedModelOption?.cost),
-    [renderMessages, selectedModelOption?.cost],
-  );
 
   // Detect pending AskUserQuestion tool calls
   const { hasPendingQuestion, pendingQuestionPart, questionToolCallId } =
@@ -3326,6 +3134,41 @@ export function SessionChatContent({
     setHasActionNeeded(showCommitAction);
   }, [showCommitAction, setHasActionNeeded]);
 
+  // Sync active model icon + markdown exporter for the Sable 1:1 chat header
+  useEffect(() => {
+    setHeaderModelId(chatInfo.modelId ?? null);
+    return () => setHeaderModelId(null);
+  }, [chatInfo.modelId, setHeaderModelId]);
+
+  useEffect(() => {
+    exportMarkdownRef.current = () => ({
+      title: session.title,
+      markdown: chatMarkdown(
+        {
+          title: session.title,
+          modelId: chatInfo.modelId,
+          repoName: session.repoName,
+          repoOwner: session.repoOwner,
+          branch: session.branch,
+          createdAt: session.createdAt,
+        },
+        renderMessages,
+      ),
+    });
+    return () => {
+      exportMarkdownRef.current = null;
+    };
+  }, [
+    chatInfo.modelId,
+    exportMarkdownRef,
+    renderMessages,
+    session.branch,
+    session.createdAt,
+    session.repoName,
+    session.repoOwner,
+    session.title,
+  ]);
+
   // Sync the file change count for the badge on the toggle button
   const totalChangesCount = diff?.files?.length ?? 0;
   useEffect(() => {
@@ -3490,39 +3333,54 @@ export function SessionChatContent({
       onToggleWorkspaceExpand={() => setIsWorkspaceExpanded((prev) => !prev)}
       modelId={chatInfo.modelId}
       modelOptions={modelOptions}
+      contextLimit={contextLimit}
       isParentStreaming={effectiveStatus === "streaming"}
       teamRoleModels={teamRoleModels}
       onUpdateRoleModel={updateTeamRoleModel}
       isFreeTierLocked={userPlan?.modelAccess === "starter-only"}
       freePlanModelId={freePlanModelId}
       freeTierAllowedModelIds={freeTierAllowedModelIds}
-      onSelectSubagent={(subagentId) => openSubagentTab(subagentId)}
+      onSelectSubagent={(subagentId, title, subagentType) =>
+        openSubagentTab(subagentId, title, subagentType)
+      }
       onStopRun={handleStopStream}
+      onCompactConversation={() => void handleCompactConversation()}
+      isCompacting={isCompacting}
     />
   ) : null;
 
   return (
     <>
-      {/* Agent Team Hub portaled into SessionHeader actions slot */}
+      {/* Context Usage + Agent Team Hub portaled into SessionHeader actions slot */}
       {headerActionsNode &&
         createPortal(
-          <TeamStatusButton
-            messages={messages}
-            isParentStreaming={effectiveStatus === "streaming"}
-            onStopRun={handleStopStream}
-            isDesktopTeamPaneOpen={teamPaneOpen}
-            onToggleDesktopTeamPane={() => setTeamPaneOpen((prev) => !prev)}
-            defaultModelId={chatInfo.modelId}
-            teamRoleModels={teamRoleModels}
-            onUpdateRoleModel={updateTeamRoleModel}
-            modelOptions={modelOptions}
-            isFreeTierLocked={userPlan?.modelAccess === "starter-only"}
-            freePlanModelId={freePlanModelId}
-            freeTierAllowedModelIds={freeTierAllowedModelIds}
-            onSelectSubagent={(subagentId, title, subagentType) =>
-              openSubagentTab(subagentId, title, subagentType)
-            }
-          />,
+          <>
+            <ContextUsageHeaderButton
+              messages={renderMessages}
+              modelId={chatInfo.modelId ?? ""}
+              modelOptions={modelOptions}
+              contextLimit={contextLimit}
+              onOpenContextPanel={() => {
+                setActiveWorkspaceTab("context");
+                setGitPanelOpen(true);
+              }}
+            />
+            <TeamStatusButton
+              messages={renderMessages}
+              isParentStreaming={effectiveStatus === "streaming"}
+              isAgentsPanelOpen={
+                gitPanelOpen && activeWorkspaceTab === "agents"
+              }
+              onToggleAgentsPanel={() => {
+                if (gitPanelOpen && activeWorkspaceTab === "agents") {
+                  setGitPanelOpen(false);
+                } else {
+                  setActiveWorkspaceTab("agents");
+                  setGitPanelOpen(true);
+                }
+              }}
+            />
+          </>,
           headerActionsNode,
         )}
 
@@ -3647,6 +3505,8 @@ export function SessionChatContent({
                           forkingAssistantMessageId={forkingAssistantMessageId}
                           onCopyUserMessage={handleCopyUserMessage}
                           copiedUserMessageId={copiedUserMessageId}
+                          onEditUserMessage={handleEditUserMessage}
+                          editingMessageId={editingMessageId}
                           onResendUserMessage={handleResendUserMessage}
                           resendingMessageId={resendingMessageId}
                           onDeleteMessage={handleDeleteUserMessage}
@@ -3842,48 +3702,12 @@ export function SessionChatContent({
                         />
                       </>
                     }
-                    contextUsageSlot={
-                      <ContextUsageIndicator
-                        inputTokens={tokenUsage.inputTokens}
-                        conversationInputTokens={conversationUsage.inputTokens}
-                        conversationCachedInputTokens={
-                          conversationUsage.cachedInputTokens
-                        }
-                        conversationOutputTokens={
-                          conversationUsage.outputTokens
-                        }
-                        conversationCost={conversationCost}
-                        contextLimit={contextLimit ?? DEFAULT_CONTEXT_LIMIT}
-                      />
-                    }
                   />
                 </div>
               </div>
             </div>
           </div>
         </div>
-
-        {teamPaneOpen && (
-          <div className="hidden h-full w-[360px] shrink-0 overflow-hidden border-l border-border/80 bg-background lg:flex xl:w-[380px]">
-            <TeamWorkspace
-              className="w-full"
-              messages={messages}
-              isParentStreaming={effectiveStatus === "streaming"}
-              defaultModelId={chatInfo.modelId}
-              teamRoleModels={teamRoleModels}
-              onUpdateRoleModel={updateTeamRoleModel}
-              modelOptions={modelOptions}
-              isFreeTierLocked={userPlan?.modelAccess === "starter-only"}
-              freePlanModelId={freePlanModelId}
-              freeTierAllowedModelIds={freeTierAllowedModelIds}
-              onSelectSubagent={(subagentId, title, subagentType) =>
-                openSubagentTab(subagentId, title, subagentType)
-              }
-              onStopRun={handleStopStream}
-              onClose={() => setTeamPaneOpen(false)}
-            />
-          </div>
-        )}
       </div>
 
       {/* Merge PR Dialog */}

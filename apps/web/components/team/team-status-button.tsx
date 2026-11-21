@@ -1,23 +1,15 @@
 "use client";
 
 import { Loader2, Users } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import {
   deriveAgentHubRoster,
   isLiveStatus,
 } from "@/lib/agent-hub/derive-roster";
 import type { ModelOption } from "@/lib/model-options";
 import { cn } from "@/lib/utils";
-import { TeamWorkspace } from "./team-workspace";
 
 export interface TeamStatusButtonProps {
   messages: WebAgentUIMessage[];
@@ -29,33 +21,32 @@ export interface TeamStatusButtonProps {
   isFreeTierLocked?: boolean;
   freePlanModelId?: string | null;
   freeTierAllowedModelIds?: string[];
-  onSelectSubagent: (
+  onSelectSubagent?: (
     subagentId: string,
     title: string,
     subagentType?: string,
   ) => void;
   onStopRun?: () => void;
+  isAgentsPanelOpen?: boolean;
+  onToggleAgentsPanel?: () => void;
+  /** @deprecated use isAgentsPanelOpen */
   isDesktopTeamPaneOpen?: boolean;
+  /** @deprecated use onToggleAgentsPanel */
   onToggleDesktopTeamPane?: () => void;
 }
 
+/**
+ * Header button that opens/closes the unified Work Panel Agents tab across
+ * both desktop and mobile (eliminating the duplicate standalone Team drawer & Sheet).
+ */
 export function TeamStatusButton({
   messages,
   isParentStreaming,
-  defaultModelId,
-  teamRoleModels,
-  onUpdateRoleModel,
-  modelOptions,
-  isFreeTierLocked,
-  freePlanModelId,
-  freeTierAllowedModelIds,
-  onSelectSubagent,
-  onStopRun,
+  isAgentsPanelOpen,
+  onToggleAgentsPanel,
   isDesktopTeamPaneOpen = false,
   onToggleDesktopTeamPane,
 }: TeamStatusButtonProps) {
-  const [mobileOpen, setMobileOpen] = useState(false);
-
   const roster = useMemo(
     () => deriveAgentHubRoster(messages, { isParentStreaming }),
     [messages, isParentStreaming],
@@ -65,95 +56,50 @@ export function TeamStatusButton({
     [roster],
   );
 
+  const isOpen = isAgentsPanelOpen ?? isDesktopTeamPaneOpen;
+  const toggleHandler = onToggleAgentsPanel ?? onToggleDesktopTeamPane;
+
   useEffect(() => {
     const onCustomToggle = () => {
-      if (
-        typeof window !== "undefined" &&
-        window.matchMedia("(min-width: 1024px)").matches &&
-        onToggleDesktopTeamPane
-      ) {
-        onToggleDesktopTeamPane();
-      } else {
-        setMobileOpen((prev) => !prev);
-      }
+      toggleHandler?.();
     };
     window.addEventListener("entry:toggle-agent-hub", onCustomToggle);
     return () => {
       window.removeEventListener("entry:toggle-agent-hub", onCustomToggle);
     };
-  }, [onToggleDesktopTeamPane]);
-
-  const handleClick = () => {
-    if (
-      typeof window !== "undefined" &&
-      window.matchMedia("(min-width: 1024px)").matches &&
-      onToggleDesktopTeamPane
-    ) {
-      onToggleDesktopTeamPane();
-      return;
-    }
-    setMobileOpen(true);
-  };
+  }, [toggleHandler]);
 
   return (
-    <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={handleClick}
-        aria-pressed={isDesktopTeamPaneOpen || mobileOpen}
-        className={cn(
-          "h-7 gap-1.5 rounded-md border border-border/70 px-2 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground",
-          (isDesktopTeamPaneOpen || mobileOpen) &&
-            "border-border bg-muted text-foreground",
-        )}
-      >
-        {runningCount > 0 ? (
-          <Loader2 className="size-3.5 animate-spin" strokeWidth={1.5} />
-        ) : (
-          <Users className="size-3.5" strokeWidth={1.5} />
-        )}
-        <span className="font-mono tabular-nums">
-          {runningCount > 0
-            ? `${runningCount} running`
-            : roster.length > 0
-              ? `Team · ${roster.length}`
-              : "Team"}
-        </span>
-      </Button>
-
-      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-        <SheetContent
-          side="right"
-          showCloseButton={false}
-          className="flex w-full max-w-sm flex-col p-0 sm:max-w-md"
-        >
-          <SheetHeader className="sr-only">
-            <SheetTitle>Team workspace</SheetTitle>
-            <SheetDescription>
-              Inspect running subagents, team board, and per-role models.
-            </SheetDescription>
-          </SheetHeader>
-          <TeamWorkspace
-            messages={messages}
-            isParentStreaming={isParentStreaming}
-            defaultModelId={defaultModelId}
-            teamRoleModels={teamRoleModels}
-            onUpdateRoleModel={onUpdateRoleModel}
-            modelOptions={modelOptions}
-            isFreeTierLocked={isFreeTierLocked}
-            freePlanModelId={freePlanModelId}
-            freeTierAllowedModelIds={freeTierAllowedModelIds}
-            onSelectSubagent={(subagentId, title, subagentType) => {
-              setMobileOpen(false);
-              onSelectSubagent(subagentId, title, subagentType);
-            }}
-            onStopRun={onStopRun}
-            onClose={() => setMobileOpen(false)}
-          />
-        </SheetContent>
-      </Sheet>
-    </>
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      onClick={() => toggleHandler?.()}
+      aria-pressed={isOpen}
+      aria-label={
+        runningCount > 0
+          ? `Agents (${runningCount} running)`
+          : roster.length > 0
+            ? `Agents (${roster.length})`
+            : "Open Agents panel"
+      }
+      className={cn(
+        "h-7 gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:text-foreground cursor-pointer",
+        isOpen && "bg-muted text-foreground",
+      )}
+    >
+      {runningCount > 0 ? (
+        <Loader2 className="size-3.5 animate-spin" strokeWidth={1.5} />
+      ) : (
+        <Users className="size-3.5" strokeWidth={1.5} />
+      )}
+      <span className="font-mono tabular-nums">
+        {runningCount > 0
+          ? `${runningCount} running`
+          : roster.length > 0
+            ? `Agents · ${roster.length}`
+            : "Agents"}
+      </span>
+    </Button>
   );
 }

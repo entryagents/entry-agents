@@ -2538,38 +2538,59 @@ export async function runAgentWorkflow(options: Options) {
   const checkpointPromise = loadCompactionCheckpointStep(options.chatId);
   const modelMessagesPromise: Promise<ModelMessage[]> = (async () => {
     const checkpoint = await checkpointPromise;
-    let uiMessagesForConversion = options.messages;
+    const effectiveMessages = options.messages.filter(
+      (m) => !m.metadata?.isCompactionNotice,
+    );
+    let uiMessagesForConversion = effectiveMessages;
     let checkpointPrefix: ModelMessage | undefined;
+    if (checkpoint) {
+      const idIdx = checkpoint.compactedUpToMessageId
+        ? effectiveMessages.findIndex(
+            (m) => m.id === checkpoint.compactedUpToMessageId,
+          )
+        : -1;
+      const isStaleAfterRewind =
+        Boolean(checkpoint.compactedUpToMessageId) && idIdx < 0;
 
-    if (
-      checkpoint &&
-      options.messages.length > checkpoint.compactedUpToMessageCount + 4
-    ) {
-      let baseIdx = checkpoint.compactedUpToMessageCount;
-      if (checkpoint.compactedUpToMessageId) {
-        const idIdx = options.messages.findIndex(
-          (m) => m.id === checkpoint.compactedUpToMessageId,
-        );
+      if (!isStaleAfterRewind && checkpoint.exactBoundary && idIdx >= 0) {
+        const sliceStart = idIdx + 1;
+        if (sliceStart < effectiveMessages.length) {
+          uiMessagesForConversion = effectiveMessages.slice(sliceStart);
+          checkpointPrefix = {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
+              },
+            ],
+          };
+        }
+      } else if (
+        !isStaleAfterRewind &&
+        !checkpoint.exactBoundary &&
+        effectiveMessages.length > checkpoint.compactedUpToMessageCount + 4
+      ) {
+        let baseIdx = checkpoint.compactedUpToMessageCount;
         if (idIdx >= 0) {
           baseIdx = idIdx + 1;
         }
-      }
-      const maxStart = Math.max(0, options.messages.length - 4);
-      const sliceStart = Math.min(Math.max(0, baseIdx - 2), maxStart);
-      if (sliceStart > 0) {
-        uiMessagesForConversion = options.messages.slice(sliceStart);
-        checkpointPrefix = {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
-            },
-          ],
-        };
+        const maxStart = Math.max(0, effectiveMessages.length - 4);
+        const sliceStart = Math.min(Math.max(0, baseIdx - 2), maxStart);
+        if (sliceStart > 0) {
+          uiMessagesForConversion = effectiveMessages.slice(sliceStart);
+          checkpointPrefix = {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
+              },
+            ],
+          };
+        }
       }
     }
-
     const pendingImageAttachments = extractPendingImageAttachments(
       uiMessagesForConversion,
     );
