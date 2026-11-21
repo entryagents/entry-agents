@@ -1,5 +1,5 @@
 import { estimateMessagesTokens, sharedProvider } from "@entry-agents/agent";
-import { formatTokens } from "@entry-agents/shared";
+import { formatTokens } from "@entry-agents/shared/lib/tool-state";
 import {
   convertToModelMessages,
   generateText,
