@@ -283,6 +283,11 @@ export function createPluginRunner(
   const runPermissionHooks = (
     input: PluginPermissionInput,
   ): PluginPermissionResult => {
+    // Full-access mode explicitly skips every approval gate unconditionally.
+    if (input.permissionMode === "fullAccess") {
+      return { effect: "allow" };
+    }
+
     let effect = input.currentEffect;
     let reason: string | undefined;
 
@@ -292,8 +297,16 @@ export function createPluginRunner(
         rules.requireApprovalTools &&
         rules.requireApprovalTools.includes(input.action)
       ) {
-        effect = "ask";
-        reason = `Approval required by plugin "${plugin.name}"`;
+        // autoAccept exists specifically to lift outbound web_fetch approval gates.
+        if (
+          !(
+            input.permissionMode === "autoAccept" &&
+            input.action === "web_fetch"
+          )
+        ) {
+          effect = "ask";
+          reason = `Approval required by plugin "${plugin.name}"`;
+        }
       }
 
       const runtimeHooks = runtimeHooksBySlug?.get(plugin.slug);
@@ -523,21 +536,43 @@ export function applyPluginHooksToTools<T extends ToolSet>(
     const pluginRequiresApproval = runner.plugins.some((p) =>
       p.manifest.rules.requireApprovalTools?.includes(toolName),
     );
+    const hasPermissionHook = runner.plugins.some((p) =>
+      p.manifest.hooks.includes("permission.evaluate"),
+    );
+    const shouldWrapApproval =
+      pluginRequiresApproval ||
+      hasPermissionHook ||
+      typeof originalNeedsApproval === "function" ||
+      originalNeedsApproval === true;
 
-    const wrappedNeedsApproval = pluginRequiresApproval
-      ? true
-      : typeof originalNeedsApproval === "function"
-        ? async (input: unknown, callCtx: unknown) => {
-            const base = await originalNeedsApproval(input, callCtx);
-            const baseEffect: "allow" | "deny" | "ask" = base ? "ask" : "allow";
-            const evaluated = runner.runPermissionHooks({
-              action: toolName,
-              currentEffect: baseEffect,
-              permissionMode: "ask",
-            });
-            return evaluated.effect === "ask";
+    const wrappedNeedsApproval = shouldWrapApproval
+      ? async (input: unknown, callCtx: unknown) => {
+          const mode =
+            (
+              callCtx as
+                | {
+                    experimental_context?: {
+                      permissionMode?: "ask" | "autoAccept" | "fullAccess";
+                    };
+                  }
+                | undefined
+            )?.experimental_context?.permissionMode ?? "ask";
+          if (mode === "fullAccess") {
+            return false;
           }
-        : originalNeedsApproval;
+          const base =
+            typeof originalNeedsApproval === "function"
+              ? Boolean(await originalNeedsApproval(input, callCtx))
+              : Boolean(originalNeedsApproval);
+          const baseEffect: "allow" | "deny" | "ask" = base ? "ask" : "allow";
+          const evaluated = runner.runPermissionHooks({
+            action: toolName,
+            currentEffect: baseEffect,
+            permissionMode: mode,
+          });
+          return evaluated.effect === "ask";
+        }
+      : originalNeedsApproval;
 
     wrapped[toolName] = {
       ...t,

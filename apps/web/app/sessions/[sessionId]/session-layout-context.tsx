@@ -11,7 +11,9 @@ type CreateChatResult = {
 
 type SessionLayoutContextValue = {
   session: {
+    id: string;
     title: string;
+    createdAt?: Date | string | null;
     repoName: string | null;
     repoOwner: string | null;
     cloneUrl: string | null;
@@ -28,6 +30,7 @@ type SessionLayoutContextValue = {
   switchChat: (chatId: string) => void;
   deleteChat: (chatId: string) => Promise<void>;
   renameChat: (chatId: string, title: string) => Promise<unknown>;
+  renameSessionTitle: (title: string) => Promise<void>;
 };
 
 export const SessionLayoutContext = createContext<

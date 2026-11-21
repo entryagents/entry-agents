@@ -37,6 +37,7 @@ export interface AgentHubEntry {
   status: AgentHubStatus;
   modelId: string | null;
   startedAt: number | null;
+  completedAt: number | null;
   toolCallCount: number | null;
   inputTokens: number | null;
   outputTokens: number | null;
@@ -181,6 +182,7 @@ export function deriveAgentHubRoster(
         status: resolvedStatus,
         modelId: typeof output?.modelId === "string" ? output.modelId : null,
         startedAt: numberOrNull(output?.startedAt),
+        completedAt: numberOrNull(output?.completedAt),
         toolCallCount: numberOrNull(output?.toolCallCount),
         inputTokens: numberOrNull(usage?.inputTokens),
         outputTokens: numberOrNull(usage?.outputTokens),

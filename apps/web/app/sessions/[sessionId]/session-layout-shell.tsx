@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
+import { useSWRConfig } from "swr";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -302,6 +303,7 @@ export function SessionLayoutShell({
   children,
 }: SessionLayoutShellProps) {
   const router = useRouter();
+  const { mutate } = useSWRConfig();
   const params = useParams<{ chatId?: string }>();
   const routeChatId = params.chatId ?? "";
   const [optimisticActiveChatId, setOptimisticActiveChatId] = useState<
@@ -311,6 +313,73 @@ export function SessionLayoutShell({
   const prefetchedChatHrefsRef = useRef(new Set<string>());
 
   const sessionId = initialSession.id;
+  const [liveTitle, setLiveTitle] = useState(initialSession.title);
+
+  useEffect(() => {
+    setLiveTitle(initialSession.title);
+  }, [initialSession.id, initialSession.title]);
+
+  useEffect(() => {
+    const onTitleUpdated = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ sessionId?: string; title?: string }>
+      ).detail;
+      if (detail?.sessionId === sessionId && typeof detail.title === "string") {
+        setLiveTitle(detail.title);
+      }
+    };
+    window.addEventListener("entry:session-title-updated", onTitleUpdated);
+    return () => {
+      window.removeEventListener("entry:session-title-updated", onTitleUpdated);
+    };
+  }, [sessionId]);
+
+  const renameSessionTitle = useCallback(
+    async (nextTitle: string) => {
+      const trimmed = nextTitle.trim();
+      if (!trimmed || trimmed === liveTitle) return;
+      const prevTitle = liveTitle;
+      setLiveTitle(trimmed);
+      try {
+        const res = await fetch(`/api/sessions/${sessionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: trimmed }),
+        });
+        const data = (await res.json()) as {
+          session?: Session;
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(data.error ?? "Failed to update session title");
+        }
+        const confirmed = data.session?.title ?? trimmed;
+        setLiveTitle(confirmed);
+        window.dispatchEvent(
+          new CustomEvent("entry:session-title-updated", {
+            detail: { sessionId, title: confirmed },
+          }),
+        );
+        await mutate<{ sessions: Session[] }>(
+          "/api/sessions",
+          (current) =>
+            current
+              ? {
+                  ...current,
+                  sessions: current.sessions.map((s) =>
+                    s.id === sessionId ? { ...s, title: confirmed } : s,
+                  ),
+                }
+              : current,
+          { revalidate: false },
+        );
+      } catch (err) {
+        setLiveTitle(prevTitle);
+        throw err;
+      }
+    },
+    [liveTitle, mutate, sessionId],
+  );
 
   const {
     chats,
@@ -370,7 +439,9 @@ export function SessionLayoutShell({
   const layoutContext = useMemo(
     () => ({
       session: {
-        title: initialSession.title,
+        id: initialSession.id,
+        title: liveTitle,
+        createdAt: initialSession.createdAt,
         repoName: initialSession.repoName,
         repoOwner: initialSession.repoOwner,
         cloneUrl: initialSession.cloneUrl,
@@ -387,15 +458,18 @@ export function SessionLayoutShell({
       switchChat,
       deleteChat,
       renameChat,
+      renameSessionTitle,
     }),
     [
       initialSession,
+      liveTitle,
       chats,
       chatsLoading,
       createChat,
       switchChat,
       deleteChat,
       renameChat,
+      renameSessionTitle,
     ],
   );
 

@@ -109,6 +109,19 @@ export async function PATCH(
     );
   }
 
+  if (
+    body.permissionModeOverride !== undefined &&
+    body.permissionModeOverride !== null &&
+    body.permissionModeOverride !== "ask" &&
+    body.permissionModeOverride !== "autoAccept" &&
+    body.permissionModeOverride !== "fullAccess"
+  ) {
+    return Response.json(
+      { error: "Invalid permissionModeOverride value" },
+      { status: 400 },
+    );
+  }
+
   if (body.projectId !== undefined && body.projectId !== null) {
     if (typeof body.projectId !== "string" || !body.projectId.trim()) {
       return Response.json({ error: "Invalid folder ID" }, { status: 400 });

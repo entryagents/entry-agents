@@ -31,7 +31,10 @@ import { FileSuggestionsDropdown } from "@/components/file-suggestions-dropdown"
 import { ImageAttachmentsPreview } from "@/components/image-attachments-preview";
 import { useInlineQuestion } from "@/components/inline-question-input";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
-import { PermissionModeSelector } from "@/components/permission-mode-selector";
+import {
+  nextPermissionMode,
+  PermissionModeSelector,
+} from "@/components/permission-mode-selector";
 import { ReasoningEffortSelector } from "@/components/reasoning-effort-selector";
 import { SelectedSkillsPreview } from "@/components/selected-skills-preview";
 import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
@@ -48,10 +51,11 @@ import { useImageAttachments } from "@/hooks/use-image-attachments";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import { useTextAttachments } from "@/hooks/use-text-attachments";
 import { mergeRestoredDraftText } from "@/components/chat/draft-restore";
+import { parseCompactCommand } from "@/lib/compact/parse";
 import {
   ACCEPT_IMAGE_TYPES,
-  isValidImageType,
   type ImageAttachment,
+  isValidImageType,
 } from "@/lib/image-utils";
 import type { ModelOption } from "@/lib/model-options";
 import {
@@ -374,7 +378,7 @@ export const ChatComposer = memo(
     const handleSlashCommandSelect = useCallback(
       (skillName: string, slashStart: number, cursorPos: number) => {
         const matched = skills?.find((s) => s.name === skillName);
-        if (matched) {
+        if (matched && matched.source !== "command") {
           setSelectedSkills((prev) =>
             prev.some((s) => s.name === matched.name)
               ? prev
@@ -631,6 +635,11 @@ export const ChatComposer = memo(
                 clearSelectedSkills();
 
                 if (isBusy) {
+                  if (parseCompactCommand(rawText)) {
+                    setInput(rawText);
+                    toast.info("Available when this turn ends");
+                    return;
+                  }
                   if (/^\/inbox\s+/i.test(rawText)) {
                     const inboxText = rawText
                       .replace(/^\/inbox\s+/i, "")
@@ -728,6 +737,21 @@ export const ChatComposer = memo(
                     setCursorPosition(e.currentTarget.selectionStart ?? 0);
                   }}
                   onKeyDown={(e) => {
+                    if (
+                      e.key === "Tab" &&
+                      e.shiftKey &&
+                      !e.metaKey &&
+                      !e.ctrlKey &&
+                      !e.altKey
+                    ) {
+                      e.preventDefault();
+                      if (!isTogglingPermissionMode) {
+                        onPermissionModeChange(
+                          nextPermissionMode(permissionMode),
+                        );
+                      }
+                      return;
+                    }
                     if (
                       showInlineQuestion &&
                       e.key === "Enter" &&
