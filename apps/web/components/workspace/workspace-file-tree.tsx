@@ -1,28 +1,47 @@
 "use client";
 
 import {
-  ChevronDown,
+  AtSign,
   ChevronRight,
   ChevronsDownUp,
   Folder,
   FolderOpen,
+  Loader2,
+  RefreshCw,
   Search,
+  TerminalSquare,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  type CSSProperties,
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
+import {
+  highlightSegments,
+  toChangeLetter,
+} from "@/app/sessions/[sessionId]/chats/[chatId]/workspace/sable-rail-helpers";
 import { FileTypeIcon } from "@/components/file-type-icons";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { DiffFile } from "@/lib/diff/compute-diff";
 import { cn } from "@/lib/utils";
 
-type TreeNode = {
+interface TreeNode {
   name: string;
   path: string;
   isDirectory: boolean;
   children: Map<string, TreeNode>;
-};
+}
+
+interface FlatTreeRow {
+  node: TreeNode;
+  depth: number;
+  parentPath: string | null;
+}
 
 function buildFileTree(files: FileSuggestion[]): TreeNode {
   const root: TreeNode = {
@@ -33,7 +52,6 @@ function buildFileTree(files: FileSuggestion[]): TreeNode {
   };
 
   for (const item of files) {
-    // Trim trailing slash for directory values
     const cleanPath = item.value.endsWith("/")
       ? item.value.slice(0, -1)
       : item.value;
@@ -68,6 +86,14 @@ function buildFileTree(files: FileSuggestion[]): TreeNode {
   return root;
 }
 
+function sortChildren(node: TreeNode): TreeNode[] {
+  return Array.from(node.children.values()).sort((a, b) => {
+    if (a.isDirectory && !b.isDirectory) return -1;
+    if (!a.isDirectory && b.isDirectory) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 function getAncestorDirPaths(filePath: string): string[] {
   const parts = filePath.split("/").filter(Boolean);
   const dirs: string[] = [];
@@ -77,46 +103,179 @@ function getAncestorDirPaths(filePath: string): string[] {
   return dirs;
 }
 
+function renderHighlighted(name: string, query: string) {
+  const segs = highlightSegments(name, query);
+  if (segs.length === 1 && !segs[0]?.match) return name;
+  return segs.map((seg, idx) =>
+    seg.match ? (
+      <mark key={idx} className="fl-mark">
+        {seg.text}
+      </mark>
+    ) : (
+      <span key={idx}>{seg.text}</span>
+    ),
+  );
+}
+
+const TreeRow = memo(function TreeRow({
+  row,
+  isOpen,
+  isActive,
+  isFocused,
+  statusLetter,
+  hasChangedInside,
+  query,
+  onActivate,
+  onFocusPath,
+  onPrefetchFile,
+  onMentionInChat,
+}: {
+  row: FlatTreeRow;
+  isOpen: boolean;
+  isActive: boolean;
+  isFocused: boolean;
+  statusLetter?: string;
+  hasChangedInside: boolean;
+  query: string;
+  onActivate: (node: TreeNode) => void;
+  onFocusPath: (path: string) => void;
+  onPrefetchFile?: (path: string) => void;
+  onMentionInChat?: (mention: string) => void;
+}) {
+  const { node, depth } = row;
+  return (
+    <div
+      role="treeitem"
+      aria-level={depth + 1}
+      aria-expanded={node.isDirectory ? isOpen : undefined}
+      aria-selected={isActive || isFocused}
+      tabIndex={isFocused ? 0 : -1}
+      data-key={node.path}
+      data-dir={node.isDirectory ? "true" : undefined}
+      data-active={isActive ? "true" : undefined}
+      style={{ "--depth": depth } as CSSProperties}
+      className="fl-row rail-row-host"
+      onClick={() => onActivate(node)}
+      onFocus={() => {
+        onFocusPath(node.path);
+        if (!node.isDirectory) onPrefetchFile?.(node.path);
+      }}
+      onMouseEnter={() => {
+        if (!node.isDirectory) onPrefetchFile?.(node.path);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onActivate(node);
+        }
+      }}
+    >
+      <span className="fl-caret" aria-hidden="true">
+        {node.isDirectory ? (
+          <ChevronRight
+            size={11}
+            strokeWidth={2}
+            className={isOpen ? "is-open" : undefined}
+          />
+        ) : null}
+      </span>
+      {node.isDirectory ? (
+        isOpen ? (
+          <FolderOpen size={14} strokeWidth={1.6} className="fl-icon" />
+        ) : (
+          <Folder size={14} strokeWidth={1.6} className="fl-icon" />
+        )
+      ) : (
+        <FileTypeIcon path={node.name} className="fl-icon h-3.5 w-3.5" />
+      )}
+      <span className="fl-name truncate">
+        {renderHighlighted(node.name, query)}
+      </span>
+      <span className="rail-row-deco fl-deco">
+        {statusLetter ? (
+          <span
+            className="st-letter"
+            data-small=""
+            data-status={statusLetter}
+            title={`Changed (${statusLetter})`}
+          >
+            {statusLetter}
+          </span>
+        ) : hasChangedInside ? (
+          <span className="fl-dot" aria-label="Contains changes" />
+        ) : null}
+      </span>
+      {onMentionInChat && (
+        <span className="rail-row-acts">
+          <button
+            type="button"
+            className="rail-btn"
+            tabIndex={-1}
+            aria-label={`Mention ${node.path} in chat`}
+            title="Mention in chat"
+            onClick={(e) => {
+              e.stopPropagation();
+              const clean = node.path.replace(/\/+$/, "");
+              onMentionInChat(`@${clean}${node.isDirectory ? "/" : ""}`);
+            }}
+          >
+            <AtSign size={13} strokeWidth={1.7} aria-hidden="true" />
+          </button>
+        </span>
+      )}
+    </div>
+  );
+});
+
 export function WorkspaceFileTree({
   files,
+  filesLoading = false,
   diffFiles = [],
   activeFilePath,
   onOpenFile,
   onPrefetchFile,
-  onCloseSidebar,
+  onRefresh,
+  onOpenQuickOpen,
+  onMentionInChat,
   className,
 }: {
   files: FileSuggestion[] | null | undefined;
+  filesLoading?: boolean;
   diffFiles?: DiffFile[];
   activeFilePath?: string | null;
   onOpenFile: (filePath: string) => void;
   onPrefetchFile?: (filePath: string) => void;
-  onCloseSidebar?: () => void;
+  onRefresh?: () => void;
+  onOpenQuickOpen?: () => void;
+  onMentionInChat?: (mention: string) => void;
   className?: string;
 }) {
-  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("");
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
     () => new Set(),
   );
+  const [focusPath, setFocusPath] = useState<string | null>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
 
-  // Map of file paths to git status for diff badges
-  const diffStatusMap = useMemo(() => {
-    const map = new Map<string, DiffFile["status"]>();
+  const changes = useMemo(() => {
+    const fileMap = new Map<string, string>();
+    const folderSet = new Set<string>();
     for (const df of diffFiles) {
-      map.set(df.path, df.status);
+      const letter = toChangeLetter(df.status);
+      if (letter) {
+        fileMap.set(df.path, letter);
+      }
+      for (const dir of getAncestorDirPaths(df.path)) {
+        folderSet.add(dir);
+      }
     }
-    return map;
+    return { fileMap, folderSet };
   }, [diffFiles]);
 
-  // Build the hierarchical tree
   const treeRoot = useMemo(() => {
     if (!files || files.length === 0) return null;
     return buildFileTree(files);
-  }, [files]);
-
-  const fileCount = useMemo(() => {
-    if (!files) return 0;
-    return files.filter((f) => !f.isDirectory).length;
   }, [files]);
 
   // Auto-expand active file's ancestor folders
@@ -141,289 +300,284 @@ export function WorkspaceFileTree({
     });
   }, [activeFilePath]);
 
-  const toggleFolder = (dirPath: string) => {
-    setExpandedPaths((prev) => {
-      const next = new Set(prev);
-      if (next.has(dirPath)) {
-        next.delete(dirPath);
-      } else {
-        next.add(dirPath);
+  const q = filter.trim().toLowerCase();
+
+  // Compute matching nodes & ancestor folders to auto-open while filtering
+  const matches = useMemo(() => {
+    if (!q || !treeRoot) return null;
+    const keep = new Set<string>();
+    const through = new Set<string>();
+
+    const visit = (node: TreeNode): boolean => {
+      let any = false;
+      for (const child of node.children.values()) {
+        const self = child.name.toLowerCase().includes(q);
+        const below = child.isDirectory ? visit(child) : false;
+        if (self || below) {
+          keep.add(child.path);
+          if (below) through.add(child.path);
+          any = true;
+        }
       }
+      return any;
+    };
+
+    visit(treeRoot);
+    return { keep, through };
+  }, [q, treeRoot]);
+
+  const isFolderOpen = useCallback(
+    (dirPath: string) =>
+      expandedPaths.has(dirPath) || Boolean(matches?.through.has(dirPath)),
+    [expandedPaths, matches],
+  );
+
+  const rows = useMemo<FlatTreeRow[]>(() => {
+    if (!treeRoot) return [];
+    const out: FlatTreeRow[] = [];
+
+    const walk = (node: TreeNode, depth: number, parentPath: string | null) => {
+      for (const child of sortChildren(node)) {
+        if (matches && !matches.keep.has(child.path)) continue;
+        out.push({ node: child, depth, parentPath });
+        if (child.isDirectory && isFolderOpen(child.path)) {
+          walk(child, depth + 1, child.path);
+        }
+      }
+    };
+
+    walk(treeRoot, 0, null);
+    return out;
+  }, [treeRoot, matches, isFolderOpen]);
+
+  const toggleFolder = useCallback((dirPath: string, open?: boolean) => {
+    setExpandedPaths((prev) => {
+      const wasOpen = prev.has(dirPath);
+      const want = open ?? !wasOpen;
+      if (want === wasOpen) return prev;
+      const next = new Set(prev);
+      if (want) next.add(dirPath);
+      else next.delete(dirPath);
       return next;
     });
-  };
+  }, []);
 
-  // Filtered flat list when searching
-  const searchResults = useMemo(() => {
-    if (!search.trim() || !files) return null;
-    const q = search.toLowerCase();
-    return files
-      .filter((f) => !f.isDirectory && f.value.toLowerCase().includes(q))
-      .slice(0, 100);
-  }, [search, files]);
-
-  // Recursive tree renderer
-  const renderTree = (node: TreeNode, depth: number = 0) => {
-    // Sort directories first, then alphabetically
-    const entries = Array.from(node.children.values()).sort((a, b) => {
-      if (a.isDirectory && !b.isDirectory) return -1;
-      if (!a.isDirectory && b.isDirectory) return 1;
-      return a.name.localeCompare(b.name);
-    });
-
-    return entries.map((child) => {
-      if (child.isDirectory) {
-        const isExpanded = expandedPaths.has(child.path);
-        return (
-          <div key={child.path} className="flex flex-col">
-            <button
-              type="button"
-              onClick={() => toggleFolder(child.path)}
-              style={{ paddingLeft: `${depth * 12 + 8}px` }}
-              className="flex h-7 w-full items-center gap-1.5 pr-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] select-none text-left rounded-md group cursor-pointer"
-            >
-              {isExpanded ? (
-                <ChevronDown
-                  className="h-3.5 w-3.5 shrink-0 opacity-60 group-hover:opacity-100"
-                  strokeWidth={1.5}
-                />
-              ) : (
-                <ChevronRight
-                  className="h-3.5 w-3.5 shrink-0 opacity-60 group-hover:opacity-100"
-                  strokeWidth={1.5}
-                />
-              )}
-              {isExpanded ? (
-                <FolderOpen
-                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-                  strokeWidth={1.5}
-                />
-              ) : (
-                <Folder
-                  className="h-3.5 w-3.5 shrink-0 text-muted-foreground/80"
-                  strokeWidth={1.5}
-                />
-              )}
-              <span className="truncate font-medium">{child.name}</span>
-            </button>
-            {isExpanded && renderTree(child, depth + 1)}
-          </div>
-        );
+  const activateNode = useCallback(
+    (node: TreeNode) => {
+      setFocusPath(node.path);
+      if (node.isDirectory) {
+        toggleFolder(node.path);
+      } else {
+        onOpenFile(node.path);
       }
+    },
+    [onOpenFile, toggleFolder],
+  );
 
-      // File item
-      const isActive = activeFilePath === child.path;
-      const status = diffStatusMap.get(child.path);
+  const focusIndex = useMemo(() => {
+    if (rows.length === 0) return -1;
+    const target = focusPath ?? activeFilePath ?? null;
+    if (!target) return 0;
+    const idx = rows.findIndex((r) => r.node.path === target);
+    return idx >= 0 ? idx : 0;
+  }, [rows, focusPath, activeFilePath]);
 
-      return (
-        <button
-          key={child.path}
-          type="button"
-          onClick={() => onOpenFile(child.path)}
-          onMouseEnter={() => onPrefetchFile?.(child.path)}
-          onFocus={() => onPrefetchFile?.(child.path)}
-          style={{ paddingLeft: `${depth * 12 + 24}px` }}
-          className={cn(
-            "relative flex h-7 w-full items-center justify-between pr-2 text-xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] select-none text-left rounded-md group cursor-pointer",
-            isActive
-              ? "bg-muted text-foreground font-medium"
-              : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-          )}
-        >
-          {isActive && (
-            <span
-              aria-hidden="true"
-              className="absolute left-0.5 top-1.5 bottom-1.5 w-0.5 rounded-full bg-foreground"
-            />
-          )}
-          <div className="flex items-center gap-1.5 min-w-0">
-            <FileTypeIcon path={child.name} className="h-3.5 w-3.5 shrink-0" />
-            <span
-              className={cn(
-                "truncate font-mono",
-                status === "added" &&
-                  !isActive &&
-                  "text-emerald-600 dark:text-emerald-400",
-                status === "modified" &&
-                  !isActive &&
-                  "text-amber-600 dark:text-amber-400",
-                status === "deleted" &&
-                  !isActive &&
-                  "text-rose-600 line-through dark:text-rose-400",
-              )}
-            >
-              {child.name}
-            </span>
-          </div>
+  const focusRowAt = useCallback(
+    (idx: number) => {
+      const row = rows[Math.max(0, Math.min(rows.length - 1, idx))];
+      if (!row) return;
+      setFocusPath(row.node.path);
+      requestAnimationFrame(() => {
+        treeRef.current
+          ?.querySelector<HTMLElement>(
+            `[data-key="${CSS.escape(row.node.path)}"]`,
+          )
+          ?.focus({ preventScroll: true });
+      });
+    },
+    [rows],
+  );
 
-          {/* Git Change Indicator */}
-          {status && (
-            <span
-              className={cn(
-                "ml-1.5 shrink-0 font-mono text-[11px] font-medium tabular-nums",
-                status === "added" && "text-emerald-600 dark:text-emerald-400",
-                status === "modified" && "text-amber-600 dark:text-amber-400",
-                status === "deleted" && "text-rose-600 dark:text-rose-400",
-              )}
-            >
-              {status === "added" ? "A" : status === "modified" ? "M" : "D"}
-            </span>
-          )}
-        </button>
-      );
-    });
+  const onTreeKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (focusIndex < 0) return;
+    const row = rows[focusIndex];
+    if (!row) return;
+    const open = row.node.isDirectory && isFolderOpen(row.node.path);
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        focusRowAt(focusIndex + 1);
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        if (focusIndex === 0) {
+          filterRef.current?.focus();
+        } else {
+          focusRowAt(focusIndex - 1);
+        }
+        break;
+      case "Home":
+        e.preventDefault();
+        focusRowAt(0);
+        break;
+      case "End":
+        e.preventDefault();
+        focusRowAt(rows.length - 1);
+        break;
+      case "ArrowRight":
+        e.preventDefault();
+        if (row.node.isDirectory && !open) {
+          toggleFolder(row.node.path, true);
+        } else if (row.node.isDirectory) {
+          focusRowAt(focusIndex + 1);
+        }
+        break;
+      case "ArrowLeft":
+        e.preventDefault();
+        if (row.node.isDirectory && open) {
+          toggleFolder(row.node.path, false);
+        } else if (row.parentPath) {
+          const parentIdx = rows.findIndex(
+            (r) => r.node.path === row.parentPath,
+          );
+          if (parentIdx >= 0) focusRowAt(parentIdx);
+        }
+        break;
+      default:
+        break;
+    }
   };
 
   return (
-    <div
-      className={cn(
-        "flex h-full w-56 xl:w-64 shrink-0 flex-col border-r border-border bg-muted/15 select-none",
-        className,
-      )}
-    >
-      {/* Explorer Header */}
-      <div className="flex h-9 shrink-0 items-center justify-between border-b border-border px-3">
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium text-foreground">Explorer</span>
-          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground leading-none">
-            {fileCount}
-          </span>
-          {diffStatusMap.size > 0 && (
-            <span className="rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[10px] font-medium tabular-nums text-amber-600 dark:text-amber-400 leading-none">
-              {diffStatusMap.size} changed
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-0.5">
-          {expandedPaths.size > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => setExpandedPaths(new Set())}
-              className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
-              aria-label="Collapse all folders"
-              title="Collapse all folders"
-            >
-              <ChevronsDownUp className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </Button>
-          )}
-          {onCloseSidebar && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={onCloseSidebar}
-              className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
-              aria-label="Close file explorer"
-              title="Hide explorer"
-            >
-              <X className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Search Input */}
-      <div className="p-2 border-b border-border/60">
-        <div className="relative">
-          <Search
-            className="absolute left-2 top-2 h-3 w-3 text-muted-foreground"
-            strokeWidth={1.5}
-          />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+    <div className={cn("rail-col", className)}>
+      {/* 1:1 Sable inline filter bar */}
+      <div className="rail-bar rail-bar-field">
+        <label className="fl-filter">
+          <Search size={13.5} strokeWidth={1.6} aria-hidden="true" />
+          <input
+            ref={filterRef}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter files"
+            aria-label="Filter workspace files"
+            spellCheck={false}
+            autoComplete="off"
+            autoCapitalize="off"
             onKeyDown={(e) => {
-              if (e.key === "Escape" && search) {
+              if (e.key === "ArrowDown" && rows.length > 0) {
                 e.preventDefault();
-                setSearch("");
+                focusRowAt(0);
+              } else if (e.key === "Escape" && filter) {
+                e.preventDefault();
+                e.stopPropagation();
+                setFilter("");
               }
             }}
-            placeholder="Filter files..."
-            className="pl-6 pr-6 h-7 text-xs font-mono bg-background"
           />
-          {search && (
+          {filter ? (
             <button
               type="button"
-              onClick={() => setSearch("")}
-              className="absolute right-2 top-2 text-muted-foreground hover:text-foreground cursor-pointer"
-              aria-label="Clear file filter"
+              className="fl-clear"
+              aria-label="Clear filter"
+              onClick={() => {
+                setFilter("");
+                filterRef.current?.focus();
+              }}
             >
-              <X className="h-3 w-3" strokeWidth={1.5} />
+              <X size={10.5} strokeWidth={2} aria-hidden="true" />
+            </button>
+          ) : null}
+        </label>
+
+        <span className="rail-bar-actions">
+          <button
+            type="button"
+            className="rail-btn"
+            disabled={expandedPaths.size === 0}
+            onClick={() => setExpandedPaths(new Set())}
+            aria-label="Collapse folders"
+            title="Collapse folders"
+          >
+            <ChevronsDownUp size={13.5} strokeWidth={1.6} aria-hidden="true" />
+          </button>
+          {onOpenQuickOpen && (
+            <button
+              type="button"
+              className="rail-btn"
+              onClick={onOpenQuickOpen}
+              aria-label="Quick open file"
+              title="Quick open (⌘P)"
+            >
+              <TerminalSquare
+                size={13.5}
+                strokeWidth={1.6}
+                aria-hidden="true"
+              />
             </button>
           )}
-        </div>
+          {onRefresh && (
+            <button
+              type="button"
+              className="rail-btn"
+              onClick={onRefresh}
+              disabled={filesLoading}
+              aria-label="Refresh files"
+              title="Refresh files"
+            >
+              {filesLoading ? (
+                <Loader2
+                  size={13.5}
+                  strokeWidth={1.6}
+                  className="animate-spin"
+                  aria-hidden="true"
+                />
+              ) : (
+                <RefreshCw size={13.5} strokeWidth={1.6} aria-hidden="true" />
+              )}
+            </button>
+          )}
+        </span>
       </div>
 
-      {/* File Tree / Search Results */}
-      <div className="flex-1 overflow-y-auto p-1 text-xs [scrollbar-width:thin]">
-        {searchResults ? (
-          <div className="flex flex-col gap-0.5">
-            {searchResults.length === 0 ? (
-              <div className="p-4 text-center text-xs text-muted-foreground">
-                No matching files
-              </div>
-            ) : (
-              searchResults.map((f) => {
-                const isActive = activeFilePath === f.value;
-                const status = diffStatusMap.get(f.value);
-                return (
-                  <button
-                    key={f.value}
-                    type="button"
-                    onClick={() => onOpenFile(f.value)}
-                    onMouseEnter={() => onPrefetchFile?.(f.value)}
-                    onFocus={() => onPrefetchFile?.(f.value)}
-                    className={cn(
-                      "relative flex h-7 w-full items-center justify-between px-2 text-xs rounded-md transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] text-left cursor-pointer",
-                      isActive
-                        ? "bg-muted text-foreground font-medium"
-                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
-                    )}
-                  >
-                    {isActive && (
-                      <span
-                        aria-hidden="true"
-                        className="absolute left-0.5 top-1.5 bottom-1.5 w-0.5 rounded-full bg-foreground"
-                      />
-                    )}
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <FileTypeIcon
-                        path={f.value}
-                        className="h-3.5 w-3.5 shrink-0"
-                      />
-                      <span className="truncate font-mono">{f.value}</span>
-                    </div>
-                    {status && (
-                      <span
-                        className={cn(
-                          "ml-1.5 shrink-0 font-mono text-[11px] font-medium tabular-nums",
-                          status === "added" &&
-                            "text-emerald-600 dark:text-emerald-400",
-                          status === "modified" &&
-                            "text-amber-600 dark:text-amber-400",
-                          status === "deleted" &&
-                            "text-rose-600 dark:text-rose-400",
-                        )}
-                      >
-                        {status === "added"
-                          ? "A"
-                          : status === "modified"
-                            ? "M"
-                            : "D"}
-                      </span>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-        ) : treeRoot ? (
-          renderTree(treeRoot)
+      {/* Tree rows */}
+      <div className="rail-scroll">
+        {rows.length === 0 ? (
+          <p className="rail-empty">
+            {q ? "Nothing matches this filter." : "No files in this workspace."}
+          </p>
         ) : (
-          <div className="p-4 text-center text-xs text-muted-foreground">
-            No files available
+          <div
+            ref={treeRef}
+            className="fl-tree"
+            role="tree"
+            aria-label="Workspace files"
+            onKeyDown={onTreeKeyDown}
+          >
+            {rows.map((row, idx) => (
+              <TreeRow
+                key={row.node.path}
+                row={row}
+                isOpen={row.node.isDirectory && isFolderOpen(row.node.path)}
+                isActive={
+                  !row.node.isDirectory && activeFilePath === row.node.path
+                }
+                isFocused={idx === focusIndex}
+                statusLetter={
+                  row.node.isDirectory
+                    ? undefined
+                    : changes.fileMap.get(row.node.path)
+                }
+                hasChangedInside={
+                  row.node.isDirectory && changes.folderSet.has(row.node.path)
+                }
+                query={q}
+                onActivate={activateNode}
+                onFocusPath={setFocusPath}
+                onPrefetchFile={onPrefetchFile}
+                onMentionInChat={onMentionInChat}
+              />
+            ))}
           </div>
         )}
       </div>

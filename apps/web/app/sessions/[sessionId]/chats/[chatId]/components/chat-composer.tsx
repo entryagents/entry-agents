@@ -97,6 +97,7 @@ export interface ComposerRestorePayload {
 export interface ChatComposerHandle {
   focus: () => void;
   addTextAttachment: (content: string, filename?: string) => void;
+  appendMention: (mentionText: string) => void;
   restoreDraft: (payload: ComposerRestorePayload) => void;
 }
 
@@ -286,6 +287,26 @@ export const ChatComposer = memo(
         },
         addTextAttachment: (content: string, filename?: string) => {
           addTextAttachment(content, filename);
+        },
+        appendMention: (mentionText: string) => {
+          const clean = mentionText.trim();
+          if (!clean) {
+            inputRef.current?.focus();
+            return;
+          }
+          setInput((prev) => {
+            const sep = prev.length > 0 && !/\s$/.test(prev) ? " " : "";
+            const next = `${prev}${sep}${clean} `;
+            const caret = next.length;
+            setCursorPosition(caret);
+            requestAnimationFrame(() => {
+              const field = inputRef.current;
+              if (!field) return;
+              field.focus();
+              field.setSelectionRange(caret, caret);
+            });
+            return next;
+          });
         },
         restoreDraft: (payload: ComposerRestorePayload) => {
           const caretPos = payload.text.length;

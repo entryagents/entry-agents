@@ -24,7 +24,6 @@ import {
   isLiveStatus,
 } from "@/lib/agent-hub/derive-roster";
 import type { ModelOption } from "@/lib/model-options";
-import { cn } from "@/lib/utils";
 import type { GitPanelProps } from "../git-panel";
 import { useGitPanel } from "../git-panel-context";
 import type { DevServerControls } from "../hooks/use-dev-server";
@@ -54,10 +53,6 @@ function RailPaneLoading() {
 
 const WorkspaceReviewTab = dynamic(
   () => import("./workspace-review-tab").then((m) => m.WorkspaceReviewTab),
-  { ssr: false, loading: RailPaneLoading },
-);
-const WorkspaceFileTab = dynamic(
-  () => import("./workspace-file-tab").then((m) => m.WorkspaceFileTab),
   { ssr: false, loading: RailPaneLoading },
 );
 const WorkspaceFilesTab = dynamic(
@@ -102,12 +97,8 @@ export type WorkspacePanelProps = GitPanelProps & {
   onStopRun?: () => void;
   onCompactConversation?: () => void;
   isCompacting?: boolean;
+  onMentionInChat?: (mention: string) => void;
 };
-
-function fileBasename(filePath: string): string {
-  const parts = filePath.split("/");
-  return parts[parts.length - 1] || filePath;
-}
 
 export function WorkspacePanel({
   devServer,
@@ -130,15 +121,14 @@ export function WorkspacePanel({
   onStopRun,
   onCompactConversation,
   isCompacting = false,
+  onMentionInChat,
   ...gitPanelProps
 }: WorkspacePanelProps) {
   const {
     setGitPanelOpen,
     activeWorkspaceTab,
     setActiveWorkspaceTab,
-    openFiles,
     openWorkspaceFile,
-    closeWorkspaceFile,
   } = useGitPanel();
 
   const resolvedModelId = modelId ?? "";
@@ -155,8 +145,6 @@ export function WorkspacePanel({
   const activeBuiltinTab: RailTabId = isBuiltinRailTab(normalizedTab)
     ? normalizedTab
     : "files";
-  const isViewingOpenFile =
-    !isBuiltinRailTab(normalizedTab) && openFiles.includes(normalizedTab);
 
   // Track which panes have been visited so we mount lazily on first visit and
   // keep them alive for 0ms instant tab switches without losing state.
@@ -271,7 +259,7 @@ export function WorkspacePanel({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="rail-btn"
+                  className="rail-btn hidden lg:inline-flex"
                   onClick={onToggleWorkspaceExpand}
                   aria-label={
                     isWorkspaceExpanded ? "Restore panel width" : "Expand panel"
@@ -298,7 +286,18 @@ export function WorkspacePanel({
                 onClick={() => setGitPanelOpen(false)}
                 aria-label="Hide panel"
               >
-                <PanelRight size={15} strokeWidth={1.6} aria-hidden="true" />
+                <X
+                  size={16}
+                  strokeWidth={1.6}
+                  className="lg:hidden"
+                  aria-hidden="true"
+                />
+                <PanelRight
+                  size={15}
+                  strokeWidth={1.6}
+                  className="hidden lg:block"
+                  aria-hidden="true"
+                />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">Hide panel · ⌘⇧B</TooltipContent>
@@ -306,45 +305,9 @@ export function WorkspacePanel({
         </div>
       </div>
 
-      {openFiles.length > 0 && (
-        <div className="flex items-center gap-1 overflow-x-auto border-b border-[var(--line)] bg-[var(--surface)] px-2.5 py-1.5">
-          {openFiles.map((filePath) => {
-            const isSelected = activeWorkspaceTab === filePath;
-            return (
-              <div
-                key={filePath}
-                className={cn(
-                  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11.5px] font-mono transition-colors shrink-0",
-                  isSelected
-                    ? "bg-[var(--surface-2)] text-[var(--ink)] border border-[var(--line-2)]"
-                    : "text-[var(--ink-3)] hover:text-[var(--ink-2)] hover:bg-[var(--surface-2)]/60 border border-transparent",
-                )}
-              >
-                <button
-                  type="button"
-                  className="truncate max-w-[140px] cursor-pointer"
-                  onClick={() => setActiveWorkspaceTab(filePath)}
-                  title={filePath}
-                >
-                  {fileBasename(filePath)}
-                </button>
-                <button
-                  type="button"
-                  className="rounded p-0.5 opacity-70 hover:opacity-100 cursor-pointer"
-                  onClick={() => closeWorkspaceFile(filePath)}
-                  aria-label={`Close ${fileBasename(filePath)}`}
-                >
-                  <X size={11} strokeWidth={1.7} aria-hidden="true" />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       <div className="rail-body" data-dir={dir}>
         {RAIL_TABS.map((def, idx) => {
-          const isActive = !isViewingOpenFile && def.id === activeBuiltinTab;
+          const isActive = def.id === activeBuiltinTab;
           const isBefore = idx < activeIdx;
           const shouldRender = isActive || mountedPanes.has(def.id);
 
@@ -364,6 +327,7 @@ export function WorkspacePanel({
                 <WorkspaceReviewTab
                   {...gitPanelProps}
                   onOpenFile={openWorkspaceFile}
+                  onMentionInChat={onMentionInChat}
                 />
               )}
               {def.id === "files" && (
@@ -376,6 +340,7 @@ export function WorkspacePanel({
                   diffFiles={diffFiles}
                   onOpenDiff={() => pickBuiltinTab("review")}
                   onOpenQuickOpen={() => setQuickOpen(true)}
+                  onMentionInChat={onMentionInChat}
                 />
               )}
               {def.id === "preview" && (
@@ -386,12 +351,15 @@ export function WorkspacePanel({
                   isDeploymentStale={gitPanelProps.isDeploymentStale}
                   isDeploymentFailed={gitPanelProps.isDeploymentFailed}
                   canRun={gitPanelProps.hasSandbox}
+                  onMentionInChat={onMentionInChat}
                 />
               )}
               {def.id === "terminal" && (
                 <WorkspaceTerminalTab
                   sessionId={gitPanelProps.session.id}
                   canRun={gitPanelProps.hasSandbox}
+                  repoName={gitPanelProps.session.repoName}
+                  files={files}
                   onOpenPreview={() => pickBuiltinTab("preview")}
                 />
               )}
@@ -426,19 +394,6 @@ export function WorkspacePanel({
             </div>
           );
         })}
-
-        {isViewingOpenFile && (
-          <div className="rail-pane" role="tabpanel" data-active="">
-            <WorkspaceFileTab
-              sessionId={gitPanelProps.session.id}
-              filePath={activeWorkspaceTab}
-              onClose={() => closeWorkspaceFile(activeWorkspaceTab)}
-              onOpenDiff={() => {
-                pickBuiltinTab("review");
-              }}
-            />
-          </div>
-        )}
       </div>
 
       <Dialog open={quickOpen} onOpenChange={setQuickOpen}>
@@ -454,7 +409,7 @@ export function WorkspacePanel({
               value={quickQuery}
               onChange={(e) => setQuickQuery(e.target.value)}
               placeholder="Search files by path..."
-              className="h-8 text-xs font-mono"
+              className="h-8 text-base sm:text-xs font-mono"
             />
           </div>
           <div className="max-h-72 overflow-y-auto p-1.5">
@@ -467,7 +422,7 @@ export function WorkspacePanel({
                 <button
                   key={f.value}
                   type="button"
-                  className="w-full text-left px-2.5 py-1.5 rounded-md text-xs font-mono text-foreground hover:bg-muted transition-colors truncate cursor-pointer"
+                  className="w-full text-left px-2.5 py-2 sm:py-1.5 rounded-md text-xs font-mono text-foreground hover:bg-muted transition-colors truncate cursor-pointer"
                   onClick={() => {
                     openWorkspaceFile(f.value);
                     setQuickOpen(false);

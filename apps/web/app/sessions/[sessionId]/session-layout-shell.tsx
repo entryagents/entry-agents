@@ -122,6 +122,7 @@ function SessionLayoutInner({
   // during mousemove so we never trigger full React tree re-renders per pixel.
   useEffect(() => {
     if (!isDragging) return;
+    document.documentElement.dataset.railResizing = "true";
 
     let rafId = 0;
     const handleMouseMove = (e: MouseEvent) => {
@@ -155,6 +156,7 @@ function SessionLayoutInner({
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
     return () => {
+      delete document.documentElement.dataset.railResizing;
       if (rafId) {
         window.cancelAnimationFrame(rafId);
       }
@@ -251,20 +253,16 @@ function SessionLayoutInner({
         >
           <div
             className={cn(
-              "w-[1px] h-full bg-border transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-foreground/30 group-focus-visible:bg-foreground/40",
-              isDragging && "bg-foreground/50 w-[2px]",
+              "w-[1px] h-full bg-border transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:bg-foreground/25 group-focus-visible:bg-foreground/35",
+              isDragging && "bg-foreground/45",
             )}
           />
           <div
             className={cn(
-              "pointer-events-none absolute flex h-8 w-1.5 flex-col items-center justify-center gap-0.5 rounded-full border border-border/80 bg-background/95 opacity-0 transition-opacity duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 group-focus-visible:opacity-100",
-              isDragging && "opacity-100 border-foreground/30",
+              "pointer-events-none absolute h-[72px] w-[3px] rounded-full bg-foreground/25 opacity-0 scale-y-[0.56] transition-[opacity,transform,background-color] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:opacity-100 group-hover:scale-y-100 group-focus-visible:opacity-100 group-focus-visible:scale-y-100",
+              isDragging && "opacity-100 scale-y-100 bg-foreground/50",
             )}
-          >
-            <span className="h-0.5 w-0.5 rounded-full bg-muted-foreground" />
-            <span className="h-0.5 w-0.5 rounded-full bg-muted-foreground" />
-            <span className="h-0.5 w-0.5 rounded-full bg-muted-foreground" />
-          </div>
+          />
         </div>
       )}
 
@@ -288,8 +286,8 @@ function SessionLayoutInner({
             "transition-[transform,width] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
           gitPanelOpen
             ? isWorkspaceExpanded
-              ? "w-full translate-x-0"
-              : "w-full sm:w-[540px] lg:w-[var(--workspace-width)] lg:flex-none lg:shrink-0 translate-x-0"
+              ? "w-full translate-x-0 pb-[env(safe-area-inset-bottom)] lg:pb-0"
+              : "w-full sm:w-[540px] lg:w-[var(--workspace-width)] lg:flex-none lg:shrink-0 translate-x-0 pb-[env(safe-area-inset-bottom)] lg:pb-0"
             : "w-0 translate-x-full lg:translate-x-0 border-l-0 overflow-hidden pointer-events-none",
         )}
       />

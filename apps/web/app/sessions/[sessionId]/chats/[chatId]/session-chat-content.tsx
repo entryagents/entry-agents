@@ -3411,6 +3411,12 @@ export function SessionChatContent({
       onStopRun={handleStopStream}
       onCompactConversation={() => void handleCompactConversation()}
       isCompacting={isCompacting}
+      onMentionInChat={(mentionText) => {
+        composerRef.current?.appendMention(mentionText);
+        if (typeof window !== "undefined" && window.innerWidth < 1024) {
+          setGitPanelOpen(false);
+        }
+      }}
     />
   ) : null;
 
