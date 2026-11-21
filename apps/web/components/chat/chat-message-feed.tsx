@@ -651,6 +651,24 @@ const ChatMessageRow = memo(function ChatMessageRow({
       return null;
     });
 
+  if (m.role === "assistant" && m.metadata?.isCompactionNotice) {
+    const summaryLabel =
+      m.parts
+        .filter(
+          (part): part is { type: "text"; text: string } =>
+            part.type === "text" && part.text.trim().length > 0,
+        )
+        .map((part) => part.text.trim())
+        .join(" ") || "Conversation compacted";
+    return (
+      <div className="my-3 flex items-center gap-3 select-none text-xs text-muted-foreground">
+        <span className="h-px flex-1 bg-border/60" aria-hidden="true" />
+        <span className="shrink-0 font-medium">{summaryLabel}</span>
+        <span className="h-px flex-1 bg-border/60" aria-hidden="true" />
+      </div>
+    );
+  }
+
   if (m.role === "assistant") {
     return (
       <AssistantMessageGroups

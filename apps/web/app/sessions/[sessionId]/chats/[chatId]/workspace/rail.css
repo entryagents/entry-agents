@@ -714,6 +714,59 @@
   margin-top: 8px;
 }
 
+.sable-rail .cx-compact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.sable-rail .cx-compact-wrap {
+  border-radius: var(--r-sm);
+  display: inline-flex;
+}
+
+.sable-rail .sable-btn-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: var(--ctl-h-sm);
+  padding: 0 9px;
+  border-radius: var(--r-ctl-sm);
+  font-size: var(--t-small);
+  font-weight: var(--w-medium);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text);
+  background-color: var(--fill-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--d-1) var(--ease),
+    color var(--d-1) var(--ease),
+    opacity var(--d-1) var(--ease),
+    scale var(--d-2) var(--spring);
+}
+
+.sable-rail .sable-btn-sm:hover:not(:disabled) {
+  background-color: var(--fill-3);
+}
+
+.sable-rail .sable-btn-sm:active:not(:disabled) {
+  background-color: var(--fill-4);
+  scale: 0.98;
+}
+
+.sable-rail .sable-btn-sm:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .sable-rail .cx-stats {
   display: grid;
   grid-template-columns: repeat(6, 1fr);

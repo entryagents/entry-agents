@@ -211,6 +211,70 @@ describe("deriveContextWindowBreakdown", () => {
     expect(view.sessionTotals.inputTokens).toBe(40_000);
   });
 
+  test("drops active context window on compaction notice without inflating session totals", () => {
+    const messages: WebAgentUIMessage[] = [
+      makeUserMessage("u1"),
+      makeAssistantMessage("a1", {
+        modelId: "anthropic/claude-sonnet-4.5",
+        lastStepUsage: {
+          inputTokens: 160_000,
+          outputTokens: 4_000,
+          totalTokens: 164_000,
+          inputTokenDetails: {
+            noCacheTokens: 160_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          outputTokenDetails: { textTokens: 4_000, reasoningTokens: 0 },
+        },
+        totalMessageUsage: {
+          inputTokens: 160_000,
+          outputTokens: 4_000,
+          totalTokens: 164_000,
+          inputTokenDetails: {
+            noCacheTokens: 160_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          outputTokenDetails: { textTokens: 4_000, reasoningTokens: 0 },
+        },
+        totalMessageCost: 0.48,
+      }),
+      makeAssistantMessage("compact_1", {
+        isCompactionNotice: true,
+        compactionMeta: { preTokens: 164_000, postTokens: 20_000 },
+        lastStepUsage: {
+          inputTokens: 20_000,
+          outputTokens: 0,
+          totalTokens: 20_000,
+          inputTokenDetails: {
+            noCacheTokens: 20_000,
+            cacheReadTokens: 0,
+            cacheWriteTokens: 0,
+          },
+          outputTokenDetails: { textTokens: 0, reasoningTokens: 0 },
+        },
+      }),
+    ];
+
+    const view = deriveContextWindowBreakdown(
+      messages,
+      "anthropic/claude-sonnet-4.5",
+      MODELS,
+    );
+    expect(view.total).toBe(20_000);
+    expect(view.pct).toBeCloseTo(10, 4);
+    expect(view.warn).toBe(false);
+    expect(view.sessionTotals).toEqual({
+      inputTokens: 160_000,
+      outputTokens: 4_000,
+      cacheReadTokens: 0,
+      turns: 1,
+      costUsd: 0.48,
+      costSource: "gateway",
+    });
+  });
+
   test("honors runtime contextLimitOverride when provided", () => {
     const messages: WebAgentUIMessage[] = [
       makeUserMessage("u1"),
