@@ -53,10 +53,16 @@ describe("sable rail visibility and interaction contracts", () => {
     const panelSrc = readFileSync(join(here, "workspace-panel.tsx"), "utf8");
     const cssSrc = readFileSync(join(here, "rail.css"), "utf8");
 
+    const filesTabSrc = readFileSync(
+      join(here, "workspace-files-tab.tsx"),
+      "utf8",
+    );
+
     expect(panelSrc).toContain('className="rail-body" data-dir={dir}');
     expect(panelSrc).toContain('data-active={isActive ? "" : undefined}');
-    expect(panelSrc).toContain('role="tabpanel" data-active=""');
+    expect(panelSrc).toContain('role="tabpanel"');
     expect(panelSrc).not.toContain('data-on={isActive ? "" : undefined}');
+    expect(filesTabSrc).toContain("fl-layer fl-preview");
 
     expect(cssSrc).toContain(".sable-rail .rail-pane[data-active]");
     expect(cssSrc).toContain(
@@ -73,10 +79,16 @@ describe("sable rail visibility and interaction contracts", () => {
     expect(panelSrc).toContain(
       "const shouldRender = isActive || mountedPanes.has(def.id);",
     );
+    const filesTabSrc = readFileSync(
+      join(here, "workspace-files-tab.tsx"),
+      "utf8",
+    );
+
     expect(panelSrc).toContain('import("./workspace-review-tab")');
+    expect(panelSrc).toContain('import("./workspace-files-tab")');
     expect(panelSrc).toContain('import("./workspace-preview-tab")');
     expect(panelSrc).toContain('import("./workspace-terminal-tab")');
-    expect(panelSrc).toContain('import("./workspace-file-tab")');
+    expect(filesTabSrc).toContain('import("./workspace-file-tab")');
   });
 
   it("does not nest TooltipTrigger around DropdownMenuTrigger on the More menu", () => {

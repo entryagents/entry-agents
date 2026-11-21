@@ -1,11 +1,17 @@
 "use client";
 
+import type { DiffLineAnnotation, FileDiffOptions } from "@pierre/diffs";
+import { PatchDiff } from "@pierre/diffs/react";
 import {
+  ArrowUp,
+  AtSign,
   CheckCircle2,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   Download,
   ExternalLink,
-  FileCode,
+  FileText,
   GitBranch,
   GitMerge,
   GitPullRequest,
@@ -18,15 +24,14 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { PatchDiff } from "@pierre/diffs/react";
-import type { DiffFile } from "@/lib/diff/compute-diff";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { useTheme } from "@/app/providers";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+  type DiffAnnotationMetadata,
+  DiffCommentCard,
+  DiffCommentComposer,
+} from "@/components/review/diff-comment-card";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogClose,
@@ -36,65 +41,56 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type { DiffFile } from "@/lib/diff/compute-diff";
 import { getDiffOptions } from "@/lib/diffs-config";
-import { useTheme } from "@/app/providers";
 import { discardChanges } from "@/lib/git/actions/discard";
 import {
-  openPullRequest,
-  mergePr,
   generatePrContent,
+  mergePr,
+  openPullRequest,
 } from "@/lib/github/actions/pr";
 import {
   getMergeReadiness,
   type MergeReadinessResponse,
 } from "@/lib/github/queries/pr";
-import { cn } from "@/lib/utils";
-import type { DiffLineAnnotation, FileDiffOptions } from "@pierre/diffs";
-import {
-  type DiffAnnotationMetadata,
-  DiffCommentCard,
-  DiffCommentComposer,
-} from "@/components/review/diff-comment-card";
 import { extractPatchLines } from "@/lib/review/model";
+import { cn } from "@/lib/utils";
 import type { GitPanelProps } from "../git-panel";
 import { useGitPanel } from "../git-panel-context";
 import { useReview } from "../review-context";
-import { FileTypeIcon } from "@/components/file-type-icons";
+import { toChangeLetter } from "./sable-rail-helpers";
 
 export type WorkspaceReviewTabProps = GitPanelProps & {
   onOpenFile?: (filePath: string) => void;
+  onMentionInChat?: (mention: string) => void;
 };
 
-function FileStatusIndicator({ status }: { status: DiffFile["status"] }) {
-  switch (status) {
-    case "added":
-      return (
-        <span
-          title="Added file"
-          className="flex h-4 px-1.5 shrink-0 items-center justify-center rounded bg-emerald-500/15 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"
-        >
-          +
-        </span>
-      );
-    case "deleted":
-      return (
-        <span
-          title="Deleted file"
-          className="flex h-4 px-1.5 shrink-0 items-center justify-center rounded bg-rose-500/15 text-[10px] font-semibold text-rose-600 dark:text-rose-400"
-        >
-          -
-        </span>
-      );
-    default:
-      return (
-        <span
-          title="Modified file"
-          className="flex h-4 px-1.5 shrink-0 items-center justify-center rounded bg-amber-500/15 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
-        >
-          ~
-        </span>
-      );
-  }
+const STATUS_LABELS: Record<string, string> = {
+  M: "Modified",
+  A: "Added",
+  D: "Deleted",
+  R: "Renamed",
+};
+
+function StatusLetter({ status }: { status?: DiffFile["status"] }) {
+  const letter = toChangeLetter(status) ?? "M";
+  const label = STATUS_LABELS[letter] ?? "Modified";
+  return (
+    <span
+      className="st-letter"
+      data-status={letter}
+      title={label}
+      aria-label={label}
+    >
+      {letter}
+    </span>
+  );
 }
 
 export function WorkspaceReviewTab({
@@ -106,13 +102,14 @@ export function WorkspaceReviewTab({
   diffSummary: _diffSummary,
   diffRefreshing = false,
   refreshDiff,
-  gitStatus: _gitStatus,
+  gitStatus,
   gitStatusLoading = false,
   refreshGitStatus,
   onCommitted: _onCommitted,
   onMerged,
   hasSandbox,
   onOpenFile,
+  onMentionInChat,
   onCreateRepoClick,
 }: WorkspaceReviewTabProps) {
   const { resolvedTheme } = useTheme();
@@ -128,36 +125,27 @@ export function WorkspaceReviewTab({
   } = useReview();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Diff View Mode: unified or split
   const [diffStyle, setDiffStyle] = useState<"unified" | "split">("unified");
-
-  // Track expanded files in accordion
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
-  // Discard state
   const [discardFileTarget, setDiscardFileTarget] = useState<string | null>(
     null,
   );
   const [confirmDiscardAllOpen, setConfirmDiscardAllOpen] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
 
-  // Create PR dialog state
   const [createPrDialogOpen, setCreatePrDialogOpen] = useState(false);
   const [prTitle, setPrTitle] = useState("");
   const [prDescription, setPrDescription] = useState("");
   const [isGeneratingPr, setIsGeneratingPr] = useState(false);
   const [isCreatingPr, setIsCreatingPr] = useState(false);
 
-  // Merge PR state
   const [isMerging, setIsMerging] = useState(false);
   const [readiness, setReadiness] = useState<MergeReadinessResponse | null>(
     null,
   );
 
-  // Include all changed files (staged, unstaged, partial, or branch diff)
-  const uncommittedFiles = useMemo(() => {
-    return diffFiles ?? [];
-  }, [diffFiles]);
+  const uncommittedFiles = useMemo(() => diffFiles ?? [], [diffFiles]);
 
   // Expand all by default on first load of uncommitted files
   useEffect(() => {
@@ -190,7 +178,6 @@ export function WorkspaceReviewTab({
     return () => window.cancelAnimationFrame(raf);
   }, [focusedDiffFile, focusedDiffRequestId]);
 
-  // Check PR merge readiness when PR exists
   useEffect(() => {
     if (!session.prNumber) return;
     let cancelled = false;
@@ -206,7 +193,6 @@ export function WorkspaceReviewTab({
     };
   }, [session.prNumber, session.id]);
 
-  // Toggle single file accordion
   const toggleFile = useCallback((path: string) => {
     setExpandedFiles((prev) => {
       const next = new Set(prev);
@@ -219,7 +205,6 @@ export function WorkspaceReviewTab({
     });
   }, []);
 
-  // Expand / collapse all files
   const allExpanded =
     uncommittedFiles.length > 0 &&
     uncommittedFiles.every((f) => expandedFiles.has(f.path));
@@ -232,9 +217,8 @@ export function WorkspaceReviewTab({
     }
   }, [allExpanded, uncommittedFiles]);
 
-  const branchName = session.branch ?? "main";
+  const branchName = gitStatus?.branch || session.branch || "main";
 
-  // Handle single file discard
   const handleDiscardSingleFile = useCallback(
     async (filePath: string) => {
       setIsDiscarding(true);
@@ -258,7 +242,6 @@ export function WorkspaceReviewTab({
     [session.id, refreshDiff, refreshGitStatus],
   );
 
-  // Handle discard all changes
   const handleDiscardAll = useCallback(async () => {
     setIsDiscarding(true);
     try {
@@ -278,7 +261,6 @@ export function WorkspaceReviewTab({
     }
   }, [session.id, refreshDiff, refreshGitStatus]);
 
-  // Download patch file for non-GitHub or local workflows
   const handleDownloadPatch = useCallback(() => {
     const fullPatch = uncommittedFiles
       .map((f) => {
@@ -305,7 +287,6 @@ export function WorkspaceReviewTab({
     toast.success("Downloaded patch file");
   }, [uncommittedFiles, session.id]);
 
-  // AI-powered PR generator
   const handleGeneratePrSummary = useCallback(async () => {
     setIsGeneratingPr(true);
     try {
@@ -329,7 +310,6 @@ export function WorkspaceReviewTab({
     }
   }, [session.id, session.title, session.branch, branchName]);
 
-  // Handle create PR
   const handleCreatePr = useCallback(async () => {
     if (!session.cloneUrl || !prTitle.trim()) return;
 
@@ -360,7 +340,6 @@ export function WorkspaceReviewTab({
     }
   }, [session.cloneUrl, session.id, branchName, prTitle, refreshGitStatus]);
 
-  // Handle Merge PR
   const handleMergePr = useCallback(async () => {
     if (!session.prNumber) return;
 
@@ -386,7 +365,6 @@ export function WorkspaceReviewTab({
     }
   }, [session.prNumber, session.id, onMerged, refreshGitStatus]);
 
-  // High contrast diff options dynamically resolved to active theme
   const baseDiffOptions = useMemo(
     () => getDiffOptions(resolvedTheme, diffStyle === "split"),
     [resolvedTheme, diffStyle],
@@ -402,214 +380,249 @@ export function WorkspaceReviewTab({
   );
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
-      {/* Top Review/Changes Toolbar */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-3 py-1.5 text-xs">
-        {/* Left: Branch / Local Workspace Pill + Files count + Diff Stats */}
-        <div className="flex min-w-0 items-center gap-2">
+    <div className="rail-col">
+      {/* Sable 1:1 Changes Bar */}
+      <div className="ch-bar flex-wrap">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           {hasRepo ? (
-            <div className="flex items-center gap-1 rounded-md border border-border/80 bg-background px-2 py-0.5 text-xs font-mono font-medium shadow-2xs">
-              <GitBranch className="h-3 w-3 text-muted-foreground" />
-              <span className="truncate max-w-[140px]">{branchName}</span>
-            </div>
+            <span className="rail-bar-title ch-branch truncate">
+              <GitBranch size={14} strokeWidth={1.6} aria-hidden="true" />
+              <span className="truncate">{branchName}</span>
+              {gitStatus?.hasUnpushedCommits ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="ch-ab num">
+                      <ArrowUp size={10} strokeWidth={1.8} aria-hidden="true" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    Unpushed commits
+                  </TooltipContent>
+                </Tooltip>
+              ) : null}
+            </span>
           ) : (
-            <div className="flex items-center gap-1.5 rounded-md border border-border/80 bg-background px-2 py-0.5 text-xs font-medium shadow-2xs">
-              <Laptop className="h-3 w-3 text-muted-foreground" />
-              <span>Local Workspace</span>
-            </div>
+            <span className="rail-bar-title ch-branch truncate">
+              <Laptop size={14} strokeWidth={1.6} aria-hidden="true" />
+              <span className="truncate">Edited in this session</span>
+            </span>
           )}
 
-          <span className="font-mono text-xs text-muted-foreground">
-            {uncommittedFiles.length} file
-            {uncommittedFiles.length !== 1 ? "s" : ""}
-          </span>
-
-          {(totalAdds > 0 || totalDels > 0) && (
-            <div className="flex items-center gap-1 font-mono text-xs font-semibold">
-              <span className="text-emerald-600 dark:text-emerald-400">
-                +{totalAdds}
+          {uncommittedFiles.length > 0 && (
+            <span className="rail-bar-meta ch-totals num">
+              {totalAdds > 0 && (
+                <span className="dv-add">
+                  +{totalAdds.toLocaleString("en-US")}
+                </span>
+              )}
+              {totalDels > 0 && (
+                <span className="dv-del">
+                  −{totalDels.toLocaleString("en-US")}
+                </span>
+              )}
+              <span className="hidden sm:inline">
+                in {uncommittedFiles.length}{" "}
+                {uncommittedFiles.length === 1 ? "file" : "files"}
               </span>
-              <span className="text-rose-600 dark:text-rose-400">
-                -{totalDels}
-              </span>
-            </div>
+            </span>
           )}
         </div>
 
-        {/* Right: Segmented Control + Actions */}
-        <div className="flex items-center gap-1.5">
-          {/* Segmented Control: Unified | Split */}
-          <div className="flex items-center rounded-md border border-border bg-muted/40 p-0.5 text-[11px]">
-            <button
-              type="button"
-              onClick={() => setDiffStyle("unified")}
-              className={cn(
-                "rounded px-2 py-0.5 font-medium transition-colors cursor-pointer",
-                diffStyle === "unified"
-                  ? "bg-background text-foreground shadow-2xs font-semibold"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Unified
-            </button>
-            <button
-              type="button"
-              onClick={() => setDiffStyle("split")}
-              className={cn(
-                "rounded px-2 py-0.5 font-medium transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer",
-                diffStyle === "split"
-                  ? "bg-background text-foreground font-semibold"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              Split
-            </button>
-          </div>
-
+        <span className="rail-bar-actions flex-wrap">
           {uncommittedFiles.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleExpandCollapseAll}
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer"
-            >
-              {allExpanded ? "Collapse all" : "Expand all"}
-            </Button>
+            <div className="seg" role="group" aria-label="Diff view mode">
+              <button
+                type="button"
+                className="seg-item"
+                data-active={diffStyle === "unified" || undefined}
+                onClick={() => setDiffStyle("unified")}
+              >
+                Unified
+              </button>
+              <button
+                type="button"
+                className="seg-item"
+                data-active={diffStyle === "split" || undefined}
+                onClick={() => setDiffStyle("split")}
+              >
+                Split
+              </button>
+            </div>
           )}
 
           {uncommittedFiles.length > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDownloadPatch}
-                  className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground cursor-pointer gap-1"
+                <button
+                  type="button"
+                  className="rail-btn"
+                  onClick={toggleExpandCollapseAll}
+                  aria-label={allExpanded ? "Collapse all" : "Expand all"}
                 >
-                  <Download className="h-3 w-3" />
-                  <span>Patch</span>
-                </Button>
+                  {allExpanded ? (
+                    <ChevronsDownUp size={14} strokeWidth={1.6} aria-hidden />
+                  ) : (
+                    <ChevronsUpDown size={14} strokeWidth={1.6} aria-hidden />
+                  )}
+                </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                Download as .patch diff
+                {allExpanded ? "Collapse all" : "Expand all"}
               </TooltipContent>
             </Tooltip>
           )}
 
+          {uncommittedFiles.length > 0 && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="rail-btn"
+                  onClick={handleDownloadPatch}
+                  aria-label="Download patch"
+                >
+                  <Download size={14} strokeWidth={1.6} aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Download as .patch</TooltipContent>
+            </Tooltip>
+          )}
+
           {!hasRepo && onCreateRepoClick && (
-            <Button
-              variant="outline"
-              size="sm"
+            <button
+              type="button"
+              className="sable-btn-sm"
               onClick={onCreateRepoClick}
-              className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
             >
-              <Github className="h-3 w-3" />
-              <span>Connect GitHub</span>
-            </Button>
+              <Github size={12.5} strokeWidth={1.7} aria-hidden="true" />
+              <span className="hidden sm:inline">Connect GitHub</span>
+            </button>
           )}
 
           {uncommittedFiles.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setConfirmDiscardAllOpen(true)}
-              className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive cursor-pointer"
-            >
-              Discard all
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="rail-btn hover:!text-[var(--red)]"
+                  onClick={() => setConfirmDiscardAllOpen(true)}
+                  aria-label="Discard all changes"
+                >
+                  <RotateCcw size={13.5} strokeWidth={1.6} aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Discard all changes</TooltipContent>
+            </Tooltip>
           )}
 
           {hasRepo && !session.prNumber && (
-            <Button
-              variant="outline"
-              size="sm"
+            <button
+              type="button"
+              className="sable-btn-sm"
               onClick={() => {
                 setPrTitle(session.title || "Feature implementation");
                 setCreatePrDialogOpen(true);
               }}
-              className="h-7 px-2 text-xs gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer"
             >
-              <GitPullRequest className="h-3.5 w-3.5 text-emerald-500" />
+              <GitPullRequest
+                size={13}
+                strokeWidth={1.7}
+                className="text-emerald-500"
+                aria-hidden="true"
+              />
               <span>Create PR</span>
-            </Button>
+            </button>
           )}
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
+              <button
+                type="button"
+                className="rail-btn"
                 onClick={() => {
                   void refreshDiff();
                   void refreshGitStatus().catch(() => {});
                 }}
                 disabled={diffRefreshing || gitStatusLoading}
-                className="h-7 w-7 text-muted-foreground hover:text-foreground cursor-pointer"
+                aria-label="Refresh changes"
               >
                 <RefreshCw
+                  size={14}
+                  strokeWidth={1.6}
                   className={cn(
-                    "h-3.5 w-3.5",
                     (diffRefreshing || gitStatusLoading) && "animate-spin",
                   )}
+                  aria-hidden="true"
                 />
-              </Button>
+              </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Refresh diff</TooltipContent>
+            <TooltipContent side="bottom">Refresh changes</TooltipContent>
           </Tooltip>
-        </div>
+        </span>
       </div>
 
       {/* Main Diff Accordions Scroll Area */}
-      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={scrollContainerRef} className="rail-scroll scroll">
         {diffRefreshing && uncommittedFiles.length === 0 ? (
-          <div className="flex h-full items-center justify-center py-16 text-muted-foreground">
-            <Loader2 className="h-6 w-6 animate-spin" />
+          <div className="rail-loading">
+            <Loader2
+              size={16}
+              strokeWidth={1.6}
+              className="animate-spin"
+              aria-hidden="true"
+            />
+            <span>Loading changes…</span>
           </div>
         ) : uncommittedFiles.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 px-5 py-16 text-center text-muted-foreground">
-            <CheckCircle2 className="h-7 w-7 text-emerald-500/80" />
-            <p className="text-sm font-medium text-foreground">
+          <div className="rail-empty">
+            <CheckCircle2
+              size={22}
+              strokeWidth={1.4}
+              className="text-emerald-500/80"
+              aria-hidden="true"
+            />
+            <p className="rail-empty-title">
               {!hasSandbox
                 ? "No changes yet"
                 : hasRepo
-                  ? "Working tree clean"
+                  ? "The working tree is clean."
                   : "No local changes"}
             </p>
-            <p className="text-xs text-muted-foreground max-w-[260px]">
+            <p>
               {!hasSandbox
                 ? "File edits and diffs will appear here once the agent modifies files in a sandbox."
                 : hasRepo
                   ? "All files are synchronized with your active branch."
                   : "No modified or uncommitted files in this sandbox."}
             </p>
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-              {hasSandbox && refreshDiff && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void refreshDiff()}
-                  disabled={diffRefreshing}
-                  className="gap-1.5 text-xs cursor-pointer"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" />
-                  <span>Refresh changes</span>
-                </Button>
-              )}
-              {!hasRepo && onCreateRepoClick && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={onCreateRepoClick}
-                  className="gap-1.5 text-xs cursor-pointer"
-                >
-                  <Github className="h-3.5 w-3.5" />
-                  <span>Connect GitHub Repository</span>
-                </Button>
-              )}
-            </div>
+            {(hasSandbox && refreshDiff) || (!hasRepo && onCreateRepoClick) ? (
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                {hasSandbox && refreshDiff && (
+                  <button
+                    type="button"
+                    className="sable-btn-sm"
+                    onClick={() => void refreshDiff()}
+                    disabled={diffRefreshing}
+                  >
+                    <RefreshCw size={12.5} strokeWidth={1.7} aria-hidden />
+                    <span>Refresh changes</span>
+                  </button>
+                )}
+                {!hasRepo && onCreateRepoClick && (
+                  <button
+                    type="button"
+                    className="sable-btn-sm"
+                    onClick={onCreateRepoClick}
+                  >
+                    <Github size={12.5} strokeWidth={1.7} aria-hidden />
+                    <span>Connect GitHub</span>
+                  </button>
+                )}
+              </div>
+            ) : null}
           </div>
         ) : (
-          <div className="divide-y divide-border">
+          <ul className="ch-list">
             {uncommittedFiles.map((file) => {
               const isExpanded = expandedFiles.has(file.path);
               const patch = file.diff;
@@ -617,106 +630,110 @@ export function WorkspaceReviewTab({
               const dirPath = file.path.slice(0, -fileName.length);
 
               return (
-                <div
+                <li
                   key={file.path}
                   data-diff-file-path={file.path}
-                  className="group/diff-file"
+                  className="ch-item"
+                  data-open={isExpanded || undefined}
                 >
-                  {/* Accordion File Header */}
-                  <div className="flex items-center justify-between gap-2 px-3 py-1.5 bg-muted/20 hover:bg-muted/40 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] select-none text-xs">
+                  {/* Sable 1:1 File Row + Hover/Touch Action Group */}
+                  <div className="ch-row-wrap rail-row-host">
                     <button
                       type="button"
+                      className="ch-row"
+                      aria-expanded={isExpanded}
                       onClick={() => toggleFile(file.path)}
-                      className="flex flex-1 items-center gap-2 min-w-0 text-left cursor-pointer"
                     >
-                      <ChevronRight
-                        className={cn(
-                          "h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                          isExpanded && "rotate-90",
-                        )}
-                      />
-                      <FileStatusIndicator status={file.status} />
+                      <StatusLetter status={file.status} />
                       <FileTypeIcon
                         path={file.path}
                         className="h-3.5 w-3.5 shrink-0"
                       />
-                      <span className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden font-mono text-xs">
-                        <span className="shrink-0 font-semibold text-foreground">
-                          {fileName}
-                        </span>
-                        {dirPath && (
-                          <span
-                            className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-muted-foreground"
-                            dir="rtl"
-                          >
+                      <span className="ch-path">
+                        {dirPath ? (
+                          <span className="ch-dir" dir="rtl">
                             <bdi>{dirPath.replace(/\/$/, "")}</bdi>
                           </span>
+                        ) : null}
+                        <span className="ch-base">{fileName}</span>
+                      </span>
+
+                      <span className="ch-stat num rail-row-deco">
+                        {file.additions > 0 && (
+                          <span className="dv-add">+{file.additions}</span>
+                        )}
+                        {file.deletions > 0 && (
+                          <span className="dv-del">−{file.deletions}</span>
                         )}
                       </span>
+
+                      <ChevronRight
+                        size={12}
+                        strokeWidth={1.8}
+                        className="ch-caret"
+                        aria-hidden="true"
+                      />
                     </button>
 
-                    {/* Right: File line stats + file actions */}
-                    <div className="flex items-center gap-2 shrink-0">
-                      {(file.additions > 0 || file.deletions > 0) && (
-                        <div className="flex items-center gap-1 font-mono text-[11px] tabular-nums">
-                          {file.additions > 0 && (
-                            <span className="text-emerald-600 dark:text-emerald-400">
-                              +{file.additions}
-                            </span>
-                          )}
-                          {file.deletions > 0 && (
-                            <span className="text-rose-600 dark:text-rose-400">
-                              -{file.deletions}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {onOpenFile && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onOpenFile(file.path);
-                              }}
-                              className="h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer"
-                            >
-                              <FileCode className="h-3 w-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent side="left">
-                            Open file in editor tab
-                          </TooltipContent>
-                        </Tooltip>
-                      )}
-
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setDiscardFileTarget(file.path);
-                            }}
-                            className="h-6 w-6 text-muted-foreground hover:text-destructive cursor-pointer"
-                          >
-                            <RotateCcw className="h-3 w-3" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent side="left">
-                          Discard changes to this file
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
+                    <span className="rail-row-acts ch-acts">
+                      {onMentionInChat ? (
+                        <button
+                          type="button"
+                          className="rail-btn"
+                          title="Mention in chat"
+                          aria-label={`Mention ${fileName} in chat`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onMentionInChat(`@${file.path} `);
+                          }}
+                        >
+                          <AtSign
+                            size={13.5}
+                            strokeWidth={1.6}
+                            aria-hidden="true"
+                          />
+                        </button>
+                      ) : null}
+                      {onOpenFile && file.status !== "deleted" ? (
+                        <button
+                          type="button"
+                          className="rail-btn"
+                          title="Open file"
+                          aria-label={`Open ${fileName}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenFile(file.path);
+                          }}
+                        >
+                          <FileText
+                            size={13.5}
+                            strokeWidth={1.6}
+                            aria-hidden="true"
+                          />
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="rail-btn hover:!text-[var(--red)]"
+                        title="Discard changes to this file"
+                        aria-label={`Discard changes to ${fileName}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDiscardFileTarget(file.path);
+                        }}
+                      >
+                        <RotateCcw
+                          size={13.5}
+                          strokeWidth={1.6}
+                          aria-hidden="true"
+                        />
+                      </button>
+                    </span>
                   </div>
 
-                  {/* Accordion File Body (Diff Viewer) */}
+                  {/* Diff Viewer Body */}
                   {isExpanded && (
-                    <div className="overflow-x-auto bg-background border-t border-border/50">
+                    <div className="ch-diff">
                       {file.binary ? (
                         <div className="p-8 text-center text-xs text-muted-foreground font-mono">
                           Binary file &mdash; diff not displayed inline
@@ -813,17 +830,17 @@ export function WorkspaceReviewTab({
                       )}
                     </div>
                   )}
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         )}
       </div>
 
       {/* Bottom Action Bar: Only rendered when an active PR is present */}
       {hasRepo && session.prNumber && (
-        <div className="shrink-0 border-t border-border bg-muted/20 p-2.5">
-          <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-1.5 text-xs">
+        <div className="shrink-0 border-t border-[var(--line)] bg-[var(--well)] px-3 py-2 pb-[max(8px,env(safe-area-inset-bottom))] lg:pb-2">
+          <div className="flex items-center justify-between gap-2 rounded-md border border-[var(--line-2)] bg-[var(--sheet)] px-3 py-1.5 text-xs">
             <div className="flex items-center gap-2 min-w-0">
               <GitPullRequest
                 className={cn(
@@ -850,7 +867,7 @@ export function WorkspaceReviewTab({
               </span>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               {existingPrUrl && (
                 <a
                   href={existingPrUrl}

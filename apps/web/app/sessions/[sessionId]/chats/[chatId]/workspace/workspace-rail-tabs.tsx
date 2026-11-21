@@ -78,13 +78,15 @@ function useRowLayout(ref: React.RefObject<HTMLElement | null>): {
       Math.max(...RAIL_TABS.map((t) => textWidth(t.label, font))),
     );
     const decide = (w: number) => {
+      const tabW =
+        typeof window !== "undefined" && window.innerWidth < 768 ? 32 : TAB;
       const fit = clamp(
-        Math.floor((w - TAB - CARET - COUNT_ROOM) / (TAB + TAB_GAP)),
+        Math.floor((w - tabW - CARET - COUNT_ROOM) / (tabW + TAB_GAP)),
         1,
         PRIMARY.length,
       );
       const labels =
-        w >= fit * (TAB + TAB_GAP) + TAB + CARET + COUNT_ROOM + longest + 9;
+        w >= fit * (tabW + TAB_GAP) + tabW + CARET + COUNT_ROOM + longest + 9;
       setKey(`${fit}|${labels ? 1 : 0}`);
     };
     decide(el.clientWidth);

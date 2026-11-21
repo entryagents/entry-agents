@@ -99,7 +99,12 @@ type GitPanelContextValue = {
   /** Switch active file in the agent tabs */
   switchAgentFileTab: (filePath: string) => void;
 
-  /** Open a file exclusively inside the workspace tabs */
+  /** File path currently requested in the workspace Files slide-over preview */
+  focusedWorkspaceFile: string | null;
+  focusedWorkspaceFileRequestId: number;
+  clearFocusedWorkspaceFile: () => void;
+
+  /** Open a file exclusively inside the workspace Files slide-over */
   openWorkspaceFile: (filePath: string) => void;
 
   /** Whether the user has explicitly closed the File tab */
@@ -171,6 +176,11 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
   const [activeView, setActiveView] = useState<ActiveView>("chat");
   const [focusedDiffFile, setFocusedDiffFile] = useState<string | null>(null);
   const [focusedDiffRequestId, setFocusedDiffRequestId] = useState(0);
+  const [focusedWorkspaceFile, setFocusedWorkspaceFile] = useState<
+    string | null
+  >(null);
+  const [focusedWorkspaceFileRequestId, setFocusedWorkspaceFileRequestId] =
+    useState(0);
   const [changesTabDismissed, setChangesTabDismissed] = useState(false);
   const [diffScope, setDiffScope] = useState<DiffScope>("uncommitted");
   const [hasActionNeeded, setHasActionNeeded] = useState(false);
@@ -336,12 +346,15 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
     setFileTabDismissed(false);
   }, []);
 
-  // Open a file exclusively inside the workspace tabs
+  const clearFocusedWorkspaceFile = useCallback(() => {
+    setFocusedWorkspaceFile(null);
+  }, []);
+
+  // Open a file inside the workspace Files slide-over preview (1:1 Sable)
   const openWorkspaceFile = useCallback((filePath: string) => {
-    setOpenFiles((prev) =>
-      prev.includes(filePath) ? prev : [...prev, filePath],
-    );
-    setActiveWorkspaceTab(filePath);
+    setFocusedWorkspaceFile(filePath);
+    setFocusedWorkspaceFileRequestId((prev) => prev + 1);
+    setActiveWorkspaceTab("files");
     setGitPanelOpen(true);
   }, []);
 
@@ -392,6 +405,9 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
       openAgentFileTab,
       closeAgentFileTab,
       switchAgentFileTab,
+      focusedWorkspaceFile,
+      focusedWorkspaceFileRequestId,
+      clearFocusedWorkspaceFile,
       openWorkspaceFile,
       fileTabDismissed,
       setFileTabDismissed,
@@ -431,6 +447,9 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
       openAgentFileTab,
       closeAgentFileTab,
       switchAgentFileTab,
+      focusedWorkspaceFile,
+      focusedWorkspaceFileRequestId,
+      clearFocusedWorkspaceFile,
       openWorkspaceFile,
       fileTabDismissed,
       openFileTab,

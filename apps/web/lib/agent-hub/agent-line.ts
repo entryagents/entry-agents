@@ -1,4 +1,4 @@
-import { formatTokens } from "@entry-agents/shared";
+import { formatTokens } from "@entry-agents/shared/lib/tool-state";
 
 export interface AgentLineSummary {
   state: string;
