@@ -18,6 +18,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { parseAnsiSegments } from "@/lib/terminal/ansi";
+import { subscribePendingTerminalCommand } from "@/lib/terminal/pending-command";
 import { cn } from "@/lib/utils";
 import type { TerminalExecResponse } from "@/app/api/sessions/[sessionId]/terminal/route";
 
@@ -270,6 +271,16 @@ export function WorkspaceTerminalTab({
     },
     [canRun, currentCwd, handleClear, isRunning, sessionId],
   );
+
+  const executeCommandRef = useRef(executeCommand);
+  executeCommandRef.current = executeCommand;
+
+  useEffect(() => {
+    if (!canRun) return;
+    return subscribePendingTerminalCommand(sessionId, (entry) => {
+      void executeCommandRef.current(entry.command);
+    });
+  }, [canRun, sessionId]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "l") {

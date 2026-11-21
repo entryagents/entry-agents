@@ -113,6 +113,7 @@ import { useStreamRecovery } from "./hooks/use-stream-recovery";
 import { useAutoCommitStatus } from "./hooks/use-auto-commit-status";
 import { useCodeEditor } from "./hooks/use-code-editor";
 import { useDevServer } from "./hooks/use-dev-server";
+import { queuePendingTerminalCommand } from "@/lib/terminal/pending-command";
 import { useGitPanel } from "./git-panel-context";
 import {
   createSandbox,
@@ -1020,6 +1021,31 @@ export function SessionChatContent({
   const lastMessage = useMemo(
     () => renderMessages[renderMessages.length - 1],
     [renderMessages],
+  );
+  const sentPrompts = useMemo(() => {
+    const out: string[] = [];
+    for (const msg of renderMessages) {
+      if (msg.role !== "user") continue;
+      const text = msg.parts
+        .filter(
+          (p): p is { type: "text"; text: string } =>
+            p.type === "text" && typeof p.text === "string",
+        )
+        .map((p) => p.text)
+        .join("")
+        .trim();
+      if (text) out.push(text);
+    }
+    return out;
+  }, [renderMessages]);
+
+  const handleRunShellCommand = useCallback(
+    (command: string) => {
+      queuePendingTerminalCommand(session.id, command);
+      setActiveWorkspaceTab("terminal");
+      setGitPanelOpen(true);
+    },
+    [session.id, setActiveWorkspaceTab, setGitPanelOpen],
   );
   const gitFinalizationState = useMemo(
     () =>
@@ -3596,6 +3622,9 @@ export function SessionChatContent({
                   )}
                   <ChatComposer
                     ref={composerRef}
+                    chatId={chatInfo.id}
+                    sentPrompts={sentPrompts}
+                    onRunShellCommand={handleRunShellCommand}
                     isArchived={isArchived}
                     isChatInFlight={isChatInFlight}
                     hasPendingResponse={hasPendingResponse}
@@ -3656,11 +3685,21 @@ export function SessionChatContent({
                         />
                         <QueuedPromptsPanel
                           prompts={queuedMessages}
+                          isBusy={isChatInFlight || hasPendingResponse}
                           onRemove={removeQueuedMessage}
                           onEdit={updateQueuedMessageText}
                           onReorder={reorderQueuedMessages}
+                          onSteerNow={(prompt) => {
+                            const text = prompt.displayText.trim();
+                            if (!text) return;
+                            removeQueuedMessage(prompt.id);
+                            void sendInboxMessage(text);
+                          }}
                         />
-                        <PinnedTodoPanel todos={latestTodos} />
+                        <PinnedTodoPanel
+                          todos={latestTodos}
+                          isRunning={isChatInFlight || hasPendingResponse}
+                        />
                       </>
                     }
                   />
