@@ -6,6 +6,8 @@ import {
   useState,
 } from "react";
 
+import { stepSpringFollow } from "@/components/chat/timeline-util";
+
 const AT_BOTTOM_THRESHOLD_PX = 48;
 const MAX_CACHED_CHAT_SCROLL_ENTRIES = 50;
 
@@ -77,6 +79,7 @@ export function useScrollToBottom<T extends HTMLElement>(
   );
   const userUpwardIntentRef = useRef(!initialAtBottom);
   const rafSnapIdRef = useRef<number | null>(null);
+  const springStateRef = useRef({ pos: 0, v: 0, lastMs: 0 });
 
   isVisibleRef.current = isVisible;
 
@@ -87,45 +90,114 @@ export function useScrollToBottom<T extends HTMLElement>(
     }
   }, []);
 
+  const cancelSpring = useCallback(() => {
+    if (
+      rafSnapIdRef.current !== null &&
+      typeof cancelAnimationFrame === "function"
+    ) {
+      cancelAnimationFrame(rafSnapIdRef.current);
+      rafSnapIdRef.current = null;
+    }
+    springStateRef.current.v = 0;
+  }, []);
+
   const snapNow = useCallback(() => {
     const container = containerRef.current;
     if (!container || !isVisibleRef.current || container.clientHeight === 0) {
       return;
     }
+    cancelSpring();
     container.scrollTop = container.scrollHeight;
     lastScrollTopRef.current = container.scrollTop;
     lastScrollHeightRef.current = container.scrollHeight;
     savedScrollTopRef.current = container.scrollTop;
+    springStateRef.current.pos = container.scrollTop;
+    springStateRef.current.v = 0;
     setCachedScrollState(chatId, {
       scrollTop: container.scrollTop,
       isAtBottom: true,
     });
-  }, [chatId]);
+  }, [cancelSpring, chatId]);
 
+  /**
+   * Follows growing content with Sable's critically damped spring (`FOLLOW_W = 24`)
+   * so streamed lines glide smoothly instead of jumping in discrete steps.
+   * Snaps immediately for reduced motion or large jumps (> 1.5x viewport).
+   */
   const scheduleSnapIfSticky = useCallback(() => {
+    const container = containerRef.current;
     if (
+      !container ||
       !isVisibleRef.current ||
       !isAtBottomRef.current ||
-      userUpwardIntentRef.current
+      userUpwardIntentRef.current ||
+      container.clientHeight === 0
     ) {
       return;
     }
-    if (rafSnapIdRef.current !== null) return;
-    if (typeof requestAnimationFrame !== "function") {
+    const target = Math.max(0, container.scrollHeight - container.clientHeight);
+    const gap = target - container.scrollTop;
+    if (gap < 0.5) return;
+
+    const prefersReducedMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+
+    if (
+      prefersReducedMotion ||
+      typeof requestAnimationFrame !== "function" ||
+      gap > container.clientHeight * 1.5
+    ) {
       snapNow();
       return;
     }
-    rafSnapIdRef.current = requestAnimationFrame(() => {
+
+    if (rafSnapIdRef.current !== null) return;
+
+    const g = springStateRef.current;
+    g.pos = container.scrollTop;
+    g.lastMs =
+      typeof performance !== "undefined" ? performance.now() : Date.now();
+
+    const tick = (now: number) => {
       rafSnapIdRef.current = null;
+      const el = containerRef.current;
       if (
-        isVisibleRef.current &&
-        isAtBottomRef.current &&
-        !userUpwardIntentRef.current
+        !el ||
+        !isVisibleRef.current ||
+        !isAtBottomRef.current ||
+        userUpwardIntentRef.current
       ) {
-        snapNow();
+        g.v = 0;
+        return;
       }
-    });
-  }, [snapNow]);
+
+      const nextTarget = Math.max(0, el.scrollHeight - el.clientHeight);
+      const dtSec = (now - g.lastMs) / 1000;
+      g.lastMs = now;
+
+      const stepped = stepSpringFollow(g, nextTarget, dtSec);
+      g.pos = stepped.pos;
+      g.v = stepped.v;
+
+      el.scrollTop = stepped.pos;
+      lastScrollTopRef.current = el.scrollTop;
+      lastScrollHeightRef.current = el.scrollHeight;
+      savedScrollTopRef.current = el.scrollTop;
+
+      if (stepped.settled) {
+        setCachedScrollState(chatId, {
+          scrollTop: el.scrollTop,
+          isAtBottom: true,
+        });
+        return;
+      }
+
+      rafSnapIdRef.current = requestAnimationFrame(tick);
+    };
+
+    rafSnapIdRef.current = requestAnimationFrame(tick);
+  }, [chatId, snapNow]);
 
   const scrollToBottom = useCallback(() => {
     userUpwardIntentRef.current = false;
@@ -173,6 +245,7 @@ export function useScrollToBottom<T extends HTMLElement>(
     const scrollHeightShrank = scrollHeight < prevScrollHeight;
     const movedUpward = !scrollHeightShrank && scrollTop < prevScrollTop - 2;
     if (userUpwardIntentRef.current || movedUpward) {
+      cancelSpring();
       setSticky(false);
       setCachedScrollState(chatId, { scrollTop, isAtBottom: false });
     } else if (isAtBottomRef.current) {
@@ -187,7 +260,7 @@ export function useScrollToBottom<T extends HTMLElement>(
     } else {
       setCachedScrollState(chatId, { scrollTop, isAtBottom: false });
     }
-  }, [chatId, setSticky]);
+  }, [cancelSpring, chatId, setSticky]);
 
   // Restore saved scroll offset when returning from secondary views or remounting
   // a previously visited chat; snap fresh chats to the bottom.

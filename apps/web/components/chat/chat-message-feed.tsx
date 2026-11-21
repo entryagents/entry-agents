@@ -13,6 +13,10 @@ import type {
 } from "@/app/types";
 import { AssistantMessageGroups } from "@/components/assistant-message-groups";
 import { MessageAttachmentChip } from "@/components/message-attachment-chip";
+import { AgentSwitchDivider } from "@/components/chat/agent-switch-divider";
+import { TimelineStamp } from "@/components/chat/timeline-stamp";
+import { TimelineTail } from "@/components/chat/timeline-tail";
+import { detectModelSwitches } from "@/components/chat/timeline-util";
 import { MessageModelPill } from "@/components/message-model-pill";
 import { SnippetChip } from "@/components/snippet-chip";
 import { ToolCall } from "@/components/tool-call/tool-call";
@@ -149,6 +153,8 @@ export interface ChatMessageFeedProps {
   emptyStateMessage?: string;
   showThinkingIndicator?: boolean;
   workspaceStatusMessage?: string;
+  isAwaitingInput?: boolean;
+  onSwitchModel?: (modelId: string) => void;
 }
 
 interface ChatMessageRowProps {
@@ -384,6 +390,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                         onPopoverOpenChange={setUserPopoverOpen}
                       />
                     )}
+                    <TimelineStamp timestamp={startedAt} className="ml-1" />
                   </div>
                 )}
               </div>
@@ -730,10 +737,15 @@ const ChatMessageRow = memo(function ChatMessageRow({
                 ) : (
                   <div />
                 )}
-                <MessageModelPill
-                  metadata={m.metadata}
-                  modelOptions={modelOptions}
-                />
+                <div className="flex items-center gap-2">
+                  {!isMessageStreaming && (
+                    <TimelineStamp timestamp={startedAt} />
+                  )}
+                  <MessageModelPill
+                    metadata={m.metadata}
+                    modelOptions={modelOptions}
+                  />
+                </div>
               </div>
             </>
           );
@@ -782,6 +794,8 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
   emptyStateMessage = "Send a message to get started",
   showThinkingIndicator = false,
   workspaceStatusMessage,
+  isAwaitingInput = false,
+  onSwitchModel,
 }: ChatMessageFeedProps) {
   const [activeMessageActionsId, setActiveMessageActionsId] = useState<
     string | null
@@ -861,7 +875,45 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
     });
   }, [messages, isStreaming]);
 
-  if (groupedRenderMessages.length === 0 && !showThinkingIndicator) {
+  const modelSwitches = useMemo(
+    () => detectModelSwitches(messages),
+    [messages],
+  );
+
+  const lastMessage = messages[messages.length - 1];
+  const lastPart =
+    lastMessage?.role === "assistant"
+      ? lastMessage.parts[lastMessage.parts.length - 1]
+      : undefined;
+  const isActivelyStreamingProse =
+    isStreaming &&
+    Boolean(lastPart) &&
+    (lastPart?.type === "text" || lastPart?.type === "reasoning") &&
+    "text" in lastPart &&
+    typeof lastPart.text === "string" &&
+    lastPart.text.length > 0;
+
+  const activeTurnStartedAtMs = useMemo(() => {
+    if (lastSendTimestamp) return lastSendTimestamp;
+    if (lastMessage && messageStartedAtMap[lastMessage.id]) {
+      const parsed = Date.parse(messageStartedAtMap[lastMessage.id]);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    if (lastUserMessageSentAt) {
+      const parsed = Date.parse(lastUserMessageSentAt);
+      if (Number.isFinite(parsed)) return parsed;
+    }
+    return null;
+  }, [
+    lastMessage,
+    lastSendTimestamp,
+    lastUserMessageSentAt,
+    messageStartedAtMap,
+  ]);
+
+  const showTail = isAwaitingInput || showThinkingIndicator || isStreaming;
+
+  if (groupedRenderMessages.length === 0 && !showTail) {
     return (
       <div className="flex h-full min-h-[40vh] items-center justify-center">
         <p className="text-sm text-muted-foreground">{emptyStateMessage}</p>
@@ -872,62 +924,74 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
   return (
     <div className="space-y-4">
       {groupedRenderMessages.map(
-        ({ message: m, groups, isStreaming: isMessageStreaming }) => (
-          <ChatMessageRow
-            key={m.id}
-            message={m}
-            groups={groups}
-            isMessageStreaming={isMessageStreaming}
-            onOpenFile={onOpenFile}
-            activeApprovalId={activeApprovalId}
-            onApproveTool={onApproveTool}
-            onDenyTool={onDenyTool}
-            onOpenSubagentTab={onOpenSubagentTab}
-            onCopyAssistantMessage={onCopyAssistantMessage}
-            isCopiedAssistant={copiedAssistantMessageId === m.id}
-            onForkAssistantMessage={onForkAssistantMessage}
-            isForkingAssistant={forkingAssistantMessageId === m.id}
-            onCopyUserMessage={onCopyUserMessage}
-            isCopiedUser={copiedUserMessageId === m.id}
-            onEditUserMessage={onEditUserMessage}
-            isEditingUser={editingMessageId === m.id}
-            isLastUserMessage={m.role === "user" && m.id === lastUserMessageId}
-            onResendUserMessage={onResendUserMessage}
-            isResendingUser={resendingMessageId === m.id}
-            onDeleteMessage={onDeleteMessage}
-            isDeletingMessage={deletingMessageId === m.id}
-            hasMessageActionInFlight={
-              hasMessageActionInFlight || forkingAssistantMessageId !== null
-            }
-            modelOptions={modelOptions}
-            durationMs={messageDurationMap[m.id] ?? null}
-            startedAt={
-              messageStartedAtMap[m.id] ??
-              (isMessageStreaming
-                ? lastSendTimestamp
-                  ? new Date(lastSendTimestamp).toISOString()
-                  : lastUserMessageSentAt
-                : null)
-            }
-            cwd={cwd}
-            readOnly={readOnly}
-            isActionsActive={activeMessageActionsId === m.id}
-            onToggleActions={handleToggleActions}
-          />
-        ),
+        ({ message: m, groups, isStreaming: isMessageStreaming }) => {
+          const modelSwitch = modelSwitches.get(m.id);
+          return (
+            <div key={m.id}>
+              {modelSwitch && (
+                <AgentSwitchDivider
+                  fromModelId={modelSwitch.fromModelId}
+                  toModelId={modelSwitch.toModelId}
+                  modelOptions={modelOptions}
+                  isLatest={modelSwitch.isLatest}
+                  isBusy={isStreaming || hasMessageActionInFlight}
+                  onSwitchBack={readOnly ? undefined : onSwitchModel}
+                />
+              )}
+              <ChatMessageRow
+                message={m}
+                groups={groups}
+                isMessageStreaming={isMessageStreaming}
+                onOpenFile={onOpenFile}
+                activeApprovalId={activeApprovalId}
+                onApproveTool={onApproveTool}
+                onDenyTool={onDenyTool}
+                onOpenSubagentTab={onOpenSubagentTab}
+                onCopyAssistantMessage={onCopyAssistantMessage}
+                isCopiedAssistant={copiedAssistantMessageId === m.id}
+                onForkAssistantMessage={onForkAssistantMessage}
+                isForkingAssistant={forkingAssistantMessageId === m.id}
+                onCopyUserMessage={onCopyUserMessage}
+                isCopiedUser={copiedUserMessageId === m.id}
+                onEditUserMessage={onEditUserMessage}
+                isEditingUser={editingMessageId === m.id}
+                isLastUserMessage={
+                  m.role === "user" && m.id === lastUserMessageId
+                }
+                onResendUserMessage={onResendUserMessage}
+                isResendingUser={resendingMessageId === m.id}
+                onDeleteMessage={onDeleteMessage}
+                isDeletingMessage={deletingMessageId === m.id}
+                hasMessageActionInFlight={
+                  hasMessageActionInFlight || forkingAssistantMessageId !== null
+                }
+                modelOptions={modelOptions}
+                durationMs={messageDurationMap[m.id] ?? null}
+                startedAt={
+                  messageStartedAtMap[m.id] ??
+                  (isMessageStreaming
+                    ? lastSendTimestamp
+                      ? new Date(lastSendTimestamp).toISOString()
+                      : lastUserMessageSentAt
+                    : null)
+                }
+                cwd={cwd}
+                readOnly={readOnly}
+                isActionsActive={activeMessageActionsId === m.id}
+                onToggleActions={handleToggleActions}
+              />
+            </div>
+          );
+        },
       )}
 
-      {showThinkingIndicator && (
-        <div className="my-1.5 border border-transparent py-0.5 select-none">
-          <div className="inline-flex items-center gap-2 rounded-md py-px text-sm text-muted-foreground">
-            <span className="flex size-3.5 shrink-0 items-center justify-center">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-muted-foreground" />
-            </span>
-            <span className="leading-none">
-              {workspaceStatusMessage ?? "Thinking…"}
-            </span>
-          </div>
-        </div>
+      {showTail && (
+        <TimelineTail
+          status={isAwaitingInput ? "awaiting" : "working"}
+          activity={workspaceStatusMessage ?? "Working"}
+          startedAtMs={activeTurnStartedAtMs}
+          quiet={!isAwaitingInput && isActivelyStreamingProse}
+        />
       )}
     </div>
   );
