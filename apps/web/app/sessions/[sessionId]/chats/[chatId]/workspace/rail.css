@@ -60,6 +60,10 @@
   --ring-track: rgb(0 0 0 / 0.07);
   --ring-hatch-bg: rgb(0 0 0 / 0.04);
   --ring-hatch-line: rgb(0 0 0 / 0.2);
+  --cx-step-rgb: 24 24 27;
+  --dither-edge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM4 0h1v1h-1zM6 0h1v1h-1zM0 1h1v1h-1zM1 1h1v1h-1zM3 1h1v1h-1zM5 1h1v1h-1zM0 2h1v1h-1zM1 2h1v1h-1zM2 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM1 3h1v1h-1zM3 3h1v1h-1z'/%3E%3C/svg%3E");
+  --meter-track: rgb(0 0 0 / 0.08);
+  --meter-fill: rgb(24 24 27 / 0.82);
 
   --rail-row-h: 30px;
   --rail-bar-h: 40px;
@@ -107,6 +111,10 @@
   --ring-track: rgb(255 255 255 / 0.06);
   --ring-hatch-bg: rgb(255 255 255 / 0.04);
   --ring-hatch-line: rgb(255 255 255 / 0.2);
+  --cx-step-rgb: 242 241 238;
+  --dither-edge: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='4' shape-rendering='crispEdges'%3E%3Cpath fill='%23fff' d='M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM4 0h1v1h-1zM6 0h1v1h-1zM0 1h1v1h-1zM1 1h1v1h-1zM3 1h1v1h-1zM5 1h1v1h-1zM0 2h1v1h-1zM1 2h1v1h-1zM2 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM1 3h1v1h-1zM3 3h1v1h-1z'/%3E%3C/svg%3E");
+  --meter-track: rgb(255 255 255 / 0.07);
+  --meter-fill: rgb(242 241 238 / 0.82);
 }
 
 /* ── header ── */
@@ -673,6 +681,13 @@
   background: var(--fill-2);
 }
 
+.sable-rail .cx-swatch-buffer {
+  border: 1px solid var(--line-2);
+  background: var(--dither-50) 0 0 / 2px 2px;
+  image-rendering: pixelated;
+  opacity: 0.6;
+}
+
 .sable-rail .cx-name {
   flex: 1;
 }
@@ -748,4 +763,56 @@
   .sable-rail .cx-left {
     display: none;
   }
+}
+
+.sable-rail .num {
+  font-variant-numeric: tabular-nums;
+}
+
+.sable-rail .meter {
+  position: relative;
+  display: block;
+  height: 4px;
+  border-radius: 99px;
+  background-color: var(--meter-track);
+  overflow: hidden;
+}
+
+.sable-rail .meter-fill {
+  --meter-color: var(--meter-fill);
+  position: absolute;
+  inset: 0;
+  padding-right: 8px;
+  border-radius: inherit;
+  background: var(--meter-color) content-box;
+  transform: translateX(calc((var(--p, 0) - 1) * 100%));
+  transition: transform var(--d-4) var(--ease-out);
+}
+
+.sable-rail .meter-fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  background: var(--dither-edge) left top / 8px 4px repeat-y;
+  image-rendering: pixelated;
+  opacity: 0.82;
+}
+
+.sable-rail .meter[data-level] .meter-fill {
+  padding-right: 0;
+}
+
+.sable-rail .meter[data-level] .meter-fill::after {
+  display: none;
+}
+
+.sable-rail .meter[data-level="amber"] .meter-fill {
+  --meter-color: var(--amber);
+}
+
+.sable-rail .meter[data-level="red"] .meter-fill {
+  --meter-color: var(--red);
 }
