@@ -2947,13 +2947,19 @@ export async function runAgentWorkflow(options: Options) {
       }
       let result: Awaited<ReturnType<typeof runAgentStep>>;
 
-      if (
+      const effectiveContextWindow = modelMeta?.contextWindow ?? 200_000;
+      const effectiveCompactionThreshold =
+        modelMeta?.compactionThreshold ?? 0.8;
+      const compactionTriggerTokens = Math.floor(
+        effectiveContextWindow * effectiveCompactionThreshold,
+      );
+      const shouldCheckPreStepCompaction =
         modelMessages.length > 12 &&
-        (step === 0 ||
-          (lastKnownInputTokens !== undefined &&
-            lastKnownInputTokens >= 80_000) ||
-          (modelMessages.length >= 28 && step % 3 === 0))
-      ) {
+        ((lastKnownInputTokens !== undefined &&
+          lastKnownInputTokens >= compactionTriggerTokens) ||
+          (lastKnownInputTokens === undefined && modelMessages.length >= 60));
+
+      if (shouldCheckPreStepCompaction) {
         const latestUiId = options.messages.at(-1)?.id;
         const compacted = await compactAndCheckpointStep(
           withoutUndefined({
