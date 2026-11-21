@@ -87,6 +87,7 @@ export type WorkspacePanelProps = GitPanelProps & {
   messages?: WebAgentUIMessage[];
   modelId?: string | null;
   modelOptions?: ModelOption[];
+  contextLimit?: number | null;
   isParentStreaming?: boolean;
   teamRoleModels?: Record<string, string>;
   onUpdateRoleModel?: (role: string, modelId: string | null) => void;
@@ -95,6 +96,8 @@ export type WorkspacePanelProps = GitPanelProps & {
   freeTierAllowedModelIds?: string[];
   onSelectSubagent?: (toolCallId: string) => void;
   onStopRun?: () => void;
+  onCompactConversation?: () => void;
+  isCompacting?: boolean;
 };
 
 function fileBasename(filePath: string): string {
@@ -112,6 +115,7 @@ export function WorkspacePanel({
   messages = [],
   modelId = "",
   modelOptions = [],
+  contextLimit = null,
   isParentStreaming = false,
   teamRoleModels = {},
   onUpdateRoleModel,
@@ -120,6 +124,8 @@ export function WorkspacePanel({
   freeTierAllowedModelIds = [],
   onSelectSubagent,
   onStopRun,
+  onCompactConversation,
+  isCompacting = false,
   ...gitPanelProps
 }: WorkspacePanelProps) {
   const {
@@ -390,6 +396,10 @@ export function WorkspacePanel({
                   messages={messages}
                   modelId={resolvedModelId}
                   modelOptions={modelOptions}
+                  contextLimit={contextLimit}
+                  onCompactConversation={onCompactConversation}
+                  isCompacting={isCompacting}
+                  isBusy={isParentStreaming}
                 />
               )}
               {def.id === "agents" && (
