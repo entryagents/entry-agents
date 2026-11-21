@@ -14,6 +14,7 @@ import {
 import { InboxSidebar } from "@/components/inbox-sidebar";
 import { SidebarResize } from "@/components/sidebar/sidebar-resize";
 import { NewSessionDialog } from "@/components/new-session-dialog";
+import { QuickSwitch } from "@/components/sessions/quick-switch";
 import {
   Sidebar,
   SidebarContent,
@@ -320,6 +321,12 @@ export function SessionsRouteShell({
         <SidebarResize />
         <RouteContentShell>{children}</RouteContentShell>
       </SidebarProvider>
+
+      <QuickSwitch
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSelectSession={handleSessionClick}
+      />
 
       <NewSessionDialog
         open={newSessionOpen}

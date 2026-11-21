@@ -640,15 +640,18 @@ export function WorkspaceReviewTab({
                         path={file.path}
                         className="h-3.5 w-3.5 shrink-0"
                       />
-                      <span className="font-mono text-xs truncate">
-                        {dirPath && (
-                          <span className="text-muted-foreground">
-                            {dirPath}
-                          </span>
-                        )}
-                        <span className="text-foreground font-semibold">
+                      <span className="flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden font-mono text-xs">
+                        <span className="shrink-0 font-semibold text-foreground">
                           {fileName}
                         </span>
+                        {dirPath && (
+                          <span
+                            className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] text-muted-foreground"
+                            dir="rtl"
+                          >
+                            <bdi>{dirPath.replace(/\/$/, "")}</bdi>
+                          </span>
+                        )}
                       </span>
                     </button>
 

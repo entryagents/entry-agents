@@ -856,44 +856,45 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
     <div className="space-y-4">
       {groupedRenderMessages.map(
         ({ message: m, groups, isStreaming: isMessageStreaming }) => (
-          <ChatMessageRow
-            key={m.id}
-            message={m}
-            groups={groups}
-            isMessageStreaming={isMessageStreaming}
-            onOpenFile={onOpenFile}
-            activeApprovalId={activeApprovalId}
-            onApproveTool={onApproveTool}
-            onDenyTool={onDenyTool}
-            onOpenSubagentTab={onOpenSubagentTab}
-            onCopyAssistantMessage={onCopyAssistantMessage}
-            isCopiedAssistant={copiedAssistantMessageId === m.id}
-            onForkAssistantMessage={onForkAssistantMessage}
-            isForkingAssistant={forkingAssistantMessageId === m.id}
-            onCopyUserMessage={onCopyUserMessage}
-            isCopiedUser={copiedUserMessageId === m.id}
-            onResendUserMessage={onResendUserMessage}
-            isResendingUser={resendingMessageId === m.id}
-            onDeleteMessage={onDeleteMessage}
-            isDeletingMessage={deletingMessageId === m.id}
-            hasMessageActionInFlight={
-              hasMessageActionInFlight || forkingAssistantMessageId !== null
-            }
-            modelOptions={modelOptions}
-            durationMs={messageDurationMap[m.id] ?? null}
-            startedAt={
-              messageStartedAtMap[m.id] ??
-              (isMessageStreaming
-                ? lastSendTimestamp
-                  ? new Date(lastSendTimestamp).toISOString()
-                  : lastUserMessageSentAt
-                : null)
-            }
-            cwd={cwd}
-            readOnly={readOnly}
-            isActionsActive={activeMessageActionsId === m.id}
-            onToggleActions={handleToggleActions}
-          />
+          <div key={m.id} data-find-msg-id={m.id}>
+            <ChatMessageRow
+              message={m}
+              groups={groups}
+              isMessageStreaming={isMessageStreaming}
+              onOpenFile={onOpenFile}
+              activeApprovalId={activeApprovalId}
+              onApproveTool={onApproveTool}
+              onDenyTool={onDenyTool}
+              onOpenSubagentTab={onOpenSubagentTab}
+              onCopyAssistantMessage={onCopyAssistantMessage}
+              isCopiedAssistant={copiedAssistantMessageId === m.id}
+              onForkAssistantMessage={onForkAssistantMessage}
+              isForkingAssistant={forkingAssistantMessageId === m.id}
+              onCopyUserMessage={onCopyUserMessage}
+              isCopiedUser={copiedUserMessageId === m.id}
+              onResendUserMessage={onResendUserMessage}
+              isResendingUser={resendingMessageId === m.id}
+              onDeleteMessage={onDeleteMessage}
+              isDeletingMessage={deletingMessageId === m.id}
+              hasMessageActionInFlight={
+                hasMessageActionInFlight || forkingAssistantMessageId !== null
+              }
+              modelOptions={modelOptions}
+              durationMs={messageDurationMap[m.id] ?? null}
+              startedAt={
+                messageStartedAtMap[m.id] ??
+                (isMessageStreaming
+                  ? lastSendTimestamp
+                    ? new Date(lastSendTimestamp).toISOString()
+                    : lastUserMessageSentAt
+                  : null)
+              }
+              cwd={cwd}
+              readOnly={readOnly}
+              isActionsActive={activeMessageActionsId === m.id}
+              onToggleActions={handleToggleActions}
+            />
+          </div>
         ),
       )}
 

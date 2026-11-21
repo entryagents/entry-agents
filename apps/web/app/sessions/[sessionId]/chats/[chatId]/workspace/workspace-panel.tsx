@@ -367,6 +367,7 @@ export function WorkspacePanel({
                 <WorkspaceTerminalTab
                   sessionId={gitPanelProps.session.id}
                   canRun={gitPanelProps.hasSandbox}
+                  onOpenPreview={() => pickBuiltinTab("preview")}
                 />
               )}
               {def.id === "tasks" && <WorkspaceTasksTab messages={messages} />}
