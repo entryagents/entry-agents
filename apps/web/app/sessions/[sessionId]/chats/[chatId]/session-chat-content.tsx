@@ -60,6 +60,7 @@ import { UntilStrip } from "@/components/composer/until-strip";
 import { RaceView, type RaceSessionConfig } from "@/components/race/race-view";
 import { useTriage } from "@/components/triage/triage-context";
 import { parseRaceCommand, pickRaceModels } from "@/lib/race/parse";
+import { collectAutoApprovableIds } from "@/lib/chat/permission-approval";
 import { extractTriagePromptsFromMessages } from "@/lib/triage/deck";
 import { useUntilLoop } from "./hooks/use-until-loop";
 import { OpenFileProvider } from "@/components/tool-call/open-file-context";
@@ -1186,6 +1187,12 @@ export function SessionChatContent({
       }
       setIsTogglingPermissionMode(true);
       void updatePermissionMode(mode)
+        .then(() => {
+          const approvalIds = collectAutoApprovableIds(chat.messages, mode);
+          for (const id of approvalIds) {
+            void chat.addToolApprovalResponse({ id, approved: true });
+          }
+        })
         .catch((toggleError) => {
           console.error("Failed to update permission mode:", toggleError);
         })
@@ -1193,7 +1200,7 @@ export function SessionChatContent({
           setIsTogglingPermissionMode(false);
         });
     },
-    [isTogglingPermissionMode, permissionMode, updatePermissionMode],
+    [chat, isTogglingPermissionMode, permissionMode, updatePermissionMode],
   );
   const { isAutoCommitting, markAutoCommitStarted } = useAutoCommitStatus(
     autoCommitEnabled,

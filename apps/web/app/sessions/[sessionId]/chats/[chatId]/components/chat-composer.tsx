@@ -31,7 +31,10 @@ import { FileSuggestionsDropdown } from "@/components/file-suggestions-dropdown"
 import { ImageAttachmentsPreview } from "@/components/image-attachments-preview";
 import { useInlineQuestion } from "@/components/inline-question-input";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
-import { PermissionModeSelector } from "@/components/permission-mode-selector";
+import {
+  nextPermissionMode,
+  PermissionModeSelector,
+} from "@/components/permission-mode-selector";
 import { ReasoningEffortSelector } from "@/components/reasoning-effort-selector";
 import { SelectedSkillsPreview } from "@/components/selected-skills-preview";
 import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
@@ -677,6 +680,21 @@ export const ChatComposer = memo(
                     setCursorPosition(e.currentTarget.selectionStart ?? 0);
                   }}
                   onKeyDown={(e) => {
+                    if (
+                      e.key === "Tab" &&
+                      e.shiftKey &&
+                      !e.metaKey &&
+                      !e.ctrlKey &&
+                      !e.altKey
+                    ) {
+                      e.preventDefault();
+                      if (!isTogglingPermissionMode) {
+                        onPermissionModeChange(
+                          nextPermissionMode(permissionMode),
+                        );
+                      }
+                      return;
+                    }
                     if (
                       showInlineQuestion &&
                       e.key === "Enter" &&
