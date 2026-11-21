@@ -66,7 +66,7 @@ import {
   closeStream,
   clearActiveStream,
   finalizeAbortedChatStep,
-  getUnreadInboxCountStep,
+  consumeUnreadInboxMessagesStep,
   releaseUserBillingTurnStep,
   reconcileSessionStatusStep,
   hasAutoCommitChangesStep,
@@ -3020,28 +3020,23 @@ export async function runAgentWorkflow(options: Options) {
         permissionMode: livePermissionMode,
       });
 
-      const { unreadCount: unreadInboxCount } = await getUnreadInboxCountStep(
-        options.chatId,
-      );
-      // Ephemeral per-step steering notice: never mutate `modelMessages` with
-      // this imperative, otherwise once `inbox` marks messages read (or if a
-      // step retries) the stale "You MUST call the `inbox` tool IMMEDIATELY"
-      // user message remains in history and traps models in an infinite inbox loop.
-      const stepModelMessages: ModelMessage[] =
-        unreadInboxCount > 0
-          ? [
-              ...modelMessages,
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: `[HIGH-PRIORITY STEERING INBOX INTERVENTION]\nYou have ${unreadInboxCount} unread message(s) in your steering inbox.\nCall the \`inbox\` tool ONCE right now to read the unread instruction(s) (marked [NEW / UNREAD]) and adjust your course without restarting. After reading them, do NOT call \`inbox\` again unless a new unread intervention arrives.`,
-                  },
-                ],
-              },
-            ]
-          : modelMessages;
+      const { messages: unreadInboxMessages } =
+        await consumeUnreadInboxMessagesStep(options.chatId);
+      if (unreadInboxMessages.length > 0) {
+        const formattedSteering = unreadInboxMessages
+          .map((m, idx) => `${idx + 1}. ${m.content}`)
+          .join("\n");
+        modelMessages.push({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `[STEERING MESSAGE FROM USER]\nThe user sent the following real-time steering instruction(s) while you were working (already marked read — do NOT call the \`inbox\` tool for these):\n${formattedSteering}`,
+            },
+          ],
+        });
+      }
+      const stepModelMessages: ModelMessage[] = modelMessages;
 
       const toolResultsBeforeStep =
         countToolResultsInModelMessages(modelMessages);
