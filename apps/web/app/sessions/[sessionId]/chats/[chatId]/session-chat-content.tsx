@@ -46,7 +46,6 @@ import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work
 import { consumePendingInitialPrompt } from "@/lib/chat/pending-initial-prompt";
 import { SubagentThreadView } from "@/components/team/subagent-thread-view";
 import { TeamStatusButton } from "@/components/team/team-status-button";
-import { TeamWorkspace } from "@/components/team/team-workspace";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
 import { ChatNavigator } from "@/components/chat/chat-navigator";
 import {
@@ -887,7 +886,6 @@ export function SessionChatContent({
   >(null);
   const [mobileArchiveDialogOpen, setMobileArchiveDialogOpen] = useState(false);
   const [mobileShareOpen, setMobileShareOpen] = useState(false);
-  const [teamPaneOpen, setTeamPaneOpen] = useState(false);
   const [copiedAssistantMessageId, setCopiedAssistantMessageId] = useState<
     string | null
   >(null);
@@ -906,6 +904,9 @@ export function SessionChatContent({
     openSubagentTab,
     closeSubagentTab,
     gitPanelOpen,
+    setGitPanelOpen,
+    activeWorkspaceTab,
+    setActiveWorkspaceTab,
     openFileTab,
     shareRequested,
     setShareRequested,
@@ -3468,7 +3469,9 @@ export function SessionChatContent({
       isFreeTierLocked={userPlan?.modelAccess === "starter-only"}
       freePlanModelId={freePlanModelId}
       freeTierAllowedModelIds={freeTierAllowedModelIds}
-      onSelectSubagent={(subagentId) => openSubagentTab(subagentId)}
+      onSelectSubagent={(subagentId, title, subagentType) =>
+        openSubagentTab(subagentId, title, subagentType)
+      }
       onStopRun={handleStopStream}
     />
   ) : null;
@@ -3479,21 +3482,17 @@ export function SessionChatContent({
       {headerActionsNode &&
         createPortal(
           <TeamStatusButton
-            messages={messages}
+            messages={renderMessages}
             isParentStreaming={effectiveStatus === "streaming"}
-            onStopRun={handleStopStream}
-            isDesktopTeamPaneOpen={teamPaneOpen}
-            onToggleDesktopTeamPane={() => setTeamPaneOpen((prev) => !prev)}
-            defaultModelId={chatInfo.modelId}
-            teamRoleModels={teamRoleModels}
-            onUpdateRoleModel={updateTeamRoleModel}
-            modelOptions={modelOptions}
-            isFreeTierLocked={userPlan?.modelAccess === "starter-only"}
-            freePlanModelId={freePlanModelId}
-            freeTierAllowedModelIds={freeTierAllowedModelIds}
-            onSelectSubagent={(subagentId, title, subagentType) =>
-              openSubagentTab(subagentId, title, subagentType)
-            }
+            isAgentsPanelOpen={gitPanelOpen && activeWorkspaceTab === "agents"}
+            onToggleAgentsPanel={() => {
+              if (gitPanelOpen && activeWorkspaceTab === "agents") {
+                setGitPanelOpen(false);
+              } else {
+                setActiveWorkspaceTab("agents");
+                setGitPanelOpen(true);
+              }
+            }}
           />,
           headerActionsNode,
         )}
@@ -3821,28 +3820,6 @@ export function SessionChatContent({
             </div>
           </div>
         </div>
-
-        {teamPaneOpen && (
-          <div className="hidden h-full w-[360px] shrink-0 overflow-hidden border-l border-border/80 bg-background lg:flex xl:w-[380px]">
-            <TeamWorkspace
-              className="w-full"
-              messages={messages}
-              isParentStreaming={effectiveStatus === "streaming"}
-              defaultModelId={chatInfo.modelId}
-              teamRoleModels={teamRoleModels}
-              onUpdateRoleModel={updateTeamRoleModel}
-              modelOptions={modelOptions}
-              isFreeTierLocked={userPlan?.modelAccess === "starter-only"}
-              freePlanModelId={freePlanModelId}
-              freeTierAllowedModelIds={freeTierAllowedModelIds}
-              onSelectSubagent={(subagentId, title, subagentType) =>
-                openSubagentTab(subagentId, title, subagentType)
-              }
-              onStopRun={handleStopStream}
-              onClose={() => setTeamPaneOpen(false)}
-            />
-          </div>
-        )}
       </div>
 
       {/* Merge PR Dialog */}

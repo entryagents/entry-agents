@@ -93,7 +93,11 @@ export type WorkspacePanelProps = GitPanelProps & {
   isFreeTierLocked?: boolean;
   freePlanModelId?: string | null;
   freeTierAllowedModelIds?: string[];
-  onSelectSubagent?: (toolCallId: string) => void;
+  onSelectSubagent?: (
+    toolCallId: string,
+    title?: string,
+    subagentType?: string,
+  ) => void;
   onStopRun?: () => void;
 };
 
@@ -123,6 +127,7 @@ export function WorkspacePanel({
   ...gitPanelProps
 }: WorkspacePanelProps) {
   const {
+    setGitPanelOpen,
     activeWorkspaceTab,
     setActiveWorkspaceTab,
     openFiles,
@@ -196,13 +201,13 @@ export function WorkspacePanel({
   }, [pickBuiltinTab]);
 
   const liveAgents = useMemo(() => {
-    const roster = deriveAgentHubRoster(messages);
+    const roster = deriveAgentHubRoster(messages, { isParentStreaming });
     let live = 0;
     for (const entry of roster) {
       if (isLiveStatus(entry.status)) live += 1;
     }
     return live;
-  }, [messages]);
+  }, [messages, isParentStreaming]);
   const todos = useMemo(() => getLatestTodos(messages), [messages]);
   const openTodos = useMemo(
     () => todos.filter((t) => t.status !== "completed").length,
@@ -390,6 +395,7 @@ export function WorkspacePanel({
                   freeTierAllowedModelIds={freeTierAllowedModelIds}
                   onSelectSubagent={onSelectSubagent ?? (() => {})}
                   onStopRun={onStopRun ?? (() => {})}
+                  onClosePanel={() => setGitPanelOpen(false)}
                 />
               )}
             </div>
