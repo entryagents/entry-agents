@@ -1,7 +1,7 @@
 "use client";
 
 import "./rail.css";
-import { Loader2, Maximize2, Minimize2, X } from "lucide-react";
+import { Loader2, Maximize2, Minimize2, PanelRight, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
@@ -123,6 +123,7 @@ export function WorkspacePanel({
   ...gitPanelProps
 }: WorkspacePanelProps) {
   const {
+    setGitPanelOpen,
     activeWorkspaceTab,
     setActiveWorkspaceTab,
     openFiles,
@@ -254,8 +255,8 @@ export function WorkspacePanel({
           isPreviewLive={isPreviewLive}
           onPick={pickBuiltinTab}
         />
-        {onToggleWorkspaceExpand && (
-          <div className="flex items-center shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
+          {onToggleWorkspaceExpand && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -277,8 +278,22 @@ export function WorkspacePanel({
                 {isWorkspaceExpanded ? "Restore width" : "Expand panel"}
               </TooltipContent>
             </Tooltip>
-          </div>
-        )}
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="rail-btn"
+                data-active="true"
+                onClick={() => setGitPanelOpen(false)}
+                aria-label="Hide panel"
+              >
+                <PanelRight size={15} strokeWidth={1.6} aria-hidden="true" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Hide panel · ⌘⇧B</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       {openFiles.length > 0 && (

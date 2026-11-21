@@ -1,0 +1,283 @@
+/*
+ * Sable Topbar 1:1 Stylesheet
+ * Ported from Leonxlnx/sable src/app/app.css (.topbar, .topbar-*, .icon-btn)
+ * and scoped cleanly to .sable-topbar.
+ */
+
+.sable-topbar {
+  --tb-bg: var(--background);
+  --tb-sheet: var(--background);
+  --tb-fill-1: rgb(0 0 0 / 0.03);
+  --tb-fill-2: rgb(0 0 0 / 0.055);
+  --tb-fill-3: rgb(0 0 0 / 0.085);
+  --tb-ctl-hover: rgb(0 0 0 / 0.06);
+  --tb-ctl-press: rgb(0 0 0 / 0.09);
+  --tb-line: rgb(0 0 0 / 0.08);
+  --tb-text: var(--foreground);
+  --tb-text-2: #52525b;
+  --tb-text-3: #71717a;
+  --tb-well-strong: rgb(0 0 0 / 0.04);
+  --tb-focus-field: rgb(0 0 0 / 0.25);
+
+  --tb-r-ctl: 8px;
+  --tb-r-ctl-xs: 5px;
+  --tb-d-1: 100ms;
+  --tb-d-2: 150ms;
+  --tb-d-3: 200ms;
+  --tb-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tb-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --tb-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+  --tb-press-icon: 0.94;
+
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--tb-line);
+  background-color: var(--tb-bg);
+  user-select: none;
+}
+
+.dark .sable-topbar {
+  --tb-fill-1: rgb(255 255 255 / 0.035);
+  --tb-fill-2: rgb(255 255 255 / 0.06);
+  --tb-fill-3: rgb(255 255 255 / 0.09);
+  --tb-ctl-hover: rgb(255 255 255 / 0.06);
+  --tb-ctl-press: rgb(255 255 255 / 0.09);
+  --tb-line: rgb(255 255 255 / 0.06);
+  --tb-text-2: #aeada9;
+  --tb-text-3: #7a7975;
+  --tb-well-strong: rgb(255 255 255 / 0.06);
+  --tb-focus-field: rgb(255 255 255 / 0.25);
+}
+
+.sable-topbar .topbar-icon-btn {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--tb-r-ctl);
+  color: var(--tb-text-3);
+  cursor: pointer;
+  transition:
+    background-color var(--tb-d-1) var(--tb-ease),
+    color var(--tb-d-1) var(--tb-ease),
+    scale var(--tb-d-2) var(--tb-spring);
+}
+
+.sable-topbar .topbar-icon-btn:hover {
+  background-color: var(--tb-ctl-hover);
+  color: var(--tb-text);
+}
+
+.sable-topbar .topbar-icon-btn:active {
+  background-color: var(--tb-ctl-press);
+  scale: var(--tb-press-icon);
+  transition-duration: var(--tb-d-1), var(--tb-d-1), 70ms;
+}
+
+.sable-topbar .topbar-icon-btn[data-active="true"] {
+  background-color: transparent;
+  color: var(--tb-text);
+}
+
+.sable-topbar .topbar-icon-btn[data-active="true"]:hover {
+  background-color: var(--tb-fill-2);
+}
+
+.sable-topbar .topbar-icon-btn:focus-visible,
+.sable-topbar .topbar-home:focus-visible,
+.sable-topbar .topbar-name:focus-visible,
+.sable-topbar .topbar-crumb-btn:focus-visible {
+  outline: 1.5px solid var(--tb-focus-field);
+  outline-offset: -2px;
+}
+
+.sable-topbar .topbar-home {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--tb-r-ctl);
+  transition:
+    background-color var(--tb-d-1) var(--tb-ease),
+    scale var(--tb-d-2) var(--tb-spring);
+}
+
+.sable-topbar .topbar-home:hover {
+  background-color: var(--tb-ctl-hover);
+}
+
+.sable-topbar .topbar-home:active {
+  background-color: var(--tb-ctl-press);
+  scale: var(--tb-press-icon);
+  transition-duration: var(--tb-d-1), 70ms;
+}
+
+.sable-topbar .topbar-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 6px;
+}
+
+.sable-topbar .topbar-name {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin: 0 -6px;
+  padding: 3px 6px;
+  border-radius: var(--tb-r-ctl-xs);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  text-align: left;
+  color: var(--tb-text);
+  cursor: default;
+  transition: background-color var(--tb-d-1) var(--tb-ease);
+}
+
+.sable-topbar .topbar-name:hover {
+  background-color: var(--tb-fill-1);
+}
+
+.sable-topbar .topbar-rename {
+  flex-shrink: 1;
+  min-width: 80px;
+  max-width: 46%;
+  height: 26px;
+  margin: 0 -7px;
+  padding: 0 6px;
+  border: 1px solid var(--tb-focus-field);
+  border-radius: var(--tb-r-ctl-xs);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--tb-text);
+  background-color: var(--tb-well-strong);
+  user-select: text;
+}
+
+.sable-topbar .topbar-rename:focus {
+  outline: none;
+}
+
+/* One line of crumbs; crumbs wrap whole to an overflow-clipped second line so icons are never sliced. */
+.sable-topbar .topbar-crumb {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 5px;
+  row-gap: 12px;
+  height: 28px;
+  min-width: 40px;
+  margin: 0 -3px;
+  padding: 3px;
+  overflow: hidden;
+  color: var(--tb-text-3);
+  font-size: 12px;
+  flex-shrink: 1000;
+}
+
+@media (min-width: 640px) {
+  .sable-topbar .topbar-crumb {
+    display: inline-flex;
+  }
+}
+
+.sable-topbar .topbar-crumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  min-width: 0;
+  border-radius: var(--tb-r-ctl-xs);
+}
+
+.sable-topbar .topbar-crumb-item + .topbar-crumb-item {
+  margin-left: 6px;
+}
+
+.sable-topbar .topbar-crumb-btn {
+  padding: 0 4px;
+  margin: 0 -4px;
+  cursor: pointer;
+  transition:
+    background-color var(--tb-d-1) var(--tb-ease),
+    color var(--tb-d-1) var(--tb-ease);
+}
+
+.sable-topbar .topbar-crumb-btn:hover {
+  background-color: var(--tb-fill-1);
+  color: var(--tb-text-2);
+}
+
+.sable-topbar .topbar-crumb svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.sable-topbar .topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.sable-topbar .topbar-actions-slot {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* On desktop, the panel header owns the hide toggle when open, so the topbar toggle folds smoothly away. */
+.sable-topbar .topbar-panel {
+  display: flex;
+  flex-shrink: 0;
+  width: 28px;
+  overflow: hidden;
+  transition:
+    width calc(var(--tb-d-3) * 1.3) var(--tb-ease-out),
+    margin-left calc(var(--tb-d-3) * 1.3) var(--tb-ease-out),
+    opacity var(--tb-d-2) var(--tb-ease);
+}
+
+@media (min-width: 1024px) {
+  .sable-topbar .topbar-panel[data-away] {
+    width: 0;
+    margin-left: -2px;
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+.sable-topbar .topbar-dot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sable-topbar .topbar-icon-btn,
+  .sable-topbar .topbar-home,
+  .sable-topbar .topbar-name,
+  .sable-topbar .topbar-crumb-btn,
+  .sable-topbar .topbar-panel {
+    transition: none;
+  }
+}

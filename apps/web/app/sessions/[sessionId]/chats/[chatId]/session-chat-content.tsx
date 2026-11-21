@@ -109,6 +109,7 @@ import {
   DEFAULT_CONTEXT_LIMIT,
   estimateModelUsageCost,
 } from "@/lib/models";
+import { chatMarkdown } from "@/lib/export/chat-markdown";
 import { getPrDeploymentRefreshInterval } from "@/lib/pr-deployment-polling";
 import {
   type SandboxInfo,
@@ -916,6 +917,8 @@ export function SessionChatContent({
     setHasCommittedChanges,
     panelPortalRef,
     headerActionsRef,
+    setHeaderModelId,
+    exportMarkdownRef,
     isWorkspaceExpanded,
     setIsWorkspaceExpanded,
     focusedFilePath,
@@ -3297,6 +3300,41 @@ export function SessionChatContent({
   useEffect(() => {
     setHasActionNeeded(showCommitAction);
   }, [showCommitAction, setHasActionNeeded]);
+
+  // Sync active model icon + markdown exporter for the Sable 1:1 chat header
+  useEffect(() => {
+    setHeaderModelId(chatInfo.modelId ?? null);
+    return () => setHeaderModelId(null);
+  }, [chatInfo.modelId, setHeaderModelId]);
+
+  useEffect(() => {
+    exportMarkdownRef.current = () => ({
+      title: session.title,
+      markdown: chatMarkdown(
+        {
+          title: session.title,
+          modelId: chatInfo.modelId,
+          repoName: session.repoName,
+          repoOwner: session.repoOwner,
+          branch: session.branch,
+          createdAt: session.createdAt,
+        },
+        renderMessages,
+      ),
+    });
+    return () => {
+      exportMarkdownRef.current = null;
+    };
+  }, [
+    chatInfo.modelId,
+    exportMarkdownRef,
+    renderMessages,
+    session.branch,
+    session.createdAt,
+    session.repoName,
+    session.repoOwner,
+    session.title,
+  ]);
 
   // Sync the file change count for the badge on the toggle button
   const totalChangesCount = diff?.files?.length ?? 0;
