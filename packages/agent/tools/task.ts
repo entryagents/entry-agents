@@ -408,6 +408,9 @@ IMPORTANT:
             : {}),
           ...(contextWindow ? { contextWindow } : {}),
           ...(compactionThreshold ? { compactionThreshold } : {}),
+          ...(parentContext?.permissionMode
+            ? { permissionMode: parentContext.permissionMode }
+            : {}),
           ...(parentContext?.secrets ? { secrets: parentContext.secrets } : {}),
           ...(parentContext?.secretCatalog
             ? { secretCatalog: parentContext.secretCatalog }

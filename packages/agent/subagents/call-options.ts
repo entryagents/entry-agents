@@ -14,6 +14,8 @@ export const sharedSubagentCallOptionsFields = {
   maxOutputTokens: z.number().int().positive().optional(),
   contextWindow: z.number().int().positive().optional(),
   compactionThreshold: z.number().positive().optional(),
+  // Permission mode inherited from the parent agent turn
+  permissionMode: z.enum(["ask", "autoAccept", "fullAccess"]).optional(),
   // Security & runtime hooks inherited from the parent agent turn
   secrets: z.custom<AgentContext["secrets"]>().optional(),
   secretCatalog: z.custom<AgentContext["secretCatalog"]>().optional(),
@@ -31,6 +33,7 @@ export function buildSubagentExperimentalContext(
     teamId?: string;
     contextWindow?: number;
     compactionThreshold?: number;
+    permissionMode?: "ask" | "autoAccept" | "fullAccess";
     secrets?: AgentContext["secrets"];
     secretCatalog?: AgentContext["secretCatalog"];
     secretRedactor?: AgentContext["secretRedactor"];
@@ -48,6 +51,7 @@ export function buildSubagentExperimentalContext(
     agentRole,
     contextWindow: options.contextWindow,
     compactionThreshold: options.compactionThreshold,
+    permissionMode: options.permissionMode ?? "ask",
     ...(options.secrets ? { secrets: options.secrets } : {}),
     ...(options.secretCatalog ? { secretCatalog: options.secretCatalog } : {}),
     ...(options.secretRedactor

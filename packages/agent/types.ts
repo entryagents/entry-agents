@@ -379,6 +379,7 @@ export interface AgentContext {
   subagentMessageHistory?: Record<string, unknown[]>;
   /** Compaction threshold override (0.1 to 0.95). */
   compactionThreshold?: number;
+  permissionMode?: "ask" | "autoAccept" | "fullAccess";
 }
 
 export interface SandboxExecutionContext {
