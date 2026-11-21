@@ -927,7 +927,7 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
         ({ message: m, groups, isStreaming: isMessageStreaming }) => {
           const modelSwitch = modelSwitches.get(m.id);
           return (
-            <div key={m.id}>
+            <div key={m.id} data-find-msg-id={m.id}>
               {modelSwitch && (
                 <AgentSwitchDivider
                   fromModelId={modelSwitch.fromModelId}

@@ -47,6 +47,8 @@ import { SubagentThreadView } from "@/components/team/subagent-thread-view";
 import { TeamStatusButton } from "@/components/team/team-status-button";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
 import { ChatNavigator } from "@/components/chat/chat-navigator";
+import type { FindMarks } from "@/components/chat/conversation-find";
+import { ConversationFindBar } from "@/components/chat/conversation-find-bar";
 import {
   PinnedTodoPanel,
   getLatestTodos,
@@ -553,6 +555,7 @@ export function SessionChatContent({
 }) {
   const router = useRouter();
   const [isCreatingSandbox, setIsCreatingSandbox] = useState(false);
+  const [findMarks, setFindMarks] = useState<FindMarks | null>(null);
   const [isRestoringSnapshot, setIsRestoringSnapshot] = useState(false);
   const [_isUnarchiving, _setIsUnarchiving] = useState(false);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
@@ -3626,10 +3629,17 @@ export function SessionChatContent({
                     </OpenFileProvider>
                   </div>
                 </div>
+                <ConversationFindBar
+                  chatId={chatInfo.id}
+                  messages={renderMessages}
+                  scrollerRef={containerRef}
+                  onFindMarksChange={setFindMarks}
+                />
                 <ChatNavigator
                   messages={renderMessages}
                   scrollerRef={containerRef}
                   isAtBottom={isAtBottom}
+                  findMarks={findMarks}
                 />
                 {!isAtBottom && (
                   <Button

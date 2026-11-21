@@ -17,6 +17,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DevUrlChip,
+  extractDevUrls,
+} from "@/components/workspace/dev-url-chip";
 import { parseAnsiSegments } from "@/lib/terminal/ansi";
 import { subscribePendingTerminalCommand } from "@/lib/terminal/pending-command";
 import { cn } from "@/lib/utils";
@@ -77,9 +81,11 @@ function formatDuration(ms: number): string {
 export function WorkspaceTerminalTab({
   sessionId,
   canRun = true,
+  onOpenPreview,
 }: {
   sessionId: string;
   canRun?: boolean;
+  onOpenPreview?: (url: string) => void;
 }) {
   const router = useRouter();
   const [logs, setLogs] = useState<TerminalLogEntry[]>(() => {
@@ -476,6 +482,18 @@ export function WorkspaceTerminalTab({
                     ) : null}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
+                    {extractDevUrls(
+                      `${log.result?.stdout ?? ""}\n${log.result?.stderr ?? ""}`,
+                    )
+                      .slice(0, 2)
+                      .map((devUrl) => (
+                        <DevUrlChip
+                          key={devUrl.url}
+                          url={devUrl.url}
+                          label={devUrl.label}
+                          onOpenPreview={onOpenPreview}
+                        />
+                      ))}
                     {log.result &&
                     log.result.exitCode !== null &&
                     log.result.exitCode !== 0 ? (

@@ -8,7 +8,7 @@ import {
   Search,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
 import { WorkspaceFileTree } from "@/components/workspace/workspace-file-tree";
 import type { DiffFile } from "@/lib/diff/compute-diff";
@@ -54,47 +54,20 @@ export function WorkspaceFilesTab({
 }: WorkspaceFilesTabProps) {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
 
-  if (selectedFile) {
-    return (
-      <div className="rail-col">
-        <div className="rail-bar">
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 text-left hover:text-[var(--ink)] transition-colors cursor-pointer min-w-0"
-            onClick={() => setSelectedFile(null)}
-          >
-            <ArrowLeft size={13} strokeWidth={1.7} aria-hidden="true" />
-            <span className="truncate font-mono text-[11.5px]">
-              {selectedFile}
-            </span>
-          </button>
-          {onOpenQuickOpen && (
-            <div className="rail-bar-actions">
-              <button
-                type="button"
-                className="rail-btn"
-                onClick={onOpenQuickOpen}
-                title="Quick open file (⌘P)"
-              >
-                <Search size={12} strokeWidth={1.6} aria-hidden="true" />
-              </button>
-            </div>
-          )}
-        </div>
-        <div className="flex-1 min-h-0 overflow-hidden">
-          <WorkspaceFileTab
-            sessionId={sessionId}
-            filePath={selectedFile}
-            onClose={() => setSelectedFile(null)}
-            onOpenDiff={onOpenDiff}
-          />
-        </div>
-      </div>
-    );
-  }
+  // Escape dismisses the slide-over file preview and returns to the tree at its saved scroll position.
+  useEffect(() => {
+    if (!selectedFile) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedFile(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedFile]);
 
   return (
-    <div className="rail-col">
+    <div className="rail-col relative overflow-hidden">
       <div className="rail-bar">
         <span>
           {files
@@ -182,6 +155,46 @@ export function WorkspaceFilesTab({
           />
         )}
       </div>
+      {selectedFile && (
+        <div className="animate-in fade-in-0 slide-in-from-right-4 duration-150 absolute inset-0 z-10 flex flex-col bg-background">
+          <div className="rail-bar">
+            <button
+              type="button"
+              className="inline-flex min-w-0 cursor-pointer items-center gap-1.5 text-left transition-colors hover:text-[var(--ink)]"
+              onClick={() => setSelectedFile(null)}
+              title="Back to file tree (Esc)"
+            >
+              <ArrowLeft size={13} strokeWidth={1.7} aria-hidden="true" />
+              <span
+                className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11.5px]"
+                dir="rtl"
+              >
+                <bdi>{selectedFile}</bdi>
+              </span>
+            </button>
+            {onOpenQuickOpen && (
+              <div className="rail-bar-actions">
+                <button
+                  type="button"
+                  className="rail-btn"
+                  onClick={onOpenQuickOpen}
+                  title="Quick open file (⌘P)"
+                >
+                  <Search size={12} strokeWidth={1.6} aria-hidden="true" />
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <WorkspaceFileTab
+              sessionId={sessionId}
+              filePath={selectedFile}
+              onClose={() => setSelectedFile(null)}
+              onOpenDiff={onOpenDiff}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

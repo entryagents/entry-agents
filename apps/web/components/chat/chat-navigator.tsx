@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
+import type { FindMarks } from "./conversation-find";
 import {
   extractUserNavMarks,
   type NavMark,
@@ -59,6 +60,7 @@ interface ChatNavigatorProps {
   messages: WebAgentUIMessage[];
   scrollerRef: RefObject<HTMLDivElement | null>;
   isAtBottom?: boolean;
+  findMarks?: FindMarks | null;
 }
 
 /**
@@ -70,6 +72,7 @@ export const ChatNavigator = memo(function ChatNavigator({
   messages,
   scrollerRef,
   isAtBottom = false,
+  findMarks = null,
 }: ChatNavigatorProps) {
   const marks = useMemo(() => extractUserNavMarks(messages), [messages]);
   const marksRef = useRef<NavMark[]>(marks);
@@ -363,6 +366,23 @@ export const ChatNavigator = memo(function ChatNavigator({
     );
   }, [geo.ys, k, marks]);
 
+  const findTicks = useMemo(() => {
+    const sc = scrollerRef.current;
+    if (!findMarks || findMarks.ids.length === 0 || !sc || k <= 0) return [];
+    const scTop = sc.getBoundingClientRect().top;
+    const out: { id: string; y: number; current: boolean }[] = [];
+    for (const id of findMarks.ids) {
+      const el = sc.querySelector<HTMLElement>(
+        `[data-find-msg-id="${CSS.escape(id)}"]`,
+      );
+      if (!el) continue;
+      const top = el.getBoundingClientRect().top - scTop + sc.scrollTop;
+      const y = Math.max(0, Math.min(geo.track - 2, top * k));
+      out.push({ id, y, current: id === findMarks.current });
+    }
+    return out;
+  }, [findMarks, geo.track, k, scrollerRef]);
+
   const litMark = lit >= 0 ? marks[lit] : undefined;
   const litY = lit >= 0 && k > 0 ? (geo.ys[lit] ?? 0) * k : 0;
 
@@ -408,6 +428,19 @@ export const ChatNavigator = memo(function ChatNavigator({
               />
             ))}
         </div>
+
+        {findTicks.length > 0 && (
+          <div className="sable-nav-finds" aria-hidden="true">
+            {findTicks.map((ft) => (
+              <span
+                key={`f-${ft.id}`}
+                className="sable-nav-find"
+                data-current={ft.current ? "" : undefined}
+                style={{ transform: `translateY(${ft.y}px)` }}
+              />
+            ))}
+          </div>
+        )}
 
         {litMark && (
           <span

@@ -1,0 +1,9 @@
+::highlight(entry-find) {
+  background-color: rgb(245 158 11 / 0.28);
+  color: inherit;
+}
+
+::highlight(entry-find-at) {
+  background-color: rgb(245 158 11 / 0.65);
+  color: inherit;
+}
