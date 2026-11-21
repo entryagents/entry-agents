@@ -18,16 +18,20 @@ export function extractDevUrls(text: string): DetectedDevUrl[] {
   const out: DetectedDevUrl[] = [];
   for (const match of text.matchAll(DEV_URL_RE)) {
     const raw = match[0].replace(/[.,;:!?]+$/, "");
-    const normalized = raw.replace("://0.0.0.0:", "://localhost:");
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
+    const hostNormalized = raw.replace("://0.0.0.0:", "://localhost:");
+    let url = hostNormalized;
+    let label = hostNormalized;
     try {
-      const parsed = new URL(normalized);
-      const label = `${parsed.host}${parsed.pathname === "/" ? "" : parsed.pathname}`;
-      out.push({ url: normalized, label });
+      const parsed = new URL(hostNormalized);
+      const isRoot = parsed.pathname === "/" && !parsed.search && !parsed.hash;
+      url = isRoot ? parsed.origin : hostNormalized;
+      label = `${parsed.host}${parsed.pathname === "/" ? "" : parsed.pathname}`;
     } catch {
-      out.push({ url: normalized, label: normalized });
+      // Keep fallback strings
     }
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push({ url, label });
   }
   return out;
 }

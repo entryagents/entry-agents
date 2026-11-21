@@ -12,7 +12,6 @@ describe("extractDevUrls", () => {
     const urls = extractDevUrls(output);
     expect(urls).toEqual([
       { url: "http://localhost:3000", label: "localhost:3000" },
-      { url: "http://localhost:3000/", label: "localhost:3000" },
       { url: "http://127.0.0.1:8787/health", label: "127.0.0.1:8787/health" },
     ]);
   });
