@@ -19,7 +19,6 @@ import {
   ProviderIcon,
   getProviderFromModelId,
 } from "@/components/provider-icons";
-import { WaitingCount } from "@/components/triage/waiting-count";
 import { useSidebar } from "@/components/ui/sidebar";
 import {
   Tooltip,
@@ -321,7 +320,6 @@ export function SessionHeader() {
       </div>
 
       <div className="topbar-actions">
-        <WaitingCount />
         <div ref={headerActionsRef} className="topbar-actions-slot" />
 
         <ChatMenu
