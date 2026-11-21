@@ -6,6 +6,7 @@ const READ_ONLY_TOOLS = new Set([
   "todo_read",
   "ls",
   "find",
+  "inbox",
 ]);
 
 export type LoopGuardDecision =

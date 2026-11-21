@@ -1224,6 +1224,34 @@ export async function getUnreadInboxCountStep(
   }
 }
 
+export async function consumeUnreadInboxMessagesStep(chatId: string): Promise<{
+  messages: Array<{ id: string; content: string; createdAt: string }>;
+}> {
+  "use step";
+  try {
+    const { getUnreadInboxMessages, markInboxMessagesRead } =
+      await import("@/lib/db/inbox");
+    const unread = await getUnreadInboxMessages(chatId);
+    if (unread.length === 0) {
+      return { messages: [] };
+    }
+    await markInboxMessagesRead(
+      chatId,
+      unread.map((m) => m.id),
+    );
+    return {
+      messages: unread.map((m) => ({
+        id: m.id,
+        content: m.content,
+        createdAt: m.createdAt.toISOString(),
+      })),
+    };
+  } catch (error) {
+    console.error("[workflow] Failed to consume steering inbox:", error);
+    return { messages: [] };
+  }
+}
+
 export async function runPostTurnPluginsStep(params: {
   userId: string;
   sessionId: string;

@@ -34,4 +34,15 @@ describe("TurnLoopGuard", () => {
       ]).action,
     ).toBe("warn");
   });
+
+  it("catches repeated inbox polling loops", () => {
+    const guard = new TurnLoopGuard();
+    const check = [
+      { toolName: "inbox", signature: 'inbox:{"action":"check"}' },
+    ];
+    expect(guard.recordStep(check).action).toBe("continue");
+    expect(guard.recordStep(check).action).toBe("continue");
+    expect(guard.recordStep(check).action).toBe("warn");
+    expect(guard.recordStep(check).action).toBe("break");
+  });
 });

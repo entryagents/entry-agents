@@ -63,7 +63,7 @@ import {
   closeStream,
   clearActiveStream,
   finalizeAbortedChatStep,
-  getUnreadInboxCountStep,
+  consumeUnreadInboxMessagesStep,
   releaseUserBillingTurnStep,
   reconcileSessionStatusStep,
   hasAutoCommitChangesStep,
@@ -2890,16 +2890,18 @@ export async function runAgentWorkflow(options: Options) {
         permissionMode: livePermissionMode,
       });
 
-      const { unreadCount: unreadInboxCount } = await getUnreadInboxCountStep(
-        options.chatId,
-      );
-      if (unreadInboxCount > 0) {
+      const { messages: unreadInboxMessages } =
+        await consumeUnreadInboxMessagesStep(options.chatId);
+      if (unreadInboxMessages.length > 0) {
+        const formattedSteering = unreadInboxMessages
+          .map((m, idx) => `${idx + 1}. ${m.content}`)
+          .join("\n");
         modelMessages.push({
           role: "user",
           content: [
             {
               type: "text",
-              text: `[HIGH-PRIORITY STEERING INBOX INTERVENTION]\nYou have ${unreadInboxCount} unread message(s) in your steering inbox.\nYou MUST call the \`inbox\` tool IMMEDIATELY before continuing other work so you read every new instruction (marked [NEW / UNREAD] vs [OLD / READ]) and adjust your course in real time without restarting or losing context.`,
+              text: `[STEERING MESSAGE FROM USER]\nThe user sent the following real-time steering instruction(s) while you were working (already marked read — do NOT call the \`inbox\` tool for these):\n${formattedSteering}`,
             },
           ],
         });
