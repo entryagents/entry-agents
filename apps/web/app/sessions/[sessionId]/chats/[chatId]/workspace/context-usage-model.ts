@@ -36,12 +36,20 @@ export interface ContextSegment {
 export type CostSource = "gateway" | "estimated" | "mixed";
 
 export interface SessionUsageTotals {
-  /** Uncached / new input tokens across the session (never double-counts cache reads). */
+  /** Uncached / new input tokens across the session (excludes cache reads and writes). */
   inputTokens: number;
-  /** Output tokens across the session. */
+  /** Output tokens across the session (excluding reasoning tokens when separated). */
   outputTokens: number;
   /** Cached input (prompt cache read) tokens across the session. */
   cacheReadTokens: number;
+  /** Prompt cache creation / write tokens across the session. */
+  cacheWriteTokens: number;
+  /** Model reasoning / thinking tokens across the session. */
+  reasoningTokens: number;
+  /** Total tokens processed across the session. */
+  totalTokens: number;
+  /** Prompt cache hit rate (0..100), or null when no input tokens yet. */
+  cacheHitRate: number | null;
   /** Number of user turns in this conversation. */
   turns: number;
   /** Cumulative session cost in USD, if known. */
@@ -171,12 +179,16 @@ export function deriveContextWindowBreakdown(
   contextLimitOverride?: number | null,
 ): ContextWindowBreakdown {
   let latestNewInput = 0;
-  let latestCached = 0;
+  let latestCacheRead = 0;
+  let latestCacheWrite = 0;
+  let latestReasoning = 0;
   let latestOutput = 0;
   let latestTotal = 0;
 
   let totalNewInput = 0;
-  let totalCached = 0;
+  let totalCacheRead = 0;
+  let totalCacheWrite = 0;
+  let totalReasoning = 0;
   let totalOutput = 0;
   let totalCost = 0;
   let hasGatewayCost = false;
@@ -206,13 +218,27 @@ export function deriveContextWindowBreakdown(
     if (usageTokenSum(lastUsage) > 0 && lastUsage) {
       const inp = Math.max(0, lastUsage.inputTokens ?? 0);
       const cacheRead = Math.min(extractCachedInputTokens(lastUsage), inp);
+      const cacheWrite = Math.min(
+        extractCacheWriteTokens(lastUsage),
+        Math.max(0, inp - cacheRead),
+      );
       const out = Math.max(0, lastUsage.outputTokens ?? 0);
+      const reasoning = Math.min(
+        Math.max(
+          0,
+          lastUsage.outputTokenDetails?.reasoningTokens ??
+            lastUsage.reasoningTokens ??
+            0,
+        ),
+        out,
+      );
       // AI SDK `inputTokens` = total prompt size (uncached + cacheRead + cacheWrite).
-      // Splitting into Cached (= cacheRead) and Input (= inp - cacheRead) guarantees
-      // Input + Cached + Output === total without double-counting or dropping cacheWrite.
-      latestCached = cacheRead;
-      latestNewInput = Math.max(0, inp - cacheRead);
-      latestOutput = out;
+      // Splitting cleanly guarantees NewInput + CacheRead + CacheWrite + Reasoning + Output === total.
+      latestCacheRead = cacheRead;
+      latestCacheWrite = cacheWrite;
+      latestNewInput = Math.max(0, inp - cacheRead - cacheWrite);
+      latestReasoning = reasoning;
+      latestOutput = Math.max(0, out - reasoning);
       latestTotal = inp + out;
     }
 
@@ -235,10 +261,21 @@ export function deriveContextWindowBreakdown(
         Math.max(0, inp - cacheRead),
       );
       const out = Math.max(0, msgUsage.outputTokens ?? 0);
+      const reasoning = Math.min(
+        Math.max(
+          0,
+          msgUsage.outputTokenDetails?.reasoningTokens ??
+            msgUsage.reasoningTokens ??
+            0,
+        ),
+        out,
+      );
 
-      totalNewInput += Math.max(0, inp - cacheRead);
-      totalCached += cacheRead;
-      totalOutput += out;
+      totalNewInput += Math.max(0, inp - cacheRead - cacheWrite);
+      totalCacheRead += cacheRead;
+      totalCacheWrite += cacheWrite;
+      totalReasoning += reasoning;
+      totalOutput += Math.max(0, out - reasoning);
 
       if (
         typeof meta.totalMessageCost === "number" &&
@@ -324,8 +361,10 @@ export function deriveContextWindowBreakdown(
   const pct = max > 0 ? Math.min(100, (latestTotal / max) * 100) : 0;
 
   const rawCategories: Array<{ name: string; tokens: number }> = [
-    { name: "Input", tokens: latestNewInput },
-    { name: "Cached", tokens: latestCached },
+    { name: "Cache read", tokens: latestCacheRead },
+    { name: "Cache write", tokens: latestCacheWrite },
+    { name: "New input", tokens: latestNewInput },
+    { name: "Reasoning", tokens: latestReasoning },
     { name: "Output", tokens: latestOutput },
   ];
 
@@ -350,6 +389,13 @@ export function deriveContextWindowBreakdown(
   const modelName =
     activeOption?.label ?? activeOption?.shortLabel ?? effectiveModelId ?? "";
 
+  const totalInputAll = totalNewInput + totalCacheRead + totalCacheWrite;
+  const totalTokens = totalInputAll + totalOutput + totalReasoning;
+  const cacheHitRate =
+    totalInputAll > 0
+      ? Math.round((totalCacheRead / totalInputAll) * 100)
+      : null;
+
   return {
     total: latestTotal,
     max,
@@ -364,7 +410,11 @@ export function deriveContextWindowBreakdown(
     sessionTotals: {
       inputTokens: totalNewInput,
       outputTokens: totalOutput,
-      cacheReadTokens: totalCached,
+      cacheReadTokens: totalCacheRead,
+      cacheWriteTokens: totalCacheWrite,
+      reasoningTokens: totalReasoning,
+      totalTokens,
+      cacheHitRate,
       turns,
       costUsd: costSource ? totalCost : undefined,
       costSource,

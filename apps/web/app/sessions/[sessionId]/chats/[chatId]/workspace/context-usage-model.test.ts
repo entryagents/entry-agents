@@ -130,8 +130,8 @@ describe("deriveContextWindowBreakdown", () => {
     expect(view.warn).toBe(true);
     expect(view.modelName).toBe("Claude Sonnet 4.5");
     expect(view.segments.map((s) => [s.name, s.tokens])).toEqual([
-      ["Cached", 120_000],
-      ["Input", 30_000],
+      ["Cache read", 120_000],
+      ["New input", 30_000],
       ["Output", 14_000],
     ]);
     // Sum of all segments equals exact total tokens in context.
@@ -140,11 +140,15 @@ describe("deriveContextWindowBreakdown", () => {
     expect(view.segments[1]?.color).toBe("rgb(var(--cx-step-rgb) / 0.66)");
     expect(view.segments[2]?.color).toBe("rgb(var(--cx-step-rgb) / 0.48)");
 
-    // Session totals split Input (uncached) and Cached cleanly without double-counting.
+    // Session totals split Input (uncached), Cache read, Cache write, and Reasoning cleanly without double-counting.
     expect(view.sessionTotals).toEqual({
       inputTokens: 30_000,
       outputTokens: 14_000,
       cacheReadTokens: 120_000,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 164_000,
+      cacheHitRate: 80,
       turns: 1,
       costUsd: 0.55,
       costSource: "gateway",
@@ -269,6 +273,10 @@ describe("deriveContextWindowBreakdown", () => {
       inputTokens: 160_000,
       outputTokens: 4_000,
       cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      reasoningTokens: 0,
+      totalTokens: 164_000,
+      cacheHitRate: 0,
       turns: 1,
       costUsd: 0.48,
       costSource: "gateway",
