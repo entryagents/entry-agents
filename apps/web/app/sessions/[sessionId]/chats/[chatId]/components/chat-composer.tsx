@@ -47,7 +47,12 @@ import { useFileSuggestions } from "@/hooks/use-file-suggestions";
 import { useImageAttachments } from "@/hooks/use-image-attachments";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import { useTextAttachments } from "@/hooks/use-text-attachments";
-import { ACCEPT_IMAGE_TYPES, isValidImageType } from "@/lib/image-utils";
+import { mergeRestoredDraftText } from "@/components/chat/draft-restore";
+import {
+  ACCEPT_IMAGE_TYPES,
+  isValidImageType,
+  type ImageAttachment,
+} from "@/lib/image-utils";
 import type { ModelOption } from "@/lib/model-options";
 import {
   getReasoningEffortLevels,
@@ -70,9 +75,16 @@ export interface BuiltComposerMessage {
   displayText: string;
 }
 
+export interface ComposerRestorePayload {
+  text: string;
+  snippets?: Array<{ content: string; filename?: string }>;
+  files?: FileUIPart[];
+}
+
 export interface ChatComposerHandle {
   focus: () => void;
   addTextAttachment: (content: string, filename?: string) => void;
+  restoreDraft: (payload: ComposerRestorePayload) => void;
 }
 
 export interface ChatComposerGate {
@@ -193,6 +205,7 @@ export const ChatComposer = memo(
       images,
       addImage,
       addImages,
+      addImageAttachments,
       removeImage,
       clearImages,
       getFileParts,
@@ -233,8 +246,46 @@ export const ChatComposer = memo(
         addTextAttachment: (content: string, filename?: string) => {
           addTextAttachment(content, filename);
         },
+        restoreDraft: (payload: ComposerRestorePayload) => {
+          const caretPos = payload.text.length;
+          setInput((prev) => mergeRestoredDraftText(payload.text, prev));
+          setCursorPosition(caretPos);
+          if (payload.snippets && payload.snippets.length > 0) {
+            for (const snippet of payload.snippets) {
+              addTextAttachment(snippet.content, snippet.filename);
+            }
+          }
+          if (payload.files && payload.files.length > 0) {
+            const restoredImages: ImageAttachment[] = payload.files
+              .filter(
+                (
+                  file,
+                ): file is FileUIPart & {
+                  mediaType: ImageAttachment["mediaType"];
+                } =>
+                  isValidImageType(file.mediaType) &&
+                  typeof file.url === "string" &&
+                  file.url.length > 0,
+              )
+              .map((file, index) => ({
+                id: `restored-${Date.now()}-${index}`,
+                dataUrl: file.url,
+                mediaType: file.mediaType,
+                ...(file.filename ? { filename: file.filename } : {}),
+              }));
+            if (restoredImages.length > 0) {
+              addImageAttachments(restoredImages);
+            }
+          }
+          requestAnimationFrame(() => {
+            const field = inputRef.current;
+            if (!field) return;
+            field.focus();
+            field.setSelectionRange(caretPos, caretPos);
+          });
+        },
       }),
-      [addTextAttachment],
+      [addImageAttachments, addTextAttachment],
     );
 
     useEffect(() => {

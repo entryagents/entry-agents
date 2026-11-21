@@ -1756,15 +1756,20 @@ export function SessionChatContent({
   const [resendingMessageId, setResendingMessageId] = useState<string | null>(
     null,
   );
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
   const hasMessageActionInFlight =
-    deletingMessageId !== null || resendingMessageId !== null || isChatInFlight;
+    deletingMessageId !== null ||
+    resendingMessageId !== null ||
+    editingMessageId !== null ||
+    isChatInFlight;
 
   shouldSkipServerSnapshotOverwriteRef.current =
     hasActiveSendMessages() ||
     status === "submitted" ||
     deletingMessageId !== null ||
-    resendingMessageId !== null;
+    resendingMessageId !== null ||
+    editingMessageId !== null;
 
   const sendMessageWithPendingState = useCallback(
     async (message: Parameters<typeof sendMessage>[0]) => {
@@ -2308,13 +2313,6 @@ export function SessionChatContent({
         return;
       }
 
-      const confirmed = window.confirm(
-        "Delete this message and all following messages?",
-      );
-      if (!confirmed) {
-        return;
-      }
-
       setDeleteMessageError(null);
       setDeletingMessageId(messageId);
 
@@ -2407,13 +2405,6 @@ export function SessionChatContent({
         return;
       }
 
-      const confirmed = window.confirm(
-        "Resend this message? This will delete this message and everything after it.",
-      );
-      if (!confirmed) {
-        return;
-      }
-
       setDeleteMessageError(null);
       setResendingMessageId(messageId);
 
@@ -2460,6 +2451,85 @@ export function SessionChatContent({
       chatInfo.id,
       setMessages,
       sendMessageWithPendingState,
+      refreshChats,
+    ],
+  );
+
+  const handleEditUserMessage = useCallback(
+    async (messageId: string) => {
+      if (hasMessageActionInFlight) {
+        return;
+      }
+      const targetMessageIndex = messages.findIndex(
+        (message) => message.id === messageId,
+      );
+      const targetMessage = messages[targetMessageIndex];
+      if (!targetMessage || targetMessage.role !== "user") {
+        return;
+      }
+      const editText = targetMessage.parts
+        .filter(
+          (part): part is Extract<WebAgentUIMessagePart, { type: "text" }> =>
+            part.type === "text",
+        )
+        .map((part) => part.text)
+        .join("");
+      const editFiles = targetMessage.parts
+        .filter((part): part is FileUIPart => part.type === "file")
+        .map((part) => ({
+          type: "file" as const,
+          mediaType: part.mediaType,
+          url: part.url,
+          ...(part.filename ? { filename: part.filename } : {}),
+        }));
+      const editSnippets = targetMessage.parts
+        .filter(
+          (part): part is WebAgentSnippetDataPart =>
+            part.type === "data-snippet",
+        )
+        .map((part) => ({
+          content: part.data.content,
+          filename: part.data.filename,
+        }));
+
+      setDeleteMessageError(null);
+      setEditingMessageId(messageId);
+      try {
+        const response = await fetch(
+          `/api/sessions/${session.id}/chats/${chatInfo.id}/messages/${messageId}`,
+          { method: "DELETE" },
+        );
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          success?: boolean;
+        };
+        if (!response.ok || !payload.success) {
+          throw new Error(payload.error ?? "Failed to rewind message for edit");
+        }
+        setMessages(messages.slice(0, targetMessageIndex));
+        composerRef.current?.restoreDraft({
+          text: editText,
+          ...(editSnippets.length > 0 ? { snippets: editSnippets } : {}),
+          ...(editFiles.length > 0 ? { files: editFiles } : {}),
+        });
+        await refreshChats();
+      } catch (err) {
+        console.error("Failed to edit user message:", err);
+        setDeleteMessageError(
+          err instanceof Error
+            ? err.message
+            : "Failed to rewind message for edit",
+        );
+      } finally {
+        setEditingMessageId(null);
+      }
+    },
+    [
+      hasMessageActionInFlight,
+      messages,
+      session.id,
+      chatInfo.id,
+      setMessages,
       refreshChats,
     ],
   );
@@ -3619,6 +3689,8 @@ export function SessionChatContent({
                           forkingAssistantMessageId={forkingAssistantMessageId}
                           onCopyUserMessage={handleCopyUserMessage}
                           copiedUserMessageId={copiedUserMessageId}
+                          onEditUserMessage={handleEditUserMessage}
+                          editingMessageId={editingMessageId}
                           onResendUserMessage={handleResendUserMessage}
                           resendingMessageId={resendingMessageId}
                           onDeleteMessage={handleDeleteUserMessage}
