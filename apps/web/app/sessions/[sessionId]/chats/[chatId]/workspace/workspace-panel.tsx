@@ -96,6 +96,8 @@ export type WorkspacePanelProps = GitPanelProps & {
   freeTierAllowedModelIds?: string[];
   onSelectSubagent?: (toolCallId: string) => void;
   onStopRun?: () => void;
+  onCompactConversation?: () => void;
+  isCompacting?: boolean;
 };
 
 function fileBasename(filePath: string): string {
@@ -122,6 +124,8 @@ export function WorkspacePanel({
   freeTierAllowedModelIds = [],
   onSelectSubagent,
   onStopRun,
+  onCompactConversation,
+  isCompacting = false,
   ...gitPanelProps
 }: WorkspacePanelProps) {
   const {
@@ -378,6 +382,9 @@ export function WorkspacePanel({
                   modelId={resolvedModelId}
                   modelOptions={modelOptions}
                   contextLimit={contextLimit}
+                  onCompactConversation={onCompactConversation}
+                  isCompacting={isCompacting}
+                  isBusy={isParentStreaming}
                 />
               )}
               {def.id === "agents" && (

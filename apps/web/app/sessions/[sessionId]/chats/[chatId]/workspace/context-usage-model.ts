@@ -216,6 +216,12 @@ export function deriveContextWindowBreakdown(
       latestTotal = inp + out;
     }
 
+    // Synthetic compaction notices reset the live context occupancy without
+    // adding fake tokens/cost to cumulative session billing totals.
+    if (meta.isCompactionNotice) {
+      continue;
+    }
+
     // Cumulative session totals across all steps of the conversation.
     const msgUsage =
       meta.totalMessageUsage ??

@@ -1,7 +1,7 @@
 "use client";
 
 import { formatTokens } from "@entry-agents/shared";
-import { RefreshCw } from "lucide-react";
+import { BrushCleaning, Loader2, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   type CSSProperties,
@@ -30,6 +30,9 @@ interface WorkspaceContextTabProps {
   modelId: string;
   modelOptions: ModelOption[];
   contextLimit?: number | null;
+  onCompactConversation?: () => void;
+  isCompacting?: boolean;
+  isBusy?: boolean;
 }
 
 const R = 52;
@@ -155,6 +158,9 @@ export function WorkspaceContextTab({
   modelId,
   modelOptions,
   contextLimit,
+  onCompactConversation,
+  isCompacting = false,
+  isBusy = false,
 }: WorkspaceContextTabProps) {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
@@ -286,6 +292,56 @@ export function WorkspaceContextTab({
               <p className="cx-note">
                 Context usage appears after the first reply.
               </p>
+            )}
+            {onCompactConversation && (
+              <div className="cx-compact">
+                {isBusy || isCompacting ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="cx-compact-wrap">
+                        <button type="button" className="sable-btn-sm" disabled>
+                          {isCompacting ? (
+                            <Loader2
+                              size={14}
+                              strokeWidth={1.6}
+                              className="animate-spin"
+                              aria-hidden="true"
+                            />
+                          ) : (
+                            <BrushCleaning
+                              size={14}
+                              strokeWidth={1.6}
+                              aria-hidden="true"
+                            />
+                          )}
+                          {isCompacting
+                            ? "Compacting…"
+                            : "Compact conversation"}
+                        </button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {isCompacting
+                        ? "Compacting conversation…"
+                        : "Available when this turn ends"}
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <button
+                    type="button"
+                    className="sable-btn-sm"
+                    disabled={messages.length < 2}
+                    onClick={onCompactConversation}
+                  >
+                    <BrushCleaning
+                      size={14}
+                      strokeWidth={1.6}
+                      aria-hidden="true"
+                    />
+                    Compact conversation
+                  </button>
+                )}
+              </div>
             )}
           </section>
 

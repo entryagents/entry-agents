@@ -47,6 +47,7 @@ import { useFileSuggestions } from "@/hooks/use-file-suggestions";
 import { useImageAttachments } from "@/hooks/use-image-attachments";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import { useTextAttachments } from "@/hooks/use-text-attachments";
+import { parseCompactCommand } from "@/lib/compact/parse";
 import { ACCEPT_IMAGE_TYPES, isValidImageType } from "@/lib/image-utils";
 import type { ModelOption } from "@/lib/model-options";
 import {
@@ -323,7 +324,7 @@ export const ChatComposer = memo(
     const handleSlashCommandSelect = useCallback(
       (skillName: string, slashStart: number, cursorPos: number) => {
         const matched = skills?.find((s) => s.name === skillName);
-        if (matched) {
+        if (matched && matched.source !== "command") {
           setSelectedSkills((prev) =>
             prev.some((s) => s.name === matched.name)
               ? prev
@@ -580,6 +581,11 @@ export const ChatComposer = memo(
                 clearSelectedSkills();
 
                 if (isBusy) {
+                  if (parseCompactCommand(rawText)) {
+                    setInput(rawText);
+                    toast.info("Available when this turn ends");
+                    return;
+                  }
                   if (/^\/inbox\s+/i.test(rawText)) {
                     const inboxText = rawText
                       .replace(/^\/inbox\s+/i, "")

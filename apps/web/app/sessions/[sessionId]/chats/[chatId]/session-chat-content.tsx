@@ -58,6 +58,8 @@ import { toast } from "sonner";
 import { UntilStrip } from "@/components/composer/until-strip";
 import { RaceView, type RaceSessionConfig } from "@/components/race/race-view";
 import { useTriage } from "@/components/triage/triage-context";
+import { formatTokens } from "@entry-agents/shared";
+import { parseCompactCommand } from "@/lib/compact/parse";
 import { parseRaceCommand, pickRaceModels } from "@/lib/race/parse";
 import { extractTriagePromptsFromMessages } from "@/lib/triage/deck";
 import { useUntilLoop } from "./hooks/use-until-loop";
@@ -1045,6 +1047,74 @@ export function SessionChatContent({
   );
   const hasSeenAssistantRenderableContentRef = useRef(false);
   const [hasPendingResponse, setHasPendingResponse] = useState(false);
+
+  const [isCompacting, setIsCompacting] = useState(false);
+
+  const handleCompactConversation = useCallback(
+    async (focus?: string): Promise<boolean> => {
+      if (isCompacting) return false;
+      if (isChatInFlight || hasPendingResponse) {
+        toast.info("Available when this turn ends");
+        return false;
+      }
+      setIsCompacting(true);
+      try {
+        const res = await fetch(
+          `/api/sessions/${session.id}/chats/${chatInfo.id}/compact`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(focus ? { focus } : {}),
+          },
+        );
+        const data = (await res.json().catch(() => null)) as
+          | {
+              compacted: true;
+              preTokens: number;
+              postTokens: number;
+              noticeMessage: WebAgentUIMessage;
+            }
+          | { compacted: false; reason?: string }
+          | { error?: string }
+          | null;
+
+        if (!res.ok) {
+          toast.error(
+            (data && "error" in data && data.error) ||
+              "Could not compact conversation",
+          );
+          return false;
+        }
+        if (data && "compacted" in data && data.compacted) {
+          setMessages((prev) => [...prev, data.noticeMessage]);
+          toast.success(
+            `Compacted context: ${formatTokens(data.preTokens)} → ${formatTokens(data.postTokens)} tokens`,
+          );
+          void refreshChats().catch(() => undefined);
+          return true;
+        }
+        toast.info(
+          (data && "reason" in data && data.reason) ||
+            "Nothing to compact yet.",
+        );
+        return true;
+      } catch {
+        toast.error("Could not compact conversation");
+        return false;
+      } finally {
+        setIsCompacting(false);
+      }
+    },
+    [
+      chatInfo.id,
+      hasPendingResponse,
+      isChatInFlight,
+      isCompacting,
+      refreshChats,
+      session.id,
+      setMessages,
+    ],
+  );
   /** Captures Date.now() when the user sends a message, so the streaming
    *  summary bar can show an accurate live timer from the actual send time. */
   const lastSendTimestampRef = useRef<number | null>(null);
@@ -1568,6 +1638,11 @@ export function SessionChatContent({
 
     if (tryHandleUntilCommand(messageText)) {
       return true;
+    }
+
+    const compactParsed = parseCompactCommand(messageText);
+    if (compactParsed) {
+      return handleCompactConversation(compactParsed.focus);
     }
 
     const raceParsed = parseRaceCommand(messageText);
@@ -3127,6 +3202,8 @@ export function SessionChatContent({
       freeTierAllowedModelIds={freeTierAllowedModelIds}
       onSelectSubagent={(subagentId) => openSubagentTab(subagentId)}
       onStopRun={handleStopStream}
+      onCompactConversation={() => void handleCompactConversation()}
+      isCompacting={isCompacting}
     />
   ) : null;
 
