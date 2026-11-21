@@ -64,6 +64,7 @@ import { extractTriagePromptsFromMessages } from "@/lib/triage/deck";
 import { useUntilLoop } from "./hooks/use-until-loop";
 import { OpenFileProvider } from "@/components/tool-call/open-file-context";
 import { Button } from "@/components/ui/button";
+import { useSidebar } from "@/components/ui/sidebar";
 import {
   Dialog,
   DialogClose,
@@ -906,6 +907,7 @@ export function SessionChatContent({
     openSubagentTab,
     closeSubagentTab,
     gitPanelOpen,
+    setGitPanelOpen,
     openFileTab,
     shareRequested,
     setShareRequested,
@@ -920,6 +922,67 @@ export function SessionChatContent({
     setIsWorkspaceExpanded,
     focusedFilePath,
   } = useGitPanel();
+  const {
+    open: sidebarOpen,
+    setOpen: setSidebarOpen,
+    isMobile: isMobileViewport,
+  } = useSidebar();
+  // Sable 1:1 <1060px three-column rule: when the viewport is too narrow for
+  // sidebar + chat + Work Panel simultaneously, opening the Work Panel gently
+  // parks the left sidebar and restores it when the Work Panel closes (and
+  // re-opening the sidebar closes the Work Panel instead).
+  const autoCollapsedSidebarRef = useRef(false);
+  const prevGitPanelOpenRef = useRef(gitPanelOpen);
+  const prevSidebarOpenRef = useRef(sidebarOpen);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isMobileViewport) {
+      prevGitPanelOpenRef.current = gitPanelOpen;
+      prevSidebarOpenRef.current = sidebarOpen;
+      return;
+    }
+
+    const isNarrowDesktop = () => window.innerWidth < 1060;
+    const panelJustOpened = !prevGitPanelOpenRef.current && gitPanelOpen;
+    const panelJustClosed = prevGitPanelOpenRef.current && !gitPanelOpen;
+    const sidebarJustOpened = !prevSidebarOpenRef.current && sidebarOpen;
+
+    prevGitPanelOpenRef.current = gitPanelOpen;
+    prevSidebarOpenRef.current = sidebarOpen;
+
+    if (panelJustOpened && isNarrowDesktop() && sidebarOpen) {
+      autoCollapsedSidebarRef.current = true;
+      setSidebarOpen(false);
+    } else if (panelJustClosed && autoCollapsedSidebarRef.current) {
+      autoCollapsedSidebarRef.current = false;
+      setSidebarOpen(true);
+    } else if (sidebarJustOpened && isNarrowDesktop() && gitPanelOpen) {
+      autoCollapsedSidebarRef.current = false;
+      setGitPanelOpen(false);
+    }
+
+    const handleResize = () => {
+      if (isNarrowDesktop()) {
+        if (gitPanelOpen && sidebarOpen) {
+          autoCollapsedSidebarRef.current = true;
+          setSidebarOpen(false);
+        }
+      } else if (autoCollapsedSidebarRef.current) {
+        autoCollapsedSidebarRef.current = false;
+        setSidebarOpen(true);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [
+    gitPanelOpen,
+    isMobileViewport,
+    setGitPanelOpen,
+    setSidebarOpen,
+    sidebarOpen,
+  ]);
+
   const [headerActionsNode, setHeaderActionsNode] =
     useState<HTMLDivElement | null>(null);
 
@@ -3634,8 +3697,21 @@ export function SessionChatContent({
                           emptyStateMessage="Send a message to get started"
                           showThinkingIndicator={showThinkingIndicator}
                           workspaceStatusMessage={
-                            workspaceStatus?.message ?? "Thinking…"
+                            workspaceStatus?.message ?? "Working"
                           }
+                          isAwaitingInput={
+                            hasPendingQuestion ||
+                            renderMessages.some(
+                              (msg) =>
+                                msg.role === "assistant" &&
+                                msg.parts.some(
+                                  (part) =>
+                                    isToolUIPart(part) &&
+                                    part.state === "approval-requested",
+                                ),
+                            )
+                          }
+                          onSwitchModel={handleModelChange}
                         />
                         {error &&
                           isOnline &&
