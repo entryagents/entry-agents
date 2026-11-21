@@ -159,6 +159,11 @@ const spies = {
   getUnreadInboxCountStep: mock((_chatId?: unknown) =>
     Promise.resolve({ unreadCount: 0 }),
   ),
+  consumeUnreadInboxMessagesStep: mock((_chatId?: unknown) =>
+    Promise.resolve({
+      messages: [] as Array<{ id: string; content: string; createdAt: string }>,
+    }),
+  ),
   runPostTurnPluginsStep: mock(() => Promise.resolve()),
   dequeueNextQueuedUserMessageStep: mock(
     (): Promise<{
@@ -2038,11 +2043,22 @@ describe("runAgentWorkflow", () => {
     );
   });
 
-  test("keeps steering inbox intervention ephemeral so it never poisons subsequent steps after messages are marked read", async () => {
+  test("delivers steering inbox messages atomically once so they never trigger repeated inbox loops", async () => {
     let unreadCalls = 0;
-    spies.getUnreadInboxCountStep.mockImplementation(async () => {
+    spies.consumeUnreadInboxMessagesStep.mockImplementation(async () => {
       unreadCalls += 1;
-      return { unreadCount: unreadCalls === 1 ? 1 : 0 };
+      return {
+        messages:
+          unreadCalls === 1
+            ? [
+                {
+                  id: "m1",
+                  content: "Focus on TypeScript",
+                  createdAt: new Date().toISOString(),
+                },
+              ]
+            : [],
+      };
     });
 
     const seenMessagesPerStep: Array<Array<Record<string, unknown>>> = [];
@@ -2186,8 +2202,11 @@ describe("runAgentWorkflow", () => {
     expect(seenMessagesPerStep).toHaveLength(2);
     const step1Text = JSON.stringify(seenMessagesPerStep[0]);
     const step2Text = JSON.stringify(seenMessagesPerStep[1]);
-    expect(step1Text).toContain("HIGH-PRIORITY STEERING INBOX INTERVENTION");
-    // Step 2 must NOT retain the stale steering imperative once unreadCount is 0
+    expect(step1Text).toContain("STEERING MESSAGE FROM USER");
+    expect(step1Text).toContain("Focus on TypeScript");
+    expect(step1Text).not.toContain(
+      "HIGH-PRIORITY STEERING INBOX INTERVENTION",
+    );
     expect(step2Text).not.toContain(
       "HIGH-PRIORITY STEERING INBOX INTERVENTION",
     );
