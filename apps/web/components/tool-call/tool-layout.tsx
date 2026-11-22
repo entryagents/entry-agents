@@ -6,6 +6,7 @@ import type React from "react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ApprovalButtons } from "./approval-buttons";
+import { Elapsed } from "./elapsed";
 
 export type ToolLayoutProps = {
   name: string;
@@ -281,11 +282,13 @@ export function ToolLayout({
             </span>
           )}
 
-          {hasTrailingMeta && (
+          {hasTrailingMeta ? (
             <span className="inline-flex shrink-0 items-center gap-1.5 text-[11.5px] leading-none tabular-nums text-muted-foreground/80">
               {meta}
             </span>
-          )}
+          ) : isRunning ? (
+            <Elapsed active />
+          ) : null}
         </div>
         {hasExpandedDetails && !isRunning && (
           <ChevronRight
@@ -344,7 +347,7 @@ export function ToolLayout({
         >
           <div className="min-h-0 min-w-0 w-full overflow-hidden">
             {shouldRenderExpandedContent && (
-              <div className="space-y-2 pb-1 min-w-0 w-full overflow-hidden">
+              <div className="ml-[7px] space-y-2 border-l border-border/70 pl-4 pb-1 min-w-0 overflow-hidden">
                 {showErrorExpanded &&
                   !hasRenderableContent(expandedContent) && (
                     <pre className="max-h-48 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all break-words rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 font-mono text-xs leading-relaxed text-red-400">

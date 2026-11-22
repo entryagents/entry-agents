@@ -6,12 +6,18 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { getFileIcon } from "@/components/file-type-icons";
 import { useOpenFile } from "./open-file-context";
 
-function getFileName(filePath: string): string {
-  const parts = filePath.split("/");
-  return parts[parts.length - 1] || filePath;
+function splitPath(filePath: string): { dir: string; fileName: string } {
+  const normalized = filePath.replace(/\\/g, "/");
+  const idx = normalized.lastIndexOf("/");
+  if (idx === -1) {
+    return { dir: "", fileName: normalized };
+  }
+  return {
+    dir: normalized.slice(0, idx + 1),
+    fileName: normalized.slice(idx + 1) || normalized,
+  };
 }
 
 export function FileNamePill({
@@ -24,7 +30,7 @@ export function FileNamePill({
   error?: boolean;
 }) {
   const onOpenFile = useOpenFile();
-  const fileName = getFileName(filePath);
+  const { dir, fileName } = splitPath(filePath);
   const tooltipPath = fullPath ?? filePath;
   const showTooltip = tooltipPath !== fileName;
   const isClickable = onOpenFile !== null;
@@ -35,53 +41,57 @@ export function FileNamePill({
     onOpenFile(filePath);
   };
 
-  const errorStyles = error
-    ? "border-red-500/30 bg-red-500/10 text-red-400"
-    : "";
-  const normalStyles = error
-    ? ""
-    : "border-border bg-muted/80 text-foreground font-medium";
-  const hoverStyles = error
-    ? "hover:border-red-500/40 hover:bg-red-500/15"
-    : "hover:border-foreground/20 hover:bg-muted hover:shadow-sm hover:ring-1 hover:ring-foreground/5";
+  const labelContent = (
+    <>
+      {dir ? (
+        <span
+          className={cn(
+            "truncate",
+            error ? "text-red-400/70" : "text-muted-foreground/70",
+          )}
+        >
+          {dir}
+        </span>
+      ) : null}
+      <span
+        className={cn(
+          "shrink-0",
+          error ? "text-red-400" : "text-foreground/90",
+        )}
+      >
+        {fileName}
+      </span>
+    </>
+  );
 
-  const icon = getFileIcon(fileName, {
-    className: "h-3.5 w-3.5 shrink-0 mr-1",
-  });
-
-  const pill = isClickable ? (
+  const label = isClickable ? (
     <button
       type="button"
       onClick={handleClick}
       title={showTooltip ? undefined : `Open ${fileName}`}
       className={cn(
-        "inline-flex max-w-[220px] cursor-pointer items-center rounded border px-1.5 py-0.5 font-mono text-[12px] leading-tight transition-all",
-        normalStyles,
-        errorStyles,
-        hoverStyles,
+        "inline-flex max-w-full min-w-0 cursor-pointer items-baseline text-[12.5px] font-normal leading-none transition-colors hover:underline underline-offset-2",
+        error ? "text-red-400" : "text-muted-foreground hover:text-foreground",
       )}
     >
-      {icon}
-      <span className="truncate">{fileName}</span>
+      {labelContent}
     </button>
   ) : (
     <span
       className={cn(
-        "inline-flex max-w-[220px] items-center rounded border px-1.5 py-0.5 font-mono text-[12px] leading-tight",
-        normalStyles,
-        errorStyles,
+        "inline-flex max-w-full min-w-0 items-baseline text-[12.5px] font-normal leading-none",
+        error ? "text-red-400" : "text-muted-foreground",
       )}
     >
-      {icon}
-      <span className="truncate">{fileName}</span>
+      {labelContent}
     </span>
   );
 
-  if (!showTooltip) return pill;
+  if (!showTooltip) return label;
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>{pill}</TooltipTrigger>
+      <TooltipTrigger asChild>{label}</TooltipTrigger>
       <TooltipContent side="top">
         <span className="font-mono text-xs">{tooltipPath}</span>
       </TooltipContent>
