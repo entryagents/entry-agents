@@ -600,7 +600,7 @@ export async function POST(req: Request) {
                     authSession: session ?? null,
                     assistantId: generateId(),
                     inputMessagesPersisted: true,
-                    maxSteps: isHobbyResourceProfile() ? 50 : 500,
+                    maxSteps: isHobbyResourceProfile() ? 50 : 2000,
                   },
                 ],
                 {

@@ -213,13 +213,6 @@ export class BoxdSandbox implements Sandbox {
     const baseEnv = this.commandEnv();
     const mergedEnv = options?.env ? { ...baseEnv, ...options.env } : baseEnv;
 
-    const execPromise = this.client.machines.exec(this.machineId, {
-      command: ["bash", "-c", wrappedCommand],
-      cwd,
-      timeout: timeoutMs,
-      env: mergedEnv,
-    });
-
     let abortListener: (() => void) | undefined;
     const abortPromise = options?.signal
       ? new Promise<never>((_resolve, reject) => {
@@ -238,11 +231,56 @@ export class BoxdSandbox implements Sandbox {
         })
       : null;
 
-    try {
+    const runExecOnce = async () => {
+      const execPromise = this.client.machines.exec(this.machineId, {
+        command: ["bash", "-c", wrappedCommand],
+        cwd,
+        timeout: timeoutMs,
+        env: mergedEnv,
+      });
+
       const result = abortPromise
         ? await Promise.race([execPromise, abortPromise])
         : await execPromise;
       return mapExec(result);
+    };
+
+    try {
+      try {
+        return await runExecOnce();
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw error;
+        }
+        const msg = error instanceof Error ? error.message.toLowerCase() : "";
+        const looksSuspended =
+          msg.includes("suspend") ||
+          msg.includes("hibernat") ||
+          msg.includes("stopped") ||
+          msg.includes("not running");
+        if (!looksSuspended) {
+          throw error;
+        }
+        const machine = await this.client.machines
+          .get(this.machineId)
+          .catch(() => null);
+        if (machine?.status === "suspended") {
+          await this.client.machines.resume(this.machineId);
+          await this.client.machines.waitUntilReady(this.machineId);
+          return await runExecOnce();
+        }
+        if (machine?.status === "hibernated") {
+          await this.client.machines.wake(this.machineId);
+          await this.client.machines.waitUntilReady(this.machineId);
+          return await runExecOnce();
+        }
+        if (machine?.status === "stopped") {
+          await this.client.machines.start(this.machineId);
+          await this.client.machines.waitUntilReady(this.machineId);
+          return await runExecOnce();
+        }
+        throw error;
+      }
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         await this.killCommand(cmdId).catch(() => {});

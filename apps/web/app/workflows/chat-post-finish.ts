@@ -203,8 +203,11 @@ export async function persistAssistantMessageInternal(
   message: WebAgentUIMessage,
 ): Promise<void> {
   try {
-    const { updateChatAssistantActivity, upsertChatMessageScoped } =
-      await import("@/lib/db/sessions");
+    const {
+      touchChatRunHeartbeat,
+      updateChatAssistantActivity,
+      upsertChatMessageScoped,
+    } = await import("@/lib/db/sessions");
     const dedupedMessage = dedupeMessageParts(message);
     const sanitized = sanitizeMessageForDatabase(dedupedMessage);
     const result = await upsertChatMessageScoped({
@@ -221,8 +224,11 @@ export async function persistAssistantMessageInternal(
       console.warn(
         `[workflow] Skipped assistant upsert due to ID scope conflict: ${message.id}`,
       );
-    } else if (result.status === "inserted") {
-      await updateChatAssistantActivity(chatId, new Date());
+    } else {
+      if (result.status === "inserted") {
+        await updateChatAssistantActivity(chatId, new Date());
+      }
+      await touchChatRunHeartbeat?.(chatId);
     }
   } catch (error) {
     console.error("[workflow] Failed to persist assistant message:", error);
@@ -1184,7 +1190,7 @@ export async function startNextQueuedWorkflowInternal(
             authSession: params.authSession,
             assistantId: generateId(),
             inputMessagesPersisted: true,
-            maxSteps: params.maxSteps ?? (isHobbyResourceProfile() ? 50 : 500),
+            maxSteps: params.maxSteps ?? (isHobbyResourceProfile() ? 50 : 2000),
             ...(params.teamRoleModels &&
             Object.keys(params.teamRoleModels).length > 0
               ? { teamRoleModels: params.teamRoleModels }

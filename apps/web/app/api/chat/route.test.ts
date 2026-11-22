@@ -385,7 +385,7 @@ describe("/api/chat route", () => {
     );
   });
 
-  test("passes the 500 maxSteps limit to the workflow", async () => {
+  test("passes the 2000 maxSteps limit to the workflow", async () => {
     const { POST } = await routeModulePromise;
 
     const response = await POST(createValidRequest());
@@ -395,7 +395,7 @@ describe("/api/chat route", () => {
     expect(startCalls[0]?.[1]).toEqual([
       expect.objectContaining({
         assistantId: "gen-id-1",
-        maxSteps: 500,
+        maxSteps: 2000,
         requestUrl: "http://localhost/api/chat",
         authSession: currentAuthSession,
       }),
