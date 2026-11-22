@@ -351,6 +351,10 @@ export function WorkspaceContextTab({
             </div>
             <div className="cx-stats">
               <Stat
+                label="Total input"
+                value={formatTokens(view.sessionTotals.totalInputTokens)}
+              />
+              <Stat
                 label="New input"
                 value={formatTokens(view.sessionTotals.inputTokens)}
               />

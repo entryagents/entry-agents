@@ -258,7 +258,7 @@ export function SessionHeader() {
         />
 
         {(session.repoName || session.branch || session.prNumber) && (
-          <span className="topbar-crumb">
+          <span className="topbar-crumb hidden md:inline-flex">
             {session.repoName && (
               <Tooltip>
                 <TooltipTrigger asChild>

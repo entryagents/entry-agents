@@ -6,226 +6,14 @@ import { filterDisabledModels } from "./model-availability";
 import {
   selectLatestGatewayModelId,
   type AvailableModel,
-  type AvailableModelCost,
-  type AvailableModelCostTier,
   type GatewayAvailableModel,
 } from "./models";
 
-// Kept for the (currently unused, best-effort) models.dev context-window
-// enrichment below -- harmless no-op for our static catalog since none of
-// our model IDs match models.dev's namespacing, but left in place in case
-// Opencode Zen model IDs ever get added there.
-const MODELS_DEV_URL = "https://models.dev/api.json";
-const MODELS_DEV_TIMEOUT_MS = 750;
-
+/** Legacy test hook kept as a no-op now that all model metadata comes directly from the live gateway. */
 type GatewayModel = GatewayAvailableModel;
 
-interface ModelsDevMetadata {
-  contextWindow?: number;
-  cost?: AvailableModelCost;
-}
-
-const recordSchema = z.object({}).catchall(z.unknown());
-
-const modelsDevLimitSchema = z
-  .object({
-    context: z.number().finite().positive().optional(),
-  })
-  .passthrough();
-
-const modelsDevCostTierSchema = z
-  .object({
-    input: z.number().finite().optional(),
-    output: z.number().finite().optional(),
-    cache_read: z.number().finite().optional(),
-  })
-  .passthrough();
-
-function getModelsDevCostTier(
-  value: unknown,
-): AvailableModelCostTier | undefined {
-  const parsed = modelsDevCostTierSchema.safeParse(value);
-  if (!parsed.success) {
-    return undefined;
-  }
-
-  const { input, output, cache_read } = parsed.data;
-  if (input === undefined && output === undefined && cache_read === undefined) {
-    return undefined;
-  }
-
-  return {
-    input,
-    output,
-    cache_read,
-  };
-}
-
-function getModelsDevCost(value: unknown): AvailableModelCost | undefined {
-  const parsed = recordSchema.safeParse(value);
-  if (!parsed.success) {
-    return undefined;
-  }
-
-  const baseCost = getModelsDevCostTier(parsed.data);
-  const contextOver200k = getModelsDevCostTier(parsed.data.context_over_200k);
-
-  if (!baseCost && !contextOver200k) {
-    return undefined;
-  }
-
-  return {
-    ...baseCost,
-    ...(contextOver200k ? { context_over_200k: contextOver200k } : {}),
-  };
-}
-
-function getModelsDevMetadataMap(
-  data: unknown,
-): Map<string, ModelsDevMetadata> {
-  const metadataMap = new Map<string, ModelsDevMetadata>();
-  const providers = recordSchema.safeParse(data);
-  if (!providers.success) {
-    return metadataMap;
-  }
-
-  for (const [providerKey, providerValue] of Object.entries(providers.data)) {
-    const provider = recordSchema.safeParse(providerValue);
-    if (!provider.success) {
-      continue;
-    }
-
-    const models = recordSchema.safeParse(provider.data.models);
-    if (!models.success) {
-      continue;
-    }
-
-    for (const [modelKey, modelValue] of Object.entries(models.data)) {
-      const model = recordSchema.safeParse(modelValue);
-      if (!model.success) {
-        continue;
-      }
-
-      const parsedId = z.string().safeParse(model.data.id);
-      const rawId = parsedId.success ? parsedId.data : modelKey;
-      const modelId = rawId.includes("/") ? rawId : `${providerKey}/${rawId}`;
-
-      const parsedLimit = modelsDevLimitSchema.safeParse(model.data.limit);
-      const contextWindow = parsedLimit.success
-        ? parsedLimit.data.context
-        : undefined;
-      const cost = getModelsDevCost(model.data.cost);
-
-      if (contextWindow === undefined && cost === undefined) {
-        continue;
-      }
-
-      metadataMap.set(modelId, {
-        contextWindow,
-        cost,
-      });
-    }
-  }
-
-  return metadataMap;
-}
-
-// PERF 2026-09-15: fetchModelsDevMetadataMap() used to hit
-// https://models.dev/api.json (a multi-megabyte JSON catalog) on EVERY
-// chat page load and every /api/models request, paying up to the 750ms
-// abort timeout on the page-load critical path -- for enrichment that is
-// currently a no-op for our catalog (see the MODELS_DEV_URL comment
-// above). The catalog changes at most a few times a day, so cache the
-// successful fetch for 6 hours per serverless instance. Failures are NOT
-// cached (same discipline as the gateway-models cache): a transient
-// models.dev blip just costs the next caller its bounded 750ms, not 6h
-// of stale-empty enrichment.
-const MODELS_DEV_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-let modelsDevCache: {
-  promise: Promise<Map<string, ModelsDevMetadata>>;
-  expiresAt: number;
-} | null = null;
-let modelsDevResolvedCache: {
-  map: Map<string, ModelsDevMetadata>;
-  expiresAt: number;
-} | null = null;
-
-/** Test-only hook: drops the models.dev metadata cache (see above).
- * Production code must never call this. */
 export function __resetModelsDevCacheForTests(): void {
-  modelsDevCache = null;
-  modelsDevResolvedCache = null;
-}
-
-async function fetchModelsDevMetadataMap(): Promise<
-  Map<string, ModelsDevMetadata>
-> {
-  const now = Date.now();
-  if (modelsDevCache && modelsDevCache.expiresAt > now) {
-    return modelsDevCache.promise;
-  }
-  const promise = fetchModelsDevMetadataMapUncached();
-  const entry = { promise, expiresAt: now + MODELS_DEV_CACHE_TTL_MS };
-  modelsDevCache = entry;
-  // fetchModelsDevMetadataMapUncached RESOLVES to an empty map on fetch
-  // failure (750ms abort / non-ok / parse error) -- treat that exactly
-  // like a failure: drop the cache entry so the next caller retries
-  // instead of serving 6h of stale-empty enrichment.
-  promise.then((map) => {
-    if (map.size === 0 && modelsDevCache === entry) {
-      modelsDevCache = null;
-    } else if (map.size > 0 && modelsDevCache === entry) {
-      modelsDevResolvedCache = { map, expiresAt: entry.expiresAt };
-    }
-  });
-  return promise;
-}
-
-async function fetchModelsDevMetadataMapUncached(): Promise<
-  Map<string, ModelsDevMetadata>
-> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), MODELS_DEV_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(MODELS_DEV_URL, {
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      return new Map();
-    }
-    const data: unknown = await response.json();
-    return getModelsDevMetadataMap(data);
-  } catch {
-    return new Map();
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-function addModelsDevMetadata(
-  model: GatewayModel,
-  metadataMap: Map<string, ModelsDevMetadata>,
-): AvailableModel {
-  const metadata = metadataMap.get(model.id);
-  if (!metadata) {
-    return applyFallbackCachePricing(model);
-  }
-
-  const nextModel: AvailableModel = { ...model };
-
-  if (
-    typeof metadata.contextWindow === "number" &&
-    metadata.contextWindow > 0
-  ) {
-    nextModel.context_window = metadata.contextWindow;
-  }
-
-  if (metadata.cost) {
-    nextModel.cost = metadata.cost;
-  }
-
-  return applyFallbackCachePricing(nextModel);
+  // No-op: models.dev lookup removed; live gateway is the sole source of truth.
 }
 
 /**
@@ -634,27 +422,13 @@ export async function fetchAvailableLanguageModelsWithCachedContext(): Promise<
   AvailableModel[]
 > {
   const models = await fetchAvailableLanguageModels();
-  const now = Date.now();
-  if (modelsDevResolvedCache && modelsDevResolvedCache.expiresAt > now) {
-    return models.map((model) =>
-      addModelsDevMetadata(model, modelsDevResolvedCache!.map),
-    );
-  }
-  const needsFallback = models.some(
-    (m) =>
-      !(typeof m.context_window === "number" && m.context_window > 0) ||
-      !m.cost,
-  );
-  if (needsFallback) {
-    void fetchModelsDevMetadataMap().catch(() => {});
-  }
   return models.map((model) => applyFallbackCachePricing(model));
 }
 
 /**
  * Every language model the gateway knows about (unfiltered by disabled status)
  * for the ADMIN models page and public /model pricing page. Uses live gateway
- * context_window and cost directly without blocking on models.dev.
+ * context_window and cost directly — no external models.dev lookup.
  */
 export async function fetchAllLanguageModelsWithContext(): Promise<
   AvailableModel[]
@@ -662,12 +436,6 @@ export async function fetchAllLanguageModelsWithContext(): Promise<
   const models = (await fetchGatewayModels()).filter(
     (model) => model.modelType === "language",
   );
-  const now = Date.now();
-  if (modelsDevResolvedCache && modelsDevResolvedCache.expiresAt > now) {
-    return models.map((model) =>
-      addModelsDevMetadata(model, modelsDevResolvedCache!.map),
-    );
-  }
   return models.map((model) => applyFallbackCachePricing(model));
 }
 

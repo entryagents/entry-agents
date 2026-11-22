@@ -36,6 +36,8 @@ export interface ContextSegment {
 export type CostSource = "gateway" | "estimated" | "mixed";
 
 export interface SessionUsageTotals {
+  /** Total input tokens across the session (new input + cache read + cache write). */
+  totalInputTokens: number;
   /** Uncached / new input tokens across the session (excludes cache reads and writes). */
   inputTokens: number;
   /** Output tokens across the session (excluding reasoning tokens when separated). */
@@ -408,6 +410,7 @@ export function deriveContextWindowBreakdown(
     modelId: effectiveModelId,
     modelName,
     sessionTotals: {
+      totalInputTokens: totalInputAll,
       inputTokens: totalNewInput,
       outputTokens: totalOutput,
       cacheReadTokens: totalCacheRead,

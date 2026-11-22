@@ -142,6 +142,7 @@ describe("deriveContextWindowBreakdown", () => {
 
     // Session totals split Input (uncached), Cache read, Cache write, and Reasoning cleanly without double-counting.
     expect(view.sessionTotals).toEqual({
+      totalInputTokens: 150_000,
       inputTokens: 30_000,
       outputTokens: 14_000,
       cacheReadTokens: 120_000,
@@ -270,6 +271,7 @@ describe("deriveContextWindowBreakdown", () => {
     expect(view.pct).toBeCloseTo(10, 4);
     expect(view.warn).toBe(false);
     expect(view.sessionTotals).toEqual({
+      totalInputTokens: 160_000,
       inputTokens: 160_000,
       outputTokens: 4_000,
       cacheReadTokens: 0,
