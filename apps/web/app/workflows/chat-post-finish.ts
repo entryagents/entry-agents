@@ -528,6 +528,7 @@ export async function claimActiveStream(
   workflowRunId: string,
   writable?: WritableStream<UIMessageChunk>,
   messageId?: string,
+  previousWorkflowRunId?: string,
 ): Promise<ClaimActiveStreamResult> {
   "use step";
 
@@ -537,8 +538,12 @@ export async function claimActiveStream(
     attempt++
   ) {
     try {
-      const { claimChatActiveStreamId, getChatById, setChatRunStatus } =
-        await import("@/lib/db/sessions");
+      const {
+        claimChatActiveStreamId,
+        compareAndSetChatActiveStreamId,
+        getChatById,
+        setChatRunStatus,
+      } = await import("@/lib/db/sessions");
       const currentChat = await getChatById(chatId).catch(() => null);
       if (currentChat?.status === "cancelled") {
         console.warn(
@@ -547,7 +552,14 @@ export async function claimActiveStream(
         );
         return "conflict";
       }
-      const ok = await claimChatActiveStreamId(chatId, workflowRunId);
+      let ok = await claimChatActiveStreamId(chatId, workflowRunId);
+      if (!ok && previousWorkflowRunId) {
+        ok = await compareAndSetChatActiveStreamId(
+          chatId,
+          previousWorkflowRunId,
+          workflowRunId,
+        );
+      }
       if (ok) {
         // The run owns this chat from here on. Committing "running"
         // alongside activeStreamId means a viewer never sees a claimed
@@ -1411,6 +1423,19 @@ export async function continueAgentWorkflowSegmentStep(params: {
     return { continued: false };
   }
 
+  // 3. Release this segment's billing turn lease BEFORE starting the next segment
+  //    so segment 2's claimUserBillingTurn can never be blocked by segment 1.
+  try {
+    const { releaseUserBillingTurn } =
+      await import("@/lib/billing/credit-ledger");
+    await releaseUserBillingTurn(
+      params.userId,
+      params.currentWorkflowRunId,
+    ).catch(() => {});
+  } catch {
+    // Best-effort lease handoff.
+  }
+
   let startedRunId: string | undefined;
   try {
     const { start, getRun } = await import("workflow/api");
@@ -1429,6 +1454,7 @@ export async function continueAgentWorkflowSegmentStep(params: {
           assistantId: params.assistantId,
           inputMessagesPersisted: true,
           isContinuationSegment: true,
+          previousWorkflowRunId: params.currentWorkflowRunId,
           turnStartedAt: params.turnStartedAt,
           stepOffset: params.nextStepOffset,
           ...(params.maxSteps !== undefined
@@ -1467,29 +1493,22 @@ export async function continueAgentWorkflowSegmentStep(params: {
 
     startedRunId = nextRun.runId;
 
-    // 3. Atomically hand off activeStreamId from currentWorkflowRunId -> nextRun.runId.
+    // 4. Atomically hand off activeStreamId from currentWorkflowRunId -> nextRun.runId.
+    //    If segment 2 already started and promoted activeStreamId via claimActiveStream,
+    //    the CAS returns false but chat.activeStreamId is already nextRun.runId.
     const swapped = await compareAndSetChatActiveStreamId(
       params.chatId,
       params.currentWorkflowRunId,
       nextRun.runId,
     );
     if (!swapped) {
-      await getRun(nextRun.runId)
-        .cancel()
-        .catch(() => {});
-      return { continued: false };
-    }
-
-    // 4. Release the old segment's billing turn lease so the new segment claims it cleanly.
-    try {
-      const { releaseUserBillingTurn } =
-        await import("@/lib/billing/credit-ledger");
-      await releaseUserBillingTurn(
-        params.userId,
-        params.currentWorkflowRunId,
-      ).catch(() => {});
-    } catch {
-      // Best-effort lease handoff.
+      const latestChat = await getChatById(params.chatId).catch(() => null);
+      if (latestChat?.activeStreamId !== nextRun.runId) {
+        await getRun(nextRun.runId)
+          .cancel()
+          .catch(() => {});
+        return { continued: false };
+      }
     }
 
     console.info(
