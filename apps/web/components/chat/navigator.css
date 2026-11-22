@@ -10,7 +10,7 @@
   --nav-fill-2: rgba(15, 23, 42, 0.09);
   --nav-text: var(--foreground);
   --nav-text-3: var(--muted-foreground);
-  --nav-amber: oklch(0.72 0.16 70);
+  --nav-amber: rgba(24, 24, 27, 0.85);
   --nav-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --nav-d-2: 140ms;
   --nav-d-3: 200ms;
@@ -35,7 +35,7 @@
   --nav-line: rgba(255, 255, 255, 0.1);
   --nav-fill: rgba(255, 255, 255, 0.04);
   --nav-fill-2: rgba(255, 255, 255, 0.09);
-  --nav-amber: oklch(0.78 0.15 72);
+  --nav-amber: rgba(242, 241, 238, 0.85);
 }
 
 .sable-nav[data-show] {
