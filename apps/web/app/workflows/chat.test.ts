@@ -74,6 +74,13 @@ function createResolvedChatSandboxRuntime(
 }
 
 const spies = {
+  continueAgentWorkflowSegmentStep: mock(() =>
+    Promise.resolve({
+      continued: false as boolean,
+      nextRunId: undefined as string | undefined,
+    }),
+  ),
+  loadContinuationMessagesStep: mock(() => Promise.resolve([])),
   persistUserMessage: mock(() => Promise.resolve()),
   persistAssistantMessageWithToolResults: mock(() => Promise.resolve()),
   persistAssistantMessage: mock((_chatId?: unknown, _message?: unknown) =>

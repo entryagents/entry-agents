@@ -82,6 +82,8 @@ import {
   refreshLifecycleActivity,
   runAutoCommitStep,
   runAutoCreatePrStep,
+  continueAgentWorkflowSegmentStep,
+  loadContinuationMessagesStep,
   runPostTurnPluginsStep,
   sendFinish,
   startNextQueuedWorkflowStep,
@@ -148,6 +150,11 @@ type Options = {
   agentOptions?: Omit<OpenAgentCallOptions, "sandbox" | "skills">;
   assistantId?: string;
   inputMessagesPersisted?: boolean;
+  isContinuationSegment?: boolean;
+  turnStartedAt?: number;
+  stepOffset?: number;
+  segmentMaxSteps?: number;
+  segmentMaxDurationMs?: number;
   maxSteps?: number;
   autoCommitEnabled?: boolean;
   autoCreatePrEnabled?: boolean;
@@ -1575,6 +1582,19 @@ async function sendUserMessageMarker(
   }
 }
 
+async function sendSegmentHandoffMarker(writable: Writable, nextRunId: string) {
+  "use step";
+  const writer = writable.getWriter();
+  try {
+    await writer.write({
+      type: "data-segment-handoff",
+      data: { nextRunId },
+    } as UIMessageChunk);
+  } finally {
+    writer.releaseLock();
+  }
+}
+
 /**
  * Runs the actual GitHub commit/push work for the agent's
  * `github_commit_and_push` tool as a step, NOT inline in the workflow
@@ -2452,7 +2472,12 @@ export async function runAgentWorkflow(options: Options) {
   const { workflowRunId } = getWorkflowMetadata();
   const writable = getWritable<UIMessageChunk>();
 
-  const latestMessage = options.messages.at(-1);
+  const resolvedMessages =
+    options.isContinuationSegment && options.messages.length === 0
+      ? await loadContinuationMessagesStep(options.chatId)
+      : options.messages;
+
+  const latestMessage = resolvedMessages.at(-1);
 
   if (latestMessage == null) {
     throw new Error("runAgentWorkflow requires at least one message");
@@ -2463,9 +2488,10 @@ export async function runAgentWorkflow(options: Options) {
       ? latestMessage.id
       : (options.assistantId ?? generateIdAi());
 
-  const inputMessagesPersistPromise = options.inputMessagesPersisted
-    ? Promise.resolve()
-    : persistInputMessages(options.chatId, options.messages);
+  const inputMessagesPersistPromise =
+    options.inputMessagesPersisted || options.isContinuationSegment
+      ? Promise.resolve()
+      : persistInputMessages(options.chatId, resolvedMessages);
   const initialTeamRoleModels =
     options.teamRoleModels ?? options.agentOptions?.teamRoleModels;
   const modelRuntimePromise = resolveChatModelRuntime({
@@ -2538,7 +2564,7 @@ export async function runAgentWorkflow(options: Options) {
   const checkpointPromise = loadCompactionCheckpointStep(options.chatId);
   const modelMessagesPromise: Promise<ModelMessage[]> = (async () => {
     const checkpoint = await checkpointPromise;
-    const effectiveMessages = options.messages.filter(
+    const effectiveMessages = resolvedMessages.filter(
       (m) => !m.metadata?.isCompactionNotice,
     );
     let uiMessagesForConversion = effectiveMessages;
@@ -2727,6 +2753,7 @@ export async function runAgentWorkflow(options: Options) {
   let wasAborted = false;
   let wasTimedOut = false;
   let exhaustedMaxSteps = false;
+  let continuedToNextSegment = false;
   let totalUsage: LanguageModelUsage | undefined;
   let finalFinishReason: FinishReason | undefined;
   let streamClosed = false;
@@ -2914,7 +2941,11 @@ export async function runAgentWorkflow(options: Options) {
         ? agentOptions.model
         : undefined;
     let lastKnownInputTokens: number | undefined;
-    const turnStartedAt = Date.now();
+    const turnStartedAt = options.turnStartedAt ?? Date.now();
+    const segmentStartedAt = Date.now();
+    const stepOffset = options.stepOffset ?? 0;
+    const segmentMaxSteps = options.segmentMaxSteps ?? 50;
+    const segmentMaxDurationMs = options.segmentMaxDurationMs ?? 25 * 60 * 1000; // 25 min per segment
     const MAX_WORKFLOW_TURN_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours max
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
@@ -2926,7 +2957,7 @@ export async function runAgentWorkflow(options: Options) {
 
     for (
       let step = 0;
-      options.maxSteps === undefined || step < options.maxSteps;
+      options.maxSteps === undefined || stepOffset + step < options.maxSteps;
       step++
     ) {
       // Cooperative check: Stop if chat was cancelled in DB or superseded by a newer run
@@ -3412,7 +3443,10 @@ export async function runAgentWorkflow(options: Options) {
         break;
       }
 
-      if (options.maxSteps !== undefined && step + 1 >= options.maxSteps) {
+      if (
+        options.maxSteps !== undefined &&
+        stepOffset + step + 1 >= options.maxSteps
+      ) {
         exhaustedMaxSteps = true;
         break;
       }
@@ -3507,6 +3541,65 @@ export async function runAgentWorkflow(options: Options) {
           consecutiveIdenticalToolCount = 1;
         }
       }
+
+      const hitSegmentStepCap = step + 1 >= segmentMaxSteps;
+      const hitSegmentDurationCap =
+        Date.now() - segmentStartedAt >= segmentMaxDurationMs;
+      const hasRemainingTurnTime =
+        Date.now() - turnStartedAt < MAX_WORKFLOW_TURN_DURATION_MS;
+
+      if (
+        (hitSegmentStepCap || hitSegmentDurationCap) &&
+        hasRemainingTurnTime
+      ) {
+        const handoff = await continueAgentWorkflowSegmentStep({
+          chatId: options.chatId,
+          sessionId: options.sessionId,
+          userId: options.userId,
+          requestUrl: options.requestUrl,
+          authSession: options.authSession,
+          currentWorkflowRunId: workflowRunId,
+          assistantId,
+          pendingAssistantResponse,
+          turnStartedAt,
+          nextStepOffset: stepOffset + step + 1,
+          ...(options.maxSteps !== undefined
+            ? { maxSteps: options.maxSteps }
+            : {}),
+          ...(selectedModelId !== undefined ? { selectedModelId } : {}),
+          ...(modelId !== undefined ? { modelId } : {}),
+          ...(options.overrideModelId !== undefined
+            ? { overrideModelId: options.overrideModelId }
+            : {}),
+          ...(options.overrideReasoningEffort !== undefined
+            ? { overrideReasoningEffort: options.overrideReasoningEffort }
+            : {}),
+          ...(options.teamRoleModels
+            ? { teamRoleModels: options.teamRoleModels }
+            : {}),
+          ...(options.autoCommitEnabled !== undefined
+            ? { autoCommitEnabled: options.autoCommitEnabled }
+            : {}),
+          ...(options.autoCreatePrEnabled !== undefined
+            ? { autoCreatePrEnabled: options.autoCreatePrEnabled }
+            : {}),
+        });
+        if (handoff.continued) {
+          continuedToNextSegment = true;
+          if (handoff.nextRunId) {
+            await sendSegmentHandoffMarker(writable, handoff.nextRunId).catch(
+              () => {},
+            );
+          }
+          await closeStream(writable).catch(() => {});
+          streamClosed = true;
+          break;
+        }
+      }
+    }
+
+    if (continuedToNextSegment) {
+      return;
     }
 
     if (sandboxState) {
@@ -3962,12 +4055,14 @@ export async function runAgentWorkflow(options: Options) {
             .catch(() => {}),
         ]);
       }
-      if (workflowStatus !== "aborted") {
-        const terminalState =
-          workflowStatus === "failed" || caughtError ? "failed" : "completed";
-        await reconcileSessionStatusStep(options.sessionId, terminalState);
+      if (!continuedToNextSegment) {
+        if (workflowStatus !== "aborted") {
+          const terminalState =
+            workflowStatus === "failed" || caughtError ? "failed" : "completed";
+          await reconcileSessionStatusStep(options.sessionId, terminalState);
+        }
+        await kickSandboxLifecycleStep(options.sessionId);
       }
-      await kickSandboxLifecycleStep(options.sessionId);
     } finally {
       const runFinishedAt = new Date();
       await Promise.all([
@@ -3991,13 +4086,17 @@ export async function runAgentWorkflow(options: Options) {
               : undefined,
           },
         ),
-        runPostTurnPluginsStep({
-          userId: options.userId,
-          sessionId: options.sessionId,
-          chatId: options.chatId,
-          workflowRunId,
-          status: workflowStatus,
-        }),
+        ...(continuedToNextSegment
+          ? []
+          : [
+              runPostTurnPluginsStep({
+                userId: options.userId,
+                sessionId: options.sessionId,
+                chatId: options.chatId,
+                workflowRunId,
+                status: workflowStatus,
+              }),
+            ]),
       ]);
     }
   }
