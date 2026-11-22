@@ -104,7 +104,7 @@ export function ToolCallsSummaryBar({
   const fullSummary = [statusLabel, ...desktopSegments].join(" · ");
 
   return (
-    <div className="my-1">
+    <div className="py-0.5">
       <button
         type="button"
         onClick={onToggle}

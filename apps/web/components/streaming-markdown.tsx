@@ -67,7 +67,7 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({
       <Markdown
         mode={isStreaming ? "streaming" : "static"}
         isAnimating={isStreaming}
-        animated={isStreaming ? { animation: "fadeIn", duration: 150 } : false}
+        animated={false}
         caret={isStreaming ? "block" : undefined}
         math
         plugins={wordsPlugins}

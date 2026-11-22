@@ -2,12 +2,11 @@
 
 import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { ThinkingBlock } from "@/components/thinking-block";
-import { useSmoothedText } from "@/lib/chat/use-smoothed-text";
 
 interface SmoothedAssistantMarkdownProps {
   /** Latest accumulated text for the part (full arrival so far). */
   content: string;
-  /** True while the part is still streaming (drives reveal pacing). */
+  /** True while the part is still streaming. */
   active: boolean;
   /** Stable part identity: `${messageId}:${renderKey}`. */
   streamKey: string;
@@ -17,22 +16,17 @@ interface SmoothedAssistantMarkdownProps {
 }
 
 /**
- * Assistant markdown text with burst-arrival smoothing: incoming text is
- * revealed at a steady rAF-driven cadence instead of in 100-300ms jumps.
- * Completion, aborts and errors flush instantly; reduced-motion users get
- * instant reveal; no text is ever lost.
+ * Renders streaming assistant markdown directly without extra rAF/useEffect
+ * double-render buffering lag so tokens appear on the frame they arrive.
  */
 export function SmoothedAssistantMarkdown({
   content,
-  active,
-  streamKey,
   isStreaming,
   onOpenFile,
 }: SmoothedAssistantMarkdownProps) {
-  const text = useSmoothedText(content, active, streamKey);
   return (
     <StreamingMarkdown
-      content={text}
+      content={content}
       isStreaming={isStreaming}
       onOpenFile={onOpenFile}
     />
@@ -52,19 +46,16 @@ interface SmoothedThinkingBlockProps {
 }
 
 /**
- * ThinkingBlock with the same burst-arrival smoothing as assistant text.
+ * Renders ThinkingBlock directly without rAF buffering lag.
  */
 export function SmoothedThinkingBlock({
   text,
-  active,
-  streamKey,
   isStreaming,
   partCount,
 }: SmoothedThinkingBlockProps) {
-  const smoothed = useSmoothedText(text, active, streamKey);
   return (
     <ThinkingBlock
-      text={smoothed}
+      text={text}
       isStreaming={isStreaming}
       partCount={partCount}
     />

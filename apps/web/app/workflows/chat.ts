@@ -5589,7 +5589,7 @@ const runAgentStep = async (
                 }
               }
 
-              if (liveTps !== undefined && nowMs - lastTpsEmitAt >= 500) {
+              if (liveTps !== undefined && nowMs - lastTpsEmitAt >= 2500) {
                 lastTpsEmitAt = nowMs;
                 return {
                   selectedModelId,

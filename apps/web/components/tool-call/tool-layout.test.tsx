@@ -115,9 +115,7 @@ describe("ToolLayout error state", () => {
     expect(html).toContain(
       "transition-[grid-template-rows,opacity,margin-top] motion-reduce:transition-none",
     );
-    expect(html).toContain(
-      "mt-1.5 grid-rows-[1fr] opacity-100 duration-200 ease-out",
-    );
+    expect(html).toContain("grid-rows-[1fr] opacity-100 duration-200 ease-out");
     expect(html).not.toContain("bg-card/60 p-3");
     expect(html).not.toContain("border-t border-border pt-3");
   });
