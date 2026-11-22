@@ -254,13 +254,7 @@ export function WorkspaceRailTabs({
   };
 
   return (
-    <div
-      className="rail-tabs"
-      ref={row}
-      role="tablist"
-      aria-label="Workspace tabs"
-      onKeyDown={onKey}
-    >
+    <div className="rail-tabs" ref={row}>
       {pill ? (
         <motion.span
           className="rail-tabs-pill"
@@ -271,7 +265,12 @@ export function WorkspaceRailTabs({
         />
       ) : null}
 
-      <div className="rail-tablist" role="tablist" aria-label="Panel">
+      <div
+        className="rail-tablist"
+        role="tablist"
+        aria-label="Panel"
+        onKeyDown={onKey}
+      >
         {shown.map((t) => {
           const active = t.id === tab;
           const count = counts[t.id];
@@ -296,7 +295,6 @@ export function WorkspaceRailTabs({
                     label={t.label}
                     named={active && labels}
                     count={count}
-                    liveDot={t.id === "preview" && Boolean(isPreviewLive)}
                   />
                 </button>
               </TooltipTrigger>
