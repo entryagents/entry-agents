@@ -44,7 +44,6 @@ import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
 import { consumePendingInitialPrompt } from "@/lib/chat/pending-initial-prompt";
 import { SubagentThreadView } from "@/components/team/subagent-thread-view";
-import { TeamStatusButton } from "@/components/team/team-status-button";
 import { ChatMessageFeed } from "@/components/chat/chat-message-feed";
 import { ChatNavigator } from "@/components/chat/chat-navigator";
 import type { FindMarks } from "@/components/chat/conversation-find";
@@ -586,7 +585,6 @@ export function SessionChatContent({
     closeSubagentTab,
     gitPanelOpen,
     setGitPanelOpen,
-    activeWorkspaceTab,
     setActiveWorkspaceTab,
     openFileTab,
     shareRequested,
@@ -3422,36 +3420,19 @@ export function SessionChatContent({
 
   return (
     <>
-      {/* Context Usage + Agent Team Hub portaled into SessionHeader actions slot */}
+      {/* Context Usage meter portaled into SessionHeader actions slot (matches Sable 1:1) */}
       {headerActionsNode &&
         createPortal(
-          <>
-            <ContextUsageHeaderButton
-              messages={renderMessages}
-              modelId={chatInfo.modelId ?? ""}
-              modelOptions={modelOptions}
-              contextLimit={contextLimit}
-              onOpenContextPanel={() => {
-                setActiveWorkspaceTab("context");
-                setGitPanelOpen(true);
-              }}
-            />
-            <TeamStatusButton
-              messages={renderMessages}
-              isParentStreaming={effectiveStatus === "streaming"}
-              isAgentsPanelOpen={
-                gitPanelOpen && activeWorkspaceTab === "agents"
-              }
-              onToggleAgentsPanel={() => {
-                if (gitPanelOpen && activeWorkspaceTab === "agents") {
-                  setGitPanelOpen(false);
-                } else {
-                  setActiveWorkspaceTab("agents");
-                  setGitPanelOpen(true);
-                }
-              }}
-            />
-          </>,
+          <ContextUsageHeaderButton
+            messages={renderMessages}
+            modelId={chatInfo.modelId ?? ""}
+            modelOptions={modelOptions}
+            contextLimit={contextLimit}
+            onOpenContextPanel={() => {
+              setActiveWorkspaceTab("context");
+              setGitPanelOpen(true);
+            }}
+          />,
           headerActionsNode,
         )}
 
