@@ -1,7 +1,7 @@
 "use client";
 
 import "./rail.css";
-import { Loader2, Maximize2, Minimize2, PanelRight, X } from "lucide-react";
+import { Loader2, PanelRight, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
@@ -105,8 +105,6 @@ export function WorkspacePanel({
   files,
   filesLoading = false,
   refreshFiles,
-  isWorkspaceExpanded = false,
-  onToggleWorkspaceExpand,
   messages = [],
   modelId = "",
   modelOptions = [],
@@ -221,12 +219,6 @@ export function WorkspacePanel({
     [diffFiles.length, openTodos, liveAgents],
   );
 
-  const isPreviewLive =
-    devServer.state.status === "ready" ||
-    Boolean(
-      gitPanelProps.prDeploymentUrl || gitPanelProps.buildingDeploymentUrl,
-    );
-
   const previewTargetUrl =
     gitPanelProps.prDeploymentUrl ??
     gitPanelProps.buildingDeploymentUrl ??
@@ -250,59 +242,33 @@ export function WorkspacePanel({
         <WorkspaceRailTabs
           tab={activeBuiltinTab}
           counts={counts}
-          isPreviewLive={isPreviewLive}
           onPick={pickBuiltinTab}
         />
-        <div className="flex items-center gap-0.5 shrink-0">
-          {onToggleWorkspaceExpand && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="rail-btn hidden lg:inline-flex"
-                  onClick={onToggleWorkspaceExpand}
-                  aria-label={
-                    isWorkspaceExpanded ? "Restore panel width" : "Expand panel"
-                  }
-                >
-                  {isWorkspaceExpanded ? (
-                    <Minimize2 size={14} strokeWidth={1.6} aria-hidden="true" />
-                  ) : (
-                    <Maximize2 size={14} strokeWidth={1.6} aria-hidden="true" />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                {isWorkspaceExpanded ? "Restore width" : "Expand panel"}
-              </TooltipContent>
-            </Tooltip>
-          )}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="rail-btn"
-                data-active="true"
-                onClick={() => setGitPanelOpen(false)}
-                aria-label="Hide panel"
-              >
-                <X
-                  size={16}
-                  strokeWidth={1.6}
-                  className="lg:hidden"
-                  aria-hidden="true"
-                />
-                <PanelRight
-                  size={15}
-                  strokeWidth={1.6}
-                  className="hidden lg:block"
-                  aria-hidden="true"
-                />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Hide panel · ⌘⇧B</TooltipContent>
-          </Tooltip>
-        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="rail-btn shrink-0"
+              data-active="true"
+              onClick={() => setGitPanelOpen(false)}
+              aria-label="Hide panel"
+            >
+              <X
+                size={16}
+                strokeWidth={1.6}
+                className="lg:hidden"
+                aria-hidden="true"
+              />
+              <PanelRight
+                size={15}
+                strokeWidth={1.6}
+                className="hidden lg:block"
+                aria-hidden="true"
+              />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Hide panel</TooltipContent>
+        </Tooltip>
       </div>
 
       <div className="rail-body" data-dir={dir}>

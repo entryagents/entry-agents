@@ -13,7 +13,6 @@ import {
   Loader2,
   RefreshCw,
   Search,
-  TerminalSquare,
   X,
 } from "lucide-react";
 import {
@@ -251,23 +250,23 @@ const TreeRow = memo(function TreeRow({
 export function WorkspaceFileTree({
   files,
   filesLoading = false,
+  hasSandbox = true,
   diffFiles = [],
   activeFilePath,
   onOpenFile,
   onPrefetchFile,
   onRefresh,
-  onOpenQuickOpen,
   onMentionInChat,
   className,
 }: {
   files: FileSuggestion[] | null | undefined;
   filesLoading?: boolean;
+  hasSandbox?: boolean;
   diffFiles?: DiffFile[];
   activeFilePath?: string | null;
   onOpenFile: (filePath: string) => void;
   onPrefetchFile?: (filePath: string) => void;
   onRefresh?: () => void;
-  onOpenQuickOpen?: () => void;
   onMentionInChat?: (mention: string) => void;
   className?: string;
 }) {
@@ -522,40 +521,16 @@ export function WorkspaceFileTree({
           >
             <ChevronsDownUp size={13.5} strokeWidth={1.6} aria-hidden="true" />
           </button>
-          {onOpenQuickOpen && (
-            <button
-              type="button"
-              className="rail-btn"
-              onClick={onOpenQuickOpen}
-              aria-label="Quick open file"
-              title="Quick open (⌘P)"
-            >
-              <TerminalSquare
-                size={13.5}
-                strokeWidth={1.6}
-                aria-hidden="true"
-              />
-            </button>
-          )}
           {onRefresh && (
             <button
               type="button"
               className="rail-btn"
               onClick={onRefresh}
               disabled={filesLoading}
-              aria-label="Refresh files"
-              title="Refresh files"
+              aria-label="Refresh"
+              title="Refresh"
             >
-              {filesLoading ? (
-                <Loader2
-                  size={13.5}
-                  strokeWidth={1.6}
-                  className="animate-spin"
-                  aria-hidden="true"
-                />
-              ) : (
-                <RefreshCw size={13.5} strokeWidth={1.6} aria-hidden="true" />
-              )}
+              <RefreshCw size={13.5} strokeWidth={1.6} aria-hidden="true" />
             </button>
           )}
         </span>
@@ -563,9 +538,23 @@ export function WorkspaceFileTree({
 
       {/* Tree rows */}
       <div className="rail-scroll">
-        {rows.length === 0 ? (
+        {filesLoading && (files?.length ?? 0) === 0 ? (
+          <div className="rail-loading">
+            <Loader2
+              size={14}
+              strokeWidth={1.6}
+              className="animate-spin"
+              aria-hidden="true"
+            />
+            <span>Reading the folder</span>
+          </div>
+        ) : rows.length === 0 ? (
           <p className="rail-empty">
-            {q ? "Nothing matches this filter." : "No files in this workspace."}
+            {q
+              ? "Nothing matches this filter."
+              : hasSandbox
+                ? "This folder is empty."
+                : "Workspace not active yet."}
           </p>
         ) : (
           <div

@@ -1,6 +1,6 @@
 "use client";
 
-import { FolderTree, Loader2, RefreshCw } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
@@ -47,7 +47,6 @@ export function WorkspaceFilesTab({
   refreshFiles,
   diffFiles = [],
   onOpenDiff,
-  onOpenQuickOpen,
   onMentionInChat,
 }: WorkspaceFilesTabProps) {
   const {
@@ -105,54 +104,17 @@ export function WorkspaceFilesTab({
         data-away={selectedFile ? "" : undefined}
         inert={Boolean(selectedFile)}
       >
-        {filesLoading && (!files || files.length === 0) ? (
-          <div className="rail-loading">
-            <Loader2
-              size={16}
-              strokeWidth={1.6}
-              className="animate-spin"
-              aria-hidden="true"
-            />
-            <span>Reading workspace files…</span>
-          </div>
-        ) : !files || files.length === 0 ? (
-          <div className="rail-empty">
-            <FolderTree size={22} strokeWidth={1.3} aria-hidden="true" />
-            <p className="rail-empty-title">
-              {hasSandbox
-                ? "This folder is empty."
-                : "Workspace not active yet"}
-            </p>
-            <p>
-              {hasSandbox
-                ? "Files created or cloned into this session will appear here."
-                : "Files appear here once the workspace sandbox finishes starting."}
-            </p>
-            {refreshFiles && hasSandbox && (
-              <button
-                type="button"
-                className="sable-btn-sm mt-1"
-                onClick={refreshFiles}
-                disabled={filesLoading}
-              >
-                <RefreshCw size={12} strokeWidth={1.6} aria-hidden="true" />
-                <span>Refresh</span>
-              </button>
-            )}
-          </div>
-        ) : (
-          <WorkspaceFileTree
-            files={files}
-            filesLoading={filesLoading}
-            diffFiles={diffFiles}
-            activeFilePath={selectedFile}
-            onOpenFile={(path) => setSelectedFile(path)}
-            onRefresh={refreshFiles}
-            onOpenQuickOpen={onOpenQuickOpen}
-            onMentionInChat={onMentionInChat}
-            className="h-full"
-          />
-        )}
+        <WorkspaceFileTree
+          files={files ?? []}
+          filesLoading={filesLoading}
+          hasSandbox={hasSandbox}
+          diffFiles={diffFiles}
+          activeFilePath={selectedFile}
+          onOpenFile={(path) => setSelectedFile(path)}
+          onRefresh={refreshFiles}
+          onMentionInChat={onMentionInChat}
+          className="h-full"
+        />
       </div>
     </div>
   );

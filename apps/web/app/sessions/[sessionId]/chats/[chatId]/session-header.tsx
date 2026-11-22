@@ -1,17 +1,10 @@
 "use client";
 
 import "./session-header.css";
-import {
-  Folder,
-  GitBranch,
-  GitPullRequest,
-  PanelLeft,
-  PanelRight,
-} from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Folder, GitBranch, PanelLeft, PanelRight } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSessionLayout } from "@/app/sessions/[sessionId]/session-layout-context";
-import { ChatMenu } from "@/components/chat/chat-menu";
 import {
   ProviderIcon,
   getProviderFromModelId,
@@ -22,7 +15,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
 import { useGitPanel } from "./git-panel-context";
 
 /**
@@ -44,13 +36,24 @@ function TitleName({
   const titleButtonRef = useRef<HTMLButtonElement>(null);
   const committedRef = useRef(false);
 
-  useEffect(() => {
-    if (!editing) {
+  const commit = useCallback(async () => {
+    if (committedRef.current) return;
+    committedRef.current = true;
+    const trimmed = value.trim();
+    setEditing(false);
+    if (!trimmed || trimmed === title) {
       setValue(title);
+      return;
     }
-  }, [editing, sessionId, title]);
+    try {
+      await onRename(trimmed);
+    } catch {
+      setValue(title);
+      toast.error("Failed to rename session");
+    }
+  }, [value, title, onRename]);
 
-  const startEditing = () => {
+  const startEdit = useCallback(() => {
     committedRef.current = false;
     setValue(title);
     setEditing(true);
@@ -58,69 +61,58 @@ function TitleName({
       inputRef.current?.focus();
       inputRef.current?.select();
     });
-  };
+  }, [title]);
 
-  if (!editing) {
+  if (editing) {
     return (
-      <button
-        ref={titleButtonRef}
-        type="button"
-        className="topbar-name"
-        title="Double-click to rename"
-        onDoubleClick={startEditing}
+      <input
+        ref={inputRef}
+        type="text"
+        aria-label="Session title"
+        className="topbar-name topbar-name-input"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => void commit()}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (e.key === "Enter") {
             e.preventDefault();
-            startEditing();
+            void commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            committedRef.current = true;
+            setValue(title);
+            setEditing(false);
+            requestAnimationFrame(() => titleButtonRef.current?.focus());
           }
         }}
-      >
-        {title || "Untitled"}
-      </button>
+      />
     );
   }
 
-  const commit = (save: boolean) => {
-    if (committedRef.current) return;
-    committedRef.current = true;
-    const next = value.trim();
-    setEditing(false);
-    if (save && next && next !== title) {
-      void onRename(next).catch((err) => {
-        toast.error(
-          err instanceof Error ? err.message : "Could not rename session",
-        );
-      });
-    }
-    requestAnimationFrame(() => titleButtonRef.current?.focus());
-  };
-
   return (
-    <input
-      ref={inputRef}
-      className="topbar-rename"
-      value={value}
-      aria-label="Session title"
-      spellCheck={false}
-      style={{ width: `calc(${Math.max(8, value.length + 2)}ch + 14px)` }}
-      onChange={(e) => setValue(e.target.value)}
+    <button
+      ref={titleButtonRef}
+      key={sessionId}
+      type="button"
+      className="topbar-name truncate"
+      onDoubleClick={startEdit}
       onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === "Enter") commit(true);
-        else if (e.key === "Escape") commit(false);
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          startEdit();
+        }
       }}
-      onBlur={() => commit(true)}
-    />
+    >
+      {title}
+    </button>
   );
 }
 
 /**
  * 1:1 Sable `Topbar` implementation for Entry session headers:
- * - Left: Sidebar toggle, conditional Entry home mark when sidebar is collapsed,
- *   active model provider mark, inline-renamable session title, and overflow-whole crumbs.
- * - Right: Waiting count, portaled header actions (ContextMeter, etc.), ChatMenu
- *   (Copy/Export Markdown + Share + Change repo), conditional Search when sidebar hidden,
- *   and Work Panel toggle that slides cleanly into the panel header on desktop when open.
+ * - Left: Sidebar toggle, active model provider mark, inline-renamable session title,
+ *   and plain folder/branch crumbs.
+ * - Right: Desktop-only context meter slot and Work Panel toggle.
  */
 export function SessionHeader() {
   const { state, openMobile, isMobile, toggleSidebar } = useSidebar();
@@ -132,44 +124,19 @@ export function SessionHeader() {
     hasActionNeeded,
     changesCount,
     hasCommittedChanges,
-    setShareRequested,
-    setChangeRepoRequested,
     headerActionsRef,
     headerModelId,
-    exportMarkdownRef,
   } = useGitPanel();
   const { session, renameSessionTitle } = useSessionLayout();
 
   const providerId = headerModelId ? getProviderFromModelId(headerModelId) : "";
-
-  const tooltipText = useMemo(() => {
-    const parts: string[] = [];
-    if (session.prNumber) {
-      const statusLabel =
-        session.prStatus === "merged"
-          ? "Merged"
-          : session.prStatus === "closed"
-            ? "Closed"
-            : "Open";
-      parts.push(`PR #${session.prNumber} (${statusLabel})`);
-    }
-    if (changesCount > 0) {
-      parts.push(
-        `${changesCount} file${changesCount !== 1 ? "s" : ""} changed`,
-      );
-    }
-    if (hasActionNeeded) {
-      parts.push("Uncommitted changes");
-    }
-    return parts.length > 0 ? parts.join(" · ") : "Workspace";
-  }, [session.prNumber, session.prStatus, changesCount, hasActionNeeded]);
 
   const openGitPanel = useCallback(() => {
     const defaultTab = session.prNumber
       ? "review"
       : hasActionNeeded || hasCommittedChanges || changesCount > 0
         ? "review"
-        : "preview";
+        : "files";
     setActiveWorkspaceTab(defaultTab);
     setGitPanelOpen(true);
   }, [
@@ -243,25 +210,13 @@ export function SessionHeader() {
           onRename={renameSessionTitle}
         />
 
-        {(session.repoName || session.branch || session.prNumber) && (
+        {(session.repoName || session.branch) && (
           <span className="topbar-crumb hidden lg:inline-flex">
             {session.repoName && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() => setChangeRepoRequested(true)}
-                    className="topbar-crumb-item topbar-crumb-btn"
-                    aria-label="Change connected repository"
-                  >
-                    <Folder size={13} strokeWidth={1.6} aria-hidden="true" />
-                    <span className="truncate">{session.repoName}</span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Change connected repository
-                </TooltipContent>
-              </Tooltip>
+              <span className="topbar-crumb-item">
+                <Folder size={13} strokeWidth={1.6} aria-hidden="true" />
+                <span className="truncate">{session.repoName}</span>
+              </span>
             )}
 
             {session.branch && (
@@ -269,37 +224,6 @@ export function SessionHeader() {
                 <GitBranch size={13} strokeWidth={1.6} aria-hidden="true" />
                 <span className="truncate">{session.branch}</span>
               </span>
-            )}
-
-            {session.prNumber && session.repoOwner && session.repoName && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <a
-                    href={`https://github.com/${session.repoOwner}/${session.repoName}/pull/${session.prNumber}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={cn(
-                      "topbar-crumb-item topbar-crumb-btn",
-                      session.prStatus === "merged"
-                        ? "text-purple-600 dark:text-purple-400"
-                        : session.prStatus === "closed"
-                          ? "text-muted-foreground"
-                          : "text-emerald-600 dark:text-emerald-400",
-                    )}
-                  >
-                    <GitPullRequest
-                      size={13}
-                      strokeWidth={1.6}
-                      aria-hidden="true"
-                    />
-                    <span className="tabular-nums">#{session.prNumber}</span>
-                  </a>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  Pull Request #{session.prNumber} ({session.prStatus ?? "Open"}
-                  )
-                </TooltipContent>
-              </Tooltip>
             )}
           </span>
         )}
@@ -309,12 +233,6 @@ export function SessionHeader() {
         <div
           ref={headerActionsRef}
           className="topbar-actions-slot hidden md:inline-flex"
-        />
-
-        <ChatMenu
-          getExportPayload={() => exportMarkdownRef.current?.() ?? null}
-          onShare={() => setShareRequested(true)}
-          onChangeRepo={() => setChangeRepoRequested(true)}
         />
 
         <span
@@ -332,16 +250,10 @@ export function SessionHeader() {
                 aria-label={gitPanelOpen ? "Hide panel" : "Show panel"}
               >
                 <PanelRight size={16} strokeWidth={1.6} aria-hidden="true" />
-                {!gitPanelOpen && hasActionNeeded && (
-                  <span className="topbar-dot bg-foreground" />
-                )}
-                {!gitPanelOpen && !hasActionNeeded && hasCommittedChanges && (
-                  <span className="topbar-dot bg-blue-500" />
-                )}
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {gitPanelOpen ? "Hide panel" : "Show panel"} ({tooltipText}) · ⌘⇧B
+              {gitPanelOpen ? "Hide panel" : "Show panel"}
             </TooltipContent>
           </Tooltip>
         </span>
