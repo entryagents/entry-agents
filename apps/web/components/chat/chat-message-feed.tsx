@@ -68,6 +68,11 @@ interface GroupedRenderMessage {
   isStreaming: boolean;
 }
 
+const messageRenderGroupsCache = new WeakMap<
+  WebAgentUIMessage["parts"],
+  MessageRenderGroup[]
+>();
+
 function getPartIdentity(part: WebAgentUIMessagePart): string {
   if (isToolUIPart(part)) {
     return part.toolCallId ? `tool:${part.toolCallId}` : `tool:${part.type}`;
@@ -319,9 +324,12 @@ const ChatMessageRow = memo(function ChatMessageRow({
               m.role === "user" && group.index === 0 ? m.id : undefined
             }
             className={cn(
-              "flex min-w-0 py-2",
-              m.role === "user" ? "justify-end" : "justify-start",
-              isFinalAssistantTextPart && group.index > 0 && "mt-3",
+              "flex min-w-0",
+              m.role === "user" ? "justify-end py-2" : "justify-start py-1.5",
+              isFinalAssistantTextPart &&
+                !isMessageStreaming &&
+                group.index > 0 &&
+                "pt-3.5",
             )}
           >
             {m.role === "user" ? (
@@ -711,65 +719,65 @@ const ChatMessageRow = memo(function ChatMessageRow({
           return (
             <>
               {renderGroups(isExpanded)}
-              <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
-                {canCopyAssistant ? (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onCopyAssistantMessage?.(m.id, combinedText);
-                      }}
-                      aria-label="Copy assistant response"
-                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97]"
-                    >
-                      {isCopiedAssistant ? (
-                        <>
-                          <Check className="h-3.5 w-3.5 text-emerald-500" />
-                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                            Copied
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="h-3.5 w-3.5" />
-                          <span>Copy</span>
-                        </>
-                      )}
-                    </button>
-                    {!readOnly && onForkAssistantMessage && (
+              {!isMessageStreaming && (
+                <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
+                  {canCopyAssistant ? (
+                    <div className="flex items-center gap-1">
                       <button
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation();
-                          onForkAssistantMessage(m.id);
+                          onCopyAssistantMessage?.(m.id, combinedText);
                         }}
-                        disabled={hasMessageActionInFlight}
-                        aria-label="Fork conversation from this response"
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+                        aria-label="Copy assistant response"
+                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97]"
                       >
-                        {isForkingAssistant ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        {isCopiedAssistant ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 text-emerald-500" />
+                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                              Copied
+                            </span>
+                          </>
                         ) : (
-                          <GitBranch className="h-3.5 w-3.5" />
+                          <>
+                            <Copy className="h-3.5 w-3.5" />
+                            <span>Copy</span>
+                          </>
                         )}
-                        <span>Fork</span>
                       </button>
-                    )}
-                  </div>
-                ) : (
-                  <div />
-                )}
-                <div className="flex items-center gap-2">
-                  {!isMessageStreaming && (
-                    <TimelineStamp timestamp={startedAt} />
+                      {!readOnly && onForkAssistantMessage && (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onForkAssistantMessage(m.id);
+                          }}
+                          disabled={hasMessageActionInFlight}
+                          aria-label="Fork conversation from this response"
+                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {isForkingAssistant ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <GitBranch className="h-3.5 w-3.5" />
+                          )}
+                          <span>Fork</span>
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div />
                   )}
-                  <MessageModelPill
-                    metadata={m.metadata}
-                    modelOptions={modelOptions}
-                  />
+                  <div className="flex items-center gap-2">
+                    <TimelineStamp timestamp={startedAt} />
+                    <MessageModelPill
+                      metadata={m.metadata}
+                      modelOptions={modelOptions}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           );
         }}
@@ -841,54 +849,60 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
 
   const groupedRenderMessages = useMemo<GroupedRenderMessage[]>(() => {
     return messages.map((message, messageIndex) => {
-      const groups: MessageRenderGroup[] = [];
-      let currentReasoningGroup: ReasoningMessagePart[] = [];
-      let reasoningGroupStartIndex = 0;
-      const partIdentityCounts = new Map<string, number>();
+      let groups = messageRenderGroupsCache.get(message.parts);
+      if (!groups) {
+        groups = [];
+        let currentReasoningGroup: ReasoningMessagePart[] = [];
+        let reasoningGroupStartIndex = 0;
+        const partIdentityCounts = new Map<string, number>();
 
-      const getStablePartRenderKey = (part: WebAgentUIMessagePart): string => {
-        const identity = getPartIdentity(part);
+        const getStablePartRenderKey = (
+          part: WebAgentUIMessagePart,
+        ): string => {
+          const identity = getPartIdentity(part);
 
-        if (isToolUIPart(part) && part.toolCallId) {
-          return identity;
-        }
-
-        const count = partIdentityCounts.get(identity) ?? 0;
-        partIdentityCounts.set(identity, count + 1);
-        return `${identity}:${count}`;
-      };
-
-      const flushReasoningGroup = () => {
-        if (currentReasoningGroup.length === 0) return;
-
-        groups.push({
-          type: "reasoning-group",
-          parts: currentReasoningGroup,
-          startIndex: reasoningGroupStartIndex,
-          renderKey: `reasoning-group:${getStablePartRenderKey(currentReasoningGroup[0])}`,
-        });
-        currentReasoningGroup = [];
-      };
-
-      message.parts.forEach((part, index) => {
-        if (isReasoningUIPart(part)) {
-          if (currentReasoningGroup.length === 0) {
-            reasoningGroupStartIndex = index;
+          if (isToolUIPart(part) && part.toolCallId) {
+            return identity;
           }
-          currentReasoningGroup.push(part);
-          return;
-        }
+
+          const count = partIdentityCounts.get(identity) ?? 0;
+          partIdentityCounts.set(identity, count + 1);
+          return `${identity}:${count}`;
+        };
+
+        const flushReasoningGroup = () => {
+          if (currentReasoningGroup.length === 0) return;
+
+          groups?.push({
+            type: "reasoning-group",
+            parts: currentReasoningGroup,
+            startIndex: reasoningGroupStartIndex,
+            renderKey: `reasoning-group:${getStablePartRenderKey(currentReasoningGroup[0])}`,
+          });
+          currentReasoningGroup = [];
+        };
+
+        message.parts.forEach((part, index) => {
+          if (isReasoningUIPart(part)) {
+            if (currentReasoningGroup.length === 0) {
+              reasoningGroupStartIndex = index;
+            }
+            currentReasoningGroup.push(part);
+            return;
+          }
+
+          flushReasoningGroup();
+          groups?.push({
+            type: "part",
+            part,
+            index,
+            renderKey: getStablePartRenderKey(part),
+          });
+        });
 
         flushReasoningGroup();
-        groups.push({
-          type: "part",
-          part,
-          index,
-          renderKey: getStablePartRenderKey(part),
-        });
-      });
-
-      flushReasoningGroup();
+        messageRenderGroupsCache.set(message.parts, groups);
+      }
 
       return {
         message,

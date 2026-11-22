@@ -108,6 +108,44 @@
   --md-line-3: rgb(255 255 255 / 0.15);
 }
 
+/* Override @pierre/words (1.25em/1.5em block margins) & globals.css (.streaming-markdown-root)
+   to match Sable markdown.css 1:1: 0px outer margin on first/last children, 0.86em between siblings. */
+.sable-md .streaming-markdown-root,
+.sable-md [data-markdown="root"] {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.sable-md
+  .streaming-markdown-root
+  :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table),
+.sable-md
+  [data-markdown="root"]
+  :is(
+    p,
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    ul,
+    ol,
+    blockquote,
+    pre,
+    table,
+    [data-markdown="code-block"]
+  ) {
+  margin-block: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.sable-md [data-markdown="root"] > * + *,
+.sable-md .streaming-markdown-root > * + * {
+  margin-top: var(--md-gap);
+}
+
 .sable-md strong {
   font-weight: 580;
   color: var(--foreground);
