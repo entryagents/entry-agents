@@ -211,7 +211,7 @@ export function ToolLayout({
         className={cn(
           "group flex min-h-[25px] min-w-0 select-none items-center gap-2 rounded-md px-1.5 py-0.5 text-[12.5px]",
           isInteractiveHeader &&
-            "cursor-pointer transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/40 active:bg-muted/60",
+            "cursor-pointer transition-opacity duration-100 ease-[cubic-bezier(0.22,1,0.36,1)] active:opacity-70",
         )}
         {...(isInteractiveHeader && {
           onClick: handleClick,
