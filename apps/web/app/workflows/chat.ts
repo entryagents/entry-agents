@@ -4897,6 +4897,31 @@ const runAgentStep = async (
     // why DB connections aren't cached across steps in this file.
     // Deliberately never blocks/fails the turn: a broken server is
     // logged and skipped, not surfaced as a step error.
+    // Start Composio meta-tools concurrently with MCP/integration setup so
+    // external Composio API handshakes overlap with MCP server discovery.
+    const composioRuntimePromise = integrationAccess.allowed
+      ? import("@/lib/composio/client")
+          .then(({ createComposioAgentMetaTools }) =>
+            createComposioAgentMetaTools({
+              userId,
+              chatId,
+              sessionId,
+            }),
+          )
+          .catch((error) => {
+            const msg = error instanceof Error ? error.message : String(error);
+            if (
+              !msg.includes("POSTGRES_URL environment variable is required")
+            ) {
+              console.warn(
+                `[workflow] Failed to resolve Composio meta tools for user ${userId}, continuing without them:`,
+                error,
+              );
+            }
+            return null;
+          })
+      : Promise.resolve(null);
+
     if (integrationAccess.allowed) {
       try {
         const [
@@ -4908,7 +4933,34 @@ const runAgentStep = async (
           import("@/lib/integrations/registry"),
           import("@/lib/mcp/resolve-server-config"),
         ]);
-        const rawEnabledServers = await getEnabledMcpServersForRequest(userId);
+        const integrationProvider = getIntegrationProvider();
+        const [rawEnabledServers, integrationMcp, connectedToolkits] =
+          await Promise.all([
+            getEnabledMcpServersForRequest(userId),
+            integrationProvider.getMcpConfig(userId).catch((err) => {
+              const msg = err instanceof Error ? err.message : String(err);
+              if (
+                !msg.includes("POSTGRES_URL environment variable is required")
+              ) {
+                console.warn(
+                  `[workflow] Failed to resolve integration MCP config for user ${userId}:`,
+                  err,
+                );
+              }
+              return null;
+            }),
+            integrationProvider
+              .listToolkits(userId, undefined, {
+                category: "connected",
+                limit: 120,
+              })
+              .then((res) =>
+                res.items
+                  .filter((item) => item.connected)
+                  .map((item) => item.slug),
+              )
+              .catch(() => [] as string[]),
+          ]);
         const { resolvedServers: enabledServers, failures: prepFailures } =
           await prepareMcpServersForExecution(
             rawEnabledServers,
@@ -4932,47 +4984,15 @@ const runAgentStep = async (
           );
         }
 
-        // Built-in integration gateway (Executor by default via registry plugin)
-        // resolved per user with OAuth auto-refresh or encrypted PAT fallback.
-        const integrationProvider = getIntegrationProvider();
-        const integrationMcp = await integrationProvider
-          .getMcpConfig(userId)
-          .catch((err) => {
-            const msg = err instanceof Error ? err.message : String(err);
-            if (
-              !msg.includes("POSTGRES_URL environment variable is required")
-            ) {
-              console.warn(
-                `[workflow] Failed to resolve integration MCP config for user ${userId}:`,
-                err,
-              );
+        const integrationServer = integrationMcp
+          ? {
+              id: integrationProvider.id,
+              name: integrationProvider.id,
+              url: integrationMcp.url,
+              headers: integrationMcp.headers,
+              transport: "http" as const,
             }
-            return null;
-          });
-        const [integrationServer, connectedToolkits] = await Promise.all([
-          Promise.resolve(
-            integrationMcp
-              ? {
-                  id: integrationProvider.id,
-                  name: integrationProvider.id,
-                  url: integrationMcp.url,
-                  headers: integrationMcp.headers,
-                  transport: "http" as const,
-                }
-              : null,
-          ),
-          integrationProvider
-            .listToolkits(userId, undefined, {
-              category: "connected",
-              limit: 120,
-            })
-            .then((res) =>
-              res.items
-                .filter((item) => item.connected)
-                .map((item) => item.slug),
-            )
-            .catch(() => [] as string[]),
-        ]);
+          : null;
         if (integrationServer) {
           fullAgentOptions.mcpMetadata = {
             composioConnectedToolkits: connectedToolkits,
@@ -5087,32 +5107,19 @@ const runAgentStep = async (
       }
     }
     let composioMetaTools: import("ai").ToolSet = {};
-    if (integrationAccess.allowed) {
-      try {
-        const { createComposioAgentMetaTools } =
-          await import("@/lib/composio/client");
-        const composioRuntime = await createComposioAgentMetaTools({
-          userId,
-          chatId,
-          sessionId,
-        });
-        composioMetaTools = composioRuntime.tools;
-        if (composioRuntime.connectedToolkits.length > 0) {
-          const prevConnected =
-            fullAgentOptions.mcpMetadata?.composioConnectedToolkits ?? [];
-          const mergedConnected = Array.from(
-            new Set([...prevConnected, ...composioRuntime.connectedToolkits]),
-          );
-          fullAgentOptions.mcpMetadata = {
-            composioConnectedToolkits: mergedConnected,
-            connectedIntegrations: mergedConnected,
-          };
-        }
-      } catch (composioErr) {
-        console.warn(
-          `[workflow] Failed to initialize Composio session meta tools for user ${userId}:`,
-          composioErr,
+    const composioRuntime = await composioRuntimePromise;
+    if (composioRuntime) {
+      composioMetaTools = composioRuntime.tools;
+      if (composioRuntime.connectedToolkits.length > 0) {
+        const prevConnected =
+          fullAgentOptions.mcpMetadata?.composioConnectedToolkits ?? [];
+        const mergedConnected = Array.from(
+          new Set([...prevConnected, ...composioRuntime.connectedToolkits]),
         );
+        fullAgentOptions.mcpMetadata = {
+          composioConnectedToolkits: mergedConnected,
+          connectedIntegrations: mergedConnected,
+        };
       }
     }
 
