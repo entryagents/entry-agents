@@ -275,6 +275,13 @@ EXAMPLES:
       { filePath, oldString, newString, replaceAll = false },
       { experimental_context },
     ) => {
+      if (oldString === newString) {
+        return {
+          success: false,
+          error: "oldString and newString must be different",
+        };
+      }
+
       let sandbox;
       try {
         sandbox = await getSandbox(experimental_context, "edit");
@@ -287,18 +294,27 @@ EXAMPLES:
       const workingDirectory = sandbox.workingDirectory;
 
       try {
-        if (oldString === newString) {
-          return {
-            success: false,
-            error: "oldString and newString must be different",
-          };
-        }
-
         const absolutePath = resolveWorkspacePath(filePath, workingDirectory);
         if (!absolutePath) {
           return {
             success: false,
             error: "Path must stay within the workspace.",
+          };
+        }
+
+        // Fast-path in-memory read gate BEFORE any sandbox RPCs (realpath / readFile):
+        // if the model has never read this file (or its last read failed), refuse
+        // instantly in <0.1ms instead of paying 2 remote Boxd round-trips first.
+        const readState = ensureReadFileState(
+          (experimental_context ?? {}) as { readFileState?: unknown },
+        );
+        const displayPath = toDisplayPath(absolutePath, workingDirectory);
+        const preflightGate = checkReadGate(readState, displayPath, "", "edit");
+        if (!preflightGate.ok && preflightGate.reason !== "stale") {
+          return {
+            success: false,
+            error: preflightGate.message,
+            gate: preflightGate.reason,
           };
         }
 
@@ -316,14 +332,7 @@ EXAMPLES:
 
         const content = await sandbox.readFile(absolutePath, "utf-8");
 
-        // Read gate (read-state.ts): the model may only edit a file
-        // it has read in its current version. Never-read files,
-        // failed reads, and stale reads (external bash/git changes)
-        // are all refused with a recovery instruction.
-        const readState = ensureReadFileState(
-          (experimental_context ?? {}) as { readFileState?: unknown },
-        );
-        const displayPath = toDisplayPath(absolutePath, workingDirectory);
+        // Full read gate (checks stale hash against live file contents).
         const gate = checkReadGate(
           readState,
           displayPath,
