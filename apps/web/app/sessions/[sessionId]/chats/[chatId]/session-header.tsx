@@ -245,7 +245,7 @@ export function SessionHeader() {
         {providerId && (
           <ProviderIcon
             provider={providerId}
-            className="size-[15px] shrink-0 text-muted-foreground"
+            className="hidden sm:block size-[15px] shrink-0 text-muted-foreground"
             aria-hidden="true"
           />
         )}
@@ -258,7 +258,7 @@ export function SessionHeader() {
         />
 
         {(session.repoName || session.branch || session.prNumber) && (
-          <span className="topbar-crumb hidden md:inline-flex">
+          <span className="topbar-crumb hidden lg:inline-flex">
             {session.repoName && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -320,7 +320,10 @@ export function SessionHeader() {
       </div>
 
       <div className="topbar-actions">
-        <div ref={headerActionsRef} className="topbar-actions-slot" />
+        <div
+          ref={headerActionsRef}
+          className="topbar-actions-slot hidden md:inline-flex"
+        />
 
         <ChatMenu
           getExportPayload={() => exportMarkdownRef.current?.() ?? null}
@@ -333,7 +336,7 @@ export function SessionHeader() {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="topbar-icon-btn"
+                className="topbar-icon-btn hidden md:inline-flex"
                 onClick={() => {
                   window.dispatchEvent(
                     new CustomEvent("entry:open-command-palette"),
