@@ -36,6 +36,8 @@ import { UserMessageFold } from "@/components/user-message-fold";
 import { GitDataPartCard } from "./git-data-part-card";
 import { UserMessageAgain } from "./user-message-again";
 import { UserMessageRewind } from "./user-message-rewind";
+import { isLeadIn } from "./lead-in";
+import "./sable-timeline.css";
 import {
   SmoothedAssistantMarkdown,
   SmoothedThinkingBlock,
@@ -325,7 +327,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
             {m.role === "user" ? (
               <div className="group flex w-fit min-w-0 max-w-[85%] sm:max-w-[80%] flex-col items-end">
                 <div
-                  className="rounded-2xl bg-secondary px-4 py-2.5 text-left transition-colors hover:bg-secondary/90 shadow-xs"
+                  className="sable-user-card text-left transition-opacity"
                   // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- wraps nested interactive UserMessageFold controls
                   role="button"
                   tabIndex={0}
@@ -416,7 +418,18 @@ const ChatMessageRow = memo(function ChatMessageRow({
                 }}
               >
                 {/* Markdown prose text */}
-                <div className="text-[14.5px] leading-[1.65] text-foreground select-text">
+                <div
+                  className={cn(
+                    "select-text",
+                    m.parts.slice(group.index + 1).some(isToolUIPart) &&
+                      isLeadIn(
+                        p.text,
+                        isMessageStreaming && p.state === "streaming",
+                      )
+                      ? "sable-lead-in"
+                      : "text-[14.5px] leading-[1.65] text-foreground",
+                  )}
+                >
                   <SmoothedAssistantMarkdown
                     content={p.text}
                     active={isMessageStreaming && p.state === "streaming"}
