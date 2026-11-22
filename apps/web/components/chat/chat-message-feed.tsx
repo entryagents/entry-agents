@@ -427,7 +427,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
                         isMessageStreaming && p.state === "streaming",
                       )
                       ? "sable-lead-in"
-                      : "text-[14.5px] leading-[1.65] text-foreground",
+                      : "sable-md",
                   )}
                 >
                   <SmoothedAssistantMarkdown
