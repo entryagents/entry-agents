@@ -274,3 +274,336 @@
   padding: 7px 10px;
   border-bottom: 1px solid var(--md-line);
 }
+
+/* ── Sable 1:1 ToolDetails: terminal, files, links, todos, qa ── */
+
+.sable-term {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background-color: color-mix(in oklab, var(--muted) 42%, var(--background));
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 18px;
+  font-variant-ligatures: none;
+}
+
+.sable-term-cmd {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 6px 8px 13px;
+}
+
+.sable-term-ps {
+  color: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.sable-term-line {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sable-term-side {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.sable-term-exit {
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  color: var(--destructive, #ef4444);
+  font-variant-numeric: tabular-nums;
+}
+
+.sable-term-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.sable-term-copy:hover {
+  background-color: color-mix(in oklab, var(--foreground) 7%, transparent);
+  color: var(--foreground);
+}
+
+.sable-term:hover .sable-term-copy,
+.sable-term-copy:focus-visible,
+.sable-term-copy[data-copied] {
+  opacity: 1;
+}
+
+.sable-term-out {
+  display: flex;
+  flex-direction: column-reverse;
+  max-height: 300px;
+  overflow: auto;
+  padding: 9px 13px 11px;
+  border-top: 1px solid var(--border);
+  color: color-mix(in oklab, var(--foreground) 78%, transparent);
+}
+
+.sable-term-flow {
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.sable-term-out pre {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sable-term-err {
+  color: color-mix(
+    in oklab,
+    var(--destructive, #ef4444) 68%,
+    var(--foreground)
+  );
+}
+
+.sable-term-out pre + .sable-term-err {
+  margin-top: 4px;
+}
+
+.sable-term-empty {
+  padding: 8px 13px 10px;
+  border-top: 1px solid var(--border);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.sable-detail-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sable-detail-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 20px;
+}
+
+.sable-detail-field {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sable-detail-label {
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.sable-detail-value {
+  color: color-mix(in oklab, var(--foreground) 80%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.sable-detail-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.sable-detail-quiet {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.sable-files ul {
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sable-files li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 24px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: color-mix(in oklab, var(--foreground) 82%, transparent);
+}
+
+.sable-files li svg {
+  color: color-mix(in oklab, var(--muted-foreground) 65%, transparent);
+  flex-shrink: 0;
+}
+
+.sable-files-dir {
+  color: var(--muted-foreground);
+}
+
+.sable-link-btn {
+  margin-top: 4px;
+  padding: 2px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: color-mix(in oklab, var(--foreground) 78%, transparent);
+  border-radius: 4px;
+  transition: color 120ms ease;
+}
+
+.sable-link-btn:hover {
+  color: var(--foreground);
+}
+
+.sable-links {
+  display: grid;
+  gap: 1px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sable-link-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 30px;
+  margin: 0 -8px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: color-mix(in oklab, var(--foreground) 82%, transparent);
+  text-decoration: none;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.sable-link-row > svg:first-child {
+  color: var(--muted-foreground);
+  flex-shrink: 0;
+}
+
+.sable-link-row:hover {
+  background-color: color-mix(in oklab, var(--foreground) 5%, transparent);
+  color: var(--foreground);
+}
+
+.sable-link-host {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+
+.sable-link-out {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.sable-link-row:hover .sable-link-out,
+.sable-link-row:focus-visible .sable-link-out {
+  opacity: 1;
+}
+
+.sable-todos {
+  display: grid;
+  gap: 1px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sable-todos li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 3px 0;
+  font-size: 13px;
+  line-height: 20px;
+  color: color-mix(in oklab, var(--foreground) 80%, transparent);
+}
+
+.sable-todo-mark {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 20px;
+  flex-shrink: 0;
+  color: color-mix(in oklab, var(--muted-foreground) 65%, transparent);
+}
+
+.sable-todos li[data-status="completed"] .sable-todo-mark {
+  color: var(--muted-foreground);
+}
+
+.sable-todos li[data-status="completed"] .sable-todo-text {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(
+    in oklab,
+    var(--muted-foreground) 60%,
+    transparent
+  );
+}
+
+.sable-todos li[data-status="in_progress"] .sable-todo-text {
+  color: var(--foreground);
+}
+
+.sable-qa {
+  display: grid;
+  gap: 10px;
+}
+
+.sable-qa-q {
+  font-size: 13px;
+  color: color-mix(in oklab, var(--foreground) 82%, transparent);
+}
+
+.sable-qa-a {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.sable-qa-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--foreground);
+  background-color: color-mix(in oklab, var(--foreground) 5%, transparent);
+}
+
+.sable-qa-chip svg {
+  color: var(--muted-foreground);
+}

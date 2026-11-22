@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageCircleQuestion } from "lucide-react";
+import { Check, MessageCircleQuestion } from "lucide-react";
 import type { ToolRendererProps } from "@/app/lib/render-tool";
 import { ToolLayout } from "../tool-layout";
 
@@ -23,9 +23,9 @@ export function AskUserQuestionRenderer({
   const summary = isStreaming
     ? "Generating questions"
     : isWaitingForInput
-      ? "Waiting for user input"
+      ? "Waiting for your answer"
       : isDeclined
-        ? "User declined to answer"
+        ? "Declined"
         : hasAnswers
           ? "Answered"
           : state.denied
@@ -35,25 +35,36 @@ export function AskUserQuestionRenderer({
   const questionCount = questions.length;
   const meta =
     questionCount > 0
-      ? `${questionCount} question${questionCount === 1 ? "" : "s"}`
+      ? `${questionCount} ${questionCount === 1 ? "question" : "questions"}`
       : undefined;
 
   const expandedContent =
     hasAnswers && output && "answers" in output ? (
-      <div className="space-y-2">
+      <div className="sable-qa">
         {questions.map((q) => {
           if (!q?.question) return null;
           const questionKey = q.question;
-          const answer = output.answers[questionKey];
-          const answerStr = Array.isArray(answer)
-            ? answer.join(", ")
-            : (answer ?? "(not answered)");
+          const rawAnswer = output.answers[questionKey];
+          const picked = Array.isArray(rawAnswer)
+            ? rawAnswer.filter(Boolean)
+            : rawAnswer
+              ? [rawAnswer]
+              : [];
           return (
-            <div key={questionKey} className="space-y-0.5">
-              <p className="text-sm text-foreground">{questionKey}</p>
-              <p className="text-sm text-muted-foreground">
-                <span className="text-green-500">&rarr;</span> {answerStr}
-              </p>
+            <div key={questionKey}>
+              <div className="sable-qa-q">{questionKey}</div>
+              {picked.length > 0 ? (
+                <div className="sable-qa-a">
+                  {picked.map((answer) => (
+                    <span key={answer} className="sable-qa-chip">
+                      <Check className="h-3 w-3" />
+                      {answer}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <div className="sable-detail-quiet">No answer</div>
+              )}
             </div>
           );
         })}
@@ -73,7 +84,7 @@ export function AskUserQuestionRenderer({
       icon={<MessageCircleQuestion className="h-3.5 w-3.5" />}
       nameClassName={state.denied || isDeclined ? "text-red-500" : undefined}
       expandedContent={expandedContent}
-      defaultExpanded={false}
+      defaultExpanded={Boolean(hasAnswers)}
     />
   );
 }
