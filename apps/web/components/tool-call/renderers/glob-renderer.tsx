@@ -1,6 +1,7 @@
 "use client";
 
-import { FolderSearch } from "lucide-react";
+import { FileText, FolderSearch } from "lucide-react";
+import { useState } from "react";
 import type { ToolRendererProps } from "@/app/lib/render-tool";
 import { ToolLayout } from "../tool-layout";
 
@@ -27,6 +28,40 @@ function truncatePath(path: string): string {
   return `…/${parts.slice(-2).join("/")}`;
 }
 
+function SableFileList({ files }: { files: string[] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? files : files.slice(0, 12);
+  return (
+    <div className="sable-files">
+      <ul>
+        {shown.map((f) => {
+          const cut = f.lastIndexOf("/");
+          return (
+            <li key={f} title={f}>
+              <FileText className="h-3.5 w-3.5" />
+              <span className="truncate">
+                {cut >= 0 && (
+                  <span className="sable-files-dir">{f.slice(0, cut + 1)}</span>
+                )}
+                {f.slice(cut + 1)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {files.length > 12 && !all && (
+        <button
+          type="button"
+          className="sable-link-btn"
+          onClick={() => setAll(true)}
+        >
+          Show all {files.length}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function GlobRenderer({
   part,
   state,
@@ -42,15 +77,32 @@ export function GlobRenderer({
 
   const summary = path ? `in ${truncatePath(path)}` : "";
 
-  const hasExpandedContent = files.length > 0;
-
-  const expandedContent = hasExpandedContent ? (
-    <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/60 p-3 font-mono text-xs leading-relaxed text-neutral-800 dark:text-neutral-200">
-      Found {files.length} file{files.length !== 1 ? "s" : ""}
-      {"\n"}
-      {files.map((f) => f.path).join("\n")}
-    </pre>
-  ) : undefined;
+  const expandedContent =
+    output !== undefined ? (
+      <div className="sable-detail-stack">
+        <div className="sable-detail-fields">
+          {pattern !== "..." && (
+            <div className="sable-detail-field">
+              <span className="sable-detail-label">Pattern</span>
+              <span className="sable-detail-value sable-detail-mono">
+                {pattern}
+              </span>
+            </div>
+          )}
+          {path && path !== "." && (
+            <div className="sable-detail-field">
+              <span className="sable-detail-label">In</span>
+              <span className="sable-detail-value">{path}</span>
+            </div>
+          )}
+        </div>
+        {files.length > 0 ? (
+          <SableFileList files={files.map((f) => f.path)} />
+        ) : (
+          <div className="sable-detail-quiet">No files</div>
+        )}
+      </div>
+    ) : undefined;
 
   return (
     <ToolLayout
@@ -60,13 +112,17 @@ export function GlobRenderer({
         <>
           <span className="font-mono">&apos;{pattern}&apos;</span>
           {summary && (
-            <span className="ml-1.5 text-neutral-600 dark:text-neutral-400">
-              {summary}
-            </span>
+            <span className="ml-1.5 text-muted-foreground">{summary}</span>
           )}
         </>
       }
-      meta={files.length > 0 ? `${files.length} files` : undefined}
+      meta={
+        output !== undefined
+          ? files.length > 0
+            ? `${files.length} ${files.length === 1 ? "file" : "files"}`
+            : "No files"
+          : undefined
+      }
       state={state}
       expandedContent={expandedContent}
       onApprove={onApprove}

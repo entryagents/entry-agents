@@ -1,6 +1,7 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { FileText, Search } from "lucide-react";
+import { useState } from "react";
 import type { ToolRendererProps } from "@/app/lib/render-tool";
 import { ToolLayout } from "../tool-layout";
 
@@ -41,6 +42,40 @@ function getUniqueFiles(matches: GrepMatch[]): string[] {
   return Array.from(seen);
 }
 
+function SableFileList({ files }: { files: string[] }) {
+  const [all, setAll] = useState(false);
+  const shown = all ? files : files.slice(0, 12);
+  return (
+    <div className="sable-files">
+      <ul>
+        {shown.map((f) => {
+          const cut = f.lastIndexOf("/");
+          return (
+            <li key={f} title={f}>
+              <FileText className="h-3.5 w-3.5" />
+              <span className="truncate">
+                {cut >= 0 && (
+                  <span className="sable-files-dir">{f.slice(0, cut + 1)}</span>
+                )}
+                {f.slice(cut + 1)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      {files.length > 12 && !all && (
+        <button
+          type="button"
+          className="sable-link-btn"
+          onClick={() => setAll(true)}
+        >
+          Show all {files.length}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function GrepRenderer({
   part,
   state,
@@ -55,24 +90,34 @@ export function GrepRenderer({
   const matches = getGrepMatches(output);
   const uniqueFiles = getUniqueFiles(matches);
 
-  // Natural summary: "grep for 'pattern' in path" (truncated to last 2 segments)
   const summary = path ? `in ${truncatePath(path)}` : "";
 
-  const hasExpandedContent = output !== undefined;
-
-  const expandedContent = hasExpandedContent ? (
-    <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/60 p-3 font-mono text-xs leading-relaxed text-neutral-800 dark:text-neutral-200">
-      {matches.length > 0 ? (
-        <>
-          Found {uniqueFiles.length} file{uniqueFiles.length !== 1 ? "s" : ""}
-          {"\n"}
-          {uniqueFiles.map((f) => f).join("\n")}
-        </>
-      ) : (
-        "No matches"
-      )}
-    </pre>
-  ) : undefined;
+  const expandedContent =
+    output !== undefined ? (
+      <div className="sable-detail-stack">
+        <div className="sable-detail-fields">
+          {pattern !== "..." && (
+            <div className="sable-detail-field">
+              <span className="sable-detail-label">Pattern</span>
+              <span className="sable-detail-value sable-detail-mono">
+                {pattern}
+              </span>
+            </div>
+          )}
+          {path && path !== "." && (
+            <div className="sable-detail-field">
+              <span className="sable-detail-label">In</span>
+              <span className="sable-detail-value">{path}</span>
+            </div>
+          )}
+        </div>
+        {uniqueFiles.length > 0 ? (
+          <SableFileList files={uniqueFiles} />
+        ) : (
+          <div className="sable-detail-quiet">No matches</div>
+        )}
+      </div>
+    ) : undefined;
 
   return (
     <ToolLayout
@@ -82,13 +127,17 @@ export function GrepRenderer({
         <>
           <span className="font-mono">&apos;{pattern}&apos;</span>
           {summary && (
-            <span className="ml-1.5 text-neutral-600 dark:text-neutral-400">
-              {summary}
-            </span>
+            <span className="ml-1.5 text-muted-foreground">{summary}</span>
           )}
         </>
       }
-      meta={output ? `${matches.length} matches` : undefined}
+      meta={
+        output !== undefined
+          ? matches.length > 0
+            ? `${matches.length} ${matches.length === 1 ? "match" : "matches"}`
+            : "No matches"
+          : undefined
+      }
       state={state}
       expandedContent={expandedContent}
       onApprove={onApprove}
