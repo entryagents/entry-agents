@@ -162,6 +162,15 @@ export function ContextUsageHeaderButton({
               </span>
             </div>
             <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Total cache</span>
+              <span className="font-mono tabular-nums text-foreground">
+                {formatTokens(
+                  view.sessionTotals.cacheReadTokens +
+                    view.sessionTotals.cacheWriteTokens,
+                )}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Output</span>
               <span className="font-mono tabular-nums text-foreground">
                 {formatTokens(view.sessionTotals.outputTokens)}

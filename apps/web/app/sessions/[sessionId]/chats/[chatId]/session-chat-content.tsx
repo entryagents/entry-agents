@@ -3628,11 +3628,20 @@ export function SessionChatContent({
                   isAtBottom={isAtBottom}
                   findMarks={findMarks}
                 />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-0 z-10 h-4 bg-gradient-to-b from-background to-transparent"
+                />
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-5 bg-gradient-to-t from-background to-transparent"
+                />
                 {!isAtBottom && (
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-secondary text-secondary-foreground hover:bg-accent"
+                    aria-label="Scroll to bottom"
+                    className="absolute right-3 bottom-3 z-20 size-8 rounded-full border border-border/70 bg-background/90 text-foreground shadow-sm backdrop-blur-sm hover:bg-muted sm:right-5"
                     onClick={scrollToBottom}
                   >
                     <ArrowDown className="h-4 w-4" />

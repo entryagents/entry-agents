@@ -79,12 +79,11 @@ export function ThinkingBlock({
         {label}
       </span>
       {timeLabel ? (
-        <span className="ml-auto shrink-0 text-[11.5px] text-muted-foreground/70 tabular-nums">
+        <span className="shrink-0 text-[11.5px] text-muted-foreground/70 tabular-nums">
           {timeLabel}
         </span>
-      ) : (
-        <span className="ml-auto" />
-      )}
+      ) : null}
+      <span className="ml-auto" />
       {canOpen ? (
         <ChevronRight
           className={cn(

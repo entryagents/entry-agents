@@ -116,11 +116,7 @@
   line-height: inherit;
 }
 
-.sable-md
-  .streaming-markdown-root
-  :is(p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, pre, table),
-.sable-md
-  [data-markdown="root"]
+:where(.sable-md .streaming-markdown-root, .sable-md [data-markdown="root"])
   :is(
     p,
     h1,
@@ -144,6 +140,34 @@
 .sable-md [data-markdown="root"] > * + *,
 .sable-md .streaming-markdown-root > * + * {
   margin-top: var(--md-gap);
+}
+
+.sable-md
+  [data-markdown="root"]
+  > :is(h1, h2, h3, h4, h5, h6):not(:first-child),
+.sable-md
+  .streaming-markdown-root
+  > :is(h1, h2, h3, h4, h5, h6):not(:first-child) {
+  margin-top: 1.35em;
+}
+
+.sable-md [data-markdown="root"] > :is(h1, h2, h3, h4, h5, h6) + *,
+.sable-md .streaming-markdown-root > :is(h1, h2, h3, h4, h5, h6) + * {
+  margin-top: 0.45em;
+}
+
+.sable-md
+  [data-markdown="root"]
+  > :is(table, [data-markdown="table"]):not(:first-child),
+.sable-md
+  .streaming-markdown-root
+  > :is(table, [data-markdown="table"]):not(:first-child) {
+  margin-top: 1em;
+}
+
+.sable-md [data-markdown="root"] > :is(table, [data-markdown="table"]) + *,
+.sable-md .streaming-markdown-root > :is(table, [data-markdown="table"]) + * {
+  margin-top: 1em;
 }
 
 .sable-md strong {
@@ -294,23 +318,40 @@
 }
 
 .sable-md table {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-collapse: collapse;
   font-size: 13px;
+  line-height: 1.48;
   font-variant-numeric: tabular-nums;
 }
 
 .sable-md th {
   text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+  word-break: normal;
+  overflow-wrap: normal;
   font-weight: 580;
   color: var(--foreground);
-  padding: 7px 10px;
+  padding: 7px 12px 7px 0;
   border-bottom: 1px solid var(--md-line-2);
 }
 
 .sable-md td {
-  padding: 7px 10px;
+  vertical-align: top;
+  word-break: normal;
+  overflow-wrap: break-word;
+  padding: 8px 12px 8px 0;
   border-bottom: 1px solid var(--md-line);
+}
+
+.sable-md th:last-child,
+.sable-md td:last-child {
+  padding-right: 0;
 }
 
 /* ── Sable 1:1 ToolDetails: terminal, files, links, todos, qa ── */
