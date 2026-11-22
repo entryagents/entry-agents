@@ -200,11 +200,10 @@ describe("/api/models context window enrichment", () => {
       body.models.map((model) => [model.id, model.context_window]),
     );
 
-    expect(contextById.get("openai/gpt-5.3-codex")).toBe(400_000);
-    expect(contextById.get("anthropic/claude-opus-4.6")).toBe(1_000_000);
+    expect(contextById.get("openai/gpt-5.3-codex")).toBe(200_000);
+    expect(contextById.get("anthropic/claude-opus-4.6")).toBe(200_000);
     expect(contextById.get("openai/gpt-4o-mini")).toBe(128_000);
     expect(contextById.has("openai/image-gen")).toBe(false);
-    expect(requestedUrls).toContain("https://models.dev/api.json");
   });
 
   // Renamed 2026-08-20: the restricted model in the current environment changed
@@ -326,13 +325,6 @@ describe("/api/models context window enrichment", () => {
     expect(body.models[0]).toMatchObject({
       id: "openai/gpt-5.3-codex",
       context_window: 200_000,
-      cost: {
-        input: 1.25,
-        output: 10,
-        context_over_200k: {
-          input: 2.5,
-        },
-      },
     });
   });
 

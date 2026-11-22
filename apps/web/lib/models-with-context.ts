@@ -621,21 +621,14 @@ export async function fetchModelCostCatalog(): Promise<AvailableModel[]> {
 export async function fetchAvailableLanguageModelsWithContext(): Promise<
   AvailableModel[]
 > {
-  const [models, modelsDevMetadataMap] = await Promise.all([
-    fetchAvailableLanguageModels(),
-    fetchModelsDevMetadataMap(),
-  ]);
-
-  return models.map((model) =>
-    addModelsDevMetadata(model, modelsDevMetadataMap),
-  );
+  return fetchAvailableLanguageModelsWithCachedContext();
 }
 
 /**
- * Navigation-path variant for SSR chat pages: never blocks page render on a
- * cold/slow models.dev HTTP fetch (up to 750ms). Uses the resolved in-memory
- * models.dev map synchronously when already warm, and triggers a non-blocking
- * background warm-up otherwise.
+ * Navigation-path variant for SSR chat pages & /api/models: serves live
+ * gateway models immediately without blocking on a cold/slow models.dev HTTP
+ * fetch (up to 750ms). Uses the resolved in-memory models.dev map synchronously
+ * only as a fallback when a gateway model omits context_window or cost.
  */
 export async function fetchAvailableLanguageModelsWithCachedContext(): Promise<
   AvailableModel[]
@@ -647,29 +640,35 @@ export async function fetchAvailableLanguageModelsWithCachedContext(): Promise<
       addModelsDevMetadata(model, modelsDevResolvedCache!.map),
     );
   }
-  void fetchModelsDevMetadataMap().catch(() => {});
+  const needsFallback = models.some(
+    (m) =>
+      !(typeof m.context_window === "number" && m.context_window > 0) ||
+      !m.cost,
+  );
+  if (needsFallback) {
+    void fetchModelsDevMetadataMap().catch(() => {});
+  }
   return models.map((model) => applyFallbackCachePricing(model));
 }
 
 /**
- * Every language model the gateway knows about with models.dev
- * metadata (context windows), unfiltered by disabled status --
- * for the ADMIN models page (settings/admin/models, needs the
- * re-enable toggle) and the PUBLIC /model price page (owner
- * 2026-09-15: "show all model price" -- a price list is not a
- * picker, so availability filtering stays picker-only).
+ * Every language model the gateway knows about (unfiltered by disabled status)
+ * for the ADMIN models page and public /model pricing page. Uses live gateway
+ * context_window and cost directly without blocking on models.dev.
  */
 export async function fetchAllLanguageModelsWithContext(): Promise<
   AvailableModel[]
 > {
-  const [models, modelsDevMetadataMap] = await Promise.all([
-    fetchGatewayModels(),
-    fetchModelsDevMetadataMap(),
-  ]);
-
-  return models
-    .filter((model) => model.modelType === "language")
-    .map((model) => addModelsDevMetadata(model, modelsDevMetadataMap));
+  const models = (await fetchGatewayModels()).filter(
+    (model) => model.modelType === "language",
+  );
+  const now = Date.now();
+  if (modelsDevResolvedCache && modelsDevResolvedCache.expiresAt > now) {
+    return models.map((model) =>
+      addModelsDevMetadata(model, modelsDevResolvedCache!.map),
+    );
+  }
+  return models.map((model) => applyFallbackCachePricing(model));
 }
 
 /** Backwards-compatible alias -- the admin models page's original name
