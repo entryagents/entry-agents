@@ -2,7 +2,7 @@
 
 import { Brain, ChevronRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { cn } from "@/lib/utils";
+import { SableCollapse } from "./sable-chat/collapse";
 import { UserMessageFold } from "./user-message-fold";
 
 interface ThinkingBlockProps {
@@ -12,10 +12,10 @@ interface ThinkingBlockProps {
 }
 
 /**
- * 1:1 port of Sable's `src/features/timeline/Thinking.tsx`.
- * One quiet 25px row with Brain icon, `Thinking`/`Thought`, elapsed duration,
- * and hover-reveal rotating caret. Expanding reveals `.sable-think-body` directly
- * on a left hairline without double-wrapping inside `.sable-tool-details`.
+ * Mounted 1:1 from Sable `src/features/timeline/Thinking.tsx` + `Collapse.tsx`:
+ * - Exact `.sable-think` > `.sable-row-btn` > `.sable-tool-icon` + `.sable-tool-title`
+ *   + inline duration + hover-reveal `.sable-row-caret` (no pill hover background).
+ * - Smooth `SableCollapse` reveal into `.sable-think-body` hairline.
  */
 export function ThinkingBlock({
   text,
@@ -67,57 +67,50 @@ export function ThinkingBlock({
 
   const head = (
     <>
-      <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground/70">
+      <span className="sable-tool-icon">
         <Brain className="h-3.5 w-3.5" />
       </span>
       <span
-        className={cn(
-          "shrink-0 text-[12.5px] font-medium text-muted-foreground",
-          isStreaming && "shimmer text-foreground",
-        )}
+        className={
+          isStreaming ? "sable-tool-title shimmer" : "sable-tool-title"
+        }
       >
         {label}
       </span>
       {timeLabel ? (
-        <span className="shrink-0 text-[11.5px] text-muted-foreground/70 tabular-nums">
-          {timeLabel}
-        </span>
+        <span className="sable-tool-sub tabular-nums">{timeLabel}</span>
       ) : null}
-      <span className="ml-auto" />
       {canOpen ? (
-        <ChevronRight
-          className={cn(
-            "h-3 w-3 shrink-0 text-muted-foreground/60 opacity-0 transition-[transform,opacity] duration-150 group-hover/think:opacity-100 group-focus-visible/think:opacity-100",
-            open && "rotate-90 opacity-100",
-          )}
-        />
+        <ChevronRight className="sable-row-caret h-2.5 w-2.5" />
       ) : null}
     </>
   );
 
   return (
-    <div className="min-w-0">
+    <div className="sable-think" data-open={open || undefined}>
       {canOpen ? (
         <button
           type="button"
+          className="sable-row-btn"
           aria-expanded={open}
           onClick={() => setOpen((prev) => !prev)}
-          className="group/think -mx-1.5 flex min-h-[25px] w-[calc(100%+12px)] cursor-pointer items-center gap-2 rounded-md px-1.5 py-0.5 text-left transition-colors duration-100 hover:bg-muted/40"
         >
           {head}
         </button>
       ) : (
-        <div className="-mx-1.5 flex min-h-[25px] w-[calc(100%+12px)] items-center gap-2 rounded-md px-1.5 py-0.5">
+        <div className="sable-row-btn" data-static="">
           {head}
         </div>
       )}
-      {canOpen && open ? (
-        <div className="sable-think-body">
-          <UserMessageFold
-            text={text}
-            className="text-[12.5px] leading-[1.6] text-muted-foreground"
-          />
-        </div>
+      {canOpen ? (
+        <SableCollapse open={open}>
+          <div className="sable-think-body">
+            <UserMessageFold
+              text={text}
+              className="text-[12.5px] leading-[1.6] text-muted-foreground"
+            />
+          </div>
+        </SableCollapse>
       ) : null}
     </div>
   );
