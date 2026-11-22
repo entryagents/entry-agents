@@ -2,13 +2,12 @@
 
 import "./agents.css";
 import { Check, Loader2, Square, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
 import { SubagentIcon, useNow } from "@/components/team/subagent-helpers";
-import { BoardTab, ModelsTab } from "@/components/team/team-workspace";
+import { ModelsTab } from "@/components/team/team-workspace";
 import {
   deriveAgentHubRoster,
-  deriveTeamFeed,
   isLiveStatus,
   type AgentHubEntry,
 } from "@/lib/agent-hub/derive-roster";
@@ -34,7 +33,7 @@ export interface WorkspaceAgentsTabProps {
   onClosePanel?: () => void;
 }
 
-type AgentsSubView = "agents" | "board" | "models";
+type AgentsSubView = "agents" | "models";
 
 function shortDuration(ms: number): string {
   const totalSec = Math.max(0, Math.round(ms / 1000));
@@ -151,7 +150,6 @@ export function WorkspaceAgentsTab({
     () => deriveAgentHubRoster(messages, { isParentStreaming }),
     [messages, isParentStreaming],
   );
-  const teamFeed = useMemo(() => deriveTeamFeed(messages), [messages]);
 
   const { running, doneEntries, doneGroups, multiGroup } = useMemo(() => {
     const live: AgentHubEntry[] = [];
@@ -201,17 +199,6 @@ export function WorkspaceAgentsTab({
       return next;
     });
   }, []);
-
-  // Auto-switch off Board only when user explicitly selects it; default always stays "agents"
-  useEffect(() => {
-    if (
-      subView === "board" &&
-      teamFeed.tasks.length === 0 &&
-      teamFeed.entries.length === 0
-    ) {
-      // Keep accessible if user clicked Board directly
-    }
-  }, [subView, teamFeed]);
 
   const handleReveal = useCallback(
     (entry: AgentHubEntry) => {
@@ -266,18 +253,6 @@ export function WorkspaceAgentsTab({
             >
               Agents
             </button>
-            {teamFeed.tasks.length > 0 || teamFeed.entries.length > 0 ? (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={subView === "board"}
-                data-active={subView === "board" ? "true" : undefined}
-                className="agx-seg-btn"
-                onClick={() => setSubView("board")}
-              >
-                Board
-              </button>
-            ) : null}
             <button
               type="button"
               role="tab"
@@ -291,12 +266,6 @@ export function WorkspaceAgentsTab({
           </div>
         </div>
       </div>
-
-      {subView === "board" && (
-        <div className="rail-scroll">
-          <BoardTab feed={teamFeed} />
-        </div>
-      )}
 
       {subView === "models" && (
         <div className="rail-scroll">

@@ -34,7 +34,7 @@ import type { ModelOption } from "@/lib/model-options";
 import { cn } from "@/lib/utils";
 import { getSubagentRoleTag, SubagentIcon, useNow } from "./subagent-helpers";
 
-export type TeamWorkspaceTab = "subagents" | "board" | "models";
+export type TeamWorkspaceTab = "subagents" | "models";
 type FeedFilter = "all" | "contract" | "challenge" | "decision" | "handoff";
 
 export interface TeamWorkspaceProps {
@@ -762,24 +762,6 @@ export function TeamWorkspace({
         </button>
         <button
           type="button"
-          onClick={() => setTab("board")}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors duration-150 cursor-pointer",
-            tab === "board"
-              ? "bg-muted text-foreground"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          <span>Board</span>
-          {teamFeed.tasks.length > 0 ? (
-            <span className="font-mono text-[10px] tabular-nums text-muted-foreground">
-              {teamFeed.tasks.filter((t) => t.status === "completed").length}/
-              {teamFeed.tasks.length}
-            </span>
-          ) : null}
-        </button>
-        <button
-          type="button"
           onClick={() => setTab("models")}
           className={cn(
             "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium transition-colors duration-150 cursor-pointer",
@@ -802,7 +784,6 @@ export function TeamWorkspace({
             onSelectSubagent={onSelectSubagent}
           />
         )}
-        {tab === "board" && <BoardTab feed={teamFeed} />}
         {tab === "models" && (
           <ModelsTab
             defaultModelId={defaultModelId}
