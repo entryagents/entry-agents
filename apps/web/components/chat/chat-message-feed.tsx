@@ -927,7 +927,18 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
         ({ message: m, groups, isStreaming: isMessageStreaming }) => {
           const modelSwitch = modelSwitches.get(m.id);
           return (
-            <div key={m.id} data-find-msg-id={m.id}>
+            <div
+              key={m.id}
+              data-find-msg-id={m.id}
+              style={
+                isMessageStreaming
+                  ? undefined
+                  : {
+                      contentVisibility: "auto",
+                      containIntrinsicSize: "auto 96px",
+                    }
+              }
+            >
               {modelSwitch && (
                 <AgentSwitchDivider
                   fromModelId={modelSwitch.fromModelId}
