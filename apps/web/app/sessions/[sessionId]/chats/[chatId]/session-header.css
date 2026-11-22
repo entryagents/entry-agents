@@ -236,9 +236,15 @@
 }
 
 .sable-topbar .topbar-actions-slot {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 2px;
+}
+
+@media (min-width: 768px) {
+  .sable-topbar .topbar-actions-slot {
+    display: flex;
+  }
 }
 
 /* On desktop, the panel header owns the hide toggle when open, so the topbar toggle folds smoothly away. */
