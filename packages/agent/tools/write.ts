@@ -132,18 +132,6 @@ EXAMPLES:
           };
         }
 
-        const realPath = await resolveSandboxRealPath({
-          sandbox,
-          absolutePath,
-          workingDirectory,
-        });
-        if (realPath && !resolveWorkspacePath(realPath, workingDirectory)) {
-          return {
-            success: false,
-            error: "Path resolves outside the workspace.",
-          };
-        }
-
         // Read gate (read-state.ts): overwriting an existing file
         // the model has not read in its current version is a blind
         // write — the worst kind of edit. Creating a new file is free.
@@ -151,18 +139,29 @@ EXAMPLES:
           (experimental_context ?? {}) as { readFileState?: unknown },
         );
         const displayPath = toDisplayPath(absolutePath, workingDirectory);
-        let fileExists = true;
-        try {
-          await sandbox.stat(absolutePath);
-        } catch {
-          fileExists = false;
+        const [realPath, existingRead] = await Promise.all([
+          resolveSandboxRealPath({
+            sandbox,
+            absolutePath,
+            workingDirectory,
+          }),
+          sandbox
+            .readFile(absolutePath, "utf-8")
+            .then((raw) => ({ exists: true as const, raw }))
+            .catch(() => ({ exists: false as const, raw: "" })),
+        ]);
+        if (realPath && !resolveWorkspacePath(realPath, workingDirectory)) {
+          return {
+            success: false,
+            error: "Path resolves outside the workspace.",
+          };
         }
-        if (fileExists) {
-          const existingRaw = await sandbox.readFile(absolutePath, "utf-8");
+
+        if (existingRead.exists) {
           const gate = checkReadGate(
             readState,
             displayPath,
-            currentFileHash(existingRaw),
+            currentFileHash(existingRead.raw),
             "write",
           );
           if (!gate.ok) {
@@ -183,13 +182,11 @@ EXAMPLES:
         // mutations from content it has not actually seen.
         const contentHash = currentFileHash(content);
 
-        const stats = await sandbox.stat(absolutePath);
-
         return {
           success: true,
           path: displayPath,
           contentHash,
-          bytesWritten: stats.size,
+          bytesWritten: Buffer.byteLength(content, "utf-8"),
         };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -318,19 +315,20 @@ EXAMPLES:
           };
         }
 
-        const realPath = await resolveSandboxRealPath({
-          sandbox,
-          absolutePath,
-          workingDirectory,
-        });
+        const [realPath, content] = await Promise.all([
+          resolveSandboxRealPath({
+            sandbox,
+            absolutePath,
+            workingDirectory,
+          }),
+          sandbox.readFile(absolutePath, "utf-8"),
+        ]);
         if (realPath && !resolveWorkspacePath(realPath, workingDirectory)) {
           return {
             success: false,
             error: "Path resolves outside the workspace.",
           };
         }
-
-        const content = await sandbox.readFile(absolutePath, "utf-8");
 
         // Full read gate (checks stale hash against live file contents).
         const gate = checkReadGate(

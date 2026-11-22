@@ -37,6 +37,12 @@ export function resolveWorkspacePath(
   return null;
 }
 
+const REALPATH_CACHE_TTL_MS = 5_000;
+const realPathCache = new WeakMap<
+  Sandbox,
+  Map<string, { realPath: string | null; expiresAt: number }>
+>();
+
 export async function resolveSandboxRealPath(params: {
   sandbox: Sandbox;
   absolutePath: string;
@@ -46,20 +52,32 @@ export async function resolveSandboxRealPath(params: {
     return null;
   }
 
+  const now = Date.now();
+  let sandboxCache = realPathCache.get(params.sandbox);
+  const cached = sandboxCache?.get(params.absolutePath);
+  if (cached && cached.expiresAt > now) {
+    return cached.realPath;
+  }
+
   const result = await params.sandbox.exec(
     `realpath -- ${shellEscape(params.absolutePath)}`,
     params.workingDirectory,
     5000,
   );
 
-  if (!result.success) {
-    return null;
-  }
+  const realPath = result.success ? result.stdout.trim() || null : null;
 
-  const realPath = result.stdout.trim();
-  if (!realPath) {
-    return null;
+  if (!sandboxCache) {
+    sandboxCache = new Map();
+    realPathCache.set(params.sandbox, sandboxCache);
   }
+  if (sandboxCache.size > 256) {
+    sandboxCache.clear();
+  }
+  sandboxCache.set(params.absolutePath, {
+    realPath,
+    expiresAt: now + REALPATH_CACHE_TTL_MS,
+  });
 
   return realPath;
 }

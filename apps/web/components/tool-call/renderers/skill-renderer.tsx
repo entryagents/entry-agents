@@ -42,43 +42,40 @@ export function SkillRenderer({
   );
 
   const expandedContent = hasExpandedDetails ? (
-    <div className="space-y-2 rounded-lg border border-border/70 bg-muted/40 p-3 text-xs">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded-md border border-border/70 bg-background/80 px-2 py-0.5 font-mono text-[11px] font-medium text-foreground">
-            /{skillName ?? "skill"}
-          </span>
-          {output?.success && (
-            <span className="font-mono text-[10px] text-muted-foreground">
-              SKILL.md loaded into context
+    <div className="sable-detail-stack">
+      <div className="sable-detail-fields">
+        {skillName && (
+          <div className="sable-detail-field">
+            <span className="sable-detail-label">Skill</span>
+            <span className="sable-detail-value sable-detail-mono">
+              /{skillName}
             </span>
-          )}
-        </div>
+          </div>
+        )}
+        {rawArgs && (
+          <div className="sable-detail-field">
+            <span className="sable-detail-label">Args</span>
+            <span className="sable-detail-value sable-detail-mono">
+              {rawArgs}
+            </span>
+          </div>
+        )}
       </div>
       {skillDescription && (
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {skillDescription}
-        </p>
+        <div className="sable-detail-quiet">{skillDescription}</div>
       )}
-      {rawArgs && (
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">
-            Arguments
-          </p>
-          <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-border bg-background/80 p-2 font-mono text-[11px] leading-relaxed text-foreground">
-            {rawArgs}
-          </pre>
+      {loadedContent ? (
+        <div className="sable-term">
+          <div className="sable-term-out">
+            <pre>
+              {loadedContent.slice(0, 1400)}
+              {loadedContent.length > 1400 ? "\n\n… (truncated preview)" : ""}
+            </pre>
+          </div>
         </div>
-      )}
-      {loadedContent && (
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">
-            Skill instructions preview
-          </p>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded border border-border bg-background/80 p-2.5 font-mono text-[11px] leading-relaxed text-muted-foreground">
-            {loadedContent.slice(0, 1400)}
-            {loadedContent.length > 1400 ? "\n\n… (truncated preview)" : ""}
-          </pre>
+      ) : (
+        <div className="sable-detail-quiet">
+          {state.running ? "Loading the skill" : "No output"}
         </div>
       )}
     </div>

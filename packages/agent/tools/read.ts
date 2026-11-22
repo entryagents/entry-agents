@@ -163,11 +163,14 @@ EXAMPLES:
           };
         }
 
-        const realPath = await resolveSandboxRealPath({
-          sandbox,
-          absolutePath,
-          workingDirectory,
-        });
+        const [realPath, stats] = await Promise.all([
+          resolveSandboxRealPath({
+            sandbox,
+            absolutePath,
+            workingDirectory,
+          }),
+          sandbox.stat(absolutePath),
+        ]);
         if (realPath && !resolveWorkspacePath(realPath, workingDirectory)) {
           return {
             success: false,
@@ -175,7 +178,6 @@ EXAMPLES:
           };
         }
 
-        const stats = await sandbox.stat(absolutePath);
         if (stats.isDirectory()) {
           return {
             success: false,
