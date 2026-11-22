@@ -151,6 +151,7 @@ type Options = {
   assistantId?: string;
   inputMessagesPersisted?: boolean;
   isContinuationSegment?: boolean;
+  previousWorkflowRunId?: string;
   turnStartedAt?: number;
   stepOffset?: number;
   segmentMaxSteps?: number;
@@ -2672,6 +2673,7 @@ export async function runAgentWorkflow(options: Options) {
     workflowRunId,
     writable,
     assistantId,
+    options.previousWorkflowRunId,
   );
   const activeStreamClaim = await activeStreamClaimPromise;
   if (activeStreamClaim === "conflict") {
