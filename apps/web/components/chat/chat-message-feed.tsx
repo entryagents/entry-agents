@@ -1,7 +1,7 @@
 "use client";
 
 import { isReasoningUIPart, isToolUIPart } from "ai";
-import { Check, Copy, GitBranch, Loader2 } from "lucide-react";
+import { Check, Copy, FileText, GitBranch, Loader2 } from "lucide-react";
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import type {
   WebAgentCommitDataPart,
@@ -624,10 +624,20 @@ const ChatMessageRow = memo(function ChatMessageRow({
                   />
                 </div>
               ) : (
-                <MessageAttachmentChip
-                  url={p.url}
-                  filename={p.filename ?? "file"}
-                />
+                <a
+                  href={p.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="sable-user-file"
+                  title={p.filename ?? "Attached file"}
+                >
+                  <FileText
+                    className="size-3.5 shrink-0 text-muted-foreground"
+                    strokeWidth={1.6}
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{p.filename ?? "file"}</span>
+                </a>
               )}
             </div>
           </div>
