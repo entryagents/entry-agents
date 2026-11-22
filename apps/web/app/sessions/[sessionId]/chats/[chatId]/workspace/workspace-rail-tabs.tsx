@@ -178,11 +178,25 @@ export function WorkspaceRailTabs({
   onPick: (t: RailTabId) => void;
 }) {
   const row = useRef<HTMLDivElement>(null);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
+
+  useEffect(() => {
+    const update = () => setIsMobileViewport(window.innerWidth < 768);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  const visibleTabs = isMobileViewport
+    ? RAIL_TABS.filter((t) => t.id !== "context")
+    : RAIL_TABS;
+  const visiblePrimary = visibleTabs.filter((t) => !t.more);
+
   const { fit, labels } = useRowLayout(row);
-  const shown = PRIMARY.slice(0, fit);
+  const shown = visiblePrimary.slice(0, fit);
   const inRow = shown.some((t) => t.id === tab);
-  const rest = RAIL_TABS.filter((t) => !shown.includes(t));
-  const current = RAIL_TABS.find((t) => t.id === tab) ?? RAIL_TABS[0];
+  const rest = visibleTabs.filter((t) => !shown.includes(t));
+  const current = visibleTabs.find((t) => t.id === tab) ?? visibleTabs[0];
 
   const [pill, setPill] = useState<{ x: number; w: number } | null>(null);
   useLayoutEffect(() => {

@@ -3700,14 +3700,16 @@ export function SessionChatContent({
                     contextUsageSlot={
                       <span className="inline-flex md:hidden">
                         <ContextUsageHeaderButton
+                          variant="popover"
                           messages={renderMessages}
                           modelId={chatInfo.modelId ?? ""}
                           modelOptions={modelOptions}
                           contextLimit={contextLimit}
-                          onOpenContextPanel={() => {
-                            setActiveWorkspaceTab("context");
-                            setGitPanelOpen(true);
-                          }}
+                          onCompactConversation={() =>
+                            void handleCompactConversation()
+                          }
+                          isCompacting={isCompacting}
+                          isBusy={isChatInFlight}
                         />
                       </span>
                     }

@@ -7,14 +7,11 @@ import {
   GitPullRequest,
   PanelLeft,
   PanelRight,
-  Search,
 } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSessionLayout } from "@/app/sessions/[sessionId]/session-layout-context";
 import { ChatMenu } from "@/components/chat/chat-menu";
-import { EntryMark } from "@/components/entry-mark";
 import {
   ProviderIcon,
   getProviderFromModelId,
@@ -230,17 +227,6 @@ export function SessionHeader() {
         </TooltipContent>
       </Tooltip>
 
-      {!sidebarOpen && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Link href="/" className="topbar-home" aria-label="New session">
-              <EntryMark className="size-[18px]" />
-            </Link>
-          </TooltipTrigger>
-          <TooltipContent side="bottom">New session</TooltipContent>
-        </Tooltip>
-      )}
-
       <div className="topbar-title">
         {providerId && (
           <ProviderIcon
@@ -330,28 +316,6 @@ export function SessionHeader() {
           onShare={() => setShareRequested(true)}
           onChangeRepo={() => setChangeRepoRequested(true)}
         />
-
-        {!sidebarOpen && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="topbar-icon-btn hidden md:inline-flex"
-                onClick={() => {
-                  window.dispatchEvent(
-                    new CustomEvent("entry:open-command-palette"),
-                  );
-                }}
-                aria-label="Search and commands"
-              >
-                <Search size={16} strokeWidth={1.6} aria-hidden="true" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              Search and commands · ⌘K
-            </TooltipContent>
-          </Tooltip>
-        )}
 
         <span
           className="topbar-panel"
