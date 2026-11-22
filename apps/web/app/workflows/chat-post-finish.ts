@@ -1347,3 +1347,168 @@ export async function runPostTurnPluginsStep(params: {
     console.error("[workflow] Failed to run post-turn plugins step:", error);
   }
 }
+
+/**
+ * Loads the latest persisted chat messages from Postgres for a continuation
+ * workflow segment so multi-hour runs don't serialize giant message arrays
+ * into the new workflow's start payload.
+ */
+export async function loadContinuationMessagesStep(
+  chatId: string,
+): Promise<WebAgentUIMessage[]> {
+  "use step";
+
+  const { getChatMessages } = await import("@/lib/db/sessions");
+  const rows = await getChatMessages(chatId);
+  return rows.map((row) => normalizeStoredChatMessage(row));
+}
+
+/**
+ * Vercel Workflow DevKit `continueAsNew` segment handoff:
+ * Persists the in-progress assistant message, starts a fresh `runAgentWorkflow`
+ * segment with a 0-event log (preventing MAX_EVENTS_EXCEEDED / REPLAY_TIMEOUT
+ * on multi-hour background runs), and atomically hands off `chats.activeStreamId`
+ * and the billing turn lease to the new run.
+ */
+export async function continueAgentWorkflowSegmentStep(params: {
+  chatId: string;
+  sessionId: string;
+  userId: string;
+  requestUrl: string;
+  authSession: Pick<AuthSession, "authProvider" | "user"> | null;
+  currentWorkflowRunId: string;
+  assistantId: string;
+  pendingAssistantResponse: WebAgentUIMessage;
+  turnStartedAt: number;
+  nextStepOffset: number;
+  maxSteps?: number;
+  selectedModelId?: string;
+  modelId?: string;
+  overrideModelId?: string | null;
+  overrideReasoningEffort?: string | null;
+  teamRoleModels?: Record<string, string>;
+  autoCommitEnabled?: boolean;
+  autoCreatePrEnabled?: boolean;
+}): Promise<{ continued: boolean; nextRunId?: string }> {
+  "use step";
+
+  const { compareAndSetChatActiveStreamId, getChatById } =
+    await import("@/lib/db/sessions");
+
+  // 1. Persist latest in-progress assistant message before handoff.
+  await persistAssistantMessageInternal(
+    params.chatId,
+    params.pendingAssistantResponse,
+  );
+
+  // 2. Verify chat was not cancelled and still belongs to this workflow run.
+  const chat = await getChatById(params.chatId);
+  if (
+    !chat ||
+    chat.status === "cancelled" ||
+    chat.activeStreamId !== params.currentWorkflowRunId
+  ) {
+    return { continued: false };
+  }
+
+  let startedRunId: string | undefined;
+  try {
+    const { start, getRun } = await import("workflow/api");
+    const { runAgentWorkflow } = await import("./chat");
+
+    const nextRun = await start(
+      runAgentWorkflow,
+      [
+        {
+          messages: [],
+          chatId: params.chatId,
+          sessionId: params.sessionId,
+          userId: params.userId,
+          requestUrl: params.requestUrl,
+          authSession: params.authSession,
+          assistantId: params.assistantId,
+          inputMessagesPersisted: true,
+          isContinuationSegment: true,
+          turnStartedAt: params.turnStartedAt,
+          stepOffset: params.nextStepOffset,
+          ...(params.maxSteps !== undefined
+            ? { maxSteps: params.maxSteps }
+            : {}),
+          ...(params.selectedModelId !== undefined
+            ? { selectedModelId: params.selectedModelId }
+            : {}),
+          ...(params.modelId !== undefined ? { modelId: params.modelId } : {}),
+          ...(params.overrideModelId !== undefined
+            ? { overrideModelId: params.overrideModelId }
+            : {}),
+          ...(params.overrideReasoningEffort !== undefined
+            ? { overrideReasoningEffort: params.overrideReasoningEffort }
+            : {}),
+          ...(params.teamRoleModels &&
+          Object.keys(params.teamRoleModels).length > 0
+            ? { teamRoleModels: params.teamRoleModels }
+            : {}),
+          ...(params.autoCommitEnabled !== undefined
+            ? { autoCommitEnabled: params.autoCommitEnabled }
+            : {}),
+          ...(params.autoCreatePrEnabled !== undefined
+            ? { autoCreatePrEnabled: params.autoCreatePrEnabled }
+            : {}),
+        },
+      ],
+      {
+        attributes: {
+          chatId: params.chatId,
+          sessionId: params.sessionId,
+          userId: params.userId,
+        },
+      },
+    );
+
+    startedRunId = nextRun.runId;
+
+    // 3. Atomically hand off activeStreamId from currentWorkflowRunId -> nextRun.runId.
+    const swapped = await compareAndSetChatActiveStreamId(
+      params.chatId,
+      params.currentWorkflowRunId,
+      nextRun.runId,
+    );
+    if (!swapped) {
+      await getRun(nextRun.runId)
+        .cancel()
+        .catch(() => {});
+      return { continued: false };
+    }
+
+    // 4. Release the old segment's billing turn lease so the new segment claims it cleanly.
+    try {
+      const { releaseUserBillingTurn } =
+        await import("@/lib/billing/credit-ledger");
+      await releaseUserBillingTurn(
+        params.userId,
+        params.currentWorkflowRunId,
+      ).catch(() => {});
+    } catch {
+      // Best-effort lease handoff.
+    }
+
+    console.info(
+      `[chat-workflow] Handed off chat ${params.chatId} from segment ${params.currentWorkflowRunId} to ${nextRun.runId} at step ${params.nextStepOffset}`,
+    );
+    return { continued: true, nextRunId: nextRun.runId };
+  } catch (error) {
+    if (startedRunId) {
+      try {
+        const { getRun } = await import("workflow/api");
+        await getRun(startedRunId).cancel();
+      } catch {
+        // Best-effort cleanup
+      }
+    }
+    console.error(
+      `[chat-workflow] Failed to hand off segment for chat ${params.chatId}:`,
+      error,
+    );
+    return { continued: false };
+  }
+}

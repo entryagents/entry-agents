@@ -157,6 +157,7 @@ export function useSessionChatRuntime({
 
   const [isReconnecting, setIsReconnecting] = useState(false);
   const forceReconcileOnFinishRef = useRef(false);
+  const pendingSegmentHandoffRef = useRef(false);
 
   const transport = useMemo(
     () =>
@@ -208,10 +209,25 @@ export function useSessionChatRuntime({
           setIsReconnecting(false);
           if (dataPart.type === "data-workspace-status") {
             setChatWorkspaceStatus(chatId, dataPart.data);
+          } else if (
+            (dataPart as { type?: string }).type === "data-segment-handoff"
+          ) {
+            pendingSegmentHandoffRef.current = true;
           }
           triggerBillingSync();
         },
         onFinish: () => {
+          if (
+            pendingSegmentHandoffRef.current &&
+            !userStoppedRef.current &&
+            !isChatStoppedByUser(chatId)
+          ) {
+            pendingSegmentHandoffRef.current = false;
+            setIsReconnecting(true);
+            void chat.resumeStream();
+            return;
+          }
+          pendingSegmentHandoffRef.current = false;
           setIsReconnecting(false);
           triggerBillingSync();
           const shouldReconcileAfterDrop = forceReconcileOnFinishRef.current;
