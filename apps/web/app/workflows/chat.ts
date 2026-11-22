@@ -2915,7 +2915,7 @@ export async function runAgentWorkflow(options: Options) {
         : undefined;
     let lastKnownInputTokens: number | undefined;
     const turnStartedAt = Date.now();
-    const MAX_WORKFLOW_TURN_DURATION_MS = 60 * 60 * 1000; // 1 hour max
+    const MAX_WORKFLOW_TURN_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours max
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
@@ -4027,7 +4027,7 @@ export async function runAgentWorkflow(options: Options) {
 // $10 Plus-plan grant in under 25 minutes. Set high on purpose so it
 // never interferes with legitimate heavy single-turn work -- it should
 // almost never fire.
-const MAX_TURN_SPEND_CENTS = 500;
+const MAX_TURN_SPEND_CENTS = 5000;
 
 type PendingStepDebit = {
   costUsd: number;

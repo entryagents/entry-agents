@@ -13,6 +13,8 @@ import { getLatestCompletedWorkflowRunIdForChat } from "@/lib/db/workflow-runs";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
 import { verifyRunState } from "@/lib/workflow-run-recovery";
 
+export const maxDuration = 300;
+
 type RouteContext = {
   params: Promise<{ chatId: string }>;
 };

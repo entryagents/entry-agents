@@ -32,6 +32,8 @@ import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-res
 
 type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
 
+export const maxDuration = 300;
+
 export async function POST(req: Request) {
   // 1. Validate session
   const authResult = await requireAuthenticatedUser();
@@ -185,7 +187,7 @@ export async function POST(req: Request) {
           requestUrl: req.url,
           authSession: session ?? null,
           assistantId: generateId(),
-          maxSteps: isHobbyResourceProfile() ? 50 : 500,
+          maxSteps: isHobbyResourceProfile() ? 50 : 2000,
           ...(sanitizedTeamRoleModels
             ? { teamRoleModels: sanitizedTeamRoleModels }
             : {}),

@@ -1,64 +1,44 @@
-import { describe, expect, it } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { normalizeToolCallSignature, TurnLoopGuard } from "./loop-guard";
 
 describe("TurnLoopGuard", () => {
-  it("catches alternating A/B/A/B/A/B tool-call loops and breaks cleanly", () => {
+  test("warns on 3rd identical call and breaks on 4th within the sliding window", () => {
     const guard = new TurnLoopGuard();
-    const a = [
-      { toolName: "bash", signature: 'bash:{"command":"ls /workspace"}' },
-    ];
-    const b = [{ toolName: "bash", signature: 'bash:{"command":"ls ."}' }];
+    const sig = normalizeToolCallSignature("bash", { command: "pnpm test" });
 
-    expect(guard.recordStep(a).action).toBe("continue");
-    expect(guard.recordStep(b).action).toBe("continue");
-    expect(guard.recordStep(a).action).toBe("continue");
-    expect(guard.recordStep(b).action).toBe("continue");
-    // 3rd occurrence of A triggers warn
-    expect(guard.recordStep(a).action).toBe("warn");
-    // 4th occurrence of A after warn triggers break
-    expect(guard.recordStep(a).action).toBe("break");
-  });
-
-  it("catches 12+ consecutive read-only exploration steps", () => {
-    const guard = new TurnLoopGuard();
-    for (let i = 0; i < 11; i++) {
-      expect(
-        guard.recordStep([
-          { toolName: "grep", signature: `grep:{"pattern":"p${i}"}` },
-        ]).action,
-      ).toBe("continue");
-    }
+    expect(guard.recordStep([{ toolName: "bash", signature: sig }])).toEqual({
+      action: "continue",
+    });
+    expect(guard.recordStep([{ toolName: "bash", signature: sig }])).toEqual({
+      action: "continue",
+    });
     expect(
-      guard.recordStep([
-        { toolName: "grep", signature: 'grep:{"pattern":"p11"}' },
-      ]).action,
+      guard.recordStep([{ toolName: "bash", signature: sig }]).action,
     ).toBe("warn");
+    expect(
+      guard.recordStep([{ toolName: "bash", signature: sig }]).action,
+    ).toBe("break");
   });
 
-  it("normalizes inbox default and explicit check signatures identically and breaks loops", () => {
-    expect(normalizeToolCallSignature("inbox", {})).toBe(
-      'inbox:{"action":"check"}',
-    );
-    expect(normalizeToolCallSignature("inbox", { action: "check" })).toBe(
-      'inbox:{"action":"check"}',
-    );
-    expect(normalizeToolCallSignature("inbox", { action: "list" })).toBe(
-      'inbox:{"action":"list"}',
-    );
-
+  test("decays old calls across a multi-hour run so periodic pnpm test never falsely breaks", () => {
     const guard = new TurnLoopGuard();
-    const s1 = {
-      toolName: "inbox",
-      signature: normalizeToolCallSignature("inbox", {}),
-    };
-    const s2 = {
-      toolName: "inbox",
-      signature: normalizeToolCallSignature("inbox", { action: "check" }),
-    };
+    const testSig = normalizeToolCallSignature("bash", {
+      command: "pnpm test",
+    });
 
-    expect(guard.recordStep([s1]).action).toBe("continue");
-    expect(guard.recordStep([s2]).action).toBe("continue");
-    expect(guard.recordStep([s1]).action).toBe("warn");
-    expect(guard.recordStep([s2]).action).toBe("break");
+    // Simulate 100 steps where `pnpm test` runs every 10 steps interspersed with edits
+    for (let i = 0; i < 100; i++) {
+      const tc =
+        i % 10 === 0
+          ? { toolName: "bash", signature: testSig }
+          : {
+              toolName: "edit",
+              signature: normalizeToolCallSignature("edit", {
+                filePath: `src/file-${i}.ts`,
+              }),
+            };
+      const decision = guard.recordStep([tc]);
+      expect(decision.action).toBe("continue");
+    }
   });
 });

@@ -634,6 +634,21 @@ export async function updateChatAssistantActivity(
   return chat;
 }
 
+/**
+ * Refreshes `runStatusUpdatedAt` during long-running workflows so the 15-minute
+ * `isRecentlyActive` guard in POST /api/chat never expires mid-run.
+ */
+export async function touchChatRunHeartbeat(chatId: string) {
+  const now = new Date();
+  await db
+    .update(chats)
+    .set({
+      runStatusUpdatedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(chats.id, chatId));
+}
+
 export async function updateChatActiveStreamId(
   chatId: string,
   streamId: string | null,
