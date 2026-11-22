@@ -83,7 +83,7 @@ export function ThinkingBlock({
       : "";
 
   const expandedContent = hasContent ? (
-    <div className="my-0.5 ml-[7px] border-l border-border/70 py-px pl-4">
+    <div className="sable-think-body">
       <UserMessageFold
         text={text}
         className="text-[12.5px] leading-[1.6] text-muted-foreground"

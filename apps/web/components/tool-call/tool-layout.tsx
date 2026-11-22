@@ -347,15 +347,15 @@ export function ToolLayout({
         >
           <div className="min-h-0 min-w-0 w-full overflow-hidden">
             {shouldRenderExpandedContent && (
-              <div className="ml-[7px] space-y-2 border-l border-border/70 pl-4 pb-1 min-w-0 overflow-hidden">
+              <div className="sable-tool-details space-y-2 min-w-0 overflow-hidden">
                 {showErrorExpanded &&
                   !hasRenderableContent(expandedContent) && (
-                    <pre className="max-h-48 overflow-x-auto overflow-y-auto whitespace-pre-wrap break-all break-words rounded-md border border-red-500/20 bg-red-500/5 px-3 py-2 font-mono text-xs leading-relaxed text-red-400">
+                    <pre className="sable-tool-error max-h-48 overflow-x-auto overflow-y-auto">
                       {errorMessage}
                     </pre>
                   )}
                 {showInterruptedExpanded && (
-                  <pre className="overflow-x-auto rounded-md border border-yellow-500/20 bg-yellow-500/5 px-3 py-2 font-mono text-xs leading-relaxed text-yellow-500">
+                  <pre className="sable-tool-error overflow-x-auto">
                     interrupted
                   </pre>
                 )}
