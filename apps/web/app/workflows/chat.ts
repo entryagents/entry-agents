@@ -2962,8 +2962,25 @@ export async function runAgentWorkflow(options: Options) {
       options.maxSteps === undefined || stepOffset + step < options.maxSteps;
       step++
     ) {
+      // Run all three independent pre-step checks in parallel so Vercel Workflow
+      // dispatches them in a single turn instead of 3 sequential step round-trips.
+      const [
+        isCancelledBeforeStep,
+        livePermissionMode,
+        { messages: unreadInboxMessages },
+      ] = await Promise.all([
+        checkChatCancelledStep(options.chatId, workflowRunId),
+        options.agentOptions?.permissionMode
+          ? Promise.resolve(agentOptions.permissionMode)
+          : resolveCurrentPermissionMode({
+              userId: options.userId,
+              sessionId: options.sessionId,
+            }),
+        consumeUnreadInboxMessagesStep(options.chatId),
+      ]);
+
       // Cooperative check: Stop if chat was cancelled in DB or superseded by a newer run
-      if (await checkChatCancelledStep(options.chatId, workflowRunId)) {
+      if (isCancelledBeforeStep) {
         console.warn(
           `[chat-workflow] Chat ${options.chatId} was marked cancelled or superseded in database. Stopping workflow loop.`,
         );
@@ -3028,23 +3045,6 @@ export async function runAgentWorkflow(options: Options) {
         }
       }
 
-      // Refresh permission mode fresh for this specific step -- see
-      // resolveCurrentPermissionMode above. Everything else about
-      // agentOptions (sandbox, model, skills) stays fixed for the turn;
-      // only the approval-gating mode is allowed to change mid-flight.
-      // An explicit caller-supplied override (options.agentOptions,
-      // rarely used) still wins, matching the precedence `agentOptions`
-      // was built with above.
-      const livePermissionMode = options.agentOptions?.permissionMode
-        ? agentOptions.permissionMode
-        : await resolveCurrentPermissionMode({
-            userId: options.userId,
-            sessionId: options.sessionId,
-          });
-      // Step ARGUMENTS cross a serialization boundary too: any `undefined`
-      // nested in here (skills' frontmatter options, optional model fields,
-      // optional sandbox/github context) fails the run just as hard as an
-      // undefined return value would.
       const stepSubagentHistory = buildSubagentMessageHistory(
         pendingAssistantResponse
           ? [...options.messages, pendingAssistantResponse]
@@ -3059,8 +3059,6 @@ export async function runAgentWorkflow(options: Options) {
         permissionMode: livePermissionMode,
       });
 
-      const { messages: unreadInboxMessages } =
-        await consumeUnreadInboxMessagesStep(options.chatId);
       if (unreadInboxMessages.length > 0) {
         const formattedSteering = unreadInboxMessages
           .map((m, idx) => `${idx + 1}. ${m.content}`)
@@ -4842,6 +4840,17 @@ const runAgentStep = async (
       },
     };
 
+    // Kick off independent DB fetches in parallel at the start of runAgentStep
+    // so secrets, integration access, and enabled plugins overlap instead of
+    // paying 3 sequential DB round-trips on every single tool call.
+    const integrationAccessPromise =
+      import("@/lib/billing/integration-access-server")
+        .then((m) => m.getUserExternalIntegrationAccess(userId))
+        .catch(() => ({ allowed: true }));
+    const enabledPluginsPromise = import("@/lib/db/plugins")
+      .then((m) => m.getEnabledPluginsForExecution(userId))
+      .catch(() => []);
+
     let runtimeSecrets: {
       secretCatalog: NonNullable<OpenAgentCallOptions["secretCatalog"]>;
       secrets: NonNullable<OpenAgentCallOptions["secrets"]>;
@@ -4878,11 +4887,7 @@ const runAgentStep = async (
       }
     }
 
-    const { getUserExternalIntegrationAccess } =
-      await import("@/lib/billing/integration-access-server");
-    const integrationAccess = await getUserExternalIntegrationAccess(
-      userId,
-    ).catch(() => ({ allowed: true }));
+    const integrationAccess = await integrationAccessPromise;
 
     // Self-serve MCP servers this user has configured (see
     // lib/db/mcp-servers.ts + packages/agent/tools/mcp.ts). Resolved
@@ -5180,9 +5185,7 @@ const runAgentStep = async (
     // Loaded inside runAgentStep ("use step") via dynamic import so database/crypto
     // modules never enter the Workflow SDK's restricted "use workflow" bundle.
     try {
-      const { getEnabledPluginsForExecution } =
-        await import("@/lib/db/plugins");
-      const enabledPlugins = await getEnabledPluginsForExecution(userId);
+      const enabledPlugins = await enabledPluginsPromise;
       if (enabledPlugins.length > 0) {
         fullAgentOptions.plugins = enabledPlugins;
 
