@@ -3697,6 +3697,20 @@ export function SessionChatContent({
                     chatId={chatInfo.id}
                     sentPrompts={sentPrompts}
                     onRunShellCommand={handleRunShellCommand}
+                    contextUsageSlot={
+                      <span className="inline-flex md:hidden">
+                        <ContextUsageHeaderButton
+                          messages={renderMessages}
+                          modelId={chatInfo.modelId ?? ""}
+                          modelOptions={modelOptions}
+                          contextLimit={contextLimit}
+                          onOpenContextPanel={() => {
+                            setActiveWorkspaceTab("context");
+                            setGitPanelOpen(true);
+                          }}
+                        />
+                      </span>
+                    }
                     isArchived={isArchived}
                     isChatInFlight={isChatInFlight}
                     hasPendingResponse={hasPendingResponse}
