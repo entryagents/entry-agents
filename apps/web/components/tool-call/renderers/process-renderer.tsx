@@ -75,36 +75,27 @@ export function ProcessRenderer({
       onDeny={onDeny}
     >
       {part.state === "output-available" && processes.length > 0 && (
-        <div className="space-y-1.5 text-xs">
+        <div className="sable-detail-stack">
           {processes.map((proc) => (
-            <div
-              key={proc.id}
-              className="rounded border border-border/60 bg-muted/30 p-2 font-mono"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate font-medium text-foreground">
-                  {proc.id}
-                  {proc.pid ? ` (pid ${proc.pid})` : ""}
+            <div key={proc.id} className="sable-term">
+              <div className="sable-term-cmd">
+                <span className="sable-term-ps" aria-hidden>
+                  $
                 </span>
-                <span
-                  className={
-                    proc.alive
-                      ? "shrink-0 text-emerald-500"
-                      : "shrink-0 text-muted-foreground"
-                  }
-                >
-                  {proc.alive ? "running" : "exited"}
+                <code className="sable-term-line">
+                  {proc.command || proc.id}
+                </code>
+                <span className="sable-term-side">
+                  <span className="sable-term-note">
+                    {proc.pid ? `pid ${proc.pid} · ` : ""}
+                    {proc.alive ? "running" : "exited"}
+                  </span>
                 </span>
               </div>
-              {proc.command && (
-                <div className="mt-0.5 truncate text-muted-foreground">
-                  $ {proc.command}
-                </div>
-              )}
               {proc.recentLogs && (
-                <pre className="mt-1.5 max-h-36 overflow-auto whitespace-pre-wrap break-all rounded bg-background/60 p-1.5 text-[11px] text-muted-foreground">
-                  {proc.recentLogs}
-                </pre>
+                <div className="sable-term-out">
+                  <pre>{proc.recentLogs}</pre>
+                </div>
               )}
             </div>
           ))}

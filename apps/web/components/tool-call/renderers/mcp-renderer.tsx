@@ -307,31 +307,26 @@ export function McpRenderer({
 
   const expandedContent =
     inputText || readableOutput || rawOutput ? (
-      <div className="space-y-2.5">
-        {readableOutput && (
-          <div className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-background px-3 py-2 text-xs leading-relaxed text-foreground">
-            {readableOutput}
+      <div className="sable-detail-stack">
+        {inputText && inputText !== "{}" && (
+          <div className="sable-term">
+            <div className="sable-term-cmd">
+              <span className="sable-detail-label">Input</span>
+            </div>
+            <div className="sable-term-out">
+              <pre>{inputText}</pre>
+            </div>
           </div>
         )}
-        {!readableOutput && rawOutput && (
-          <div>
-            <p className="mb-1 text-[11px] font-medium text-muted-foreground">
-              Result
-            </p>
-            <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed text-foreground">
-              {rawOutput}
-            </pre>
+        {(readableOutput || rawOutput) && (
+          <div className="sable-term">
+            <div className="sable-term-cmd">
+              <span className="sable-detail-label">Result</span>
+            </div>
+            <div className="sable-term-out">
+              <pre>{readableOutput ?? rawOutput}</pre>
+            </div>
           </div>
-        )}
-        {inputText && (
-          <details className="group">
-            <summary className="cursor-pointer text-[11px] font-medium text-muted-foreground hover:text-foreground">
-              Parameters
-            </summary>
-            <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/60 bg-muted/40 px-3 py-2 font-mono text-xs leading-relaxed text-foreground">
-              {inputText}
-            </pre>
-          </details>
         )}
       </div>
     ) : undefined;
