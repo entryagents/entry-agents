@@ -1,0 +1,33 @@
+/* Ported verbatim from Sable src/components/collapse.css */
+.sable-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 100ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sable-collapse[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transition:
+    grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 150ms linear 30ms;
+}
+
+.sable-collapse-inner {
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.sable-collapse[data-settled] > .sable-collapse-inner {
+  overflow: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sable-collapse[data-open] {
+    transition-delay: 0s;
+  }
+}
