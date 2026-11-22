@@ -4,8 +4,12 @@ import {
   AtSign,
   ChevronRight,
   ChevronsDownUp,
+  File,
+  FileCode,
+  FileText,
   Folder,
   FolderOpen,
+  Image as ImageIcon,
   Loader2,
   RefreshCw,
   Search,
@@ -26,9 +30,26 @@ import {
   highlightSegments,
   toChangeLetter,
 } from "@/app/sessions/[sessionId]/chats/[chatId]/workspace/sable-rail-helpers";
-import { FileTypeIcon } from "@/components/file-type-icons";
 import type { DiffFile } from "@/lib/diff/compute-diff";
 import { cn } from "@/lib/utils";
+
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|avif|ico|bmp)$/i;
+const CODE_EXT =
+  /\.(tsx?|jsx?|mjs|cjs|json|css|scss|html?|vue|svelte|py|rs|go|java|kt|swift|c|h|cpp|hpp|cs|rb|php|sh|ps1|ya?ml|toml|sql|lua)$/i;
+const TEXT_EXT = /\.(md|mdx|txt|rst|log)$/i;
+
+function SableFileIcon({ name }: { name: string }) {
+  if (IMAGE_EXT.test(name)) {
+    return <ImageIcon size={14} strokeWidth={1.6} className="fl-icon" />;
+  }
+  if (CODE_EXT.test(name)) {
+    return <FileCode size={14} strokeWidth={1.6} className="fl-icon" />;
+  }
+  if (TEXT_EXT.test(name)) {
+    return <FileText size={14} strokeWidth={1.6} className="fl-icon" />;
+  }
+  return <File size={14} strokeWidth={1.6} className="fl-icon" />;
+}
 
 interface TreeNode {
   name: string;
@@ -186,7 +207,7 @@ const TreeRow = memo(function TreeRow({
           <Folder size={14} strokeWidth={1.6} className="fl-icon" />
         )
       ) : (
-        <FileTypeIcon path={node.name} className="fl-icon h-3.5 w-3.5" />
+        <SableFileIcon name={node.name} />
       )}
       <span className="fl-name truncate">
         {renderHighlighted(node.name, query)}
