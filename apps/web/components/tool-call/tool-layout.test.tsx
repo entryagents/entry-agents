@@ -43,7 +43,7 @@ describe("ToolLayout interrupted state", () => {
     );
 
     expect(html).toContain('aria-expanded="true"');
-    expect(html).toContain("border-yellow-500/20 bg-yellow-500/5");
+    expect(html).toContain("sable-tool-error");
     expect(html).toContain("interrupted");
   });
 });
@@ -92,7 +92,7 @@ describe("ToolLayout error state", () => {
       "Failed to read file: ENOENT: no such file or directory, stat &#x27;/vercel/sandbox/nope&#x27;",
     );
     // Expanded error output
-    expect(html).toContain("border-red-500/20 bg-red-500/5");
+    expect(html).toContain("sable-tool-error");
     expect(html).toContain("text-red-400");
   });
 
