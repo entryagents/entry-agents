@@ -3,39 +3,7 @@
 import { ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
-
-type StatusWordPair = {
-  present: string;
-  past: string;
-};
-
-const STATUS_WORD_PAIRS: StatusWordPair[] = [
-  { present: "Pondering", past: "Pondered" },
-  { present: "Crafting", past: "Crafted" },
-  { present: "Vibing", past: "Vibed" },
-  { present: "Simmering", past: "Simmered" },
-  { present: "Marinating", past: "Marinated" },
-  { present: "Philosophising", past: "Philosophised" },
-  { present: "Ruminating", past: "Ruminated" },
-];
-
-function hashString(value: string): number {
-  let hash = 0;
-
-  for (let i = 0; i < value.length; i++) {
-    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
-  }
-
-  return hash;
-}
-
-function getStatusWordPair(seed: string | null): StatusWordPair {
-  if (!seed) {
-    return STATUS_WORD_PAIRS[0];
-  }
-
-  return STATUS_WORD_PAIRS[hashString(seed) % STATUS_WORD_PAIRS.length];
-}
+import "./tool-call/agent-row.css";
 
 function formatElapsedTime(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -62,7 +30,7 @@ export function ToolCallsSummaryBar({
   changedFiles,
   durationMs,
   startedAt,
-  statusWordSeed,
+  statusWordSeed: _statusWordSeed,
 }: {
   isExpanded: boolean;
   onToggle: () => void;
@@ -75,16 +43,9 @@ export function ToolCallsSummaryBar({
   /** ISO timestamp of when generation started — i.e. the preceding user
    *  message's createdAt — used for a live counter while streaming. */
   startedAt: string | null;
-  /** Stable per-message seed used to choose a status word pair. */
+  /** Kept for backwards-compatible prop surface. */
   statusWordSeed: string | null;
 }) {
-  // ---------------------------------------------------------------------------
-  // Elapsed time logic
-  //
-  // Completed messages  → use the pre-computed durationMs (accurate, static).
-  // Streaming messages  → tick a live counter from startedAt (the moment the
-  //                        user sent their message).
-  // ---------------------------------------------------------------------------
   const startMs = startedAt ? new Date(startedAt).getTime() : null;
 
   const computeLiveElapsed = () =>
@@ -106,24 +67,16 @@ export function ToolCallsSummaryBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stable per startMs
   }, [isStreaming, startMs]);
 
-  // Pick the right elapsed value.
-  // When streaming ends for messages created during this session, durationMs
-  // will be null (it's only computed server-side for initial DB messages).
-  // Fall back to liveElapsed so the timer freezes at the last ticked value
-  // instead of dropping to 0.
   const elapsedSeconds = isStreaming
     ? liveElapsed
     : durationMs != null
       ? Math.max(0, Math.round(durationMs / 1000))
       : liveElapsed;
 
-  const statusWordPair = getStatusWordPair(statusWordSeed);
-  const statusLabel = isStreaming
-    ? `${statusWordPair.present}…`
-    : statusWordPair.past;
-  const toolCallLabel =
+  const statusLabel = isStreaming ? "Working" : "Worked";
+  const stepLabel =
     toolCallCount > 0
-      ? `${toolCallCount} tool call${toolCallCount !== 1 ? "s" : ""}`
+      ? `${toolCallCount} step${toolCallCount !== 1 ? "s" : ""}`
       : null;
 
   const desktopSegments: string[] = [];
@@ -135,8 +88,8 @@ export function ToolCallsSummaryBar({
     mobileSegments.push(elapsedLabel);
   }
 
-  if (toolCallLabel) {
-    desktopSegments.push(toolCallLabel);
+  if (stepLabel) {
+    desktopSegments.push(stepLabel);
   }
 
   if (changedFiles.length > 0) {
@@ -144,36 +97,29 @@ export function ToolCallsSummaryBar({
     desktopSegments.push(filesLabel);
   }
 
-  if (toolCallLabel) {
-    mobileSegments.push(toolCallLabel);
+  if (stepLabel) {
+    mobileSegments.push(stepLabel);
   }
 
   const fullSummary = [statusLabel, ...desktopSegments].join(" · ");
 
   return (
-    <div className="my-1.5 border border-transparent py-0.5">
+    <div className="my-1">
       <button
         type="button"
         onClick={onToggle}
+        aria-expanded={isExpanded}
         aria-label={fullSummary}
         title={fullSummary}
         className={cn(
-          "group flex w-full max-w-full items-center gap-2 rounded-md py-px text-left text-sm text-muted-foreground tabular-nums transition-colors hover:text-foreground sm:inline-flex sm:w-auto",
+          "group -mx-1.5 flex min-h-[25px] max-w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[12.5px] text-muted-foreground tabular-nums transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/40 hover:text-foreground sm:inline-flex",
           isStreaming && "text-foreground/90",
         )}
       >
-        <span className="flex size-3.5 shrink-0 items-center justify-center">
-          <span
-            className={cn(
-              "inline-block size-2 rounded-full",
-              isStreaming
-                ? "animate-pulse bg-muted-foreground"
-                : "bg-muted-foreground/50",
-            )}
-          />
-        </span>
         <span className="min-w-0 flex-1 overflow-hidden whitespace-nowrap leading-none sm:flex-none sm:overflow-visible sm:whitespace-normal">
-          {statusLabel}
+          <span className={isStreaming ? "shimmer" : undefined}>
+            {statusLabel}
+          </span>
           {mobileSegments.length > 0 && (
             <span className="inline-block max-w-full truncate align-bottom sm:hidden">
               {renderSegments(mobileSegments)}
@@ -186,9 +132,10 @@ export function ToolCallsSummaryBar({
           )}
         </span>
         <ChevronRight
+          aria-hidden="true"
           className={cn(
-            "size-3 shrink-0 text-muted-foreground/50 transition-transform duration-200 ease-out motion-reduce:transition-none",
-            isExpanded && "rotate-90",
+            "size-2.5 shrink-0 text-muted-foreground/60 opacity-0 transition-[transform,opacity] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 group-focus-visible:opacity-100",
+            isExpanded && "rotate-90 opacity-100",
           )}
         />
       </button>
