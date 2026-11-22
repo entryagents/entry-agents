@@ -6711,28 +6711,24 @@ const runAgentStep = async (
       // Ignore lock release errors
     }
     clearInterval(billingHeartbeat);
-    try {
-      // Never throw billing/ledger errors out of finally: doing so bypasses
-      // runAgentStep's catch checkpoint and discards a completed responseMessage.
-      await Promise.allSettled(pendingDebits);
-    } finally {
-      // Always release process-local resources even when billing retries.
-      await mcpToolSet?.close();
-      stopMonitor.stop();
-      await stopMonitor.done;
-      if (usedSecretNames.size > 0) {
-        await import("@/lib/db/secrets")
-          .then((m) => m.recordUserSecretsUsed(userId, [...usedSecretNames]))
-          .catch(() => {});
-      }
-      if (triggeredPluginSlugs.size > 0) {
-        await import("@/lib/db/plugins")
-          .then((m) =>
-            m.recordUserPluginsTriggered(userId, [...triggeredPluginSlugs]),
-          )
-          .catch(() => {});
-      }
-    }
+    stopMonitor.stop();
+    await Promise.allSettled([
+      Promise.allSettled(pendingDebits),
+      mcpToolSet?.close(),
+      stopMonitor.done,
+      usedSecretNames.size > 0
+        ? import("@/lib/db/secrets")
+            .then((m) => m.recordUserSecretsUsed(userId, [...usedSecretNames]))
+            .catch(() => {})
+        : Promise.resolve(),
+      triggeredPluginSlugs.size > 0
+        ? import("@/lib/db/plugins")
+            .then((m) =>
+              m.recordUserPluginsTriggered(userId, [...triggeredPluginSlugs]),
+            )
+            .catch(() => {})
+        : Promise.resolve(),
+    ]);
   }
 };
 

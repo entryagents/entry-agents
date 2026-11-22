@@ -439,11 +439,7 @@ export function useSessionChatRuntime({
           }
 
           if (serverKnownStreaming === false && serverSnapshotData) {
-            if (
-              strategy === "soft" &&
-              (chatInstance.status === "submitted" ||
-                transport.hasActiveSendMessages())
-            ) {
+            if (strategy === "soft" && chatInstance.status === "submitted") {
               return;
             }
             if (

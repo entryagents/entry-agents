@@ -158,14 +158,17 @@ export function useStreamRecovery({
         }
 
         if (!serverChat?.isStreaming) {
-          // Never interrupt a local POST /api/chat request that is still
-          // persisting the user message / claiming activeStreamId.
+          // Only protect the initial POST /api/chat handshake while status is
+          // "submitted" (before activeStreamId is claimed in DB). Never block
+          // reconciliation once status is "streaming", because hasActiveSendMessages()
+          // stays true for the entire SSE stream lifetime and would otherwise
+          // keep a backgrounded tab stuck on stale buffered chunks forever.
           if (
-            hasActiveSendMessages?.() ||
-            (status === "submitted" &&
-              inFlightStartedAtRef.current !== null &&
-              Date.now() - inFlightStartedAtRef.current <
-                SUBMITTED_PROBE_GRACE_MS)
+            status === "submitted" &&
+            (hasActiveSendMessages?.() ||
+              (inFlightStartedAtRef.current !== null &&
+                Date.now() - inFlightStartedAtRef.current <
+                  SUBMITTED_PROBE_GRACE_MS))
           ) {
             return;
           }
@@ -248,13 +251,43 @@ export function useStreamRecovery({
   }, [isChatInFlight, chatId]);
 
   // Recover from transient connection drops when the tab regains visibility
-  // or the network comes back. Visibility/focus events pass
-  // isVisibilityRecovery so the policy also probes when the chat appears idle
-  // (the browser may have silently killed the connection while backgrounded).
+  // or the network comes back. If the tab was backgrounded for >= 30s (or
+  // restored from bfcache), force an immediate reconnect/reconcile so Chrome's
+  // buffered SSE chunks can never keep the UI stuck on stale progress.
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === "visible") {
+    const LONG_BACKGROUND_THRESHOLD_MS = 30_000;
+    let hiddenAt: number | null =
+      document.visibilityState === "hidden" ? Date.now() : null;
+
+    const triggerLongBackgroundRecovery = () => {
+      lastStreamRecoveryAtRef.current = 0;
+      hasAutoRetriedCurrentErrorRef.current = false;
+      if (isChatInFlight && !isChatStoppedByUser(chatId)) {
+        retryChatStream({ auto: true, strategy: "reconnect" });
+      } else {
         maybeRecoverStreamOnVisibility();
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+        return;
+      }
+      if (document.visibilityState === "visible") {
+        const hiddenDurationMs = hiddenAt !== null ? Date.now() - hiddenAt : 0;
+        hiddenAt = null;
+        if (hiddenDurationMs >= LONG_BACKGROUND_THRESHOLD_MS) {
+          triggerLongBackgroundRecovery();
+          return;
+        }
+        maybeRecoverStreamOnVisibility();
+      }
+    };
+
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) {
+        triggerLongBackgroundRecovery();
       }
     };
 
@@ -270,6 +303,7 @@ export function useStreamRecovery({
     };
 
     document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("pageshow", onPageShow);
     window.addEventListener("focus", onFocus);
     window.addEventListener("online", onOnline);
 
@@ -288,11 +322,18 @@ export function useStreamRecovery({
 
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("pageshow", onPageShow);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("online", onOnline);
       window.clearInterval(recoveryPoll);
     };
-  }, [maybeRecoverStreamOnPoll, maybeRecoverStreamOnVisibility]);
+  }, [
+    chatId,
+    isChatInFlight,
+    maybeRecoverStreamOnPoll,
+    maybeRecoverStreamOnVisibility,
+    retryChatStream,
+  ]);
 
   useEffect(() => {
     const isDocumentVisible =
