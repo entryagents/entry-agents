@@ -369,7 +369,7 @@ export function SessionHeader() {
               >
                 <PanelRight size={16} strokeWidth={1.6} aria-hidden="true" />
                 {!gitPanelOpen && hasActionNeeded && (
-                  <span className="topbar-dot bg-amber-500" />
+                  <span className="topbar-dot bg-foreground" />
                 )}
                 {!gitPanelOpen && !hasActionNeeded && hasCommittedChanges && (
                   <span className="topbar-dot bg-blue-500" />

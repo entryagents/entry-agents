@@ -22,7 +22,7 @@
   --ink-3: var(--text-3);
   --surface: var(--sheet);
   --surface-2: var(--fill-2);
-  --amber: oklch(0.68 0.14 78);
+  --amber: var(--text);
   --red: oklch(0.58 0.2 24);
   --green: oklch(0.58 0.16 150);
   --blue: oklch(0.56 0.15 245);
@@ -111,7 +111,7 @@
   --ink-3: var(--text-3);
   --surface: var(--sheet);
   --surface-2: var(--fill-2);
-  --amber: oklch(0.84 0.135 82);
+  --amber: var(--text);
   --red: oklch(0.71 0.175 24);
   --green: oklch(0.8 0.15 150);
   --blue: oklch(0.75 0.14 245);
