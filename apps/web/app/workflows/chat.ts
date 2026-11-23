@@ -2880,6 +2880,16 @@ export async function runAgentWorkflow(options: Options) {
       typeof agentOptions.model === "object" && agentOptions.model !== null
         ? agentOptions.model
         : undefined;
+    const activeModelKey = (modelId ?? selectedModelId ?? "").toLowerCase();
+    const catalogModelMeta = activeModelKey
+      ? modelCostCatalog.find(
+          (m) =>
+            m.id.toLowerCase() === activeModelKey ||
+            m.id.toLowerCase().endsWith(`/${activeModelKey}`),
+        )
+      : undefined;
+    const resolvedContextWindow =
+      modelMeta?.contextWindow ?? catalogModelMeta?.context_window;
     let lastKnownInputTokens: number | undefined;
     const turnStartedAt = options.turnStartedAt ?? Date.now();
     const segmentStartedAt = Date.now();
@@ -2936,7 +2946,7 @@ export async function runAgentWorkflow(options: Options) {
       }
       let result: Awaited<ReturnType<typeof runAgentStep>>;
 
-      const effectiveContextWindow = modelMeta?.contextWindow ?? 200_000;
+      const effectiveContextWindow = resolvedContextWindow ?? 200_000;
       const effectiveCompactionThreshold =
         modelMeta?.compactionThreshold ?? 0.8;
       const compactionTriggerTokens = Math.floor(
@@ -2954,8 +2964,8 @@ export async function runAgentWorkflow(options: Options) {
           withoutUndefined({
             messages: withoutUndefined(modelMessages),
             modelId,
-            ...(modelMeta?.contextWindow !== undefined
-              ? { contextWindowOverride: modelMeta.contextWindow }
+            ...(resolvedContextWindow !== undefined
+              ? { contextWindowOverride: resolvedContextWindow }
               : {}),
             ...(modelMeta?.compactionThreshold !== undefined
               ? { compactionThresholdOverride: modelMeta.compactionThreshold }
