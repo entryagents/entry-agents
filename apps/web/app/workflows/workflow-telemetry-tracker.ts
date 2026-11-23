@@ -8,6 +8,45 @@
 const EVENTS_PER_STEP = 3; // step_created + step_started + step_completed
 const RUN_LIFECYCLE_EVENTS = 3; // run_created + run_started + run_completed
 
+export type WorkflowStopCause =
+  | "stop"
+  | "completed"
+  | "segment_handoff"
+  | "approval_waiting"
+  | "loop_guard"
+  | "zero_progress"
+  | "identical_tool_loop"
+  | "credit_exhausted"
+  | "window_exhausted"
+  | "spend_capped"
+  | "max_steps"
+  | "aborted"
+  | "timed_out"
+  | "error";
+
+export function resolveWorkflowStopCause(params: {
+  explicitCause?: WorkflowStopCause | null;
+  wasAborted?: boolean;
+  wasTimedOut?: boolean;
+  creditExhausted?: boolean;
+  windowExhausted?: boolean;
+  turnSpendCapped?: boolean;
+  exhaustedMaxSteps?: boolean;
+  hasPendingApproval?: boolean;
+  finalFinishReason?: string | null;
+}): WorkflowStopCause {
+  if (params.explicitCause) return params.explicitCause;
+  if (params.wasAborted) return "aborted";
+  if (params.wasTimedOut) return "timed_out";
+  if (params.creditExhausted) return "credit_exhausted";
+  if (params.windowExhausted) return "window_exhausted";
+  if (params.turnSpendCapped) return "spend_capped";
+  if (params.hasPendingApproval) return "approval_waiting";
+  if (params.exhaustedMaxSteps) return "max_steps";
+  if (params.finalFinishReason === "stop") return "stop";
+  return "completed";
+}
+
 export interface WorkflowTelemetrySnapshot {
   workflowRunId: string;
   chatId: string;
@@ -22,7 +61,7 @@ export interface WorkflowTelemetrySnapshot {
   totalSerializedBytes: number;
   maxStepInputBytes: number;
   durationMs: number;
-  finishReason: string;
+  finishReason: WorkflowStopCause | string;
   stepCountsJson: Record<string, number>;
 }
 

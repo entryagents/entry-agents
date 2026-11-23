@@ -53,4 +53,51 @@ describe("WorkflowTelemetryTracker", () => {
       runAgentStep: 2,
     });
   });
+
+  test("resolveWorkflowStopCause replaces generic tool-calls with exact stop cause", async () => {
+    const { resolveWorkflowStopCause } =
+      await import("./workflow-telemetry-tracker");
+
+    expect(
+      resolveWorkflowStopCause({
+        explicitCause: "segment_handoff",
+        finalFinishReason: "tool-calls",
+      }),
+    ).toBe("segment_handoff");
+    expect(
+      resolveWorkflowStopCause({
+        explicitCause: "loop_guard",
+        finalFinishReason: "tool-calls",
+      }),
+    ).toBe("loop_guard");
+    expect(
+      resolveWorkflowStopCause({
+        explicitCause: "zero_progress",
+        finalFinishReason: "tool-calls",
+      }),
+    ).toBe("zero_progress");
+    expect(
+      resolveWorkflowStopCause({
+        hasPendingApproval: true,
+        finalFinishReason: "tool-calls",
+      }),
+    ).toBe("approval_waiting");
+    expect(
+      resolveWorkflowStopCause({
+        wasAborted: true,
+        finalFinishReason: "tool-calls",
+      }),
+    ).toBe("aborted");
+    expect(
+      resolveWorkflowStopCause({
+        wasTimedOut: true,
+        finalFinishReason: "tool-calls",
+      }),
+    ).toBe("timed_out");
+    expect(
+      resolveWorkflowStopCause({
+        finalFinishReason: "stop",
+      }),
+    ).toBe("stop");
+  });
 });
