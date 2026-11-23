@@ -46,7 +46,11 @@ import {
   prepareStepChecksStep,
   prepareTurnBootstrapStep,
 } from "./chat-batch-steps";
-import { WorkflowTelemetryTracker } from "./workflow-telemetry-tracker";
+import {
+  resolveWorkflowStopCause,
+  type WorkflowStopCause,
+  WorkflowTelemetryTracker,
+} from "./workflow-telemetry-tracker";
 import {
   applySpendToBudgets,
   buildSubagentBillingReference,
@@ -2905,6 +2909,7 @@ export async function runAgentWorkflow(options: Options) {
     const loopGuard = new TurnLoopGuard();
     let consecutiveStepRecoveries = 0;
     let consecutiveZeroProgressToolSteps = 0;
+    let explicitStopCause: WorkflowStopCause | null = null;
 
     for (
       let step = 0;
@@ -3148,6 +3153,7 @@ export async function runAgentWorkflow(options: Options) {
               )
             ] ?? 5;
           consecutiveStepRecoveries++;
+          telemetry.recordRetryRecovery();
           console.warn(
             `[chat-workflow] Recoverable step error (${errorCategory}) on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${MAX_CONSECUTIVE_STEP_RECOVERIES})`,
           );
@@ -3272,6 +3278,7 @@ export async function runAgentWorkflow(options: Options) {
               )
             ] ?? 5;
           consecutiveStepRecoveries++;
+          telemetry.recordRetryRecovery();
           console.warn(
             `[chat-workflow] Mid-stream recoverable error${recoveryAction ? ` (${recoveryAction})` : ""} on step ${step + 1} for chat ${options.chatId}; sleeping ${backoffSeconds}s before retry (${consecutiveStepRecoveries}/${MAX_CONSECUTIVE_STEP_RECOVERIES})`,
           );
@@ -3416,6 +3423,7 @@ export async function runAgentWorkflow(options: Options) {
           console.warn(
             `[chat-workflow] Detected ${consecutiveZeroProgressToolSteps} consecutive tool-calls steps with zero persisted tool results for chat ${options.chatId}. Breaking loop to prevent amnesia repetition.`,
           );
+          explicitStopCause = "zero_progress";
           break;
         }
       } else {
@@ -3469,6 +3477,7 @@ export async function runAgentWorkflow(options: Options) {
         console.warn(
           `[chat-workflow] Loop guard breaking runaway turn for chat ${options.chatId}: ${guardDecision.reason}`,
         );
+        explicitStopCause = "loop_guard";
         break;
       }
 
@@ -3851,18 +3860,25 @@ export async function runAgentWorkflow(options: Options) {
     ]);
 
     telemetry.recordStep("reconcileSessionStatusStep");
+    const hasPendingApproval = pendingAssistantResponse.parts.some(
+      (part) => isToolUIPart(part) && part.state === "approval-requested",
+    );
     await reconcileSessionStatusStep(
       options.sessionId,
       "completed",
       telemetry.snapshot({
         modelId: modelId ?? selectedModelId ?? null,
-        finishReason: wasAborted
-          ? "aborted"
-          : wasTimedOut
-            ? "timed_out"
-            : turnSpendCapped
-              ? "spend_capped"
-              : (finalFinishReason ?? "completed"),
+        finishReason: resolveWorkflowStopCause({
+          explicitCause: explicitStopCause,
+          wasAborted,
+          wasTimedOut,
+          creditExhausted,
+          windowExhausted,
+          turnSpendCapped,
+          exhaustedMaxSteps,
+          hasPendingApproval,
+          finalFinishReason,
+        }),
       }),
     ).catch((err) => {
       console.warn(
