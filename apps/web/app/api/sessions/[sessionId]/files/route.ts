@@ -109,17 +109,16 @@ export async function GET(_req: Request, context: RouteContext) {
     const sandbox = await connectSandbox(sandboxState);
     const cwd = sandbox.workingDirectory;
 
-    // Run git commands sequentially; some sandbox backends are not reliable
-    // with concurrent command streams after reconnect.
-    const trackedResult = await sandbox.exec("git ls-files", cwd, 30000);
-    const untrackedResult = await sandbox.exec(
-      "git ls-files --others --exclude-standard",
+    // Single git ls-files invocation returns both tracked and untracked files
+    // in one sandbox RPC round-trip instead of two sequential execs.
+    const filesResult = await sandbox.exec(
+      "git ls-files --cached --others --exclude-standard",
       cwd,
       30000,
     );
 
-    if (!trackedResult.success) {
-      const stderr = trackedResult.stderr ?? "";
+    if (!filesResult.success) {
+      const stderr = filesResult.stderr ?? "";
       if (isSandboxUnavailableError(stderr)) {
         await updateSession(sessionId, {
           sandboxState: clearUnavailableSandboxState(
@@ -133,41 +132,14 @@ export async function GET(_req: Request, context: RouteContext) {
           { status: 409 },
         );
       }
-      console.error("Git ls-files failed:", trackedResult.stderr);
+      console.error("Git ls-files failed:", filesResult.stderr);
       return Response.json(
         { error: "Failed to list files. Ensure this is a git repository." },
         { status: 400 },
       );
     }
 
-    if (!untrackedResult.success) {
-      const stderr = untrackedResult.stderr ?? "";
-      if (isSandboxUnavailableError(stderr)) {
-        await updateSession(sessionId, {
-          sandboxState: clearUnavailableSandboxState(
-            sessionRecord.sandboxState,
-            stderr,
-          ),
-          ...buildHibernatedLifecycleUpdate(),
-        });
-        return Response.json(
-          { error: "Sandbox is unavailable. Please resume sandbox." },
-          { status: 409 },
-        );
-      }
-    }
-
-    // Combine tracked and untracked files
-    const trackedFiles = trackedResult.stdout.trim();
-    const untrackedFiles = untrackedResult.success
-      ? untrackedResult.stdout.trim()
-      : "";
-
-    const combinedOutput = [trackedFiles, untrackedFiles]
-      .filter(Boolean)
-      .join("\n");
-
-    const files = parseGitFiles(combinedOutput);
+    const files = parseGitFiles(filesResult.stdout);
 
     // Keep a high upper bound to avoid huge payloads on very large repos.
     const limitedFiles = files.slice(0, MAX_FILE_SUGGESTIONS);

@@ -11,20 +11,21 @@ interface ImageAttachmentItemProps {
 
 function ImageAttachmentItem({ image, onRemove }: ImageAttachmentItemProps) {
   return (
-    <div className="group relative flex-shrink-0">
+    <div className="group relative size-[52px] shrink-0">
       {/* eslint-disable-next-line @next/next/no-img-element -- Data URLs not supported by next/image */}
       <img
         src={image.dataUrl}
         alt={image.filename ?? "Attached image"}
-        className="h-16 w-16 rounded-lg object-cover"
+        className="size-full rounded-[10px] object-cover ring-1 ring-border/70"
+        draggable={false}
       />
       <button
         type="button"
         onClick={onRemove}
-        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-700 text-neutral-300 opacity-0 transition-opacity hover:bg-neutral-600 group-hover:opacity-100"
+        className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-foreground/85 text-background opacity-0 transition-opacity hover:bg-foreground focus-visible:opacity-100 group-hover:opacity-100"
         aria-label="Remove image"
       >
-        <X className="h-3 w-3" />
+        <X className="size-2.5" strokeWidth={2} />
       </button>
     </div>
   );
@@ -44,7 +45,12 @@ export function ImageAttachmentsPreview({
   if (images.length === 0) return null;
 
   return (
-    <div className={cn("flex gap-2 overflow-x-auto px-3 pb-2 pt-3", className)}>
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-1.5 px-2.5 pb-2 pt-1.5",
+        className,
+      )}
+    >
       {images.map((image) => (
         <ImageAttachmentItem
           key={image.id}

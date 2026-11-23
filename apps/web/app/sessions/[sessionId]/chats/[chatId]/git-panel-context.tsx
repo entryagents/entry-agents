@@ -4,14 +4,12 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useState,
   useMemo,
   useRef,
   type ReactNode,
   type RefObject,
 } from "react";
-import { useParams } from "next/navigation";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export type GitPanelTab =
@@ -164,8 +162,6 @@ const GitPanelContext = createContext<GitPanelContextValue | undefined>(
 
 export function GitPanelProvider({ children }: { children: ReactNode }) {
   const isMobile = useIsMobile();
-  const params = useParams<{ sessionId?: string }>();
-  const sessionId = params?.sessionId ?? "";
 
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
   const [isWorkspaceExpanded, setIsWorkspaceExpanded] = useState(false);
@@ -187,67 +183,10 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
   const [changesCount, setChangesCount] = useState(0);
   const [hasCommittedChanges, setHasCommittedChanges] = useState(false);
 
-  // Dynamic open files in agent tabs (independent of workspace)
-  const [agentOpenFiles, setAgentOpenFiles] = useState<string[]>(() => {
-    if (typeof window === "undefined" || !sessionId) return [];
-    try {
-      const stored = localStorage.getItem(
-        `entry:agent-open-files:${sessionId}`,
-      );
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(
-            (item): item is string => typeof item === "string",
-          );
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return [];
-  });
-
-  const [focusedFilePath, setFocusedFilePath] = useState<string | null>(() => {
-    if (typeof window === "undefined" || !sessionId) return null;
-    try {
-      return (
-        localStorage.getItem(`entry:agent-focused-file:${sessionId}`) || null
-      );
-    } catch {
-      return null;
-    }
-  });
-
-  // Sync agentOpenFiles to localStorage
-  useEffect(() => {
-    if (typeof window === "undefined" || !sessionId) return;
-    try {
-      localStorage.setItem(
-        `entry:agent-open-files:${sessionId}`,
-        JSON.stringify(agentOpenFiles),
-      );
-    } catch {
-      // ignore
-    }
-  }, [sessionId, agentOpenFiles]);
-
-  // Sync focusedFilePath to localStorage
-  useEffect(() => {
-    if (typeof window === "undefined" || !sessionId) return;
-    try {
-      if (focusedFilePath) {
-        localStorage.setItem(
-          `entry:agent-focused-file:${sessionId}`,
-          focusedFilePath,
-        );
-      } else {
-        localStorage.removeItem(`entry:agent-focused-file:${sessionId}`);
-      }
-    } catch {
-      // ignore
-    }
-  }, [sessionId, focusedFilePath]);
+  // Always start with all files closed when opening a workspace so entry is fast
+  // and no stale files are eagerly fetched or left open from previous visits.
+  const [agentOpenFiles, setAgentOpenFiles] = useState<string[]>([]);
+  const [focusedFilePath, setFocusedFilePath] = useState<string | null>(null);
 
   const [fileTabDismissed, setFileTabDismissed] = useState(false);
   const [shareRequested, setShareRequested] = useState(false);
