@@ -5,10 +5,6 @@ import { Folder, GitBranch, PanelLeft, PanelRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useSessionLayout } from "@/app/sessions/[sessionId]/session-layout-context";
-import {
-  ProviderIcon,
-  getProviderFromModelId,
-} from "@/components/provider-icons";
 import { useSidebar } from "@/components/ui/sidebar";
 import {
   Tooltip,
@@ -125,11 +121,8 @@ export function SessionHeader() {
     changesCount,
     hasCommittedChanges,
     headerActionsRef,
-    headerModelId,
   } = useGitPanel();
   const { session, renameSessionTitle } = useSessionLayout();
-
-  const providerId = headerModelId ? getProviderFromModelId(headerModelId) : "";
 
   const openGitPanel = useCallback(() => {
     const defaultTab = session.prNumber
@@ -195,14 +188,6 @@ export function SessionHeader() {
       </Tooltip>
 
       <div className="topbar-title">
-        {providerId && (
-          <ProviderIcon
-            provider={providerId}
-            className="hidden sm:block size-[15px] shrink-0 text-muted-foreground"
-            aria-hidden="true"
-          />
-        )}
-
         <TitleName
           key={session.id}
           sessionId={session.id}

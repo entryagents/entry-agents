@@ -3578,15 +3578,19 @@ export function SessionChatContent({
                           }
                           isAwaitingInput={
                             hasPendingQuestion ||
-                            renderMessages.some(
-                              (msg) =>
-                                msg.role === "assistant" &&
-                                msg.parts.some(
+                            (() => {
+                              const latest =
+                                renderMessages[renderMessages.length - 1];
+                              return Boolean(
+                                latest &&
+                                latest.role === "assistant" &&
+                                latest.parts.some(
                                   (part) =>
                                     isToolUIPart(part) &&
                                     part.state === "approval-requested",
                                 ),
-                            )
+                              );
+                            })()
                           }
                           onSwitchModel={handleModelChange}
                         />
