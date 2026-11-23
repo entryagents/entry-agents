@@ -24,26 +24,30 @@ function TextAttachmentChip({
   onRemove,
   onPreview,
 }: TextAttachmentChipProps) {
-  const meta = `${attachment.lineCount} lines · ${formatByteSize(attachment.byteSize)}`;
+  const meta = `${attachment.lineCount} lines`;
 
   return (
-    <div className="group relative min-w-0 max-w-full p-1">
+    <div className="group relative shrink-0 max-w-[260px]">
       <button
         type="button"
         onClick={onPreview}
+        title={`${attachment.filename} (${attachment.lineCount} lines · ${formatByteSize(attachment.byteSize)})`}
         className={cn(
-          "flex max-w-full items-center gap-2 rounded-lg border border-border/60 bg-muted/60 px-3 py-2",
-          "text-left font-mono text-sm leading-tight text-foreground",
-          "transition-colors hover:border-foreground/20 hover:bg-muted",
+          "flex h-[30px] max-w-[260px] items-center gap-1.5 rounded-full bg-muted/80 pl-2.5 pr-3",
+          "text-left text-[12.5px] leading-none text-foreground",
+          "transition-colors hover:bg-muted",
         )}
       >
-        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate">{attachment.filename}</span>
-          <span className="truncate text-[11px] text-muted-foreground">
-            {meta}
-          </span>
-        </div>
+        <FileText
+          className="size-3.5 shrink-0 text-muted-foreground"
+          strokeWidth={1.6}
+        />
+        <span className="min-w-0 truncate font-medium">
+          {attachment.filename}
+        </span>
+        <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+          {meta}
+        </span>
       </button>
       <button
         type="button"
@@ -51,10 +55,10 @@ function TextAttachmentChip({
           e.stopPropagation();
           onRemove();
         }}
-        className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-700 text-neutral-300 opacity-0 transition-opacity hover:bg-neutral-600 group-hover:opacity-100"
-        aria-label="Remove text attachment"
+        className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-foreground/85 text-background opacity-0 transition-opacity hover:bg-foreground focus-visible:opacity-100 group-hover:opacity-100"
+        aria-label={`Remove ${attachment.filename}`}
       >
-        <X className="h-3 w-3" />
+        <X className="size-2.5" strokeWidth={2} />
       </button>
     </div>
   );

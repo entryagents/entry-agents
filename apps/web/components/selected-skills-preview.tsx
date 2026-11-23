@@ -76,30 +76,28 @@ function SelectedSkillChip({
   const kindLabel = getSkillKindLabel(skill);
 
   return (
-    <div className="group relative min-w-0 max-w-full p-1">
+    <div className="group relative shrink-0 max-w-[260px]">
       <button
         type="button"
         onClick={onPreview}
+        title={
+          skill.description
+            ? `/${skill.name} — ${skill.description}`
+            : `/${skill.name}`
+        }
         className={cn(
-          "flex max-w-[260px] items-center gap-2 rounded-lg border border-border/60 bg-muted/60 px-3 py-2",
-          "text-left leading-tight text-foreground",
-          "transition-colors duration-150 hover:border-foreground/20 hover:bg-muted",
+          "flex h-[30px] max-w-[260px] items-center gap-1.5 rounded-full bg-muted/80 pl-2.5 pr-3",
+          "text-left text-[12.5px] leading-none text-foreground",
+          "transition-colors duration-150 hover:bg-muted",
         )}
       >
         <SkillSourceIcon source={skill.source} name={skill.name} />
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate font-mono text-xs font-medium">
-              /{skill.name}
-            </span>
-            <span className="shrink-0 rounded border border-border/70 bg-background/70 px-1 py-0 font-mono text-[10px] text-muted-foreground">
-              {kindLabel}
-            </span>
-          </div>
-          <span className="truncate text-[11px] text-muted-foreground">
-            {skill.description}
-          </span>
-        </div>
+        <span className="min-w-0 truncate font-mono text-[12px] font-medium">
+          /{skill.name}
+        </span>
+        <span className="shrink-0 text-[11px] text-muted-foreground">
+          {kindLabel}
+        </span>
       </button>
       <button
         type="button"
@@ -107,10 +105,10 @@ function SelectedSkillChip({
           e.stopPropagation();
           onRemove();
         }}
-        className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-neutral-700 text-neutral-300 opacity-0 transition-opacity hover:bg-neutral-600 focus-visible:opacity-100 group-hover:opacity-100"
+        className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-foreground/85 text-background opacity-0 transition-opacity hover:bg-foreground focus-visible:opacity-100 group-hover:opacity-100"
         aria-label={`Remove /${skill.name}`}
       >
-        <X className="h-3 w-3" strokeWidth={1.5} />
+        <X className="size-2.5" strokeWidth={2} />
       </button>
     </div>
   );

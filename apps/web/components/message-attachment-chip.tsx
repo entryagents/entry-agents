@@ -31,7 +31,7 @@ export function MessageAttachmentChip({
         type="button"
         onClick={() => setIsOpen(true)}
         className={cn(
-          "group relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-border/60 bg-muted transition-opacity hover:opacity-90",
+          "group relative size-[52px] flex-shrink-0 overflow-hidden rounded-[10px] ring-1 ring-border/70 bg-muted transition-opacity hover:opacity-90",
           className,
         )}
         aria-label={`Open ${filename ?? "attached image"} full size`}
