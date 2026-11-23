@@ -22,6 +22,7 @@ export interface UserPreferencesData {
   autoCommitPush: boolean;
   autoCreatePr: boolean;
   defaultPermissionMode: "ask" | "autoAccept" | "fullAccess";
+  compactionThreshold?: number;
   alertsEnabled: boolean;
   alertSoundEnabled: boolean;
   publicUsageEnabled: boolean;
@@ -38,6 +39,7 @@ const DEFAULT_PREFERENCES: UserPreferencesData = {
   autoCommitPush: false,
   autoCreatePr: false,
   defaultPermissionMode: "ask",
+  compactionThreshold: 95,
   alertsEnabled: true,
   alertSoundEnabled: true,
   publicUsageEnabled: false,
@@ -94,7 +96,7 @@ export function toUserPreferencesData(
     | "guidedFrontendWorkflowEnabled"
     | "globalSkillRefs"
     | "enabledModelIds"
-  >,
+  > & { compactionThreshold?: number },
 ): UserPreferencesData {
   return {
     defaultModelId: row?.defaultModelId ?? DEFAULT_PREFERENCES.defaultModelId,
@@ -105,6 +107,8 @@ export function toUserPreferencesData(
     autoCreatePr: row?.autoCreatePr ?? DEFAULT_PREFERENCES.autoCreatePr,
     defaultPermissionMode:
       row?.defaultPermissionMode ?? DEFAULT_PREFERENCES.defaultPermissionMode,
+    compactionThreshold:
+      row?.compactionThreshold ?? DEFAULT_PREFERENCES.compactionThreshold,
     alertsEnabled: row?.alertsEnabled ?? DEFAULT_PREFERENCES.alertsEnabled,
     alertSoundEnabled:
       row?.alertSoundEnabled ?? DEFAULT_PREFERENCES.alertSoundEnabled,
@@ -178,6 +182,8 @@ export async function updateUserPreferences(
       defaultPermissionMode:
         updates.defaultPermissionMode ??
         DEFAULT_PREFERENCES.defaultPermissionMode,
+      compactionThreshold:
+        updates.compactionThreshold ?? DEFAULT_PREFERENCES.compactionThreshold,
       alertsEnabled: updates.alertsEnabled ?? DEFAULT_PREFERENCES.alertsEnabled,
       alertSoundEnabled:
         updates.alertSoundEnabled ?? DEFAULT_PREFERENCES.alertSoundEnabled,

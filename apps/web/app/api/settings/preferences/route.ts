@@ -20,6 +20,7 @@ interface UpdatePreferencesRequest {
   autoCommitPush?: boolean;
   autoCreatePr?: boolean;
   defaultPermissionMode?: "ask" | "autoAccept" | "fullAccess";
+  compactionThreshold?: number;
   alertsEnabled?: boolean;
   alertSoundEnabled?: boolean;
   publicUsageEnabled?: boolean;
@@ -140,6 +141,16 @@ export async function PATCH(req: Request) {
   }
   if (body.defaultPermissionMode !== undefined) {
     updates.defaultPermissionMode = body.defaultPermissionMode;
+  }
+  if (body.compactionThreshold !== undefined) {
+    const raw = Number(body.compactionThreshold);
+    if (!Number.isInteger(raw) || raw < 5 || raw > 98) {
+      return Response.json(
+        { error: "compactionThreshold must be an integer between 5 and 98" },
+        { status: 400 },
+      );
+    }
+    updates.compactionThreshold = raw;
   }
 
   if (

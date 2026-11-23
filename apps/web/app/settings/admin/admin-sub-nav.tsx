@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   Cpu,
   CreditCard,
   Gauge,
@@ -20,6 +21,12 @@ const ADMIN_TABS = [
     label: "Overview",
     href: "/settings/admin",
     icon: ShieldAlert,
+  },
+  {
+    id: "workflows",
+    label: "Workflows",
+    href: "/settings/admin/workflows",
+    icon: Activity,
   },
   {
     id: "subscriptions",

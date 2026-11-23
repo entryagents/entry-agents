@@ -20,6 +20,7 @@ describe("toUserPreferencesData", () => {
       autoCommitPush: false,
       autoCreatePr: false,
       defaultPermissionMode: "ask",
+      compactionThreshold: 95,
       alertsEnabled: true,
       alertSoundEnabled: true,
       publicUsageEnabled: false,
