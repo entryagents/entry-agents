@@ -74,6 +74,9 @@ async function bootstrapWorkspace(
   options?: ConnectOptions,
 ): Promise<void> {
   if (options?.skipGitWorkspaceBootstrap) {
+    await sandbox
+      .exec(buildToolchainBootstrapScript(), BOXD_WORKING_DIRECTORY, 60_000)
+      .catch(() => undefined);
     return;
   }
 

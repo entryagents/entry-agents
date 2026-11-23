@@ -100,7 +100,12 @@ export function detectSecretExfiltrationAttempt(
       secret.allowedHosts.length > 0 &&
       nameRef.test(command)
     ) {
-      return `Secret "${secret.name}" is locked to (${secret.allowedHosts.join(", ")}) and cannot be accessed inside shell commands. Use web_fetch with {{SECRET:${secret.name}}} targeting an allowed URL instead.`;
+      const isGithubHost = secret.allowedHosts.some((host) =>
+        /(?:^|\.)github\.com$/i.test(host.trim()),
+      );
+      return isGithubHost
+        ? `Secret "${secret.name}" is locked to (${secret.allowedHosts.join(", ")}) and cannot be accessed directly inside raw bash commands. Use github_cli (action "api" or "cli") which automatically uses your GitHub credentials, or web_fetch with {{SECRET:${secret.name}}} targeting an allowed URL.`
+        : `Secret "${secret.name}" is locked to (${secret.allowedHosts.join(", ")}) and cannot be accessed inside shell commands. Use web_fetch with {{SECRET:${secret.name}}} targeting an allowed URL instead.`;
     }
   }
 

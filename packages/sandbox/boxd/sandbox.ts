@@ -93,7 +93,11 @@ export class BoxdSandbox implements Sandbox {
   private commandEnv(): Record<string, string> | undefined {
     let env = this.env;
     if (this.githubToken) {
-      env = { ...env, GITHUB_TOKEN: this.githubToken };
+      env = {
+        ...env,
+        GH_TOKEN: this.githubToken,
+        GITHUB_TOKEN: this.githubToken,
+      };
     }
     if (this.vercelToken) {
       env = { ...env, VERCEL_TOKEN: this.vercelToken };

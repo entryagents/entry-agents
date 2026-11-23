@@ -97,18 +97,14 @@ export function githubCliTool() {
 
       const { github } = experimental_context;
 
-      // Per-action gating, NOT a blanket "no repo" refusal. The toolset
-      // only exists when the user's GitHub account is connected (apps/web
-      // builds the context from account connectivity, not from this
-      // session's repo), so `api` works account-wide: absolute paths like
-      // "/user" or "/repos/{owner}/{repo}/..." resolve as-is, while
-      // repo-relative paths still need a linked repository to expand.
-      // commit_and_push and cli inherently need one, so they stay gated.
+      // Per-action gating: both `api` (with absolute paths like "/user") and
+      // `cli` (e.g. "repo list", "pr view 12 -R owner/repo", "api /user") work
+      // account-wide even when no repository is connected to this chat.
+      // Only `commit_and_push` and repo-relative `api` paths require a linked repo.
       const requestPath = input.path ?? "";
       const needsRepo =
         input.action === "commit_and_push" ||
-        input.action === "cli" ||
-        !requestPath.startsWith("/");
+        (input.action === "api" && !requestPath.startsWith("/"));
       if (needsRepo && !github.hasRepo) {
         return {
           success: false,
