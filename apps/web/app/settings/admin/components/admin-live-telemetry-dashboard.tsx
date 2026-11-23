@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { AdminWorkflowSection } from "./admin-workflow-section";
 import type {
   AdminTelemetryPayload,
   AdminTelemetryWindow,
@@ -541,6 +542,7 @@ export function AdminLiveTelemetryDashboard() {
 
             {(section === "all" || section === "ops") && (
               <>
+                <AdminWorkflowSection windowParam={data.window} />
                 <IntegrationsAndPipelinePanel data={data} />
                 <CompactionSecretsBillingPanel data={data} />
               </>
