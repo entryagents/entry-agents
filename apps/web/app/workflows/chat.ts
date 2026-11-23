@@ -2664,7 +2664,8 @@ export async function runAgentWorkflow(options: Options) {
   // Vercel-Gateway-shaped cost metadata. Best-effort: if the gateway is
   // briefly unreachable, cost tracking degrades to undefined for this
   // turn rather than failing the whole chat request.
-  const modelCostCatalog = (await turnBootstrapPromise).modelCostCatalog;
+  const { modelCostCatalog, compactionThreshold: userCompactionThreshold } =
+    await turnBootstrapPromise;
 
   let pendingAssistantResponse: WebAgentUIMessage =
     latestMessage.role === "assistant"
@@ -2948,7 +2949,7 @@ export async function runAgentWorkflow(options: Options) {
 
       const effectiveContextWindow = resolvedContextWindow ?? 200_000;
       const effectiveCompactionThreshold =
-        modelMeta?.compactionThreshold ?? 0.95;
+        modelMeta?.compactionThreshold ?? userCompactionThreshold;
       const compactionTriggerTokens = Math.floor(
         effectiveContextWindow * effectiveCompactionThreshold,
       );
@@ -2967,9 +2968,7 @@ export async function runAgentWorkflow(options: Options) {
             ...(resolvedContextWindow !== undefined
               ? { contextWindowOverride: resolvedContextWindow }
               : {}),
-            ...(modelMeta?.compactionThreshold !== undefined
-              ? { compactionThresholdOverride: modelMeta.compactionThreshold }
-              : {}),
+            compactionThresholdOverride: effectiveCompactionThreshold,
             ...(lastKnownInputTokens !== undefined
               ? { lastKnownInputTokens }
               : {}),

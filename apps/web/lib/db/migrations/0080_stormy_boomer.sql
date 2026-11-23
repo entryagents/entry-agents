@@ -1,0 +1,1 @@
+ALTER TABLE "user_preferences" ADD COLUMN "compaction_threshold" integer DEFAULT 95 NOT NULL;

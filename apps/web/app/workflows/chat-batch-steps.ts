@@ -8,6 +8,8 @@ export interface TurnBootstrapResult {
   githubConnected: boolean;
   checkpoint: SerializableCompactionCheckpoint | null;
   modelCostCatalog: AvailableModel[];
+  /** Fraction in [0.05, 0.98], default 0.95. */
+  compactionThreshold: number;
 }
 
 export interface StepChecksResult {
@@ -104,11 +106,23 @@ export async function prepareTurnBootstrapStep(params: {
         }),
     ]);
 
+  const compactionThreshold = await import("@/lib/db/user-preferences")
+    .then(async ({ getUserPreferences }) => {
+      const prefs = await getUserPreferences(params.userId);
+      const pct = prefs?.compactionThreshold;
+      if (typeof pct === "number" && pct >= 5 && pct <= 98) {
+        return pct / 100;
+      }
+      return 0.95;
+    })
+    .catch(() => 0.95);
+
   return {
     vercelConnected,
     githubConnected,
     checkpoint,
     modelCostCatalog,
+    compactionThreshold,
   };
 }
 

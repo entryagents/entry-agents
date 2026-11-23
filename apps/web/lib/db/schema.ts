@@ -531,6 +531,7 @@ export const userPreferences = pgTable("user_preferences", {
   })
     .notNull()
     .default("ask"),
+  compactionThreshold: integer("compaction_threshold").notNull().default(95),
   alertsEnabled: boolean("alerts_enabled").notNull().default(true),
   alertSoundEnabled: boolean("alert_sound_enabled").notNull().default(true),
   publicUsageEnabled: boolean("public_usage_enabled").notNull().default(false),

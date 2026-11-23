@@ -1,36 +1,64 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-const STORAGE_KEY = "entry:compaction-threshold-pct";
 const MIN_PCT = 5;
 const MAX_PCT = 98;
 const DEFAULT_PCT = 95;
 
 export function CompactionThresholdSlider() {
   const [percent, setPercent] = useState<number>(DEFAULT_PCT);
+  const [saving, setSaving] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = Number.parseInt(saved, 10);
-        if (Number.isFinite(parsed) && parsed >= MIN_PCT && parsed <= MAX_PCT) {
-          setPercent(parsed);
+    let active = true;
+    fetch("/api/settings/preferences")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { compactionThreshold?: number } | null) => {
+        if (!active || !data) return;
+        const val = data.compactionThreshold;
+        if (typeof val === "number" && val >= MIN_PCT && val <= MAX_PCT) {
+          setPercent(val);
         }
-      }
-    } catch {
-      // ignore storage errors
-    }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const handleChange = (next: number) => {
-    const clamped = Math.min(MAX_PCT, Math.max(MIN_PCT, next));
-    setPercent(clamped);
+  const persist = async (next: number) => {
+    setSaving(true);
     try {
-      localStorage.setItem(STORAGE_KEY, String(clamped));
-    } catch {
-      // ignore storage errors
+      const res = await fetch("/api/settings/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ compactionThreshold: next }),
+      });
+      if (res.ok) {
+        setSavedNotice(true);
+        window.setTimeout(() => setSavedNotice(false), 1500);
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleChange = (next: number, immediate = false) => {
+    const clamped = Math.min(MAX_PCT, Math.max(MIN_PCT, Math.round(next)));
+    setPercent(clamped);
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (immediate) {
+      void persist(clamped);
+    } else {
+      saveTimerRef.current = setTimeout(() => {
+        void persist(clamped);
+      }, 250);
     }
   };
 
@@ -46,9 +74,14 @@ export function CompactionThresholdSlider() {
             reaches this percentage of the model&apos;s window. Default is 95%.
           </p>
         </div>
-        <span className="shrink-0 font-mono text-sm font-medium text-foreground tabular-nums">
-          {percent}%
-        </span>
+        <div className="flex shrink-0 items-center gap-2">
+          {savedNotice && (
+            <span className="text-[11px] text-muted-foreground">Saved</span>
+          )}
+          <span className="font-mono text-sm font-medium text-foreground tabular-nums">
+            {percent}%
+          </span>
+        </div>
       </div>
 
       <div className="space-y-1.5 pt-1">
@@ -58,15 +91,17 @@ export function CompactionThresholdSlider() {
           max={MAX_PCT}
           step={1}
           value={percent}
+          disabled={saving}
           aria-label="Context compaction threshold percentage"
           onChange={(e) => handleChange(Number.parseInt(e.target.value, 10))}
+          onPointerUp={() => handleChange(percent, true)}
           className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-foreground"
         />
         <div className="flex items-center justify-between text-[11px] text-muted-foreground tabular-nums">
           <span>{MIN_PCT}%</span>
           <button
             type="button"
-            onClick={() => handleChange(DEFAULT_PCT)}
+            onClick={() => handleChange(DEFAULT_PCT, true)}
             className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground"
           >
             Reset to {DEFAULT_PCT}%
