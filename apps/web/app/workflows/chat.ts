@@ -46,6 +46,7 @@ import {
   prepareStepChecksStep,
   prepareTurnBootstrapStep,
 } from "./chat-batch-steps";
+import { WorkflowTelemetryTracker } from "./workflow-telemetry-tracker";
 import {
   applySpendToBudgets,
   buildSubagentBillingReference,
@@ -2486,6 +2487,15 @@ export async function runAgentWorkflow(options: Options) {
   // Single composite startup step: fetches Vercel connected, GitHub connected,
   // compaction checkpoint, and model cost catalog in ONE `"use step"` call
   // (3 Workflow Events instead of 12).
+  const telemetry = new WorkflowTelemetryTracker({
+    workflowRunId,
+    chatId: options.chatId,
+    sessionId: options.sessionId,
+    userId: options.userId,
+    segmentIndex: options.stepOffset ?? 0,
+    startedAtMs: Date.now(),
+  });
+  telemetry.recordStep("prepareTurnBootstrapStep");
   const turnBootstrapPromise = prepareTurnBootstrapStep({
     userId: options.userId,
     chatId: options.chatId,
@@ -2893,6 +2903,7 @@ export async function runAgentWorkflow(options: Options) {
       // Single composite pre-step check: runs cancellation check, live permission
       // mode resolution, and unread inbox consumption in ONE `"use step"` call
       // (3 Workflow Events instead of 9 on every LLM step).
+      telemetry.recordStep("prepareStepChecksStep");
       const {
         isCancelled: isCancelledBeforeStep,
         permissionMode: livePermissionMode,
@@ -3034,6 +3045,7 @@ export async function runAgentWorkflow(options: Options) {
           modelRuntime.enforceCreditBlock,
           remainingWindowBudgetCents,
         ]);
+        telemetry.recordStep("runAgentStep", { isLlmStep: true });
         result = await runAgentStep(
           stepModelMessages,
           originalMessagesForStep,
@@ -3829,14 +3841,26 @@ export async function runAgentWorkflow(options: Options) {
         : []),
     ]);
 
-    await reconcileSessionStatusStep(options.sessionId, "completed").catch(
-      (err) => {
-        console.warn(
-          "[workflow] Best-effort reconcileSessionStatusStep failed after completion:",
-          err,
-        );
-      },
-    );
+    telemetry.recordStep("reconcileSessionStatusStep");
+    await reconcileSessionStatusStep(
+      options.sessionId,
+      "completed",
+      telemetry.snapshot({
+        modelId: modelId ?? selectedModelId ?? null,
+        finishReason: wasAborted
+          ? "aborted"
+          : wasTimedOut
+            ? "timed_out"
+            : turnSpendCapped
+              ? "spend_capped"
+              : (finalFinishReason ?? "completed"),
+      }),
+    ).catch((err) => {
+      console.warn(
+        "[workflow] Best-effort reconcileSessionStatusStep failed after completion:",
+        err,
+      );
+    });
 
     const canChainNextQueuedTurn =
       !wasAborted &&
