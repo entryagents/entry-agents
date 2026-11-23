@@ -43,6 +43,10 @@ import { addLanguageModelUsage } from "./usage-utils";
 import { enrichUsageWithProviderCache } from "@/lib/chat/usage-extract";
 import { estimateStepCost } from "./gateway-metadata";
 import {
+  prepareStepChecksStep,
+  prepareTurnBootstrapStep,
+} from "./chat-batch-steps";
+import {
   applySpendToBudgets,
   buildSubagentBillingReference,
   buildSubagentBudgetGuard,
@@ -66,7 +70,6 @@ import {
   closeStream,
   clearActiveStream,
   finalizeAbortedChatStep,
-  consumeUnreadInboxMessagesStep,
   releaseUserBillingTurnStep,
   reconcileSessionStatusStep,
   hasAutoCommitChangesStep,
@@ -116,7 +119,6 @@ import {
 import {
   buildFallbackCompactionSummary,
   compactAndCheckpointStep,
-  loadCompactionCheckpointStep,
   stripDanglingToolCalls,
 } from "./chat-compaction";
 import {
@@ -655,33 +657,7 @@ function appendTurnDirectiveToUserMessage(
 // change made mid-turn (while the agent is still working through tool
 // calls) takes effect on the very next step, not just on the next chat
 // message.
-async function resolveCurrentPermissionMode(params: {
-  userId: string;
-  sessionId: string;
-}): Promise<"ask" | "autoAccept" | "fullAccess"> {
-  "use step";
-
-  const [sessions, prefs] = await Promise.all([
-    import("@/lib/db/sessions"),
-    import("@/lib/db/user-preferences"),
-  ]);
-  const [sessionRecord, rawPreferences] = await Promise.all([
-    sessions.getSessionById(params.sessionId),
-    prefs.getUserPreferences(params.userId).catch((error) => {
-      console.error(
-        "Failed to load user preferences for live permission mode check:",
-        error,
-      );
-      return null;
-    }),
-  ]);
-
-  return (
-    sessionRecord?.permissionModeOverride ??
-    rawPreferences?.defaultPermissionMode ??
-    "ask"
-  );
-}
+// Live permission mode resolution is now consolidated inside prepareStepChecksStep.
 
 async function resolveChatModelRuntime(params: {
   userId: string;
@@ -1688,28 +1664,7 @@ async function performAgentCommitAndPush(params: {
  * (pricing-only, unfiltered, kill-switch-free), which is both cheaper
  * per turn and correct.
  */
-async function fetchModelCostCatalogStep(): Promise<AvailableModel[]> {
-  "use step";
-
-  const { fetchModelCostCatalog } = await import("@/lib/models-with-context");
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      const catalog = await fetchModelCostCatalog();
-      if (catalog.length > 0 || attempt === 3) {
-        return withoutUndefined(catalog);
-      }
-    } catch (error) {
-      lastError = error;
-      if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
-      }
-    }
-  }
-  throw lastError instanceof Error
-    ? lastError
-    : new Error("Failed to fetch model pricing catalog");
-}
+// Model cost catalog loading is now consolidated inside prepareTurnBootstrapStep.
 
 /**
  * Sandbox-dependent tool closures (commit/push, gh, vercel CLI) need a real
@@ -1950,23 +1905,7 @@ async function deleteSandboxStep(
   };
 }
 
-async function checkGithubConnectedStep(userId: string): Promise<boolean> {
-  "use step";
-
-  const { getUserOctokit } = await import("@/lib/github/client");
-  // A null Octokit means no usable GitHub token -- the same signal
-  // hasVercelAccountLinked gives for Vercel, and deliberately NOT a token
-  // refresh (better-auth refreshes from the stored (providerId, userId)
-  // refresh token; no request-scoped headers involved).
-  return (await getUserOctokit(userId)) !== null;
-}
-
-async function checkVercelConnectedStep(userId: string): Promise<boolean> {
-  "use step";
-
-  const { hasVercelAccountLinked } = await import("@/lib/vercel/token");
-  return hasVercelAccountLinked(userId);
-}
+// GitHub & Vercel connectivity checks are now consolidated inside prepareTurnBootstrapStep.
 
 /**
  * Runs one generic GitHub REST API call for the agent's `github_cli`
@@ -2544,25 +2483,20 @@ export async function runAgentWorkflow(options: Options) {
   // (performAgentCommitAndPush, performAgentGithubApiRequest,
   // performAgentVercelCli) already avoids this via dynamic import()
   // inside a "use step" function -- same fix here.
-  const vercelConnectedPromise = checkVercelConnectedStep(options.userId).catch(
-    () => false,
+  // Single composite startup step: fetches Vercel connected, GitHub connected,
+  // compaction checkpoint, and model cost catalog in ONE `"use step"` call
+  // (3 Workflow Events instead of 12).
+  const turnBootstrapPromise = prepareTurnBootstrapStep({
+    userId: options.userId,
+    chatId: options.chatId,
+  });
+  const vercelConnectedPromise = turnBootstrapPromise.then(
+    (b) => b.vercelConnected,
   );
-  // Account-level GitHub connectivity -- deliberately independent of
-  // whether this session has a repo linked. Owner request: the agent must
-  // be able to work with the user's GitHub (issues, PRs, reviews, anything
-  // via the api action) even in a chat with no connected repository.
-  // Best-effort: a failed lookup just hides the toolset rather than
-  // failing the turn.
-  const githubConnectedPromise = checkGithubConnectedStep(options.userId).catch(
-    () => false,
+  const githubConnectedPromise = turnBootstrapPromise.then(
+    (b) => b.githubConnected,
   );
-
-  // Fast path (the common case, no attachments): convert messages straight
-  // away, fully in parallel with sandbox resolution below. Only when there
-  // are image attachments do we need to wait on the sandbox first, since
-  // they get written into it before conversion (see
-  // extractPendingImageAttachments above).
-  const checkpointPromise = loadCompactionCheckpointStep(options.chatId);
+  const checkpointPromise = turnBootstrapPromise.then((b) => b.checkpoint);
   const modelMessagesPromise: Promise<ModelMessage[]> = (async () => {
     const checkpoint = await checkpointPromise;
     const effectiveMessages = resolvedMessages.filter(
@@ -2720,13 +2654,7 @@ export async function runAgentWorkflow(options: Options) {
   // Vercel-Gateway-shaped cost metadata. Best-effort: if the gateway is
   // briefly unreachable, cost tracking degrades to undefined for this
   // turn rather than failing the whole chat request.
-  const modelCostCatalog = await fetchModelCostCatalogStep().catch((error) => {
-    console.error(
-      "Failed to fetch entry-gateway model/pricing catalog for cost tracking:",
-      error,
-    );
-    return [];
-  });
+  const modelCostCatalog = (await turnBootstrapPromise).modelCostCatalog;
 
   let pendingAssistantResponse: WebAgentUIMessage =
     latestMessage.role === "assistant"
@@ -2962,22 +2890,22 @@ export async function runAgentWorkflow(options: Options) {
       options.maxSteps === undefined || stepOffset + step < options.maxSteps;
       step++
     ) {
-      // Run all three independent pre-step checks in parallel so Vercel Workflow
-      // dispatches them in a single turn instead of 3 sequential step round-trips.
-      const [
-        isCancelledBeforeStep,
-        livePermissionMode,
-        { messages: unreadInboxMessages },
-      ] = await Promise.all([
-        checkChatCancelledStep(options.chatId, workflowRunId),
-        options.agentOptions?.permissionMode
-          ? Promise.resolve(agentOptions.permissionMode)
-          : resolveCurrentPermissionMode({
-              userId: options.userId,
-              sessionId: options.sessionId,
-            }),
-        consumeUnreadInboxMessagesStep(options.chatId),
-      ]);
+      // Single composite pre-step check: runs cancellation check, live permission
+      // mode resolution, and unread inbox consumption in ONE `"use step"` call
+      // (3 Workflow Events instead of 9 on every LLM step).
+      const {
+        isCancelled: isCancelledBeforeStep,
+        permissionMode: livePermissionMode,
+        unreadInboxMessages,
+      } = await prepareStepChecksStep({
+        chatId: options.chatId,
+        workflowRunId,
+        userId: options.userId,
+        sessionId: options.sessionId,
+        overridePermissionMode: options.agentOptions?.permissionMode
+          ? agentOptions.permissionMode
+          : undefined,
+      });
 
       // Cooperative check: Stop if chat was cancelled in DB or superseded by a newer run
       if (isCancelledBeforeStep) {
