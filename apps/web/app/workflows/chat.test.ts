@@ -2052,21 +2052,21 @@ describe("runAgentWorkflow", () => {
 
   test("delivers steering inbox messages atomically once so they never trigger repeated inbox loops", async () => {
     let unreadCalls = 0;
-    spies.consumeUnreadInboxMessagesStep.mockImplementation(async () => {
-      unreadCalls += 1;
-      return {
-        messages:
-          unreadCalls === 1
-            ? [
-                {
-                  id: "m1",
-                  content: "Focus on TypeScript",
-                  createdAt: new Date().toISOString(),
-                },
-              ]
-            : [],
-      };
-    });
+    mock.module("@/lib/db/inbox", () => ({
+      getUnreadInboxMessages: async () => {
+        unreadCalls += 1;
+        return unreadCalls === 1
+          ? [
+              {
+                id: "m1",
+                content: "Focus on TypeScript",
+                createdAt: new Date(),
+              },
+            ]
+          : [];
+      },
+      markInboxMessagesRead: async () => {},
+    }));
 
     const seenMessagesPerStep: Array<Array<Record<string, unknown>>> = [];
     let callIndex = 0;
