@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ModelPreferencesSection } from "../preferences-section";
+import { CompactionThresholdSlider } from "./compaction-threshold-slider";
 
 export const metadata: Metadata = {
   title: "Models",
@@ -17,6 +18,7 @@ export default function ModelsPage() {
       </div>
 
       <ModelPreferencesSection />
+      <CompactionThresholdSlider />
     </div>
   );
 }
