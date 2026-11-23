@@ -1942,13 +1942,30 @@ async function performAgentGithubApiRequest(params: {
 }): Promise<GithubApiResult> {
   "use step";
 
-  const { getUserOctokit } = await import("@/lib/github/client");
+  const { getOctokit, getUserOctokit } = await import("@/lib/github/client");
 
-  const octokit = await getUserOctokit(params.userId);
+  let octokit = await getUserOctokit(params.userId);
+  if (!octokit) {
+    const { getDecryptedUserSecretsForExecution } =
+      await import("@/lib/db/secrets");
+    const { secrets } = await getDecryptedUserSecretsForExecution(
+      params.userId,
+    ).catch(() => ({ secrets: [] }));
+    const ghSecret = secrets.find(
+      (s) =>
+        s.allowedHosts?.some((h) => /(?:^|\.)github\.com$/i.test(h.trim())) ||
+        /^(?:GH_TOKEN|GITHUB_TOKEN|GITHUB_PAT)$/i.test(s.name),
+    );
+    if (ghSecret?.value) {
+      const res = await getOctokit(ghSecret.value);
+      octokit = res.octokit;
+    }
+  }
   if (!octokit) {
     return {
       success: false,
-      error: "No GitHub token available for this repository.",
+      error:
+        "No GitHub token available. Connect GitHub in Settings or add a GitHub API key locked to api.github.com.",
     };
   }
 
@@ -2235,8 +2252,8 @@ async function performAgentGithubCli(params: {
   userId: string;
   sandboxState: NonNullable<OpenAgentCallOptions["sandbox"]>["state"];
   workingDirectory: string;
-  repoOwner: string;
-  repoName: string;
+  repoOwner?: string;
+  repoName?: string;
   args: string;
 }): Promise<GithubRawCliResult> {
   "use step";
@@ -2246,18 +2263,7 @@ async function performAgentGithubCli(params: {
   const { verifyRepoAccess } = await import("@/lib/github/access");
   const { mintInstallationToken, revokeInstallationToken } =
     await import("@/lib/github/app");
-
-  const access = await verifyRepoAccess({
-    userId: params.userId,
-    owner: params.repoOwner,
-    repo: params.repoName,
-  });
-  if (!access.ok) {
-    return {
-      success: false,
-      error: "No GitHub access to this repository for this user.",
-    };
-  }
+  const { getUserGitHubToken } = await import("@/lib/github/token");
 
   const sandbox = await connectSandbox(params.sandboxState);
   if (!sandbox.setGitHubAuthToken) {
@@ -2268,32 +2274,86 @@ async function performAgentGithubCli(params: {
     };
   }
 
-  const scoped = await mintInstallationToken({
-    installationId: access.installationId,
-    repositoryIds: [access.repositoryId],
-    permissions: {
-      contents: "write",
-      issues: "write",
-      pull_requests: "write",
-      actions: "write",
-      checks: "write",
-      statuses: "write",
-      workflows: "write",
-    },
-  });
+  let authToken: string | null = null;
+  let shouldRevokeToken = false;
 
-  const command = `${ENSURE_GH_CLI_INSTALLED}; export PATH="$HOME/.local/bin:$PATH"; GH_TOKEN=${GITHUB_CLI_PLACEHOLDER_TOKEN} GH_REPO=${params.repoOwner}/${params.repoName} gh ${params.args}`;
+  // 1. Prefer a short-lived repo-scoped GitHub App installation token when a repo is connected.
+  if (params.repoOwner && params.repoName) {
+    const access = await verifyRepoAccess({
+      userId: params.userId,
+      owner: params.repoOwner,
+      repo: params.repoName,
+    }).catch(() => ({ ok: false as const }));
+    if (access.ok) {
+      const scoped = await mintInstallationToken({
+        installationId: access.installationId,
+        repositoryIds: [access.repositoryId],
+        permissions: {
+          contents: "write",
+          issues: "write",
+          pull_requests: "write",
+          actions: "write",
+          checks: "write",
+          statuses: "write",
+          workflows: "write",
+        },
+      }).catch(() => null);
+      if (scoped?.token) {
+        authToken = scoped.token;
+        shouldRevokeToken = true;
+      }
+    }
+  }
 
+  // 2. Fall back to the user's connected GitHub OAuth token (works even with NO repo connected).
+  if (!authToken) {
+    authToken = await getUserGitHubToken(params.userId);
+  }
+
+  // 3. Fall back to a user API key locked to github.com / api.github.com.
+  if (!authToken) {
+    const { getDecryptedUserSecretsForExecution } =
+      await import("@/lib/db/secrets");
+    const { secrets } = await getDecryptedUserSecretsForExecution(
+      params.userId,
+    ).catch(() => ({ secrets: [] }));
+    const ghSecret = secrets.find(
+      (s) =>
+        s.allowedHosts?.some((h) => /(?:^|\.)github\.com$/i.test(h.trim())) ||
+        /^(?:GH_TOKEN|GITHUB_TOKEN|GITHUB_PAT)$/i.test(s.name),
+    );
+    if (ghSecret?.value) {
+      authToken = ghSecret.value;
+    }
+  }
+
+  if (!authToken) {
+    return {
+      success: false,
+      error:
+        "No GitHub credentials available. Connect GitHub in Settings or add a GitHub API key locked to api.github.com.",
+    };
+  }
+
+  const repoEnv =
+    params.repoOwner && params.repoName
+      ? `GH_REPO=${params.repoOwner}/${params.repoName} `
+      : "";
+  // Preserve the real GH_TOKEN / GITHUB_TOKEN injected by BoxdSandbox.commandEnv()
+  // instead of overwriting GH_TOKEN with the legacy placeholder string (which caused
+  // 401 Bad Credentials on Boxd where there is no egress token-swapping proxy).
+  const command = `${ENSURE_GH_CLI_INSTALLED}; export PATH="$HOME/.local/bin:$PATH"; GH_TOKEN="\${GH_TOKEN:-\${GITHUB_TOKEN:-${GITHUB_CLI_PLACEHOLDER_TOKEN}}}" ${repoEnv}gh ${params.args}`;
+
+  const tokenToUse = authToken;
   try {
-    const result = await withTemporaryGitHubAuth(sandbox, scoped.token, () =>
+    const result = await withTemporaryGitHubAuth(sandbox, tokenToUse, () =>
       sandbox.exec(command, params.workingDirectory, 120000),
     );
 
-    // Defense in depth only -- see redact() in performAgentVercelCli.
     const redact = (text: string) =>
       text
         ? text
-            .split(scoped.token)
+            .split(tokenToUse)
             .join("[REDACTED]")
             .split(GITHUB_CLI_PLACEHOLDER_TOKEN)
             .join("[REDACTED]")
@@ -2306,12 +2366,14 @@ async function performAgentGithubCli(params: {
       stderr: redact(result.stderr),
     });
   } finally {
-    await revokeInstallationToken(scoped.token).catch((error) =>
-      console.warn(
-        "[performAgentGithubCli] failed to revoke installation token:",
-        error,
-      ),
-    );
+    if (shouldRevokeToken) {
+      await revokeInstallationToken(tokenToUse).catch((error) =>
+        console.warn(
+          "[performAgentGithubCli] failed to revoke installation token:",
+          error,
+        ),
+      );
+    }
   }
 }
 
@@ -4496,29 +4558,24 @@ const runAgentStep = async (
               });
             },
             cli: async (input): Promise<GithubRawCliResult> => {
-              if (
-                !githubContext.hasRepo ||
-                !githubContext.repoOwner ||
-                !githubContext.repoName
-              ) {
-                return {
-                  success: false,
-                  error:
-                    "No GitHub repository is connected to this session yet.",
-                };
-              }
               const sandbox = await resolveCurrentSandboxContext(
                 agentOptions,
                 sessionId,
               );
-              return performAgentGithubCli({
-                userId,
-                sandboxState: sandbox.state,
-                workingDirectory: sandbox.workingDirectory,
-                repoOwner: githubContext.repoOwner,
-                repoName: githubContext.repoName,
-                args: input.args,
-              });
+              return performAgentGithubCli(
+                withoutUndefined({
+                  userId,
+                  sandboxState: sandbox.state,
+                  workingDirectory: sandbox.workingDirectory,
+                  ...(githubContext.repoOwner
+                    ? { repoOwner: githubContext.repoOwner }
+                    : {}),
+                  ...(githubContext.repoName
+                    ? { repoName: githubContext.repoName }
+                    : {}),
+                  args: input.args,
+                }),
+              );
             },
           }
         : undefined,
