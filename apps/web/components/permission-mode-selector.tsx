@@ -44,7 +44,7 @@ const ICONS: Record<PermissionMode, typeof ShieldCheck> = {
 
 const ICON_COLOR: Record<PermissionMode, string> = {
   ask: "text-muted-foreground hover:text-foreground",
-  autoAccept: "text-amber-500 hover:text-amber-600",
+  autoAccept: "text-muted-foreground hover:text-foreground",
   fullAccess: "text-red-500 hover:text-red-600",
 };
 
@@ -57,9 +57,8 @@ export function nextPermissionMode(current: PermissionMode): PermissionMode {
 
 /**
  * Composer toolbar control for the 3-way tool-approval permission mode.
- * Replaces the old single on/off "full access" toggle -- see
- * packages/agent/open-agent.ts and tools/{bash,read,write,fetch}.ts for
- * what each mode actually gates.
+ * Ported 1:1 from Sable's `ModePicker` chip (icon + label, monochrome rest state,
+ * red accent only on Full access / danger tone).
  */
 export function PermissionModeSelector({
   value,
@@ -77,13 +76,14 @@ export function PermissionModeSelector({
             <button
               type="button"
               disabled={disabled}
-              aria-label={`Permission mode: ${LABELS[value]}`}
+              aria-label={`Mode: ${LABELS[value]}`}
               className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background/60 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-60",
+                "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-colors duration-150 hover:bg-muted/60 disabled:pointer-events-none disabled:opacity-60",
                 ICON_COLOR[value],
               )}
             >
-              <Icon className="size-4" strokeWidth={1.5} />
+              <Icon className="size-3.5 shrink-0" strokeWidth={1.6} />
+              <span className="hidden sm:inline">{LABELS[value]}</span>
             </button>
           </PopoverTrigger>
         </TooltipTrigger>
