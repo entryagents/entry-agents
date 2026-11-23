@@ -462,11 +462,30 @@ const BILLING_TURN_RELEASE_RETRY_DELAY_MS = 50;
 export async function reconcileSessionStatusStep(
   sessionId: string,
   status: "completed" | "failed",
+  telemetrySnapshot?: import("./workflow-telemetry-tracker").WorkflowTelemetrySnapshot,
 ): Promise<void> {
   "use step";
   try {
-    const { reconcileSessionStatus } = await import("@/lib/db/sessions");
-    await reconcileSessionStatus(sessionId, status);
+    const tasks: Array<Promise<unknown>> = [
+      import("@/lib/db/sessions").then(({ reconcileSessionStatus }) =>
+        reconcileSessionStatus(sessionId, status),
+      ),
+    ];
+    if (telemetrySnapshot) {
+      tasks.push(
+        import("@/lib/db/workflow-telemetry")
+          .then(({ recordWorkflowRunTelemetry }) =>
+            recordWorkflowRunTelemetry(telemetrySnapshot),
+          )
+          .catch((err) => {
+            console.warn(
+              "[workflow] Best-effort recordWorkflowRunTelemetry failed:",
+              err,
+            );
+          }),
+      );
+    }
+    await Promise.all(tasks);
   } catch (error) {
     console.error("[workflow] Failed to reconcile session status:", error);
   }

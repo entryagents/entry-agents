@@ -1215,3 +1215,46 @@ export const compactionCheckpoints = pgTable(
 export type CompactionCheckpointRow = typeof compactionCheckpoints.$inferSelect;
 export type NewCompactionCheckpointRow =
   typeof compactionCheckpoints.$inferInsert;
+
+// Per-run Vercel Workflow observability: tracks exact step counts by step name,
+// estimated Workflow Events (3/step + 3/run), serialized payload bytes, retries,
+// duration, and finish reason so admins can see what burns the 50K monthly quota.
+export const workflowRunTelemetry = pgTable(
+  "workflow_run_telemetry",
+  {
+    id: text("id").primaryKey(),
+    workflowRunId: text("workflow_run_id").notNull(),
+    chatId: text("chat_id").notNull(),
+    sessionId: text("session_id").notNull(),
+    userId: text("user_id").notNull(),
+    modelId: text("model_id"),
+    segmentIndex: integer("segment_index").notNull().default(0),
+    llmSteps: integer("llm_steps").notNull().default(0),
+    totalStepCalls: integer("total_step_calls").notNull().default(0),
+    estimatedEvents: integer("estimated_events").notNull().default(0),
+    retryRecoveries: integer("retry_recoveries").notNull().default(0),
+    totalSerializedBytes: integer("total_serialized_bytes")
+      .notNull()
+      .default(0),
+    maxStepInputBytes: integer("max_step_input_bytes").notNull().default(0),
+    durationMs: integer("duration_ms").notNull().default(0),
+    finishReason: text("finish_reason").notNull().default("unknown"),
+    stepCountsJson: jsonb("step_counts_json")
+      .$type<Record<string, number>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("workflow_run_telemetry_created_idx").on(table.createdAt),
+    index("workflow_run_telemetry_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    index("workflow_run_telemetry_chat_idx").on(table.chatId),
+  ],
+);
+
+export type WorkflowRunTelemetryRow = typeof workflowRunTelemetry.$inferSelect;
+export type NewWorkflowRunTelemetryRow =
+  typeof workflowRunTelemetry.$inferInsert;
