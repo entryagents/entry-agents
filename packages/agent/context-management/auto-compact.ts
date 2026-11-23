@@ -166,12 +166,9 @@ export function compactMessagesWithStats({
       ? compactionThresholdOverride
       : AUTO_COMPACT_THRESHOLD;
 
-  const effectiveBudget =
-    compactionThresholdOverride === undefined &&
-    contextWindow >= LARGE_CONTEXT_WINDOW_FLOOR
-      ? Math.min(contextWindow, LARGE_CONTEXT_SOFT_CAP_TOKENS)
-      : contextWindow;
-
+  // Always honor the model's real context window from the gateway — never clamp
+  // 1M-context models down to a hardcoded soft cap.
+  const effectiveBudget = contextWindow;
   const thresholdTokens = Math.round(effectiveBudget * thresholdRatio);
   const checkpointTriggerTokens = Math.round(thresholdTokens * 0.85);
 
