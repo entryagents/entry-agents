@@ -1,41 +1,10 @@
 "use client";
 
-import { isReasoningUIPart, isToolUIPart } from "ai";
+import { isToolUIPart } from "ai";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
+import { summarizeTurnWork } from "./chat/sable-turn-grouping";
 import { ToolCallsSummaryBar } from "./tool-calls-summary-bar";
-
-/**
- * Determines if a message has any tool call or reasoning content
- * that should be collapsible.
- */
-function messageHasCollapsibleContent(message: WebAgentUIMessage): boolean {
-  return message.parts.some((p) => isToolUIPart(p) || isReasoningUIPart(p));
-}
-
-function countToolCalls(message: WebAgentUIMessage): number {
-  let count = 0;
-  for (const part of message.parts) {
-    if (isToolUIPart(part)) count++;
-  }
-  return count;
-}
-
-const FILE_MODIFYING_TOOLS = new Set(["tool-write", "tool-edit"]);
-
-function getChangedFiles(message: WebAgentUIMessage): string[] {
-  const files = new Set<string>();
-  for (const part of message.parts) {
-    if (
-      isToolUIPart(part) &&
-      FILE_MODIFYING_TOOLS.has(part.type) &&
-      (part.input as { filePath?: string } | undefined)?.filePath
-    ) {
-      files.add((part.input as { filePath: string }).filePath);
-    }
-  }
-  return Array.from(files);
-}
 
 /**
  * Checks whether a message has an active approval request, which
@@ -63,9 +32,9 @@ export type AssistantMessageGroupsProps = {
 };
 
 /**
- * Wraps an assistant message's groups with a collapsible summary bar.
- * By default, tool calls and reasoning are hidden behind a single-line
- * summary. Clicking the summary expands to show the full content.
+ * Wraps an assistant message's groups with a Sable-style collapsible work line.
+ * Tool calls and reasoning fold behind a single summary line ("Thought for Xs",
+ * "Worked Xs · N steps", plus a clickable diff button when files changed).
  */
 export function AssistantMessageGroups({
   message,
@@ -84,23 +53,20 @@ export function AssistantMessageGroups({
     prevStreamingRef.current = isStreaming;
   }, [isStreaming]);
 
-  const hasCollapsible = useMemo(
-    () => messageHasCollapsibleContent(message),
-    [message],
-  );
-
-  const toolCallCount = useMemo(() => countToolCalls(message), [message]);
-
-  const changedFiles = useMemo(() => getChangedFiles(message), [message]);
+  const workSummary = useMemo(() => summarizeTurnWork(message), [message]);
+  const {
+    hasCollapsible,
+    stepCount: toolCallCount,
+    changedFiles,
+  } = workSummary;
 
   const hasActiveApproval = useMemo(
     () => messageHasActiveApproval(message),
     [message],
   );
 
-  // Stay expanded (ungrouped) while streaming so progress reads sequentially,
-  // or when an active approval needs user attention; collapse on completion
-  // unless toggled manually.
+  // Stay expanded while streaming or when an active approval needs user
+  // attention; collapse behind Sable's single TotalLine on completion.
   const effectiveExpanded =
     hasActiveApproval || (manualExpanded ?? isStreaming);
 
@@ -179,6 +145,9 @@ export function AssistantMessageGroups({
         isStreaming={isStreaming}
         toolCallCount={toolCallCount}
         changedFiles={changedFiles}
+        changes={workSummary.changes}
+        thoughtOnly={workSummary.thoughtOnly}
+        liveLabel={workSummary.liveLabel}
         durationMs={durationMs}
         startedAt={startedAt}
         statusWordSeed={message.id}
