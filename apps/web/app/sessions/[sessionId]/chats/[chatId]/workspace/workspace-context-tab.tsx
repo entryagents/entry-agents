@@ -182,6 +182,11 @@ export function WorkspaceContextTab({
     window.setTimeout(() => setRefreshing(false), 450);
   }, [router]);
 
+  const compactionCount = useMemo(
+    () => messages.filter((m) => m.metadata?.isCompactionNotice).length,
+    [messages],
+  );
+
   const hasContext = view.total > 0;
   const pctDisplay = formatPercentDisplay(view.pct);
 
@@ -382,11 +387,8 @@ export function WorkspaceContextTab({
                     : "—"
                 }
               />
-              <Stat
-                label="Turns"
-                value={String(view.sessionTotals.turns)}
-                wide
-              />
+              <Stat label="Turns" value={String(view.sessionTotals.turns)} />
+              <Stat label="Compactions" value={String(compactionCount)} />
               <Stat
                 label="Cost"
                 value={formatCostUsd(view.sessionTotals.costUsd)}

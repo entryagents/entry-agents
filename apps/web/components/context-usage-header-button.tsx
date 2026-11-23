@@ -185,6 +185,12 @@ export function ContextUsageHeaderButton({
               </span>
             </div>
             <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Compactions</span>
+              <span className="font-mono tabular-nums text-foreground">
+                {messages.filter((m) => m.metadata?.isCompactionNotice).length}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Cost</span>
               <span className="font-mono tabular-nums text-foreground">
                 {formatCostUsd(view.sessionTotals.costUsd)}
