@@ -728,7 +728,8 @@ describe("runAgentWorkflow", () => {
     const types = writtenChunks.map((chunk) => chunk.type);
     expect(types[0]).toBe("start");
     expect(types[types.length - 1]).toBe("finish");
-    expect(spies.persistAssistantMessage).toHaveBeenCalledTimes(1);
+    expect(spies.persistAssistantMessageInternal).toHaveBeenCalledTimes(1);
+    expect(spies.persistAssistantMessage).not.toHaveBeenCalled();
   });
 
   test("sends start and finish chunks to writable", async () => {
@@ -865,8 +866,10 @@ describe("runAgentWorkflow", () => {
   test("persists assistant message after run", async () => {
     await runAgentWorkflow(makeOptions());
 
-    expect(spies.persistAssistantMessage).toHaveBeenCalledTimes(1);
-    const paCalls = spies.persistAssistantMessage.mock.calls as unknown[][];
+    expect(spies.persistAssistantMessageInternal).toHaveBeenCalledTimes(1);
+    expect(spies.persistAssistantMessage).not.toHaveBeenCalled();
+    const paCalls = spies.persistAssistantMessageInternal.mock
+      .calls as unknown[][];
     expect(paCalls[0][0]).toBe("chat-1");
   });
 
@@ -900,7 +903,7 @@ describe("runAgentWorkflow", () => {
       }),
     );
 
-    const persistCalls = spies.persistAssistantMessage.mock
+    const persistCalls = spies.persistAssistantMessageInternal.mock
       .calls as unknown[][];
     const persistedMessage = persistCalls.at(-1)?.[1] as {
       metadata?: {
@@ -949,7 +952,7 @@ describe("runAgentWorkflow", () => {
       modelId: "openai/gpt-5.4",
     });
 
-    const persistCalls = spies.persistAssistantMessage.mock
+    const persistCalls = spies.persistAssistantMessageInternal.mock
       .calls as unknown[][];
     const persistedMessage = persistCalls.at(-1)?.[1] as {
       metadata?: {
@@ -992,7 +995,7 @@ describe("runAgentWorkflow", () => {
       }),
     );
 
-    const persistCalls = spies.persistAssistantMessage.mock
+    const persistCalls = spies.persistAssistantMessageInternal.mock
       .calls as unknown[][];
     const persistedMessage = persistCalls.at(-1)?.[1] as {
       metadata?: {
@@ -1188,7 +1191,7 @@ describe("runAgentWorkflow", () => {
       }),
     );
 
-    const persistCalls = spies.persistAssistantMessage.mock
+    const persistCalls = spies.persistAssistantMessageInternal.mock
       .calls as unknown[][];
     const persistedMessage = persistCalls.at(-1)?.[1] as {
       metadata?: {
@@ -1260,7 +1263,7 @@ describe("runAgentWorkflow", () => {
       { inputTokens: 20, outputTokens: 10, totalTokens: 30 },
     ]);
 
-    const persistCalls = spies.persistAssistantMessage.mock
+    const persistCalls = spies.persistAssistantMessageInternal.mock
       .calls as unknown[][];
     const persistedMessage = persistCalls.at(-1)?.[1] as {
       metadata?: {
@@ -1328,7 +1331,7 @@ describe("runAgentWorkflow", () => {
       { lastStepCost: 0.0025, totalMessageCost: 0.005 },
     ]);
 
-    const persistCalls = spies.persistAssistantMessage.mock
+    const persistCalls = spies.persistAssistantMessageInternal.mock
       .calls as unknown[][];
     const persistedMessage = persistCalls.at(-1)?.[1] as {
       metadata?: {
@@ -1396,7 +1399,7 @@ describe("runAgentWorkflow", () => {
       10,
     );
 
-    const persistCalls = spies.persistAssistantMessage.mock
+    const persistCalls = spies.persistAssistantMessageInternal.mock
       .calls as unknown[][];
     const persistedMessage = persistCalls.at(-1)?.[1] as {
       metadata?: {
@@ -1424,7 +1427,7 @@ describe("runAgentWorkflow", () => {
 
     await runAgentWorkflow(makeOptions());
 
-    const persistCalls = spies.persistAssistantMessage.mock
+    const persistCalls = spies.persistAssistantMessageInternal.mock
       .calls as unknown[][];
     const persistedMessage = persistCalls.at(-1)?.[1] as {
       metadata?: {
@@ -2334,6 +2337,156 @@ describe("runAgentWorkflow", () => {
 
     // Stops at 2 zero-progress steps instead of looping 10+ times!
     expect(streamCalls).toBe(2);
+  });
+
+  test("skips LLM execution and preserves unread inbox messages when chat is cancelled before step", async () => {
+    const markReadSpy = mock(async () => {});
+    let streamCalls = 0;
+
+    mock.module("@/lib/db/sessions", () => ({
+      ...realDbSessions,
+      getChatById: async () => ({
+        ...testChatRecord,
+        status: "cancelled",
+      }),
+      getSessionById: async () => testSessionRecord,
+    }));
+    mock.module("@/lib/db/inbox", () => ({
+      getUnreadInboxMessages: async () => [
+        {
+          id: "unread-1",
+          content: "do not swallow me",
+          createdAt: new Date(),
+        },
+      ],
+      markInboxMessagesRead: markReadSpy,
+    }));
+    mock.module("@/app/config", () => ({
+      ...realAppConfig,
+      webAgent: {
+        tools: {},
+        stream: async () => {
+          streamCalls += 1;
+          throw new Error("should not call stream when cancelled");
+        },
+      },
+    }));
+
+    try {
+      const { runAgentWorkflow: reloadedRun } = await import("./chat");
+      await reloadedRun(makeOptions({ maxSteps: 3 }));
+
+      expect(streamCalls).toBe(0);
+      expect(markReadSpy).not.toHaveBeenCalled();
+      expect(spies.finalizeAbortedChatStep).toHaveBeenCalledWith(
+        "chat-1",
+        "wrun_test-123",
+      );
+      expect(spies.persistAssistantMessage).not.toHaveBeenCalled();
+    } finally {
+      mock.module("@/lib/db/sessions", () => ({
+        ...realDbSessions,
+        getChatById: async () => testChatRecord,
+        getSessionById: async () => testSessionRecord,
+      }));
+    }
+  });
+
+  test("halts multi-step loop immediately when post-step cancellation is detected inside runAgentStep", async () => {
+    let streamCalls = 0;
+    let chatCancelled = false;
+
+    mock.module("@/lib/db/sessions", () => ({
+      ...realDbSessions,
+      getChatById: async () => ({
+        ...testChatRecord,
+        status: chatCancelled ? "cancelled" : "running",
+      }),
+      getSessionById: async () => testSessionRecord,
+    }));
+    mock.module("@/lib/db/inbox", () => ({
+      getUnreadInboxMessages: async () => [],
+      markInboxMessagesRead: async () => {},
+    }));
+    mock.module("@/app/config", () => ({
+      ...realAppConfig,
+      webAgent: {
+        tools: {},
+        stream: async () => {
+          streamCalls += 1;
+          // Simulate user clicking Stop while step 1 is finishing
+          chatCancelled = true;
+          return {
+            toUIMessageStream: async function* ({
+              onFinish,
+            }: {
+              onFinish?: (ev: { responseMessage: unknown }) => void;
+            }) {
+              yield { type: "start-step" };
+              yield { type: "text-start", id: "t1" };
+              yield { type: "text-delta", id: "t1", delta: "Working..." };
+              onFinish?.({
+                responseMessage: {
+                  id: "assistant-1",
+                  role: "assistant",
+                  parts: [{ type: "text", text: "Working..." }],
+                },
+              });
+            },
+            totalUsage: Promise.resolve({ inputTokens: 10, outputTokens: 5 }),
+            finishReason: Promise.resolve("tool-calls"),
+            rawFinishReason: Promise.resolve("tool_calls"),
+            response: Promise.resolve({
+              messages: [
+                {
+                  role: "assistant",
+                  content: [
+                    {
+                      type: "tool-call",
+                      toolCallId: "tc-1",
+                      toolName: "read",
+                      input: { filePath: "README.md" },
+                    },
+                  ],
+                },
+                {
+                  role: "tool",
+                  content: [
+                    {
+                      type: "tool-result",
+                      toolCallId: "tc-1",
+                      toolName: "read",
+                      output: { type: "json", value: { content: "ok" } },
+                    },
+                  ],
+                },
+              ],
+            }),
+            steps: Promise.resolve([]),
+          };
+        },
+      },
+    }));
+
+    try {
+      const { runAgentWorkflow: reloadedRun } = await import("./chat");
+      await reloadedRun(makeOptions({ maxSteps: 5 }));
+
+      expect(streamCalls).toBe(1);
+      expect(spies.finalizeAbortedChatStep).toHaveBeenCalledWith(
+        "chat-1",
+        "wrun_test-123",
+      );
+      expect(spies.persistAssistantMessageInternal).toHaveBeenCalled();
+      // Only called once by post-loop abort finalization (not inside the step loop).
+      expect(spies.persistAssistantMessage).toHaveBeenCalledTimes(1);
+    } finally {
+      mock.module("@/lib/db/sessions", () => ({
+        ...realDbSessions,
+        getChatById: async () => testChatRecord,
+        getSessionById: async () => testSessionRecord,
+      }));
+    }
   });
 });
 

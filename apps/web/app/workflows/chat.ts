@@ -43,7 +43,7 @@ import { addLanguageModelUsage } from "./usage-utils";
 import { enrichUsageWithProviderCache } from "@/lib/chat/usage-extract";
 import { estimateStepCost } from "./gateway-metadata";
 import {
-  prepareStepChecksStep,
+  type PermissionMode,
   prepareTurnBootstrapStep,
 } from "./chat-batch-steps";
 import {
@@ -289,6 +289,8 @@ type WorkflowAgentOptions = Omit<
   github?: SerializableGithubContext;
   vercel?: SerializableVercelContext;
   sandboxControl?: SerializableSandboxControlContext;
+  /** Explicit caller override; when omitted, runAgentStep resolves live permissionMode from DB. */
+  permissionModeOverride?: PermissionMode;
 };
 
 /**
@@ -2978,33 +2980,6 @@ export async function runAgentWorkflow(options: Options) {
       options.maxSteps === undefined || stepOffset + step < options.maxSteps;
       step++
     ) {
-      // Single composite pre-step check: runs cancellation check, live permission
-      // mode resolution, and unread inbox consumption in ONE `"use step"` call
-      // (3 Workflow Events instead of 9 on every LLM step).
-      telemetry.recordStep("prepareStepChecksStep");
-      const {
-        isCancelled: isCancelledBeforeStep,
-        permissionMode: livePermissionMode,
-        unreadInboxMessages,
-      } = await prepareStepChecksStep({
-        chatId: options.chatId,
-        workflowRunId,
-        userId: options.userId,
-        sessionId: options.sessionId,
-        overridePermissionMode: options.agentOptions?.permissionMode
-          ? agentOptions.permissionMode
-          : undefined,
-      });
-
-      // Cooperative check: Stop if chat was cancelled in DB or superseded by a newer run
-      if (isCancelledBeforeStep) {
-        console.warn(
-          `[chat-workflow] Chat ${options.chatId} was marked cancelled or superseded in database. Stopping workflow loop.`,
-        );
-        wasAborted = true;
-        break;
-      }
-
       if (Date.now() - turnStartedAt > MAX_WORKFLOW_TURN_DURATION_MS) {
         console.warn(
           `[chat-workflow] Turn exceeded maximum duration (${MAX_WORKFLOW_TURN_DURATION_MS}ms) for chat ${options.chatId}`,
@@ -3028,6 +3003,7 @@ export async function runAgentWorkflow(options: Options) {
 
       if (shouldCheckPreStepCompaction) {
         const latestUiId = options.messages.at(-1)?.id;
+        telemetry.recordStep("compactAndCheckpointStep");
         const compacted = await compactAndCheckpointStep(
           withoutUndefined({
             messages: withoutUndefined(modelMessages),
@@ -3065,29 +3041,20 @@ export async function runAgentWorkflow(options: Options) {
           ? [...options.messages, pendingAssistantResponse]
           : options.messages,
       );
+      // Pre-step cancellation, live permission mode, and unread steering inbox
+      // injection run inside `runAgentStep` itself so every LLM iteration
+      // consumes only 1 Workflow step (3 events) instead of 4 steps (12 events).
       const stepAgentOptions: WorkflowAgentOptions = withoutUndefined({
         ...agentOptions,
         ...(Object.keys(stepSubagentHistory).length > 0
           ? { subagentMessageHistory: stepSubagentHistory }
           : {}),
         ...(lastKnownInputTokens !== undefined ? { lastKnownInputTokens } : {}),
-        permissionMode: livePermissionMode,
+        ...(options.agentOptions?.permissionMode
+          ? { permissionModeOverride: agentOptions.permissionMode }
+          : {}),
       });
 
-      if (unreadInboxMessages.length > 0) {
-        const formattedSteering = unreadInboxMessages
-          .map((m, idx) => `${idx + 1}. ${m.content}`)
-          .join("\n");
-        modelMessages.push({
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: `[STEERING MESSAGE FROM USER]\nThe user sent the following real-time steering instruction(s) while you were working (already marked read — do NOT call the \`inbox\` tool for these):\n${formattedSteering}`,
-            },
-          ],
-        });
-      }
       const stepModelMessages: ModelMessage[] = modelMessages;
 
       const toolResultsBeforeStep =
@@ -3241,6 +3208,12 @@ export async function runAgentWorkflow(options: Options) {
       }
 
       stepTimings.push(result.stepTiming);
+      if (
+        "injectedSteeringMessage" in result &&
+        result.injectedSteeringMessage
+      ) {
+        modelMessages.push(result.injectedSteeringMessage);
+      }
       if (!("recoverableStepError" in result && result.recoverableStepError)) {
         pendingAssistantResponse =
           result.responseMessage ?? pendingAssistantResponse;
@@ -3252,6 +3225,7 @@ export async function runAgentWorkflow(options: Options) {
       }
 
       if (result.failedDebits && result.failedDebits.length > 0) {
+        telemetry.recordStep("flushStepDebitsStep");
         await flushStepDebitsStep(options.userId, result.failedDebits).catch(
           (err) => {
             console.error(
@@ -3265,7 +3239,8 @@ export async function runAgentWorkflow(options: Options) {
       if ("recoverableStepError" in result && result.recoverableStepError) {
         if (
           pendingAssistantResponse &&
-          pendingAssistantResponse.parts.length > 0
+          pendingAssistantResponse.parts.length > 0 &&
+          !("checkpointPersisted" in result && result.checkpointPersisted)
         ) {
           await persistAssistantMessage(
             options.chatId,
@@ -3281,6 +3256,7 @@ export async function runAgentWorkflow(options: Options) {
             "recoveryAction" in result ? result.recoveryAction : undefined;
           if (recoveryAction === "compact") {
             const latestUiId = options.messages.at(-1)?.id;
+            telemetry.recordStep("compactAndCheckpointStep");
             const compacted = await compactAndCheckpointStep(
               withoutUndefined({
                 messages: withoutUndefined(modelMessages),
@@ -3369,20 +3345,15 @@ export async function runAgentWorkflow(options: Options) {
 
       // Durable mid-turn checkpoint.
       //
-      // Before this, a turn's assistant output existed only in the run
-      // stream until persistFinalAssistantMessage ran at the very end --
-      // so a viewer returning mid-turn could recover progress only by
-      // attaching a live stream, and a turn that died here left nothing
-      // in the transcript. Persisting after every step means the DB
-      // always holds the latest completed step's output.
-      //
-      // persistAssistantMessage is deliberately the right primitive: an
-      // idempotent scoped upsert (upsertChatMessageScoped) that does NOT
-      // clear activeStreamId and does NOT touch run status, so a
-      // checkpoint can never make a live turn look finished. It swallows
-      // its own errors too, so a transient DB blip costs one checkpoint,
-      // not the turn.
-      if (pendingAssistantResponse) {
+      // In the common path, `runAgentStep` already persisted this step's
+      // finalized `responseMessage` via `persistAssistantMessageInternal` before
+      // returning (`checkpointPersisted: true`), avoiding an extra Workflow
+      // step (3 events) + full message JSON serialization on every LLM step.
+      // This fallback only runs if a step returned without checkpointing.
+      if (
+        pendingAssistantResponse &&
+        !("checkpointPersisted" in result && result.checkpointPersisted)
+      ) {
         await persistAssistantMessage(options.chatId, pendingAssistantResponse);
       }
 
@@ -3443,7 +3414,13 @@ export async function runAgentWorkflow(options: Options) {
         break;
       }
 
-      if (await checkChatCancelledStep(options.chatId, workflowRunId)) {
+      if (
+        !(
+          "postStepCancellationChecked" in result &&
+          result.postStepCancellationChecked
+        ) &&
+        (await checkChatCancelledStep(options.chatId, workflowRunId))
+      ) {
         console.warn(
           `[chat-workflow] Chat ${options.chatId} was marked cancelled or superseded after step. Stopping loop.`,
         );
@@ -3554,6 +3531,7 @@ export async function runAgentWorkflow(options: Options) {
             console.warn(
               `[chat-workflow] Consecutive identical tool call loop detected (${consecutiveIdenticalToolCount}x: ${currentSignature}) for chat ${options.chatId}. Breaking loop to prevent runaway token spend.`,
             );
+            explicitStopCause = "identical_tool_loop";
             break;
           }
         } else {
@@ -3572,6 +3550,7 @@ export async function runAgentWorkflow(options: Options) {
         (hitSegmentStepCap || hitSegmentDurationCap) &&
         hasRemainingTurnTime
       ) {
+        telemetry.recordStep("continueAgentWorkflowSegmentStep");
         const handoff = await continueAgentWorkflowSegmentStep({
           chatId: options.chatId,
           sessionId: options.sessionId,
@@ -4400,8 +4379,64 @@ const runAgentStep = async (
       }
     }
   };
+  let injectedSteeringMessage: ModelMessage | undefined;
 
   try {
+    const {
+      checkChatCancelledInternal,
+      formatSteeringInboxMessage,
+      runStepPreflightChecks,
+    } = await import("./chat-batch-steps");
+
+    const { permissionModeOverride, ...restAgentOptions } = agentOptions;
+    const preflight = await runStepPreflightChecks({
+      chatId,
+      workflowRunId,
+      userId,
+      sessionId,
+      ...(permissionModeOverride
+        ? { overridePermissionMode: permissionModeOverride }
+        : {}),
+    });
+
+    if (preflight.isCancelled) {
+      console.warn(
+        `[chat-workflow] Chat ${chatId} was marked cancelled or superseded in database. Skipping step ${stepNumber}.`,
+      );
+      abortController.abort();
+      const stepFinishedAt = new Date();
+      return withoutUndefined({
+        responseMessage: undefined as WebAgentUIMessage | undefined,
+        responseMessages: [] as ModelMessage[],
+        finishReason: "stop" as FinishReason,
+        rawFinishReason: undefined as string | undefined,
+        stepUsage: undefined as LanguageModelUsage | undefined,
+        stepCost: undefined as number | undefined,
+        stepWasAborted: true,
+        cancelledBeforeModelCall: true,
+        checkpointPersisted: true,
+        postStepCancellationChecked: true,
+        failedDebits: undefined as PendingStepDebit[] | undefined,
+        remainingBalanceCents,
+        remainingWindowBudgetCents,
+        creditExhausted,
+        windowExhausted,
+        turnSpendCapped,
+        stepTiming: buildStepTiming(
+          stepNumber,
+          stepStartedAt,
+          stepFinishedAt,
+          "stop",
+        ),
+      });
+    }
+
+    injectedSteeringMessage =
+      formatSteeringInboxMessage(preflight.unreadInboxMessages) ?? undefined;
+    const stepMessagesWithSteering = injectedSteeringMessage
+      ? [...messages, injectedSteeringMessage]
+      : messages;
+
     const lastOriginalMessage = originalMessages.at(-1);
     const existingStepFinishReasons: WebAgentStepFinishMetadata[] =
       lastOriginalMessage?.role === "assistant"
@@ -4446,7 +4481,7 @@ const runAgentStep = async (
       // LAZY (perf): the stringify only runs on the FIRST step of a
       // turn (no measured baseline); every later step is O(1) off the
       // last step's real token count.
-      () => JSON.stringify(messages).length,
+      () => JSON.stringify(stepMessagesWithSteering).length,
     );
     const spendCap = computeRealtimeSpendCap({
       remainingWindowBudgetCents,
@@ -4482,7 +4517,8 @@ const runAgentStep = async (
     const vercelContext = agentOptions.vercel;
     const controlContext = agentOptions.sandboxControl;
     const fullAgentOptions: OpenAgentCallOptions = {
-      ...agentOptions,
+      ...restAgentOptions,
+      permissionMode: preflight.permissionMode,
       teamId: chatId,
       billingGuard: subagentBudgetGuard,
       github: githubContext
@@ -5345,7 +5381,7 @@ const runAgentStep = async (
         let stream: Awaited<ReturnType<typeof webAgent.stream>>;
         let streamAttempts = 0;
         let currentMessages = appendTurnDirectiveToUserMessage(
-          compactImageVisionContext(messages),
+          compactImageVisionContext(stepMessagesWithSteering),
           turnDirectives.join("\n\n"),
         );
         let currentStreamOptions = spendCap.maxOutputTokens
@@ -6414,12 +6450,6 @@ const runAgentStep = async (
       ? stepSecretRedactor.redactUnknown(response.messages)
       : response.messages;
 
-    // Every field below is optional in the shared result type, so an
-    // unset one arrives as an explicit `undefined` -- which the Workflow
-    // SDK refuses to serialize into the event log (it fails the run with a
-    // non-retryable SerializationError). Strip them before returning.
-    await Promise.allSettled(pendingDebits);
-
     const hasCompletedTextReply = Boolean(
       responseMessage?.parts?.some(
         (part) => part.type === "text" && part.text.trim().length > 0,
@@ -6434,17 +6464,26 @@ const runAgentStep = async (
       !hasCompletedTextReply &&
       (inStreamErrorText !== undefined || finishReason === "error")
     ) {
+      const shouldPersistErrorCheckpoint = responseMessage.parts.length > 0;
+      await Promise.all([
+        Promise.allSettled(pendingDebits),
+        shouldPersistErrorCheckpoint
+          ? persistAssistantMessageInternal(chatId, responseMessage)
+          : Promise.resolve(),
+      ]);
       const recoverableErrorText =
         inStreamErrorText ??
         `Model step ended with finishReason=${finishReason}`;
       return withoutUndefined({
         responseMessage,
         responseMessages: safeResponseMessages,
+        ...(injectedSteeringMessage ? { injectedSteeringMessage } : {}),
         finishReason: "error" as FinishReason,
         rawFinishReason,
         stepUsage,
         stepCost: stepsCost,
         stepWasAborted: false,
+        checkpointPersisted: shouldPersistErrorCheckpoint,
         recoverableStepError: recoverableErrorText,
         recoveryAction: "sanitize" as const,
         failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
@@ -6463,14 +6502,28 @@ const runAgentStep = async (
       });
     }
 
+    // Fold durable mid-turn assistant checkpointing and post-step cancellation
+    // check into the end of `runAgentStep` in parallel with debit flushes,
+    // eliminating 2 separate `"use step"` calls (6 Workflow Events) per LLM step.
+    const [postStepCancelled] = await Promise.all([
+      abortController.signal.aborted
+        ? Promise.resolve(true)
+        : checkChatCancelledInternal(chatId, workflowRunId),
+      Promise.allSettled(pendingDebits),
+      persistAssistantMessageInternal(chatId, responseMessage),
+    ]);
+
     return withoutUndefined({
       responseMessage,
       responseMessages: safeResponseMessages,
+      ...(injectedSteeringMessage ? { injectedSteeringMessage } : {}),
       finishReason,
       rawFinishReason,
       stepUsage,
       stepCost: stepsCost,
-      stepWasAborted: abortController.signal.aborted,
+      stepWasAborted: abortController.signal.aborted || postStepCancelled,
+      checkpointPersisted: true,
+      postStepCancellationChecked: true,
       failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
       remainingBalanceCents,
       remainingWindowBudgetCents,
@@ -6489,7 +6542,6 @@ const runAgentStep = async (
     const stepFinishedAt = new Date();
 
     if (abortController.signal.aborted || isAbortError(error)) {
-      await Promise.allSettled(pendingDebits);
       const abortedFinishReason: FinishReason = "stop";
       // Deliberately `withoutUndefined`: this branch sets optional fields to
       // `undefined` explicitly, and an `undefined` step return value cannot
@@ -6505,14 +6557,23 @@ const runAgentStep = async (
             ),
           }
         : undefined;
+      await Promise.all([
+        Promise.allSettled(pendingDebits),
+        abortedResponseMessage && abortedResponseMessage.parts.length > 0
+          ? persistAssistantMessageInternal(chatId, abortedResponseMessage)
+          : Promise.resolve(),
+      ]);
       return withoutUndefined({
         responseMessage: abortedResponseMessage,
         responseMessages: [],
+        ...(injectedSteeringMessage ? { injectedSteeringMessage } : {}),
         finishReason: abortedFinishReason,
         rawFinishReason: undefined,
         stepUsage: lastStepUsage,
         stepCost: lastStepCost,
         stepWasAborted: true,
+        checkpointPersisted: true,
+        postStepCancellationChecked: true,
         failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
         remainingBalanceCents,
         remainingWindowBudgetCents,
@@ -6616,7 +6677,13 @@ const runAgentStep = async (
       lastRecordedFinishReason &&
       lastRecordedFinishReason !== "error"
     ) {
-      await Promise.allSettled(pendingDebits);
+      const { checkChatCancelledInternal } = await import("./chat-batch-steps");
+      const [, postStepCancelled] = await Promise.all([
+        Promise.allSettled(pendingDebits),
+        abortController.signal.aborted
+          ? Promise.resolve(true)
+          : checkChatCancelledInternal(chatId, workflowRunId),
+      ]);
       const reconstructed = reconstructStepModelMessages({
         streamedTextOrder,
         streamedTextById,
@@ -6634,11 +6701,14 @@ const runAgentStep = async (
       return withoutUndefined({
         responseMessage: partialMessage,
         responseMessages: safeReconstructedMessages,
+        ...(injectedSteeringMessage ? { injectedSteeringMessage } : {}),
         finishReason: recoveredFinishReason,
         rawFinishReason: stepFinishReasons.at(-1)?.rawFinishReason,
         stepUsage: lastStepUsage ?? totalMessageUsage,
         stepCost: lastStepCost,
-        stepWasAborted: abortController.signal.aborted,
+        stepWasAborted: abortController.signal.aborted || postStepCancelled,
+        checkpointPersisted: true,
+        postStepCancellationChecked: true,
         failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
         remainingBalanceCents,
         remainingWindowBudgetCents,
@@ -6689,11 +6759,13 @@ const runAgentStep = async (
       return withoutUndefined({
         responseMessage: partialMessage,
         responseMessages: [],
+        ...(injectedSteeringMessage ? { injectedSteeringMessage } : {}),
         finishReason: "error" as FinishReason,
         rawFinishReason: undefined,
         stepUsage: lastStepUsage ?? totalMessageUsage,
         stepCost: lastStepCost,
         stepWasAborted: abortController.signal.aborted,
+        checkpointPersisted: Boolean(partialMessage),
         recoverableStepError: errorWithStepTiming.message,
         ...(recoveryAction ? { recoveryAction } : {}),
         failedDebits: failedDebits.length > 0 ? failedDebits : undefined,
@@ -6810,32 +6882,8 @@ async function checkChatCancelledStep(
 ): Promise<boolean> {
   "use step";
 
-  try {
-    const { getChatById } = await import("@/lib/db/sessions");
-    const currentChat = await getChatById(chatId);
-    if (
-      currentChat &&
-      (currentChat.status === "cancelled" ||
-        (typeof currentChat.activeStreamId === "string" &&
-          currentChat.activeStreamId !== workflowRunId))
-    ) {
-      return true;
-    }
-  } catch {
-    // Ignore transient DB read failure
-  }
-
-  try {
-    const currentRun = getRun(workflowRunId);
-    const currentStatus = await currentRun.status;
-    if (currentStatus === "cancelled") {
-      return true;
-    }
-  } catch {
-    // Ignore transient status read failure
-  }
-
-  return false;
+  const { checkChatCancelledInternal } = await import("./chat-batch-steps");
+  return checkChatCancelledInternal(chatId, workflowRunId);
 }
 
 async function setChatRunStatusStep(

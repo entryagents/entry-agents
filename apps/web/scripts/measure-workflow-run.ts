@@ -69,7 +69,9 @@ function addMetric(
   map.set(name, prev);
 }
 
-function simulateRun(mode: "before-pr272" | "after-pr272") {
+function simulateRun(
+  mode: "before-pr272" | "after-pr272" | "after-in-step-fold",
+) {
   const metrics = new Map<string, StepMetric>();
   // Run-level events: run_created + run_started + run_completed
   const runEvents = 3;
@@ -140,7 +142,7 @@ function simulateRun(mode: "before-pr272" | "after-pr272") {
         { chatId: "chat-1" },
         { messages: [] },
       );
-    } else {
+    } else if (mode === "after-pr272") {
       addMetric(
         metrics,
         "prepareStepChecksStep",
@@ -238,6 +240,28 @@ function simulateRun(mode: "before-pr272" | "after-pr272") {
     const outBytes = utf8Bytes(stepOutputPayload);
     addMetric(metrics, "runAgentStep", stepInputPayload, stepOutputPayload);
 
+    if (mode !== "after-in-step-fold") {
+      addMetric(
+        metrics,
+        "persistAssistantMessage",
+        {
+          chatId: "chat-1",
+          message: {
+            id: "asst-1",
+            role: "assistant",
+            parts: pendingAssistantParts,
+          },
+        },
+        null,
+      );
+      addMetric(
+        metrics,
+        "checkChatCancelledStep",
+        { chatId: "chat-1", workflowRunId: "wrun_1" },
+        false,
+      );
+    }
+
     if (step === 1 || step === 10 || step === 25 || step === 50) {
       stepSnapshots.push({
         step,
@@ -247,7 +271,7 @@ function simulateRun(mode: "before-pr272" | "after-pr272") {
     }
   }
 
-  // 3. Post-finish steps (unchanged in PR #272)
+  // 3. Post-finish steps
   addMetric(
     metrics,
     "clearActiveStream",
@@ -293,22 +317,29 @@ function simulateRun(mode: "before-pr272" | "after-pr272") {
 }
 
 const before = simulateRun("before-pr272");
-const after = simulateRun("after-pr272");
+const afterPr272 = simulateRun("after-pr272");
+const after = simulateRun("after-in-step-fold");
 
 console.log(
   "=== 50-Step Coding Agent Run: Measured Workflow Events & Serialized Bytes ===\n",
 );
 console.log(
-  `BEFORE PR #272: ${before.totalCalls} step calls | ${before.totalEvents} Workflow Events | ${formatBytes(before.totalBytes)} serialized`,
+  `BEFORE PR #272    : ${before.totalCalls} step calls | ${before.totalEvents} Workflow Events | ${formatBytes(before.totalBytes)} serialized`,
 );
 console.log(
-  `AFTER  PR #272: ${after.totalCalls} step calls | ${after.totalEvents} Workflow Events | ${formatBytes(after.totalBytes)} serialized`,
+  `AFTER  PR #272    : ${afterPr272.totalCalls} step calls | ${afterPr272.totalEvents} Workflow Events | ${formatBytes(afterPr272.totalBytes)} serialized`,
 );
 console.log(
-  `DELTA         : -${before.totalCalls - after.totalCalls} step calls | -${before.totalEvents - after.totalEvents} events (-${(((before.totalEvents - after.totalEvents) / before.totalEvents) * 100).toFixed(1)}%) | -${formatBytes(before.totalBytes - after.totalBytes)}\n`,
+  `AFTER IN-STEP FOLD: ${after.totalCalls} step calls | ${after.totalEvents} Workflow Events | ${formatBytes(after.totalBytes)} serialized`,
+);
+console.log(
+  `VS PR #272        : -${afterPr272.totalCalls - after.totalCalls} step calls | -${afterPr272.totalEvents - after.totalEvents} events (-${(((afterPr272.totalEvents - after.totalEvents) / afterPr272.totalEvents) * 100).toFixed(1)}%) | -${formatBytes(afterPr272.totalBytes - after.totalBytes)}`,
+);
+console.log(
+  `VS ORIGINAL       : -${before.totalCalls - after.totalCalls} step calls | -${before.totalEvents - after.totalEvents} events (-${(((before.totalEvents - after.totalEvents) / before.totalEvents) * 100).toFixed(1)}%) | -${formatBytes(before.totalBytes - after.totalBytes)}\n`,
 );
 
-console.log("--- Breakdown by Step Boundary (AFTER PR #272) ---");
+console.log("--- Breakdown by Step Boundary (AFTER IN-STEP FOLD) ---");
 const rows = Array.from(after.metrics.entries()).sort(
   (a, b) =>
     b[1].inputBytes + b[1].outputBytes - (a[1].inputBytes + a[1].outputBytes),
