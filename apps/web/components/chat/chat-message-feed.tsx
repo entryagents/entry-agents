@@ -622,6 +622,8 @@ const ChatMessageRow = memo(function ChatMessageRow({
         durationMs={durationMs}
         startedAt={startedAt}
         activeApprovalId={activeApprovalId}
+        cwd={cwd}
+        onOpenFile={onOpenFile}
         workspaceStatusMessage={
           isMessageStreaming ? workspaceStatusMessage : null
         }

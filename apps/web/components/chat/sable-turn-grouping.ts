@@ -27,6 +27,12 @@ export type ReasoningMessagePart = Extract<
 
 export type TextMessagePart = Extract<WebAgentUIMessagePart, { type: "text" }>;
 
+export interface TurnChangedFile {
+  path: string;
+  added: number;
+  removed: number;
+}
+
 export interface TurnFileChanges {
   files: number;
   add: number;
@@ -135,6 +141,7 @@ export interface AssistantTurnFlow {
   thoughtOnly: boolean;
   changes: TurnFileChanges;
   changedFiles: string[];
+  changedFileDetails: TurnChangedFile[];
   live: TurnLiveInfo;
 }
 
@@ -648,7 +655,7 @@ export function buildAssistantTurnFlow(
 
   // Build flow chunks & collect work summary
   const flow: AssistantFlowChunk[] = [];
-  const changedFileSet = new Set<string>();
+  const changedFileMap = new Map<string, { added: number; removed: number }>();
   let add = 0;
   let del = 0;
   let totalSteps = 0;
@@ -774,9 +781,14 @@ export function buildAssistantTurnFlow(
         typeof input?.filePath === "string" &&
         input.filePath.length > 0
       ) {
-        changedFileSet.add(input.filePath);
+        const fileStats = changedFileMap.get(input.filePath) ?? {
+          added: 0,
+          removed: 0,
+        };
         if (part.type === "tool-write" && typeof input.content === "string") {
-          add += countLines(input.content);
+          const written = countLines(input.content);
+          add += written;
+          fileStats.added += written;
         } else if (part.type === "tool-edit") {
           const oldStr =
             typeof input.oldString === "string" ? input.oldString : "";
@@ -785,11 +797,16 @@ export function buildAssistantTurnFlow(
           const oldLines = countLines(oldStr);
           const newLines = countLines(newStr);
           if (newLines >= oldLines) {
-            add += Math.max(1, newLines - oldLines);
+            const delta = Math.max(1, newLines - oldLines);
+            add += delta;
+            fileStats.added += delta;
           } else {
-            del += oldLines - newLines;
+            const delta = oldLines - newLines;
+            del += delta;
+            fileStats.removed += delta;
           }
         }
+        changedFileMap.set(input.filePath, fileStats);
       }
 
       currentRunItems.push({
@@ -885,7 +902,14 @@ export function buildAssistantTurnFlow(
     (lastChunk.isStreaming || lastChunk.part.text.trim().length > 0);
   const quiet = speaking && !waiting && !stepping;
 
-  const changedFiles = Array.from(changedFileSet);
+  const changedFiles = Array.from(changedFileMap.keys());
+  const changedFileDetails: TurnChangedFile[] = Array.from(
+    changedFileMap.entries(),
+  ).map(([path, stats]) => ({
+    path,
+    added: stats.added,
+    removed: stats.removed,
+  }));
 
   return {
     flow,
@@ -901,6 +925,7 @@ export function buildAssistantTurnFlow(
       del,
     },
     changedFiles,
+    changedFileDetails,
     live: {
       waiting,
       title: liveTitle || "Working",
