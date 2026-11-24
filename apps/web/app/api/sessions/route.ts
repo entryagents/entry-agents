@@ -577,13 +577,11 @@ export async function POST(req: Request) {
               { generateId },
               { start },
               { runAgentWorkflow },
-              { isHobbyResourceProfile },
               { claimChatActiveStreamId, setChatRunStatus },
             ] = await Promise.all([
               import("ai"),
               import("workflow/api"),
               import("@/app/workflows/chat"),
-              import("@/lib/deployment/resource-profile"),
               import("@/lib/db/sessions"),
             ]);
 
@@ -600,7 +598,7 @@ export async function POST(req: Request) {
                     authSession: session ?? null,
                     assistantId: generateId(),
                     inputMessagesPersisted: true,
-                    maxSteps: isHobbyResourceProfile() ? 50 : 2000,
+                    maxSteps: 400,
                   },
                 ],
                 {

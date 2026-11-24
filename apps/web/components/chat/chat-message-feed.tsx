@@ -482,7 +482,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
             }
           }}
         >
-          <div className="sable-md select-text">
+          <div className="sable-md min-w-0 break-words [overflow-wrap:anywhere] select-text">
             <SmoothedAssistantMarkdown
               content={chunk.part.text}
               active={isMessageStreaming && chunk.part.state === "streaming"}
@@ -532,7 +532,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
 
       if (item.kind === "lead") {
         return (
-          <div className="sable-lead-in py-0.5 select-text">
+          <div className="sable-lead-in min-w-0 break-words [overflow-wrap:anywhere] py-0.5 select-text">
             <SmoothedAssistantMarkdown
               content={item.part.text}
               active={isMessageStreaming && item.part.state === "streaming"}
@@ -651,7 +651,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
             >
               <div className="group flex w-fit min-w-0 max-w-[85%] sm:max-w-[80%] flex-col items-end">
                 <div
-                  className="sable-user-card text-left transition-opacity"
+                  className="sable-user-card min-w-0 max-w-full break-words [overflow-wrap:anywhere] text-left transition-opacity"
                   // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- wraps nested interactive UserMessageFold controls
                   role="button"
                   tabIndex={0}

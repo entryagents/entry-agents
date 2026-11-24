@@ -63,7 +63,7 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({
     <div
       ref={containerRef}
       className={cn(
-        "streaming-markdown-root relative min-w-0 max-w-full leading-relaxed break-words",
+        "streaming-markdown-root relative min-w-0 max-w-full leading-relaxed break-words [overflow-wrap:anywhere]",
         className,
       )}
     >

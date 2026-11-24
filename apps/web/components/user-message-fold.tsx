@@ -46,7 +46,7 @@ export function UserMessageFold({
     return (
       <div
         className={cn(
-          "whitespace-pre-wrap break-words text-sm leading-relaxed select-text",
+          "whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0 text-sm leading-relaxed select-text",
           className,
         )}
       >
@@ -59,7 +59,7 @@ export function UserMessageFold({
     <div
       className={cn(
         "max-h-72 overflow-y-auto overscroll-contain pr-1 select-text [scrollbar-width:thin]",
-        "whitespace-pre-wrap break-words text-sm leading-relaxed",
+        "whitespace-pre-wrap break-words [overflow-wrap:anywhere] min-w-0 text-sm leading-relaxed",
         className,
       )}
     >

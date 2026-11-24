@@ -1,13 +1,24 @@
 import { checkBotProtection } from "@/lib/botid";
-import { experimental_transcribe as transcribe } from "ai";
-import { elevenlabs } from "@ai-sdk/elevenlabs";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 interface TranscribeRequestBody {
   audio: string; // base64-encoded audio data
-  mimeType?: string; // e.g., "audio/webm" - accepted but not currently used
+  mimeType?: string; // e.g., "audio/webm"
 }
+
+interface DeepgramListenResponse {
+  results?: {
+    channels?: Array<{
+      alternatives?: Array<{
+        transcript?: string;
+      }>;
+    }>;
+  };
+}
+
+const DEEPGRAM_LISTEN_URL =
+  "https://api.deepgram.com/v1/listen?model=nova-3&smart_format=true&punctuate=true&language=en";
 
 export async function POST(req: Request) {
   const session = await getServerSession();
@@ -29,6 +40,14 @@ export async function POST(req: Request) {
     return limited;
   }
 
+  const apiKey = process.env.DEEPGRAM_API_KEY;
+  if (!apiKey) {
+    return Response.json(
+      { error: "Transcription service not configured" },
+      { status: 503 },
+    );
+  }
+
   let body: TranscribeRequestBody;
   try {
     body = (await req.json()) as TranscribeRequestBody;
@@ -36,9 +55,9 @@ export async function POST(req: Request) {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { audio } = body;
+  const { audio, mimeType } = body;
 
-  if (!audio) {
+  if (!audio || typeof audio !== "string") {
     return Response.json(
       { error: "Missing required field: audio" },
       { status: 400 },
@@ -54,25 +73,39 @@ export async function POST(req: Request) {
     );
   }
 
+  const base64Payload = audio.includes(",")
+    ? (audio.split(",")[1] ?? "")
+    : audio;
+  const audioBuffer = Buffer.from(base64Payload, "base64");
+  const contentType =
+    typeof mimeType === "string" && mimeType.trim().length > 0
+      ? mimeType.split(";")[0]?.trim() || "audio/webm"
+      : "audio/webm";
+
   try {
-    const result = await transcribe({
-      model: elevenlabs.transcription("scribe_v1"),
-      audio: audio, // base64 string is accepted directly
-      providerOptions: {
-        elevenlabs: {
-          // Disable audio event tagging (e.g., [background noise], [music])
-          // so the transcription focuses only on spoken words
-          tagAudioEvents: false,
-          // Hint that we expect a single primary speaker
-          numSpeakers: 1,
-          // Set English as the expected language for better accuracy
-          // with developer/technical terminology
-          languageCode: "eng",
-        },
+    const response = await fetch(DEEPGRAM_LISTEN_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${apiKey}`,
+        "Content-Type": contentType,
       },
+      body: audioBuffer,
     });
 
-    return Response.json({ text: result.text });
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      console.error(
+        `Deepgram transcription failed (${response.status}):`,
+        errorBody.slice(0, 500),
+      );
+      return Response.json({ error: "Transcription failed" }, { status: 502 });
+    }
+
+    const data = (await response.json()) as DeepgramListenResponse;
+    const text =
+      data.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
+
+    return Response.json({ text });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("Transcription failed:", message);

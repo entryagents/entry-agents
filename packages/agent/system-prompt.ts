@@ -366,15 +366,16 @@ Call the \`mcp__<server>__<tool>\` tools directly whenever the user's request ma
 /**
  * Build the complete system prompt, with model-family-specific behavioral tuning.
  *
- * Assembly order:
- * 1. Core system prompt (shared across all models)
- * 2. Model-family overlay (persistence, verbosity, tool-use patterns)
- * 3. Environment details (cwd, platform, etc.)
- * 4. Cloud sandbox instructions
- * 5. Custom instructions (AGENTS.md, user config)
- * 6. Skills section (if skills registered)
- * 7. User secrets catalog (names + descriptions only, never values)
- * 8. Guided frontend workflow section (if enabled)
+ * Assembly order (most-stable -> least-stable for KV prefix caching across
+ * sessions, including first-message / short-task DeepSeek and OpenAI/Anthropic
+ * prompt caches):
+ * 1. staticCore: core system prompt + model-family overlay (global)
+ * 2. Current date: YYYY-MM-DD (global per day)
+ * 3. skillsPrompt (global/user-stable)
+ * 4. Working directory + customInstructions (repo-stable)
+ * 5. secretsPrompt + mcpPrompt (user-stable)
+ * 6. Current branch + CLOUD_SANDBOX_INSTRUCTIONS + environmentDetails +
+ *    guidedFrontendWorkflow (session-specific)
  */
 export interface SystemPromptParts {
   staticCore: string;
@@ -396,25 +397,23 @@ export function buildSystemPromptParts(
   const now = new Date();
   const currentDateStr = now.toISOString().split("T")[0];
 
-  const envParts = [
-    `# Environment`,
-    ``,
-    `Current date: ${currentDateStr}`,
-    options.cwd
-      ? `Working directory: \`${options.cwd}\` (use workspace-relative paths for all file operations).`
-      : undefined,
-    options.environmentDetails || undefined,
-  ].filter(Boolean);
+  const dynamicParts: string[] = [
+    `\n# Environment\n\nCurrent date: ${currentDateStr}`,
+  ];
 
-  const dynamicParts: string[] = [`\n${envParts.join("\n\n")}`];
+  // Global/user-stable: skills list
+  if (options.skills && options.skills.length > 0) {
+    const skillsPrompt = buildSkillsPrompt(options.skills);
+    if (skillsPrompt) {
+      dynamicParts.push(skillsPrompt);
+    }
+  }
 
-  if (options.currentBranch) {
-    const cloudSandboxInstructions = CLOUD_SANDBOX_INSTRUCTIONS.replace(
-      "{branch}",
-      options.currentBranch,
+  // Repo-stable: working directory + custom instructions (AGENTS.md / CLAUDE.md)
+  if (options.cwd) {
+    dynamicParts.push(
+      `\nWorking directory: \`${options.cwd}\` (use workspace-relative paths for all file operations).`,
     );
-    dynamicParts.push(`\nCurrent branch: ${options.currentBranch}`);
-    dynamicParts.push(`\n${cloudSandboxInstructions}`);
   }
 
   if (options.customInstructions) {
@@ -423,14 +422,7 @@ export function buildSystemPromptParts(
     );
   }
 
-  // Add skills section if skills are available
-  if (options.skills && options.skills.length > 0) {
-    const skillsPrompt = buildSkillsPrompt(options.skills);
-    if (skillsPrompt) {
-      dynamicParts.push(skillsPrompt);
-    }
-  }
-
+  // User-stable: secrets catalog + connected MCP servers
   if (options.secretCatalog && options.secretCatalog.length > 0) {
     const secretsPrompt = buildSecretsPrompt(options.secretCatalog);
     if (secretsPrompt) {
@@ -443,6 +435,22 @@ export function buildSystemPromptParts(
     if (mcpPrompt) {
       dynamicParts.push(mcpPrompt);
     }
+  }
+
+  // Session-specific: branch, cloud sandbox instructions, environment details,
+  // and guided frontend workflow (placed last so session/branch changes never
+  // bust the cached prefix for skills, repo instructions, secrets, or MCP).
+  if (options.currentBranch) {
+    const cloudSandboxInstructions = CLOUD_SANDBOX_INSTRUCTIONS.replace(
+      "{branch}",
+      options.currentBranch,
+    );
+    dynamicParts.push(`\nCurrent branch: ${options.currentBranch}`);
+    dynamicParts.push(`\n${cloudSandboxInstructions}`);
+  }
+
+  if (options.environmentDetails) {
+    dynamicParts.push(`\n${options.environmentDetails}`);
   }
 
   if (options.guidedFrontendWorkflow) {

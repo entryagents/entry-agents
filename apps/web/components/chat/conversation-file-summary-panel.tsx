@@ -104,76 +104,78 @@ export const ConversationFileSummaryPanel = memo(
         </div>
 
         <SableCollapse open={open}>
-          <div className="grid w-full border-t border-border">
-            {files.map((file) => {
-              const relativePath = toRelativePath(file.path, cwd);
-              const { dir, name } = splitFilePath(relativePath);
-              return (
-                <div
-                  key={file.path}
-                  className={cn(
-                    "flex w-full items-center gap-2 overflow-hidden bg-background/50 px-3 py-2 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                    canReview && "hover:bg-muted/40",
-                  )}
-                >
-                  <button
-                    type="button"
-                    disabled={!canReview}
-                    title={relativePath}
-                    onClick={() => handleReviewFile(relativePath)}
+          <div className="max-h-72 overflow-y-auto border-t border-border">
+            <div className="grid w-full">
+              {files.map((file) => {
+                const relativePath = toRelativePath(file.path, cwd);
+                const { dir, name } = splitFilePath(relativePath);
+                return (
+                  <div
+                    key={file.path}
                     className={cn(
-                      "flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      canReview ? "cursor-pointer" : "cursor-default",
+                      "flex w-full items-center gap-2 overflow-hidden bg-background/50 px-3 py-2 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      canReview && "hover:bg-muted/40",
                     )}
                   >
-                    <FileText
-                      size={14}
-                      strokeWidth={1.5}
-                      aria-hidden="true"
-                      className="shrink-0 text-muted-foreground/75"
-                    />
-                    <div className="flex min-w-0 items-baseline gap-1.5">
-                      <span className="truncate text-[13px] font-medium text-foreground">
-                        {name}
-                      </span>
-                      {dir ? (
-                        <span className="hidden truncate text-xs text-muted-foreground/70 sm:inline">
-                          {dir}
-                        </span>
-                      ) : null}
-                    </div>
-                    <span className="flex shrink-0 items-center gap-1.5 tabular-nums text-xs">
-                      {file.added > 0 ? (
-                        <span className="sable-t-add">+{file.added}</span>
-                      ) : null}
-                      {file.removed > 0 ? (
-                        <span className="sable-t-del">-{file.removed}</span>
-                      ) : null}
-                    </span>
-                  </button>
-
-                  <div className="flex shrink-0 items-center gap-1.5">
                     <button
                       type="button"
                       disabled={!canReview}
+                      title={relativePath}
                       onClick={() => handleReviewFile(relativePath)}
-                      className="inline-flex h-7 cursor-pointer items-center rounded-lg border border-border bg-background/80 px-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+                      className={cn(
+                        "flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        canReview ? "cursor-pointer" : "cursor-default",
+                      )}
                     >
-                      Review
+                      <FileText
+                        size={14}
+                        strokeWidth={1.5}
+                        aria-hidden="true"
+                        className="shrink-0 text-muted-foreground/75"
+                      />
+                      <div className="flex min-w-0 items-baseline gap-1.5">
+                        <span className="truncate text-[13px] font-medium text-foreground">
+                          {name}
+                        </span>
+                        {dir ? (
+                          <span className="hidden truncate text-xs text-muted-foreground/70 sm:inline">
+                            {dir}
+                          </span>
+                        ) : null}
+                      </div>
+                      <span className="flex shrink-0 items-center gap-1.5 tabular-nums text-xs">
+                        {file.added > 0 ? (
+                          <span className="sable-t-add">+{file.added}</span>
+                        ) : null}
+                        {file.removed > 0 ? (
+                          <span className="sable-t-del">-{file.removed}</span>
+                        ) : null}
+                      </span>
                     </button>
-                    {canOpen ? (
+
+                    <div className="flex shrink-0 items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => handleOpenFile(relativePath)}
-                        className="inline-flex h-7 cursor-pointer items-center rounded-lg border border-border bg-background/80 px-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted"
+                        disabled={!canReview}
+                        onClick={() => handleReviewFile(relativePath)}
+                        className="inline-flex h-7 cursor-pointer items-center rounded-lg border border-border bg-background/80 px-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
                       >
-                        Open
+                        Review
                       </button>
-                    ) : null}
+                      {canOpen ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenFile(relativePath)}
+                          className="inline-flex h-7 cursor-pointer items-center rounded-lg border border-border bg-background/80 px-2.5 text-xs font-medium text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted"
+                        >
+                          Open
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </SableCollapse>
       </div>

@@ -1206,8 +1206,6 @@ export async function startNextQueuedWorkflowInternal(
       const { generateId } = await import("ai");
       const { start, getRun } = await import("workflow/api");
       const { runAgentWorkflow } = await import("./chat");
-      const { isHobbyResourceProfile } =
-        await import("@/lib/deployment/resource-profile");
 
       const nextRun = await start(
         runAgentWorkflow,
@@ -1221,7 +1219,7 @@ export async function startNextQueuedWorkflowInternal(
             authSession: params.authSession,
             assistantId: generateId(),
             inputMessagesPersisted: true,
-            maxSteps: params.maxSteps ?? (isHobbyResourceProfile() ? 50 : 2000),
+            maxSteps: params.maxSteps ?? 400,
             ...(params.teamRoleModels &&
             Object.keys(params.teamRoleModels).length > 0
               ? { teamRoleModels: params.teamRoleModels }

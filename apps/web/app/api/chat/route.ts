@@ -27,7 +27,6 @@ import {
 } from "./_lib/chat-context";
 import { parseChatRequestBody, requireChatIdentifiers } from "./_lib/request";
 import { runAgentWorkflow } from "@/app/workflows/chat";
-import { isHobbyResourceProfile } from "@/lib/deployment/resource-profile";
 import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-results";
 
 type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
@@ -187,7 +186,7 @@ export async function POST(req: Request) {
           requestUrl: req.url,
           authSession: session ?? null,
           assistantId: generateId(),
-          maxSteps: isHobbyResourceProfile() ? 50 : 2000,
+          maxSteps: 400,
           ...(sanitizedTeamRoleModels
             ? { teamRoleModels: sanitizedTeamRoleModels }
             : {}),
