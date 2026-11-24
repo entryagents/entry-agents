@@ -213,19 +213,12 @@ export function GitPanelProvider({ children }: { children: ReactNode }) {
     [activeWorkspaceTab],
   );
 
-  const openDiffToFile = useCallback(
-    (filePath: string) => {
-      setFocusedDiffFile(filePath);
-      setFocusedDiffRequestId((prev) => prev + 1);
-      setActiveWorkspaceTab("review");
-      setGitPanelOpen(true);
-      if (isMobile) {
-        setActiveView("diff");
-        setChangesTabDismissed(false);
-      }
-    },
-    [isMobile],
-  );
+  const openDiffToFile = useCallback((filePath: string) => {
+    setFocusedDiffFile(filePath);
+    setFocusedDiffRequestId((prev) => prev + 1);
+    setActiveWorkspaceTab("review");
+    setGitPanelOpen(true);
+  }, []);
 
   const [activeSubagentId, setActiveSubagentId] = useState<string | null>(null);
   const [activeSubagentTitle, setActiveSubagentTitle] = useState<string | null>(

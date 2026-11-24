@@ -16,7 +16,6 @@
     "db:check": "node scripts/check-migrations.ts"
   },
   "dependencies": {
-    "@ai-sdk/elevenlabs": "^2.0.29",
     "@ai-sdk/react": "catalog:",
     "@composio/core": "^0.17.0",
     "@entry-agents/agent": "workspace:*",
