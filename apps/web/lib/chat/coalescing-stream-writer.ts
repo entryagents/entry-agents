@@ -1,26 +1,31 @@
 /**
  * Coalesces consecutive `text-delta` and `reasoning-delta` chunks with the same
- * `id` while an underlying `writer.write()` is in flight, preventing per-token
- * durable-stream roundtrips from throttling text and thinking streaming speed.
+ * `id` directly onto the queue tail while an underlying `writer.write()` is in
+ * flight. Unlike a `queue.length === 0`-gated buffer, tail coalescing continues
+ * merging deltas even when non-delta control chunks (`start-step`, `text-start`,
+ * `message-metadata`) are queued ahead, preventing per-token durable-stream
+ * HTTP round-trips from throttling streaming throughput.
  */
 export function createCoalescingStreamWriter<
   T extends { type: string },
 >(writer: { write: (chunk: T) => Promise<void> }) {
-  let pendingDelta: (T & { id?: string; delta: string }) | null = null;
+  type CoalesceableChunk = T & { id?: string; delta: string };
   const queue: T[] = [];
   let draining: Promise<void> | null = null;
   let lastError: unknown = null;
 
+  function isCoalesceableChunk(chunk: T): chunk is CoalesceableChunk {
+    const candidate = chunk as T & { id?: unknown; delta?: unknown };
+    return (
+      (chunk.type === "text-delta" || chunk.type === "reasoning-delta") &&
+      typeof candidate.delta === "string" &&
+      (candidate.id === undefined || typeof candidate.id === "string")
+    );
+  }
+
   async function runDrain(): Promise<void> {
     try {
-      while (pendingDelta !== null || queue.length > 0) {
-        if (pendingDelta !== null) {
-          const chunk = pendingDelta;
-          pendingDelta = null;
-          await writer.write(chunk);
-          continue;
-        }
-
+      while (queue.length > 0) {
         const next = queue.shift();
         if (next !== undefined) {
           await writer.write(next);
@@ -41,43 +46,27 @@ export function createCoalescingStreamWriter<
     return draining;
   }
 
-  function anyPending(): boolean {
-    return pendingDelta !== null || queue.length > 0;
-  }
-
   function write(chunk: T): void {
     if (lastError !== null) {
       return;
     }
 
-    const candidate = chunk as T & { id?: unknown; delta?: unknown };
-    const isCoalesceable =
-      (chunk.type === "text-delta" || chunk.type === "reasoning-delta") &&
-      typeof candidate.delta === "string" &&
-      (candidate.id === undefined || typeof candidate.id === "string");
-
-    if (isCoalesceable) {
+    if (isCoalesceableChunk(chunk)) {
+      const tail = queue[queue.length - 1];
       if (
-        queue.length === 0 &&
-        pendingDelta !== null &&
-        pendingDelta.type === chunk.type &&
-        pendingDelta.id === candidate.id
+        tail !== undefined &&
+        isCoalesceableChunk(tail) &&
+        tail.type === chunk.type &&
+        tail.id === chunk.id
       ) {
-        pendingDelta.delta += candidate.delta as string;
+        tail.delta += chunk.delta;
         return;
       }
-
-      if (queue.length === 0 && pendingDelta === null) {
-        pendingDelta = { ...(chunk as T & { id?: string; delta: string }) };
-        void ensureDraining().catch(() => {});
-        return;
-      }
+      queue.push({ ...chunk });
+      void ensureDraining().catch(() => {});
+      return;
     }
 
-    if (pendingDelta !== null) {
-      queue.push(pendingDelta);
-      pendingDelta = null;
-    }
     queue.push(chunk);
     void ensureDraining().catch(() => {});
   }
@@ -86,7 +75,7 @@ export function createCoalescingStreamWriter<
     if (lastError !== null) {
       throw lastError;
     }
-    while (anyPending() || draining !== null) {
+    while (queue.length > 0 || draining !== null) {
       await ensureDraining();
     }
     if (lastError !== null) {

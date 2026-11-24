@@ -51,26 +51,65 @@ function RailPaneLoading() {
   );
 }
 
-const WorkspaceReviewTab = dynamic(
-  () => import("./workspace-review-tab").then((m) => m.WorkspaceReviewTab),
-  { ssr: false, loading: RailPaneLoading },
-);
-const WorkspaceFilesTab = dynamic(
-  () => import("./workspace-files-tab").then((m) => m.WorkspaceFilesTab),
-  { ssr: false, loading: RailPaneLoading },
-);
-const WorkspacePreviewTab = dynamic(
-  () => import("./workspace-preview-tab").then((m) => m.WorkspacePreviewTab),
-  { ssr: false, loading: RailPaneLoading },
-);
-const WorkspaceTerminalTab = dynamic(
-  () => import("./workspace-terminal-tab").then((m) => m.WorkspaceTerminalTab),
-  { ssr: false, loading: RailPaneLoading },
-);
-const WorkspaceAgentsTab = dynamic(
-  () => import("./workspace-agents-tab").then((m) => m.WorkspaceAgentsTab),
-  { ssr: false, loading: RailPaneLoading },
-);
+const loadWorkspaceReviewTab = () =>
+  import("./workspace-review-tab").then((m) => m.WorkspaceReviewTab);
+const loadWorkspaceFilesTab = () =>
+  import("./workspace-files-tab").then((m) => m.WorkspaceFilesTab);
+const loadWorkspacePreviewTab = () =>
+  import("./workspace-preview-tab").then((m) => m.WorkspacePreviewTab);
+const loadWorkspaceTerminalTab = () =>
+  import("./workspace-terminal-tab").then((m) => m.WorkspaceTerminalTab);
+const loadWorkspaceAgentsTab = () =>
+  import("./workspace-agents-tab").then((m) => m.WorkspaceAgentsTab);
+
+let workspaceTabChunksPreloaded = false;
+
+/**
+ * Warms all dynamic workspace rail tab chunks in the background so switching
+ * tabs never flashes a loading fallback.
+ */
+export function preloadWorkspaceTabChunks(): void {
+  if (workspaceTabChunksPreloaded) {
+    return;
+  }
+  workspaceTabChunksPreloaded = true;
+  void Promise.allSettled([
+    loadWorkspaceReviewTab(),
+    loadWorkspaceFilesTab(),
+    loadWorkspacePreviewTab(),
+    loadWorkspaceTerminalTab(),
+    loadWorkspaceAgentsTab(),
+  ]);
+}
+
+const PREMOUNT_RAIL_TABS: readonly RailTabId[] = [
+  "review",
+  "files",
+  "tasks",
+  "context",
+  "agents",
+];
+
+const WorkspaceReviewTab = dynamic(loadWorkspaceReviewTab, {
+  ssr: false,
+  loading: RailPaneLoading,
+});
+const WorkspaceFilesTab = dynamic(loadWorkspaceFilesTab, {
+  ssr: false,
+  loading: RailPaneLoading,
+});
+const WorkspacePreviewTab = dynamic(loadWorkspacePreviewTab, {
+  ssr: false,
+  loading: RailPaneLoading,
+});
+const WorkspaceTerminalTab = dynamic(loadWorkspaceTerminalTab, {
+  ssr: false,
+  loading: RailPaneLoading,
+});
+const WorkspaceAgentsTab = dynamic(loadWorkspaceAgentsTab, {
+  ssr: false,
+  loading: RailPaneLoading,
+});
 
 export type WorkspacePanelProps = GitPanelProps & {
   devServer: DevServerControls;
@@ -144,8 +183,9 @@ export function WorkspacePanel({
     ? normalizedTab
     : "files";
 
-  // Track which panes have been visited so we mount lazily on first visit and
-  // keep them alive for 0ms instant tab switches without losing state.
+  // Keep visited panes alive for 0ms instant tab switches without losing state.
+  // Lightweight/data panes are also pre-mounted on idle while live iframe/PTY
+  // panes (preview, terminal) preload their JS chunks and mount on first click.
   const [mountedPanes, setMountedPanes] = useState<Set<RailTabId>>(
     () => new Set([activeBuiltinTab]),
   );
@@ -156,6 +196,51 @@ export function WorkspacePanel({
       return new Set([...prev, activeBuiltinTab]);
     });
   }, [activeBuiltinTab]);
+
+  useEffect(() => {
+    const warmPanes = () => {
+      preloadWorkspaceTabChunks();
+      setMountedPanes((prev) => {
+        let missing = false;
+        for (const tab of PREMOUNT_RAIL_TABS) {
+          if (!prev.has(tab)) {
+            missing = true;
+            break;
+          }
+        }
+        if (!missing) {
+          return prev;
+        }
+        const next = new Set(prev);
+        for (const tab of PREMOUNT_RAIL_TABS) {
+          next.add(tab);
+        }
+        return next;
+      });
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (
+        callback: () => void,
+        opts?: { timeout: number },
+      ) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (typeof idleWindow.requestIdleCallback === "function") {
+      const idleId = idleWindow.requestIdleCallback(warmPanes, {
+        timeout: 300,
+      });
+      return () => {
+        idleWindow.cancelIdleCallback?.(idleId);
+      };
+    }
+
+    const timer = window.setTimeout(warmPanes, 120);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   const pickBuiltinTab = useCallback(
     (next: RailTabId) => {

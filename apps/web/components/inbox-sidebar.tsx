@@ -1212,6 +1212,14 @@ export function InboxSidebar({
                 <PopoverTrigger asChild>
                   <button
                     type="button"
+                    onMouseEnter={() => {
+                      router.prefetch("/settings/usage");
+                      router.prefetch("/settings/profile");
+                    }}
+                    onFocus={() => {
+                      router.prefetch("/settings/usage");
+                      router.prefetch("/settings/profile");
+                    }}
                     className={`flex h-9 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 text-left transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
                       profileMenuOpen
                         ? "bg-muted text-foreground"
@@ -1279,6 +1287,8 @@ export function InboxSidebar({
 
                     <button
                       type="button"
+                      onMouseEnter={() => router.prefetch("/settings/usage")}
+                      onFocus={() => router.prefetch("/settings/usage")}
                       onClick={() => {
                         setProfileMenuOpen(false);
                         if (isMobile) setOpenMobile(false);
@@ -1294,10 +1304,12 @@ export function InboxSidebar({
 
                     <button
                       type="button"
+                      onMouseEnter={() => router.prefetch("/settings/profile")}
+                      onFocus={() => router.prefetch("/settings/profile")}
                       onClick={() => {
                         setProfileMenuOpen(false);
                         if (isMobile) setOpenMobile(false);
-                        router.push("/settings");
+                        router.push("/settings/profile");
                       }}
                       className="flex w-full items-center justify-between px-3.5 py-2 text-[13px] text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 cursor-pointer"
                     >

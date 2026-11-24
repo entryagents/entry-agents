@@ -16,8 +16,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { signOut } from "@/lib/auth/actions";
+import { useIdleRoutePrefetch } from "@/hooks/use-idle-route-prefetch";
 import { useSession } from "@/hooks/use-session";
 import { AuthGuard } from "@/components/auth/auth-guard";
 import {
@@ -180,15 +181,34 @@ function SettingsLayout({
   children,
   pathname,
   isAdmin,
+  shouldPrefetch = false,
 }: {
   children: React.ReactNode;
   pathname: string;
   isAdmin: boolean;
+  shouldPrefetch?: boolean;
 }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const sidebarItems = isAdmin
-    ? [...baseSidebarItems, adminSidebarItem]
-    : baseSidebarItems;
+  const sidebarItems = useMemo(
+    () =>
+      isAdmin ? [...baseSidebarItems, adminSidebarItem] : baseSidebarItems,
+    [isAdmin],
+  );
+  const prefetchHrefs = useMemo(
+    () => [
+      ...sidebarItems.map((item) => item.href),
+      "/settings/mcp-servers",
+      "/settings/secrets",
+      "/settings/skills",
+      "/sessions",
+    ],
+    [sidebarItems],
+  );
+  useIdleRoutePrefetch(prefetchHrefs, {
+    enabled: shouldPrefetch,
+    delayMs: 100,
+  });
+
   const isAdminRoute = pathname.startsWith("/settings/admin");
   const activeItem = sidebarItems.find((item) =>
     matchesPrefix(pathname, item.matchPrefixes),
@@ -203,6 +223,7 @@ function SettingsLayout({
           <li key={item.id}>
             <Link
               href={item.href}
+              prefetch={true}
               onClick={() => setMobileSidebarOpen(false)}
               className={cn(
                 "flex h-8 w-full items-center gap-2.5 rounded-lg px-3 text-left text-[13px] font-medium transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] active:scale-[0.98]",
@@ -227,6 +248,7 @@ function SettingsLayout({
           <div className="flex items-center gap-4 px-5 py-4">
             <Link
               href="/sessions"
+              prefetch={true}
               className="flex h-8 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground"
             >
               <ArrowLeft className="size-4 shrink-0" strokeWidth={1.5} />
@@ -260,6 +282,7 @@ function SettingsLayout({
           <div className="flex items-center gap-4 px-5 py-4">
             <Link
               href="/sessions"
+              prefetch={true}
               onClick={() => setMobileSidebarOpen(false)}
               className="flex h-8 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground"
             >
@@ -301,6 +324,7 @@ function SettingsLayout({
           </span>
           <Link
             href="/sessions"
+            prefetch={true}
             className="text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
             Sessions
@@ -356,7 +380,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </SettingsLayout>
       }
     >
-      <SettingsLayout pathname={pathname} isAdmin={isAdmin}>
+      <SettingsLayout pathname={pathname} isAdmin={isAdmin} shouldPrefetch>
         {children}
       </SettingsLayout>
     </AuthGuard>

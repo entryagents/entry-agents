@@ -14,6 +14,7 @@ function createLatencyTrackedSandbox(initialFiles: Record<string, string>) {
   const rpcCounts = {
     exec: 0,
     stat: 0,
+    access: 0,
     readFile: 0,
     writeFile: 0,
     mkdir: 0,
@@ -32,6 +33,13 @@ function createLatencyTrackedSandbox(initialFiles: Record<string, string>) {
         stderr: "",
         exitCode: 0,
       };
+    },
+    access: async (filePath: string) => {
+      rpcCounts.access += 1;
+      await delay(SIMULATED_RPC_DELAY_MS);
+      if (!files.has(filePath)) {
+        throw new Error(`ENOENT: ${filePath}`);
+      }
     },
     stat: async (filePath: string) => {
       rpcCounts.stat += 1;
@@ -97,6 +105,7 @@ describe("full-lifecycle tool speed and RPC reduction", () => {
     expect(rpcCounts).toEqual({
       exec: 0,
       stat: 0,
+      access: 0,
       readFile: 0,
       writeFile: 0,
       mkdir: 0,
@@ -193,5 +202,31 @@ describe("full-lifecycle tool speed and RPC reduction", () => {
       bytesWritten: Buffer.byteLength(unicodeContent, "utf-8"),
     });
     expect(rpcCounts.stat).toBe(statCountBeforeWrite);
+  });
+
+  test("write on unread existing file fails fast with File already exists and 0 readFile RPCs", async () => {
+    const { sandbox, rpcCounts } = createLatencyTrackedSandbox({
+      "/workspace/src/existing.ts": "export const large = true;\n".repeat(1000),
+    });
+    const experimental_context = {
+      sandbox,
+      readFileState: new Map<string, string>(),
+    };
+
+    const write = writeFileTool();
+    const res = await write.execute?.(
+      { filePath: "src/existing.ts", content: "overwrite attempt" },
+      { experimental_context, toolCallId: "tc-w-exists", messages: [] },
+    );
+
+    expect(res).toMatchObject({
+      success: false,
+      gate: "unread",
+    });
+    expect((res as { error?: string } | undefined)?.error).toContain(
+      "File already exists",
+    );
+    expect(rpcCounts.readFile).toBe(0);
+    expect(rpcCounts.writeFile).toBe(0);
   });
 });
