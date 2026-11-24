@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useIdleRoutePrefetch } from "@/hooks/use-idle-route-prefetch";
 import { cn } from "@/lib/utils";
 
 const ADMIN_TABS = [
@@ -72,8 +73,11 @@ const ADMIN_TABS = [
   },
 ] as const;
 
+const ADMIN_TAB_HREFS = ADMIN_TABS.map((tab) => tab.href);
+
 export function AdminSubNav() {
   const pathname = usePathname();
+  useIdleRoutePrefetch(ADMIN_TAB_HREFS, { delayMs: 100 });
 
   return (
     <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-border/80 bg-muted/20 p-1">
@@ -86,6 +90,7 @@ export function AdminSubNav() {
           <Link
             key={tab.id}
             href={tab.href}
+            prefetch={true}
             className={cn(
               "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150",
               isActive

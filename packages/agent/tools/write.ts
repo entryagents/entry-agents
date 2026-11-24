@@ -132,44 +132,91 @@ EXAMPLES:
           };
         }
 
-        // Read gate (read-state.ts): overwriting an existing file
-        // the model has not read in its current version is a blind
-        // write — the worst kind of edit. Creating a new file is free.
+        // Read gate (read-state.ts): creating a new file is free, whereas
+        // targeting an existing file the model has never read must fail fast
+        // with a clear "File already exists" error without downloading the
+        // entire file over remote sandbox RPC.
         const readState = ensureReadFileState(
           (experimental_context ?? {}) as { readFileState?: unknown },
         );
         const displayPath = toDisplayPath(absolutePath, workingDirectory);
-        const [realPath, existingRead] = await Promise.all([
-          resolveSandboxRealPath({
-            sandbox,
-            absolutePath,
-            workingDirectory,
-          }),
-          sandbox
-            .readFile(absolutePath, "utf-8")
-            .then((raw) => ({ exists: true as const, raw }))
-            .catch(() => ({ exists: false as const, raw: "" })),
-        ]);
-        if (realPath && !resolveWorkspacePath(realPath, workingDirectory)) {
-          return {
-            success: false,
-            error: "Path resolves outside the workspace.",
-          };
-        }
+        const preflightGate = checkReadGate(
+          readState,
+          displayPath,
+          "",
+          "write",
+        );
+        const hasPriorRead =
+          preflightGate.ok || preflightGate.reason === "stale";
 
-        if (existingRead.exists) {
-          const gate = checkReadGate(
-            readState,
-            displayPath,
-            currentFileHash(existingRead.raw),
-            "write",
-          );
-          if (!gate.ok) {
+        if (!hasPriorRead) {
+          const checkExists = async (): Promise<boolean> => {
+            if (typeof sandbox.access === "function") {
+              return sandbox
+                .access(absolutePath)
+                .then(() => true)
+                .catch(() => false);
+            }
+            return sandbox
+              .stat(absolutePath)
+              .then(() => true)
+              .catch(() => false);
+          };
+
+          const [realPath, fileExists] = await Promise.all([
+            resolveSandboxRealPath({
+              sandbox,
+              absolutePath,
+              workingDirectory,
+            }),
+            checkExists(),
+          ]);
+          if (realPath && !resolveWorkspacePath(realPath, workingDirectory)) {
             return {
               success: false,
-              error: gate.message,
-              gate: gate.reason,
+              error: "Path resolves outside the workspace.",
             };
+          }
+          if (fileExists) {
+            return {
+              success: false,
+              error: `File already exists (${displayPath}). Use the read tool to inspect it and the edit tool to modify it, or read it first before overwriting with write.`,
+              gate: "unread",
+            };
+          }
+        } else {
+          const [realPath, existingRead] = await Promise.all([
+            resolveSandboxRealPath({
+              sandbox,
+              absolutePath,
+              workingDirectory,
+            }),
+            sandbox
+              .readFile(absolutePath, "utf-8")
+              .then((raw) => ({ exists: true as const, raw }))
+              .catch(() => ({ exists: false as const, raw: "" })),
+          ]);
+          if (realPath && !resolveWorkspacePath(realPath, workingDirectory)) {
+            return {
+              success: false,
+              error: "Path resolves outside the workspace.",
+            };
+          }
+
+          if (existingRead.exists) {
+            const gate = checkReadGate(
+              readState,
+              displayPath,
+              currentFileHash(existingRead.raw),
+              "write",
+            );
+            if (!gate.ok) {
+              return {
+                success: false,
+                error: gate.message,
+                gate: gate.reason,
+              };
+            }
           }
         }
 

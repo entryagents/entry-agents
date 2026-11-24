@@ -30,11 +30,14 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({
   className,
 }: StreamingMarkdownProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const onOpenFileRef = useRef(onOpenFile);
+  onOpenFileRef.current = onOpenFile;
+  const hasOnOpenFile = Boolean(onOpenFile);
 
   const mergedComponents = useMemo<Components>(() => {
-    const base = createWordsComponents(Boolean(onOpenFile));
+    const base = createWordsComponents(hasOnOpenFile);
     return components ? { ...base, ...components } : base;
-  }, [components, onOpenFile]);
+  }, [components, hasOnOpenFile]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -49,12 +52,12 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({
       const filePath = anchor.dataset.workspaceFile;
       if (!filePath) return;
       event.preventDefault();
-      onOpenFile?.(filePath);
+      onOpenFileRef.current?.(filePath);
     };
 
     container.addEventListener("click", handleClick);
     return () => container.removeEventListener("click", handleClick);
-  }, [onOpenFile]);
+  }, []);
 
   return (
     <div
@@ -68,7 +71,6 @@ export const StreamingMarkdown = memo(function StreamingMarkdown({
         mode={isStreaming ? "streaming" : "static"}
         isAnimating={isStreaming}
         animated={false}
-        caret={isStreaming ? "block" : undefined}
         math
         plugins={wordsPlugins}
         controls={wordsControls}

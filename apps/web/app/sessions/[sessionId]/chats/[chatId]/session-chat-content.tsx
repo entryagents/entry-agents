@@ -153,8 +153,10 @@ const FileTabView = dynamic(
   () => import("./file-tab-view").then((m) => m.FileTabView),
   { ssr: false },
 );
+const loadWorkspacePanel = () => import("./workspace/workspace-panel");
+
 const WorkspacePanel = dynamic(
-  () => import("./workspace/workspace-panel").then((m) => m.WorkspacePanel),
+  () => loadWorkspacePanel().then((m) => m.WorkspacePanel),
   {
     ssr: false,
     loading: () => (
@@ -578,6 +580,35 @@ export function SessionChatContent({
   const [branchPreviewUrlChangeBaseline, setBranchPreviewUrlChangeBaseline] =
     useState<string | null | undefined>(undefined);
   const hasMounted = useHasMounted();
+
+  useEffect(() => {
+    const preload = () => {
+      void loadWorkspacePanel()
+        .then((m) => m.preloadWorkspaceTabChunks())
+        .catch(() => {});
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (
+        callback: () => void,
+        opts?: { timeout: number },
+      ) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (typeof idleWindow.requestIdleCallback === "function") {
+      const idleId = idleWindow.requestIdleCallback(preload, { timeout: 500 });
+      return () => {
+        idleWindow.cancelIdleCallback?.(idleId);
+      };
+    }
+
+    const timer = window.setTimeout(preload, 250);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, []);
+
   const {
     activeView,
     activeSubagentId,

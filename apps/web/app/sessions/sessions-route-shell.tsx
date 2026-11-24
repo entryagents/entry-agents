@@ -145,8 +145,21 @@ export function SessionsRouteShell({
   );
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      for (const session of sessions.slice(0, 6)) {
+    const prefetchSidebarTargets = () => {
+      const staticTargets = [
+        "/sessions",
+        "/settings/profile",
+        "/settings/usage",
+      ];
+      for (const href of staticTargets) {
+        if (prefetchedSessionHrefsRef.current.has(href)) {
+          continue;
+        }
+        prefetchedSessionHrefsRef.current.add(href);
+        router.prefetch(href);
+      }
+
+      for (const session of sessions.slice(0, 15)) {
         const href = getSessionHref(session);
         if (prefetchedSessionHrefsRef.current.has(href)) {
           continue;
@@ -155,8 +168,26 @@ export function SessionsRouteShell({
         prefetchedSessionHrefsRef.current.add(href);
         router.prefetch(href);
       }
-    }, 150);
+    };
 
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (
+        callback: () => void,
+        opts?: { timeout: number },
+      ) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (typeof idleWindow.requestIdleCallback === "function") {
+      const idleId = idleWindow.requestIdleCallback(prefetchSidebarTargets, {
+        timeout: 300,
+      });
+      return () => {
+        idleWindow.cancelIdleCallback?.(idleId);
+      };
+    }
+
+    const timer = window.setTimeout(prefetchSidebarTargets, 150);
     return () => {
       window.clearTimeout(timer);
     };

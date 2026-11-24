@@ -245,6 +245,9 @@ describe("read-before-overwrite gate (write tool)", () => {
       success: false,
       gate: "unread",
     });
+    expect(
+      (result as unknown as { error?: string } | undefined)?.error,
+    ).toContain("File already exists");
     const onDisk = await readFile(filePath, "utf-8");
     expect(onDisk).toBe("precious content\n"); // nothing was destroyed
   });

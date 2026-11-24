@@ -39,9 +39,50 @@ describe("createCoalescingStreamWriter", () => {
     expect(written).toEqual([
       { type: "reasoning-delta", id: "r1", delta: "Think" },
       { type: "reasoning-delta", id: "r1", delta: "ing..." },
-      { type: "text-delta", id: "t1", delta: "Hello" },
-      { type: "text-delta", id: "t1", delta: " world" },
+      { type: "text-delta", id: "t1", delta: "Hello world" },
       { type: "finish-step" },
+    ]);
+  });
+
+  test("continues coalescing text-deltas even when start-step and text-start are ahead in the queue", async () => {
+    const written: Array<{ type: string; id?: string; delta?: string }> = [];
+    let releaseStartStep: (() => void) | undefined;
+
+    const writer = createCoalescingStreamWriter<{
+      type: string;
+      id?: string;
+      delta?: string;
+    }>({
+      write: async (chunk) => {
+        written.push(chunk);
+        if (chunk.type === "start-step") {
+          await new Promise<void>((resolve) => {
+            releaseStartStep = resolve;
+          });
+        }
+      },
+    });
+
+    writer.write({ type: "start-step" });
+    writer.write({ type: "text-start", id: "t1" });
+    for (let i = 0; i < 20; i += 1) {
+      writer.write({ type: "text-delta", id: "t1", delta: `w${i} ` });
+    }
+    writer.write({ type: "text-end", id: "t1" });
+
+    await Promise.resolve();
+    releaseStartStep?.();
+    await writer.flush();
+
+    expect(written).toEqual([
+      { type: "start-step" },
+      { type: "text-start", id: "t1" },
+      {
+        type: "text-delta",
+        id: "t1",
+        delta: Array.from({ length: 20 }, (_, i) => `w${i} `).join(""),
+      },
+      { type: "text-end", id: "t1" },
     ]);
   });
 

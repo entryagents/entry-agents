@@ -107,6 +107,22 @@ const SECTION_TABS: Array<{ id: TelemetrySectionFilter; label: string }> = [
   { id: "ops", label: "Auth, billing & ops" },
 ];
 
+const VALID_SECTIONS = new Set<TelemetrySectionFilter>([
+  "all",
+  "live",
+  "plugins",
+  "sandboxes",
+  "ops",
+]);
+
+function parseSectionFromSearch(search: string): TelemetrySectionFilter {
+  const param = new URLSearchParams(search).get("section");
+  if (param && VALID_SECTIONS.has(param as TelemetrySectionFilter)) {
+    return param as TelemetrySectionFilter;
+  }
+  return "all";
+}
+
 export function AdminLiveTelemetryDashboard() {
   const [windowRange, setWindowRange] = useState<AdminTelemetryWindow>("24h");
   const [pollMs, setPollMs] = useState<PollIntervalMs>(15000);
@@ -116,6 +132,28 @@ export function AdminLiveTelemetryDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isVisible, setIsVisible] = useState(true);
+
+  useEffect(() => {
+    setSection(parseSectionFromSearch(window.location.search));
+  }, []);
+
+  const handleSelectSection = useCallback((next: TelemetrySectionFilter) => {
+    setSection(next);
+    if (typeof window === "undefined") {
+      return;
+    }
+    const url = new URL(window.location.href);
+    if (next === "all") {
+      url.searchParams.delete("section");
+    } else {
+      url.searchParams.set("section", next);
+    }
+    window.history.replaceState(
+      null,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, []);
 
   const fetchTelemetry = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -289,12 +327,18 @@ export function AdminLiveTelemetryDashboard() {
       </div>
 
       {/* Section filter bar (scrollable on mobile) */}
-      <div className="flex items-center gap-1 overflow-x-auto rounded-lg border border-border/80 bg-muted/20 p-1">
+      <div
+        role="tablist"
+        aria-label="Telemetry table groups"
+        className="flex items-center gap-1 overflow-x-auto rounded-lg border border-border/80 bg-muted/20 p-1"
+      >
         {SECTION_TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
-            onClick={() => setSection(tab.id)}
+            role="tab"
+            aria-selected={section === tab.id}
+            onClick={() => handleSelectSection(tab.id)}
             className={`shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors duration-150 ${
               section === tab.id
                 ? "bg-background text-foreground shadow-xs"
@@ -329,191 +373,217 @@ export function AdminLiveTelemetryDashboard() {
       ) : (
         data && (
           <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Card className="rounded-xl">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">
-                    Active runs
-                  </CardTitle>
-                  <Activity
-                    className="size-4 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
-                    {liveRunsTotal}
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    {data.live.statusCounts.running} running ·{" "}
-                    {data.live.totalQueuedPrompts} queued ·{" "}
-                    {data.live.unreadInboxMessages} inbox
-                  </p>
-                </CardContent>
-              </Card>
+            <div
+              className={
+                section === "all" || section === "live"
+                  ? "grid grid-cols-2 gap-3 lg:grid-cols-4"
+                  : "grid grid-cols-1 gap-3 sm:grid-cols-2"
+              }
+            >
+              {(section === "all" ||
+                section === "live" ||
+                section === "sandboxes") && (
+                <Card className="rounded-xl">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
+                      Active runs
+                    </CardTitle>
+                    <Activity
+                      className="size-4 text-muted-foreground"
+                      strokeWidth={1.5}
+                    />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                      {liveRunsTotal}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      {data.live.statusCounts.running} running ·{" "}
+                      {data.live.totalQueuedPrompts} queued ·{" "}
+                      {data.live.unreadInboxMessages} inbox
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-              <Card className="rounded-xl">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">
-                    Throughput &amp; spend
-                  </CardTitle>
-                  <DollarSign
-                    className="size-4 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
-                    {formatUsd(data.usage.totalSpendUsd)}
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    {data.usage.totalEvents} turns ({data.usage.webEvents} web /{" "}
-                    {data.usage.desktopEvents} desktop)
-                  </p>
-                </CardContent>
-              </Card>
+              {(section === "all" || section === "live") && (
+                <Card className="rounded-xl">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
+                      Throughput &amp; spend
+                    </CardTitle>
+                    <DollarSign
+                      className="size-4 text-muted-foreground"
+                      strokeWidth={1.5}
+                    />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                      {formatUsd(data.usage.totalSpendUsd)}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      {data.usage.totalEvents} turns ({data.usage.webEvents} web
+                      / {data.usage.desktopEvents} desktop)
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-              <Card className="rounded-xl">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">
-                    Prompt cache (all models)
-                  </CardTitle>
-                  <Zap
-                    className="size-4 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
-                    {data.cache.overallHitPct.toFixed(1)}%
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    {data.cache.byProvider.length} providers ·{" "}
-                    {formatUsd(data.cache.estimatedSavingsUsd)} saved
-                  </p>
-                </CardContent>
-              </Card>
+              {(section === "all" || section === "live") && (
+                <Card className="rounded-xl">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
+                      Prompt cache (all models)
+                    </CardTitle>
+                    <Zap
+                      className="size-4 text-muted-foreground"
+                      strokeWidth={1.5}
+                    />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                      {data.cache.overallHitPct.toFixed(1)}%
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      {data.cache.byProvider.length} providers ·{" "}
+                      {formatUsd(data.cache.estimatedSavingsUsd)} saved
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-              <Card className="rounded-xl">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">
-                    Reliability &amp; latency
-                  </CardTitle>
-                  <Gauge
-                    className="size-4 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
-                    {data.runs.errorRatePct.toFixed(1)}%{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      errors
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    P95 {formatDurationMs(data.runs.p95DurationMs)} ·{" "}
-                    {data.runs.totalSteps} steps
-                  </p>
-                </CardContent>
-              </Card>
+              {(section === "all" ||
+                section === "live" ||
+                section === "ops") && (
+                <Card className="rounded-xl">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
+                      Reliability &amp; latency
+                    </CardTitle>
+                    <Gauge
+                      className="size-4 text-muted-foreground"
+                      strokeWidth={1.5}
+                    />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                      {data.runs.errorRatePct.toFixed(1)}%{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        errors
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      P95 {formatDurationMs(data.runs.p95DurationMs)} ·{" "}
+                      {data.runs.totalSteps} steps
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-              <Card className="rounded-xl">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">
-                    Plugins &amp; hooks
-                  </CardTitle>
-                  <Blocks
-                    className="size-4 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
-                    {data.plugins.enabledPluginRows}{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      / {data.plugins.builtinCatalogCount} built-in
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    {data.plugins.triggeredInWindow} triggered ({data.window}) ·{" "}
-                    {data.plugins.totalSlashCommands} slash cmds
-                  </p>
-                </CardContent>
-              </Card>
+              {(section === "all" || section === "plugins") && (
+                <Card className="rounded-xl">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
+                      Plugins &amp; hooks
+                    </CardTitle>
+                    <Blocks
+                      className="size-4 text-muted-foreground"
+                      strokeWidth={1.5}
+                    />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                      {data.plugins.enabledPluginRows}{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        / {data.plugins.builtinCatalogCount} built-in
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      {data.plugins.triggeredInWindow} triggered ({data.window})
+                      · {data.plugins.totalSlashCommands} slash cmds
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-              <Card className="rounded-xl">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">
-                    Agent teams
-                  </CardTitle>
-                  <Users
-                    className="size-4 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
-                    {data.teamsAndSubagents.subagentEventsInWindow}{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      subagent turns
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    {data.teamsAndSubagents.totalSubagentsSpawned} spawned ·{" "}
-                    {data.teamsAndSubagents.boardEntriesTotal} board notes
-                  </p>
-                </CardContent>
-              </Card>
+              {(section === "all" || section === "plugins") && (
+                <Card className="rounded-xl">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
+                      Agent teams
+                    </CardTitle>
+                    <Users
+                      className="size-4 text-muted-foreground"
+                      strokeWidth={1.5}
+                    />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                      {data.teamsAndSubagents.subagentEventsInWindow}{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        subagent turns
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      {data.teamsAndSubagents.totalSubagentsSpawned} spawned ·{" "}
+                      {data.teamsAndSubagents.boardEntriesTotal} board notes
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-              <Card className="rounded-xl">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">
-                    Sandboxes &amp; MCP
-                  </CardTitle>
-                  <Box
-                    className="size-4 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
-                    {data.sandboxes.sessionsRunningStatus}{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      / {data.sandboxes.activeCommands} cmds
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    MCP {data.mcp.enabledServers} active ·{" "}
-                    {data.mcp.totalDiscoveredTools} tools
-                  </p>
-                </CardContent>
-              </Card>
+              {(section === "all" || section === "sandboxes") && (
+                <Card className="rounded-xl">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
+                      Sandboxes &amp; MCP
+                    </CardTitle>
+                    <Box
+                      className="size-4 text-muted-foreground"
+                      strokeWidth={1.5}
+                    />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                      {data.sandboxes.sessionsRunningStatus}{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        / {data.sandboxes.activeCommands} cmds
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      MCP {data.mcp.enabledServers} active ·{" "}
+                      {data.mcp.totalDiscoveredTools} tools
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
-              <Card className="rounded-xl">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
-                  <CardTitle className="text-xs font-medium text-muted-foreground">
-                    Auth, vault &amp; compact
-                  </CardTitle>
-                  <ShieldCheck
-                    className="size-4 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
-                    {data.integrationsAndAuth.activeAuthSessions}{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      live sessions
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground tabular-nums">
-                    {data.secrets.totalSecrets} secrets ·{" "}
-                    {formatTokens(data.compaction.totalTokensReclaimed)}{" "}
-                    reclaimed
-                  </p>
-                </CardContent>
-              </Card>
+              {(section === "all" || section === "ops") && (
+                <Card className="rounded-xl">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1.5">
+                    <CardTitle className="text-xs font-medium text-muted-foreground">
+                      Auth, vault &amp; compact
+                    </CardTitle>
+                    <ShieldCheck
+                      className="size-4 text-muted-foreground"
+                      strokeWidth={1.5}
+                    />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-xl font-medium tracking-tight tabular-nums sm:text-2xl">
+                      {data.integrationsAndAuth.activeAuthSessions}{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        live sessions
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+                      {data.secrets.totalSecrets} secrets ·{" "}
+                      {formatTokens(data.compaction.totalTokensReclaimed)}{" "}
+                      reclaimed
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
             </div>
 
             {(section === "all" || section === "live") && (
