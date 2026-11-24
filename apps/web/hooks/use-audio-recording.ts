@@ -27,11 +27,49 @@ interface DeepgramStreamMessage {
   };
 }
 
+interface BrowserSpeechRecognitionAlternative {
+  transcript: string;
+}
+
+interface BrowserSpeechRecognitionResult {
+  isFinal: boolean;
+  length: number;
+  [index: number]: BrowserSpeechRecognitionAlternative | undefined;
+}
+
+interface BrowserSpeechRecognitionEvent {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: BrowserSpeechRecognitionResult | undefined;
+  };
+}
+
+interface BrowserSpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+type BrowserSpeechRecognitionCtor = new () => BrowserSpeechRecognition;
+
+function getBrowserSpeechRecognitionCtor(): BrowserSpeechRecognitionCtor | null {
+  if (typeof window === "undefined") return null;
+  const win = window as unknown as {
+    SpeechRecognition?: BrowserSpeechRecognitionCtor;
+    webkitSpeechRecognition?: BrowserSpeechRecognitionCtor;
+  };
+  return win.SpeechRecognition ?? win.webkitSpeechRecognition ?? null;
+}
+
 export interface UseAudioRecordingOptions {
   /**
-   * Called continuously as speech is transcribed in real time over Deepgram
-   * Nova-3 WebSocket streaming. Receives the cumulative transcript for the
-   * current recording session (finalized segments + live interim text).
+   * Called continuously as speech is transcribed in real time. Receives the
+   * cumulative transcript for the current recording session (finalized
+   * segments + live interim text).
    */
   onTranscript?: (transcript: string) => void;
 }
@@ -79,6 +117,7 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
   const onTranscriptRef = useRef(options?.onTranscript);
   onTranscriptRef.current = options?.onTranscript;
 
+  const isRecordingRef = useRef(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -91,6 +130,10 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
   const finalTranscriptRef = useRef<string>("");
   const interimTranscriptRef = useRef<string>("");
   const keepAliveTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Live browser SpeechRecognition state (used when Deepgram token grant is unavailable)
+  const speechRecRef = useRef<BrowserSpeechRecognition | null>(null);
+  const usingSpeechRecRef = useRef(false);
 
   const cleanupLiveSocket = useCallback(() => {
     if (keepAliveTimerRef.current) {
@@ -114,13 +157,28 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
     }
   }, []);
 
+  const cleanupSpeechRecognition = useCallback(() => {
+    const rec = speechRecRef.current;
+    speechRecRef.current = null;
+    usingSpeechRecRef.current = false;
+    if (rec) {
+      try {
+        rec.stop();
+      } catch {
+        // Ignore stop error
+      }
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
+      isRecordingRef.current = false;
       cleanupLiveSocket();
+      cleanupSpeechRecognition();
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     };
-  }, [cleanupLiveSocket]);
+  }, [cleanupLiveSocket, cleanupSpeechRecognition]);
 
   const emitTranscript = useCallback(() => {
     const combined = [finalTranscriptRef.current, interimTranscriptRef.current]
@@ -136,16 +194,10 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
     audioChunksRef.current = [];
     pendingChunksRef.current = [];
     wsConnectedRef.current = false;
+    usingSpeechRecRef.current = false;
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      const mimeType = getSupportedMimeType();
-      mimeTypeRef.current = mimeType;
-
       // Request a short-lived Deepgram JWT for real-time WebSocket streaming.
-      // If unavailable, we seamlessly fall back to batch `/api/transcribe`.
       let tokenData: TokenGrantResponse | null = null;
       try {
         const tokenRes = await fetch("/api/transcribe/token", {
@@ -158,14 +210,24 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
         tokenData = null;
       }
 
-      if (tokenData?.token && !tokenData.fallback) {
+      const canUseDeepgramWs = Boolean(tokenData?.token && !tokenData.fallback);
+
+      // Path 1: Deepgram Nova-3 live WebSocket streaming
+      if (canUseDeepgramWs && tokenData?.token) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+        });
+        streamRef.current = stream;
+
+        const mimeType = getSupportedMimeType();
+        mimeTypeRef.current = mimeType;
+
         const protocol = tokenData.scheme ?? "bearer";
         const ws = new WebSocket(DEEPGRAM_WS_URL, [protocol, tokenData.token]);
         wsRef.current = ws;
 
         ws.addEventListener("open", () => {
           wsConnectedRef.current = true;
-          // Flush any audio chunks captured while the handshake was in flight
           for (const chunk of pendingChunksRef.current) {
             if (ws.readyState === WebSocket.OPEN) {
               ws.send(chunk);
@@ -205,13 +267,103 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
         });
 
         ws.addEventListener("error", () => {
-          // If the socket fails before ever opening, stop trying to stream so
-          // stopRecording falls back to batch `/api/transcribe`.
           if (!wsConnectedRef.current) {
             cleanupLiveSocket();
           }
         });
+
+        const mediaRecorder = new MediaRecorder(
+          stream,
+          mimeType ? { mimeType } : undefined,
+        );
+        mediaRecorderRef.current = mediaRecorder;
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size === 0) return;
+          audioChunksRef.current.push(event.data);
+
+          const activeWs = wsRef.current;
+          if (activeWs) {
+            if (activeWs.readyState === WebSocket.OPEN) {
+              activeWs.send(event.data);
+            } else if (activeWs.readyState === WebSocket.CONNECTING) {
+              pendingChunksRef.current.push(event.data);
+            }
+          }
+        };
+
+        mediaRecorder.start(250);
+        isRecordingRef.current = true;
+        setState("recording");
+        return;
       }
+
+      // Path 2: Native browser real-time SpeechRecognition (instant word-by-word
+      // streaming into the composer without waiting for stop).
+      const SpeechRecognitionCtor = getBrowserSpeechRecognitionCtor();
+      if (SpeechRecognitionCtor && onTranscriptRef.current) {
+        const recognition = new SpeechRecognitionCtor();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+        speechRecRef.current = recognition;
+        usingSpeechRecRef.current = true;
+
+        recognition.addEventListener("result", (rawEvent) => {
+          const event = rawEvent as unknown as BrowserSpeechRecognitionEvent;
+          let interim = "";
+          for (let i = event.resultIndex; i < event.results.length; i += 1) {
+            const result = event.results[i];
+            const transcript = result?.[0]?.transcript?.trim() ?? "";
+            if (!transcript) continue;
+            if (result?.isFinal) {
+              finalTranscriptRef.current = finalTranscriptRef.current
+                ? `${finalTranscriptRef.current} ${transcript}`
+                : transcript;
+            } else {
+              interim = interim ? `${interim} ${transcript}` : transcript;
+            }
+          }
+          interimTranscriptRef.current = interim;
+          emitTranscript();
+        });
+
+        recognition.addEventListener("error", (rawEvent) => {
+          const errCode = (rawEvent as unknown as { error?: string }).error;
+          if (errCode === "not-allowed" || errCode === "service-not-allowed") {
+            isRecordingRef.current = false;
+            cleanupSpeechRecognition();
+            setError(
+              "Microphone access denied. Please allow microphone access to use voice input.",
+            );
+            setState("idle");
+          }
+        });
+
+        recognition.addEventListener("end", () => {
+          // Chrome/Safari can end recognition after a brief silence; auto-restart
+          // while the user is still actively recording.
+          if (isRecordingRef.current && speechRecRef.current === recognition) {
+            try {
+              recognition.start();
+            } catch {
+              // Ignore restart error if already stopping
+            }
+          }
+        });
+
+        recognition.start();
+        isRecordingRef.current = true;
+        setState("recording");
+        return;
+      }
+
+      // Path 3: Batch MediaRecorder + `/api/transcribe` fallback (e.g. Firefox)
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      const mimeType = getSupportedMimeType();
+      mimeTypeRef.current = mimeType;
 
       const mediaRecorder = new MediaRecorder(
         stream,
@@ -220,24 +372,18 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
       mediaRecorderRef.current = mediaRecorder;
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size === 0) return;
-        audioChunksRef.current.push(event.data);
-
-        const ws = wsRef.current;
-        if (ws) {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(event.data);
-          } else if (ws.readyState === WebSocket.CONNECTING) {
-            pendingChunksRef.current.push(event.data);
-          }
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
         }
       };
 
-      // 250ms timeslice for low-latency real-time streaming to Deepgram
-      mediaRecorder.start(250);
+      mediaRecorder.start();
+      isRecordingRef.current = true;
       setState("recording");
     } catch (err) {
+      isRecordingRef.current = false;
       cleanupLiveSocket();
+      cleanupSpeechRecognition();
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       const message = err instanceof Error ? err.message : String(err);
@@ -253,17 +399,30 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
       }
       setState("idle");
     }
-  }, [cleanupLiveSocket, emitTranscript]);
+  }, [cleanupLiveSocket, cleanupSpeechRecognition, emitTranscript]);
 
   const stopRecording = useCallback(async (): Promise<string | null> => {
+    if (state !== "recording") {
+      return null;
+    }
+
+    isRecordingRef.current = false;
+
+    // If using live browser SpeechRecognition, stop immediately (text is already live in composer)
+    if (usingSpeechRecRef.current) {
+      cleanupSpeechRecognition();
+      setState("idle");
+      return null;
+    }
+
     const mediaRecorder = mediaRecorderRef.current;
-    if (!mediaRecorder || state !== "recording") {
+    if (!mediaRecorder) {
+      setState("idle");
       return null;
     }
 
     return new Promise((resolve) => {
       mediaRecorder.onstop = async () => {
-        // Stop all tracks to release the microphone
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
 
@@ -271,7 +430,6 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
         const ws = wsRef.current;
 
         if (usedLiveStreaming) {
-          // Flush any remaining buffered audio in Deepgram before closing
           if (ws && ws.readyState === WebSocket.OPEN) {
             try {
               ws.send(JSON.stringify({ type: "CloseStream" }));
@@ -282,7 +440,6 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
           }
           cleanupLiveSocket();
           setState("idle");
-          // Transcript was already streamed live via onTranscript
           resolve(null);
           return;
         }
@@ -329,7 +486,7 @@ export function useAudioRecording(options?: UseAudioRecordingOptions) {
 
       mediaRecorder.stop();
     });
-  }, [state, cleanupLiveSocket]);
+  }, [state, cleanupLiveSocket, cleanupSpeechRecognition]);
 
   const toggleRecording = useCallback(async (): Promise<string | null> => {
     if (state === "recording") {
