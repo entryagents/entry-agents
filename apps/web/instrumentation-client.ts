@@ -11,6 +11,8 @@ export const botIdProtectedRoutes = [
   { path: "/api/sandbox", method: "POST" },
   { path: "/api/sessions", method: "POST" },
   { path: "/api/transcribe", method: "POST" },
+  { path: "/api/transcribe/token", method: "POST" },
+  { path: "/api/tts", method: "POST" },
 ];
 
 /**

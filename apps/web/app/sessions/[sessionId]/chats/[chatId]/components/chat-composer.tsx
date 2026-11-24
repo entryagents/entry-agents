@@ -274,12 +274,24 @@ export const ChatComposer = memo(
       setSelectedSkills([]);
     }, []);
 
+    const voiceBaseInputRef = useRef<string>("");
+
+    const handleLiveTranscript = useCallback((transcript: string) => {
+      const base = voiceBaseInputRef.current;
+      if (!transcript) {
+        setInput(base);
+        return;
+      }
+      const sep = base.length > 0 && !/\s$/.test(base) ? " " : "";
+      setInput(`${base}${sep}${transcript}`);
+    }, []);
+
     const {
       state: recordingState,
       error: recordingError,
       clearError: clearRecordingError,
       toggleRecording,
-    } = useAudioRecording();
+    } = useAudioRecording({ onTranscript: handleLiveTranscript });
 
     useImperativeHandle(
       ref,
@@ -581,13 +593,16 @@ export const ChatComposer = memo(
 
     const handleMicClick = async () => {
       clearRecordingError();
+      if (recordingState === "idle") {
+        voiceBaseInputRef.current = input;
+      }
       const transcribedText = await toggleRecording();
       if (transcribedText) {
         setInput((prev) =>
           prev ? `${prev} ${transcribedText}` : transcribedText,
         );
-        inputRef.current?.focus();
       }
+      inputRef.current?.focus();
     };
 
     const selectedModelLevels = useMemo(
