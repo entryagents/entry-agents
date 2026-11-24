@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
 
 // Shared 1-second clock for every live timer in the timeline (1:1 Sable util.ts).
@@ -41,6 +41,51 @@ export function useTick(active = true): number {
     readTick,
     readServerTick,
   );
+}
+
+/**
+ * Holds each value on screen for at least `ms`: a burst of quick steps reads as a calm
+ * sequence of titles instead of flickering past (1:1 Sable `util.ts`).
+ */
+export function useHeld<T>(value: T, ms: number): T {
+  const [shown, setShown] = useState(value);
+  const at = useRef(0);
+
+  useEffect(() => {
+    if (Object.is(value, shown)) return;
+    const show = () => {
+      at.current = performance.now();
+      setShown(value);
+    };
+    const wait = at.current + ms - performance.now();
+    if (wait <= 0) {
+      show();
+      return;
+    }
+    const t = window.setTimeout(show, wait);
+    return () => window.clearTimeout(t);
+  }, [value, shown, ms]);
+
+  return shown;
+}
+
+/**
+ * Extracts the newest bold reasoning heading ("**Checking the store**") for the live line
+ * (1:1 Sable `util.ts`).
+ */
+export function thinkingHeadline(text: string): string {
+  const tail = text.length > 3000 ? text.slice(-3000) : text;
+  const re = /(?:^|\n)\s*\*\*([^*\n]{3,80})\*\*\s*(?:\n|$)/g;
+  let last = "";
+  for (let m = re.exec(tail); m; m = re.exec(tail)) {
+    last = m[1].trim();
+  }
+  return last;
+}
+
+/** Pluralizes a count ("1 file", "6 files", "2 searches"). */
+export function plural(count: number, one: string, many = `${one}s`): string {
+  return `${count} ${count === 1 ? one : many}`;
 }
 
 /** "8s", "1m 12s", "2h 5m": compact whole-second durations (1:1 Sable). */
