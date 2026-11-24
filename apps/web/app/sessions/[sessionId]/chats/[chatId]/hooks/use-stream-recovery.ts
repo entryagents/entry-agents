@@ -54,6 +54,8 @@ export function useStreamRecovery({
   onReconcileSnapshot,
 }: UseStreamRecoveryParams): void {
   const inFlightStartedAtRef = useRef<number | null>(null);
+  const retryChatStreamRef = useRef(retryChatStream);
+  retryChatStreamRef.current = retryChatStream;
   const lastStreamRecoveryAtRef = useRef(0);
   const streamRecoveryProbeInFlightRef = useRef(false);
   const hasAutoRetriedCurrentErrorRef = useRef(false);
@@ -263,7 +265,7 @@ export function useStreamRecovery({
       lastStreamRecoveryAtRef.current = 0;
       hasAutoRetriedCurrentErrorRef.current = false;
       if (isChatInFlight && !isChatStoppedByUser(chatId)) {
-        retryChatStream({ auto: true, strategy: "reconnect" });
+        retryChatStreamRef.current({ auto: true, strategy: "reconnect" });
       } else {
         maybeRecoverStreamOnVisibility();
       }
@@ -332,7 +334,6 @@ export function useStreamRecovery({
     isChatInFlight,
     maybeRecoverStreamOnPoll,
     maybeRecoverStreamOnVisibility,
-    retryChatStream,
   ]);
 
   useEffect(() => {
