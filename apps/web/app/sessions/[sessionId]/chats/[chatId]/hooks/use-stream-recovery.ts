@@ -21,7 +21,8 @@ import {
  * anything. Only controls polling -- never whether we reconnect.
  */
 const RECOVERY_POLL_INTERVAL_MS = 2_500;
-const HUNG_STREAM_THRESHOLD_MS = 120_000;
+const HUNG_STREAM_THRESHOLD_MS = 25_000;
+const SERVER_AHEAD_QUIET_MS = 5_000;
 
 type RetryChatStream = (opts?: {
   auto?: boolean;
@@ -206,17 +207,33 @@ export function useStreamRecovery({
         }
 
         // Watchdog: if the server reports an active stream and this client believes
-        // it is in flight, but the open SSE socket has delivered zero bytes for
-        // too long (half-open mobile/proxy socket), tear down the hung fetch & reconnect.
-        // When the user just returned to the tab (visibility/focus/online), use a
-        // short 5s threshold so a socket killed while backgrounded recovers immediately.
-        // Foreground periodic polls use HUNG_STREAM_THRESHOLD_MS so normal tool calls
-        // or model thinking pauses (>5s) do not trigger false reconnects.
+        // it is in flight, check whether the SSE socket has silently frozen
+        // (e.g. stuck on a tool call while the server keeps making progress).
+        // 1. If the server's stamp advanced while our socket has been quiet for
+        //    >= 5s (or never received a chunk), immediately reconcile the DB
+        //    snapshot AND reconnect so the UI catches up without a page reload.
+        // 2. Otherwise, if no bytes arrived within staleThresholdMs (5s on tab
+        //    return, 25s while foregrounded), tear down & reconnect.
         const staleThresholdMs = opts?.isVisibilityRecovery
           ? 5_000
           : HUNG_STREAM_THRESHOLD_MS;
         const lastChunkAt = getLastChunkReceivedAt?.() ?? 0;
-        if (lastChunkAt > 0 && Date.now() - lastChunkAt > staleThresholdMs) {
+        const referenceActivityAt =
+          lastChunkAt > 0 ? lastChunkAt : (inFlightStartedAtRef.current ?? 0);
+        const quietMs =
+          referenceActivityAt > 0 ? Date.now() - referenceActivityAt : 0;
+        const serverAdvancedWhileQuiet =
+          previous !== null &&
+          previous.stamp !== serverStamp &&
+          (lastChunkAt === 0 || quietMs >= SERVER_AHEAD_QUIET_MS);
+
+        if (serverAdvancedWhileQuiet) {
+          await onReconcileSnapshot?.();
+          retryChatStream({ auto: true, strategy: "reconnect" });
+          return;
+        }
+
+        if (referenceActivityAt > 0 && quietMs > staleThresholdMs) {
           retryChatStream({ auto: true, strategy: "reconnect" });
         }
       } catch {
