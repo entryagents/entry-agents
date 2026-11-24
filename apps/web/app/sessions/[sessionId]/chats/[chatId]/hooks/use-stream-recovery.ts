@@ -205,15 +205,12 @@ export function useStreamRecovery({
         }
 
         // Watchdog: if the server reports an active stream and this client believes
-        // it is in flight, check whether the SSE socket has gone quiet (e.g.
-        // stuck on a tool call while the server keeps making progress).
-        // 1. If quiet >= 8s, silently reconcile the DB snapshot via
-        //    `onReconcileSnapshot()` WITHOUT tearing down the SSE socket. Because
-        //    `mergePreservingLocalWork` is monotonic, the UI catches up from any
-        //    stuck tool call smoothly with zero replay flicker or text disappearing.
-        // 2. Only tear down and reconnect the SSE socket if returning from a
-        //    backgrounded tab (5s) or after 60s of total silence.
-        const staleThresholdMs = opts?.isVisibilityRecovery ? 5_000 : 60_000;
+        // it is in flight, only tear down & reconnect if the SSE socket has gone
+        // genuinely silent (5s after returning from background, 30s foreground).
+        // Never overwrite `chat.messages` with a DB snapshot while an active
+        // `@ai-sdk/react` SSE stream is running — the next SSE chunk would
+        // overwrite it back and cause text/file-count flicker.
+        const staleThresholdMs = opts?.isVisibilityRecovery ? 5_000 : 30_000;
         const lastChunkAt = getLastChunkReceivedAt?.() ?? 0;
         const referenceActivityAt =
           lastChunkAt > 0 ? lastChunkAt : (inFlightStartedAtRef.current ?? 0);
@@ -221,13 +218,7 @@ export function useStreamRecovery({
           referenceActivityAt > 0 ? Date.now() - referenceActivityAt : 0;
 
         if (referenceActivityAt > 0 && quietMs > staleThresholdMs) {
-          await onReconcileSnapshot?.();
           retryChatStream({ auto: true, strategy: "reconnect" });
-          return;
-        }
-
-        if (referenceActivityAt > 0 && quietMs >= 8_000) {
-          await onReconcileSnapshot?.();
         }
       } catch {
         // Ignore transient probe failures and try again on next interval.
