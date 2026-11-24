@@ -372,23 +372,24 @@ export function useSessionChatRuntime({
   const chatRef = useRef(chat);
   chatRef.current = chat;
 
-  // Clear "Reconnecting to live stream" as soon as live chunks (text, reasoning,
-  // tool calls, or metadata) arrive on the reconnected stream. Previously this
-  // only cleared in `onData` (custom `data-*` parts) or `finally` (after the
-  // entire stream ended), leaving the banner stuck forever during active runs.
+  // Clear "Reconnecting to live stream" as soon as the SSE stream attaches
+  // (`chat.status === "streaming"`), finishes (`ready`/`error`), or after a 5s
+  // safety timeout so it never stays stuck during long-running tool calls.
   useEffect(() => {
     if (!isReconnecting) return;
-    if (chat.status === "ready" || chat.status === "error") {
+    if (
+      chat.status === "ready" ||
+      chat.status === "error" ||
+      chat.status === "streaming"
+    ) {
       markReconnecting(false);
       return;
     }
-    if (
-      chat.status === "streaming" &&
-      transport.getLastChunkReceivedAt() >= reconnectingStartedAtRef.current
-    ) {
+    const timer = window.setTimeout(() => {
       markReconnecting(false);
-    }
-  }, [isReconnecting, chat.status, chat.messages, markReconnecting, transport]);
+    }, 5_000);
+    return () => window.clearTimeout(timer);
+  }, [isReconnecting, chat.status, markReconnecting]);
 
   /**
    * Clear a transient chat error (e.g. iOS "Load failed") and attempt to
