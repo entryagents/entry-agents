@@ -152,6 +152,15 @@ export function ContextUsageHeaderButton({
                 {formatTokens(view.free)} ({formatShare(view.free, view.max)})
               </span>
             </div>
+            {view.buffer > 0 && (
+              <div className="flex items-center justify-between gap-2 text-[11.5px] text-muted-foreground">
+                <span>Autocompact buffer</span>
+                <span className="font-mono tabular-nums">
+                  {formatTokens(view.buffer)} (
+                  {formatShare(view.buffer, view.max)})
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="mt-2.5 grid grid-cols-2 gap-1.5 border-t border-border/60 pt-2 text-[11px]">
@@ -173,7 +182,10 @@ export function ContextUsageHeaderButton({
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Output</span>
               <span className="font-mono tabular-nums text-foreground">
-                {formatTokens(view.sessionTotals.outputTokens)}
+                {formatTokens(
+                  view.sessionTotals.outputTokens +
+                    view.sessionTotals.reasoningTokens,
+                )}
               </span>
             </div>
             <div className="flex items-center justify-between">

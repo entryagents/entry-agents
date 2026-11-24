@@ -165,6 +165,11 @@ export function useSessionChatRuntime({
   }, []);
   const forceReconcileOnFinishRef = useRef(false);
   const pendingSegmentHandoffRef = useRef(false);
+  const autoFailureRetriesRef = useRef(0);
+
+  useEffect(() => {
+    autoFailureRetriesRef.current = 0;
+  }, [chatId]);
 
   const transport = useMemo(
     () =>
@@ -522,17 +527,21 @@ export function useSessionChatRuntime({
               return;
             }
 
-            if (
-              userStoppedRef.current ||
-              isChatStoppedByUser(chatId) ||
-              opts?.auto
-            ) {
-              if (opts?.auto && strategy === "soft") {
-                return;
-              }
+            if (userStoppedRef.current || isChatStoppedByUser(chatId)) {
+              return;
             }
 
-            if (userStoppedRef.current || isChatStoppedByUser(chatId)) {
+            if (opts?.auto && serverSnapshotData.status === "failed") {
+              if (autoFailureRetriesRef.current >= 3) {
+                return;
+              }
+              autoFailureRetriesRef.current += 1;
+              chat.clearError();
+              await chatRef.current.regenerate();
+              return;
+            }
+
+            if (opts?.auto && strategy === "soft") {
               return;
             }
 
@@ -576,6 +585,14 @@ export function useSessionChatRuntime({
           const messagesBeforeResume = chatInstance.messages;
           const lastMessageIdBeforeResume =
             messagesBeforeResume[messagesBeforeResume.length - 1]?.id;
+
+          // Release retryInFlightRef before awaiting resumeStream() because
+          // resumeStream() stays pending for the entire SSE stream lifetime
+          // (potentially minutes). Keeping retryInFlightRef=true would block
+          // subsequent stall recovery if the resumed socket later freezes.
+          if (retryGenerationRef.current === retryGeneration) {
+            retryInFlightRef.current = false;
+          }
 
           await chatRef.current.resumeStream();
 
