@@ -3,8 +3,10 @@
 import { ChevronRight, FileDiff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useOptionalGitPanel } from "@/app/sessions/[sessionId]/chats/[chatId]/git-panel-context";
+import { SableTiles } from "@/components/chat/sable-tiles";
 import type { TurnFileChanges } from "@/components/chat/sable-turn-grouping";
 import { cn } from "@/lib/utils";
+import "./chat/sable-timeline.css";
 import "./tool-call/agent-row.css";
 
 function formatElapsedTime(seconds: number): string {
@@ -105,33 +107,39 @@ export function ToolCallsSummaryBar({
     .join(" · ");
 
   return (
-    <div className="flex flex-wrap items-center gap-2 py-0.5">
+    <div className="sable-work-head py-0.5">
       <button
         type="button"
         onClick={onToggle}
         aria-expanded={isExpanded}
         aria-label={fullSummary}
         title={fullSummary}
-        className={cn(
-          "sable-row-btn group inline-flex min-h-[25px] max-w-full cursor-pointer items-center gap-1.5 text-left text-[12.5px] text-muted-foreground tabular-nums transition-colors duration-150 hover:text-foreground",
-          isStreaming && "text-foreground/90",
-        )}
+        className={cn("sable-work-line", isStreaming && "sable-work-live")}
       >
-        <span className={cn("truncate", isStreaming && "shimmer")}>
+        {isStreaming && (
+          <span className="sable-work-ind">
+            <SableTiles size={12} />
+          </span>
+        )}
+        <span
+          className={cn(
+            "sable-work-label truncate tabular-nums",
+            isStreaming && "shimmer",
+          )}
+        >
           {primaryLabel}
         </span>
         {isStreaming && took && (
-          <span className="shrink-0 text-muted-foreground/75">{took}</span>
+          <span className="sable-work-time tabular-nums">{took}</span>
         )}
         {stepLabel && (
-          <span className="shrink-0 text-muted-foreground/75">{stepLabel}</span>
+          <span className="sable-work-time tabular-nums">{stepLabel}</span>
         )}
         <ChevronRight
+          size={10}
+          strokeWidth={1.75}
           aria-hidden="true"
-          className={cn(
-            "size-2.5 shrink-0 text-muted-foreground/60 opacity-0 transition-[transform,opacity] duration-150 group-hover:opacity-100 group-focus-visible:opacity-100",
-            isExpanded && "rotate-90 opacity-100",
-          )}
+          className="sable-row-caret"
         />
       </button>
 
@@ -143,20 +151,14 @@ export function ToolCallsSummaryBar({
             gitPanel?.setGitPanelOpen(true);
           }}
           aria-label={`${fileCount} ${fileCount === 1 ? "file" : "files"} changed. Open Changes`}
-          className="inline-flex items-center gap-1.5 text-[12px] text-muted-foreground tabular-nums transition-colors hover:text-foreground cursor-pointer"
+          className="sable-work-changes tabular-nums"
         >
-          <FileDiff className="size-3.5 shrink-0" strokeWidth={1.6} />
+          <FileDiff size={13} strokeWidth={1.6} aria-hidden="true" />
           <span>
             {fileCount} {fileCount === 1 ? "file" : "files"}
           </span>
-          {addLines > 0 && (
-            <span className="text-emerald-600 dark:text-emerald-400">
-              +{addLines}
-            </span>
-          )}
-          {delLines > 0 && (
-            <span className="text-red-600 dark:text-red-400">−{delLines}</span>
-          )}
+          {addLines > 0 && <span className="sable-t-add">+{addLines}</span>}
+          {delLines > 0 && <span className="sable-t-del">−{delLines}</span>}
         </button>
       )}
     </div>

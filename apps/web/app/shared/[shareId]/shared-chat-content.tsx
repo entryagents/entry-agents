@@ -14,7 +14,13 @@ import type {
   WebAgentUIMessagePart,
   WebAgentUIToolPart,
 } from "@/app/types";
-import { AssistantMessageGroups } from "@/components/assistant-message-groups";
+import { SableTurnView } from "@/components/chat/sable-turn-view";
+import "@/components/chat/sable-timeline.css";
+import type {
+  ShowFlowChunk,
+  TextFlowChunk,
+  WorkItem,
+} from "@/components/chat/sable-turn-grouping";
 import { SnippetChip } from "@/components/snippet-chip";
 import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { ThinkingBlock } from "@/components/thinking-block";
@@ -482,15 +488,91 @@ function SharedMessage({
     );
   }
 
-  // Assistant messages: wrap with collapsible summary bar (same as session chat)
+  const renderAssistantText = (chunk: TextFlowChunk) => (
+    <div
+      className={cn(
+        "flex min-w-0 py-1.5 justify-start",
+        chunk.isAnswer && !isStreaming && chunk.partIndex > 0 && "pt-3.5",
+      )}
+    >
+      <div className="min-w-0 w-full overflow-hidden">
+        <div className="sable-md select-text">
+          <StreamingMarkdown content={chunk.part.text} />
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderAssistantShow = (chunk: ShowFlowChunk) => {
+    const p = chunk.part;
+    if (isToolUIPart(p)) {
+      return (
+        <div className="max-w-full">
+          <ToolCall part={p as WebAgentUIToolPart} isStreaming={false} />
+        </div>
+      );
+    }
+    if (p.type === "file" && p.mediaType?.startsWith("image/")) {
+      return (
+        <div className="flex justify-start">
+          <div className="max-w-[80%]">
+            {/* eslint-disable-next-line @next/next/no-img-element -- Data URLs not supported by next/image */}
+            <img
+              src={p.url}
+              alt={p.filename ?? "Attached image"}
+              className="max-h-64 rounded-lg"
+            />
+          </div>
+        </div>
+      );
+    }
+    if (p.type === "data-snippet") {
+      return (
+        <div className="flex justify-start">
+          <div className="max-w-[80%]">
+            <SnippetChip filename={p.data.filename} content={p.data.content} />
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const renderAssistantWorkItem = (item: WorkItem) => {
+    if (item.kind === "reasoning") {
+      return (
+        <div className="max-w-full">
+          <ThinkingBlock
+            text={getReasoningGroupText(item.parts)}
+            isStreaming={false}
+            partCount={item.parts.length}
+          />
+        </div>
+      );
+    }
+    if (item.kind === "lead") {
+      return (
+        <div className="sable-lead-in py-0.5 select-text">
+          <StreamingMarkdown content={item.part.text} />
+        </div>
+      );
+    }
+    return (
+      <div className="max-w-full">
+        <ToolCall part={item.part} isStreaming={false} />
+      </div>
+    );
+  };
+
   return (
-    <AssistantMessageGroups
+    <SableTurnView
       message={m}
       isStreaming={isStreaming}
       durationMs={durationMs}
       startedAt={isStreaming ? lastUserMessageSentAt : null}
-    >
-      {renderGroupElements}
-    </AssistantMessageGroups>
+      renderTextChunk={renderAssistantText}
+      renderShowChunk={renderAssistantShow}
+      renderWorkItem={renderAssistantWorkItem}
+    />
   );
 }

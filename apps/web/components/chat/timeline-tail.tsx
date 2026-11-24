@@ -1,20 +1,17 @@
 "use client";
 
-import { Hourglass, Loader2 } from "lucide-react";
+import { Hourglass } from "lucide-react";
 import { memo } from "react";
 import { cn } from "@/lib/utils";
 import "@/components/tool-call/agent-row.css";
+import { SableTiles } from "./sable-tiles";
 import { shortDuration, useTick } from "./timeline-util";
 
 export type TimelineTailStatus = "working" | "awaiting";
 
 /**
  * Live working footer underneath the transcript (1:1 Sable `Tail.tsx`).
- * - Shows `"Waiting for you"` with an hourglass when a tool approval or
- *   question awaits user input (monochrome, no orange/amber).
- * - Shows a calm working label with Sable's `.shimmer` + live ticking
- *   `shortDuration` while the agent is running, stepping back quietly while
- *   prose is streaming.
+ * Only shown when no running assistant turn is already rendering its own LiveLine.
  */
 export const TimelineTail = memo(function TimelineTail({
   status,
@@ -35,12 +32,16 @@ export const TimelineTail = memo(function TimelineTail({
       <div
         role="status"
         data-status="awaiting"
-        className="my-2 flex items-center gap-2 py-0.5 text-[13px] text-foreground select-none"
+        className="sable-work-head my-1 select-none"
       >
-        <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
-          <Hourglass className="h-3.5 w-3.5" strokeWidth={1.6} />
-        </span>
-        <span className="font-medium leading-none">Waiting for you</span>
+        <div className="sable-work-line sable-work-live" data-static="">
+          <span className="sable-work-ind sable-work-wait-icon">
+            <Hourglass size={13} strokeWidth={1.6} aria-hidden="true" />
+          </span>
+          <span className="sable-work-label sable-work-waiting">
+            Waiting for you
+          </span>
+        </div>
       </div>
     );
   }
@@ -52,26 +53,22 @@ export const TimelineTail = memo(function TimelineTail({
       role="status"
       aria-live="off"
       data-status="working"
-      data-quiet={quiet || undefined}
-      className={cn(
-        "my-2 flex items-center gap-2 py-0.5 text-[13px] text-muted-foreground select-none transition-opacity duration-200",
-        quiet && "opacity-45",
-      )}
+      data-quiet={quiet ? "" : undefined}
+      className={cn("sable-work-head my-1 select-none")}
     >
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        <Loader2
-          className="h-3.5 w-3.5 animate-spin text-muted-foreground/80"
-          strokeWidth={1.6}
-        />
-      </span>
-      <span className="shimmer min-w-0 truncate leading-none">
-        {activity?.trim() || "Working"}
-      </span>
-      {elapsed >= 1000 && (
-        <span className="shrink-0 text-xs tabular-nums text-muted-foreground/65">
-          {shortDuration(elapsed)}
+      <div className="sable-work-line sable-work-live" data-static="">
+        <span className="sable-work-ind">
+          <SableTiles size={12} />
         </span>
-      )}
+        <span className="sable-work-label sable-work-live-title shimmer truncate">
+          {activity?.trim() || "Working"}
+        </span>
+        {elapsed >= 1000 && (
+          <span className="sable-work-time tabular-nums">
+            {shortDuration(elapsed)}
+          </span>
+        )}
+      </div>
     </div>
   );
 });

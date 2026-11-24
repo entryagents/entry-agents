@@ -11,20 +11,20 @@ import type {
   WebAgentUIMessagePart,
   WebAgentUIToolPart,
 } from "@/app/types";
-import { AssistantMessageGroups } from "@/components/assistant-message-groups";
-import { MessageAttachmentChip } from "@/components/message-attachment-chip";
 import { AgentSwitchDivider } from "@/components/chat/agent-switch-divider";
 import { TimelineStamp } from "@/components/chat/timeline-stamp";
 import { TimelineTail } from "@/components/chat/timeline-tail";
 import { detectModelSwitches } from "@/components/chat/timeline-util";
+import { WidgetBlock } from "@/components/genui/widget-block";
+import { MessageAttachmentChip } from "@/components/message-attachment-chip";
 import { MessageModelPill } from "@/components/message-model-pill";
 import { SnippetChip } from "@/components/snippet-chip";
-import { ToolCall } from "@/components/tool-call/tool-call";
-import { WidgetBlock } from "@/components/genui/widget-block";
 import {
   FileShare,
   type SharedFileItem,
 } from "@/components/timeline/file-card";
+import { ToolCall } from "@/components/tool-call/tool-call";
+import { UserMessageFold } from "@/components/user-message-fold";
 import {
   hasRenderableAssistantPart,
   isGitDataPart,
@@ -32,16 +32,20 @@ import {
   shouldRenderGitDataPart,
 } from "@/lib/chat-streaming-state";
 import { cn } from "@/lib/utils";
-import { UserMessageFold } from "@/components/user-message-fold";
 import { GitDataPartCard } from "./git-data-part-card";
-import { UserMessageAgain } from "./user-message-again";
-import { UserMessageRewind } from "./user-message-rewind";
-import { isLeadIn } from "./lead-in";
 import "./sable-timeline.css";
+import type {
+  ShowFlowChunk,
+  TextFlowChunk,
+  WorkItem,
+} from "./sable-turn-grouping";
+import { SableTurnView } from "./sable-turn-view";
 import {
   SmoothedAssistantMarkdown,
   SmoothedThinkingBlock,
 } from "./smoothed-stream-parts";
+import { UserMessageAgain } from "./user-message-again";
+import { UserMessageRewind } from "./user-message-rewind";
 
 type ReasoningMessagePart = Extract<
   WebAgentUIMessagePart,
@@ -200,6 +204,8 @@ interface ChatMessageRowProps {
   readOnly: boolean;
   isActionsActive: boolean;
   onToggleActions: (messageId: string) => void;
+  workspaceStatusMessage?: string;
+  isAwaitingInput?: boolean;
 }
 
 const ChatMessageRow = memo(function ChatMessageRow({
@@ -232,107 +238,415 @@ const ChatMessageRow = memo(function ChatMessageRow({
   readOnly,
   isActionsActive,
   onToggleActions,
+  workspaceStatusMessage,
+  isAwaitingInput = false,
 }: ChatMessageRowProps) {
   const [userPopoverOpen, setUserPopoverOpen] = useState(false);
-  const renderGroups = (isToolCallsExpanded: boolean) =>
-    groups.map((group) => {
-      if (group.type === "reasoning-group") {
-        if (!isToolCallsExpanded) return null;
-        const hasRenderableContentAfterGroup = m.parts
-          .slice(group.startIndex + group.parts.length)
-          .some(hasRenderableAssistantPart);
 
+  const renderShowPart = (
+    p: WebAgentUIMessagePart,
+    key: string,
+    isToolPartStreaming: boolean,
+  ) => {
+    if (isToolUIPart(p)) {
+      const toolName = getToolPartName(p);
+      if (toolName === "show_widget") {
+        const inp =
+          typeof p.input === "object" && p.input !== null
+            ? (p.input as Record<string, unknown>)
+            : null;
+        const code =
+          (typeof inp?.widget_code === "string" && inp.widget_code) ||
+          (typeof inp?.code === "string" && inp.code) ||
+          (typeof inp?.html === "string" && inp.html) ||
+          "";
+        const title = typeof inp?.title === "string" ? inp.title : undefined;
+        if (code) {
+          return (
+            <WidgetBlock
+              key={key}
+              id={p.toolCallId}
+              title={title}
+              code={code}
+              isStreaming={isToolPartStreaming}
+            />
+          );
+        }
+      }
+
+      if (toolName === "send_user_file") {
+        const inp =
+          typeof p.input === "object" && p.input !== null
+            ? (p.input as Record<string, unknown>)
+            : null;
+        const out =
+          typeof p.output === "object" && p.output !== null
+            ? (p.output as Record<string, unknown>)
+            : null;
+        const rawFiles = Array.isArray(out?.files)
+          ? out.files
+          : Array.isArray(inp?.files)
+            ? inp.files
+            : typeof inp?.file_path === "string"
+              ? [{ path: inp.file_path }]
+              : typeof inp?.path === "string"
+                ? [{ path: inp.path }]
+                : [];
+        const files: SharedFileItem[] = rawFiles
+          .filter(
+            (f): f is Record<string, unknown> =>
+              typeof f === "object" && f !== null,
+          )
+          .map((f) => ({
+            path: typeof f.path === "string" ? f.path : "",
+            name: typeof f.name === "string" ? f.name : undefined,
+            size: typeof f.size === "number" ? f.size : undefined,
+          }))
+          .filter((f) => f.path.length > 0);
+        const caption =
+          typeof inp?.caption === "string" ? inp.caption : undefined;
+        if (files.length > 0) {
+          return (
+            <FileShare
+              key={key}
+              files={files}
+              caption={caption}
+              failed={p.state === "output-error"}
+              onOpenFile={onOpenFile}
+            />
+          );
+        }
+      }
+
+      return (
+        <div key={key} className="min-w-0 w-full overflow-hidden">
+          <ToolCall
+            part={p as WebAgentUIToolPart}
+            isStreaming={isToolPartStreaming}
+            activeApprovalId={activeApprovalId}
+            cwd={cwd}
+            onApprove={onApproveTool}
+            onDeny={onDenyTool}
+          />
+        </div>
+      );
+    }
+
+    if (isGitDataPart(p)) {
+      if (!shouldRenderGitDataPart(p)) {
+        return null;
+      }
+      return (
+        <div key={key} className="max-w-full">
+          <GitDataPartCard
+            part={p as WebAgentCommitDataPart | WebAgentPrDataPart}
+          />
+        </div>
+      );
+    }
+
+    if (p.type === "file") {
+      const isImage =
+        p.mediaType?.startsWith("image/") ||
+        /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(p.filename ?? "");
+      const isAudio =
+        p.mediaType?.startsWith("audio/") ||
+        /\.(mp3|wav|ogg|m4a|aac|flac|weba)$/i.test(p.filename ?? "");
+
+      return (
+        <div
+          key={key}
+          className={cn(
+            "flex",
+            m.role === "user" ? "justify-end" : "justify-start",
+          )}
+        >
+          <div className="group relative w-fit max-w-[80%]">
+            {isImage ? (
+              <MessageAttachmentChip
+                url={p.url}
+                filename={p.filename ?? "image"}
+              />
+            ) : isAudio ? (
+              <div className="rounded-xl border border-border/80 bg-card p-3 shadow-xs">
+                <p className="mb-2 text-xs font-medium text-foreground truncate max-w-xs">
+                  {p.filename ?? "Audio clip"}
+                </p>
+                {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                <audio
+                  controls
+                  src={p.url}
+                  className="h-8 max-w-[260px] sm:max-w-xs"
+                />
+              </div>
+            ) : (
+              <a
+                href={p.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="sable-user-file"
+                title={p.filename ?? "Attached file"}
+              >
+                <FileText
+                  className="size-3.5 shrink-0 text-muted-foreground"
+                  strokeWidth={1.6}
+                  aria-hidden="true"
+                />
+                <span className="truncate">{p.filename ?? "file"}</span>
+              </a>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (p.type === "data-snippet") {
+      const snippet = (p as WebAgentSnippetDataPart).data;
+      if (!snippet) return null;
+      return (
+        <div
+          key={key}
+          className={cn(
+            "flex",
+            m.role === "user" ? "justify-end" : "justify-start",
+          )}
+        >
+          <div className="max-w-[85%] sm:max-w-[80%]">
+            <SnippetChip
+              filename={snippet.filename}
+              content={snippet.content}
+            />
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  if (m.role === "assistant" && m.metadata?.isCompactionNotice) {
+    const summaryLabel =
+      m.parts
+        .filter(
+          (part): part is { type: "text"; text: string } =>
+            part.type === "text" && part.text.trim().length > 0,
+        )
+        .map((part) => part.text.trim())
+        .join(" ") || "Conversation compacted";
+    return (
+      <div className="my-3 flex items-center gap-3 select-none text-xs text-muted-foreground">
+        <span className="h-px flex-1 bg-border/60" aria-hidden="true" />
+        <span className="shrink-0 font-medium">{summaryLabel}</span>
+        <span className="h-px flex-1 bg-border/60" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  if (m.role === "assistant") {
+    const combinedText = m.parts
+      .filter(
+        (part): part is { type: "text"; text: string } =>
+          part.type === "text" && part.text.trim().length > 0,
+      )
+      .map((part) => part.text)
+      .join("\n\n");
+    const canCopyAssistant =
+      !isMessageStreaming &&
+      combinedText.length > 0 &&
+      Boolean(onCopyAssistantMessage);
+
+    const renderTextChunk = (chunk: TextFlowChunk) => (
+      <div
+        className={cn(
+          "flex min-w-0 justify-start py-1.5",
+          chunk.isAnswer &&
+            !isMessageStreaming &&
+            chunk.partIndex > 0 &&
+            "pt-2.5",
+        )}
+      >
+        <div
+          className="group min-w-0 w-full overflow-hidden"
+          // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- wraps nested interactive buttons
+          role="button"
+          tabIndex={0}
+          onClick={() => {
+            if (!readOnly) {
+              onToggleActions(m.id);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (!readOnly && (event.key === "Enter" || event.key === " ")) {
+              event.preventDefault();
+              onToggleActions(m.id);
+            }
+          }}
+        >
+          <div className="sable-md select-text">
+            <SmoothedAssistantMarkdown
+              content={chunk.part.text}
+              active={isMessageStreaming && chunk.part.state === "streaming"}
+              streamKey={`${m.id}-${chunk.key}`}
+              isStreaming={
+                isMessageStreaming &&
+                !m.parts
+                  .slice(chunk.partIndex + 1)
+                  .some(hasRenderableAssistantPart)
+              }
+              onOpenFile={onOpenFile}
+            />
+          </div>
+        </div>
+      </div>
+    );
+
+    const renderShowChunk = (chunk: ShowFlowChunk) =>
+      renderShowPart(chunk.part, `${m.id}-${chunk.key}`, chunk.isStreaming);
+
+    const renderWorkItem = (item: WorkItem) => {
+      if (item.kind === "reasoning") {
+        const hasRenderableContentAfterGroup = m.parts
+          .slice(item.startIndex + item.parts.length)
+          .some(hasRenderableAssistantPart);
         return (
-          <div
-            key={`${m.id}-${group.renderKey}`}
-            className="min-w-0 w-full overflow-hidden pl-0 sm:pl-[22px]"
-          >
+          <div className="min-w-0 w-full overflow-hidden">
             <SmoothedThinkingBlock
-              text={getReasoningGroupText(group.parts)}
+              text={getReasoningGroupText(item.parts)}
               active={
                 isMessageStreaming &&
-                group.parts.some((part) => part.state === "streaming")
+                item.parts.some((part) => part.state === "streaming")
               }
-              streamKey={`${m.id}-${group.renderKey}`}
+              streamKey={`${m.id}-${item.key}`}
               isStreaming={shouldKeepCollapsedReasoningStreaming({
                 isMessageStreaming,
-                hasStreamingReasoningPart: group.parts.some(
+                hasStreamingReasoningPart: item.parts.some(
                   (part) => part.state === "streaming",
                 ),
                 hasRenderableContentAfterGroup,
               })}
-              partCount={group.parts.length}
+              partCount={item.parts.length}
             />
           </div>
         );
       }
 
-      const p = group.part;
-
-      if (isReasoningUIPart(p)) {
-        if (!isToolCallsExpanded) return null;
-        const hasRenderableContentAfterGroup = m.parts
-          .slice(group.index + 1)
-          .some(hasRenderableAssistantPart);
-
+      if (item.kind === "lead") {
         return (
-          <div
-            key={`${m.id}-${group.renderKey}`}
-            className="min-w-0 w-full overflow-hidden pl-0 sm:pl-[22px]"
-          >
-            <SmoothedThinkingBlock
-              text={p.text}
-              active={isMessageStreaming && p.state === "streaming"}
-              streamKey={`${m.id}-${group.renderKey}`}
-              isStreaming={shouldKeepCollapsedReasoningStreaming({
-                isMessageStreaming,
-                hasStreamingReasoningPart: p.state === "streaming",
-                hasRenderableContentAfterGroup,
-              })}
+          <div className="sable-lead-in py-0.5 select-text">
+            <SmoothedAssistantMarkdown
+              content={item.part.text}
+              active={isMessageStreaming && item.part.state === "streaming"}
+              streamKey={`${m.id}-${item.key}`}
+              isStreaming={item.isStreaming}
+              onOpenFile={onOpenFile}
             />
           </div>
         );
       }
 
-      if (p.type === "text") {
-        if (p.text.length === 0) {
-          return null;
-        }
+      return (
+        <div className="min-w-0 w-full overflow-hidden">
+          <ToolCall
+            part={item.part}
+            isStreaming={item.isStreaming}
+            activeApprovalId={activeApprovalId}
+            cwd={cwd}
+            onApprove={onApproveTool}
+            onDeny={onDenyTool}
+          />
+        </div>
+      );
+    };
 
-        const isFinalAssistantTextPart =
-          m.role === "assistant" &&
-          !m.parts
-            .slice(group.index + 1)
-            .some(
-              (messagePart) =>
-                messagePart.type === "text" &&
-                messagePart.text.trim().length > 0,
-            );
-
-        if (
-          !isToolCallsExpanded &&
-          m.role === "assistant" &&
-          !isFinalAssistantTextPart
-        ) {
-          return null;
-        }
-
-        return (
-          <div
-            key={`${m.id}-${group.renderKey}`}
-            data-nav-msg-id={
-              m.role === "user" && group.index === 0 ? m.id : undefined
-            }
-            className={cn(
-              "flex min-w-0",
-              m.role === "user" ? "justify-end py-2" : "justify-start py-1.5",
-              isFinalAssistantTextPart &&
-                !isMessageStreaming &&
-                group.index > 0 &&
-                "pt-3.5",
+    const footer = !isMessageStreaming ? (
+      <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
+        {canCopyAssistant ? (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onCopyAssistantMessage?.(m.id, combinedText);
+              }}
+              aria-label="Copy assistant response"
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97]"
+            >
+              {isCopiedAssistant ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                    Copied
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
+            {!readOnly && onForkAssistantMessage && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onForkAssistantMessage(m.id);
+                }}
+                disabled={hasMessageActionInFlight}
+                aria-label="Fork conversation from this response"
+                className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isForkingAssistant ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <GitBranch className="h-3.5 w-3.5" />
+                )}
+                <span>Fork</span>
+              </button>
             )}
-          >
-            {m.role === "user" ? (
+          </div>
+        ) : (
+          <div />
+        )}
+        <div className="flex items-center gap-2">
+          <TimelineStamp timestamp={startedAt} />
+          <MessageModelPill metadata={m.metadata} modelOptions={modelOptions} />
+        </div>
+      </div>
+    ) : null;
+
+    return (
+      <SableTurnView
+        message={m}
+        isStreaming={isMessageStreaming}
+        durationMs={durationMs}
+        startedAt={startedAt}
+        activeApprovalId={activeApprovalId}
+        workspaceStatusMessage={
+          isMessageStreaming ? workspaceStatusMessage : null
+        }
+        isAwaitingInput={isMessageStreaming ? isAwaitingInput : false}
+        renderTextChunk={renderTextChunk}
+        renderShowChunk={renderShowChunk}
+        renderWorkItem={renderWorkItem}
+        footer={footer}
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      {groups.map((group) => {
+        if (group.type !== "part") return null;
+        const p = group.part;
+        if (p.type === "text") {
+          if (p.text.length === 0) return null;
+          return (
+            <div
+              key={`${m.id}-${group.renderKey}`}
+              data-nav-msg-id={group.index === 0 ? m.id : undefined}
+              className="flex min-w-0 justify-end py-2"
+            >
               <div className="group flex w-fit min-w-0 max-w-[85%] sm:max-w-[80%] flex-col items-end">
                 <div
                   className="sable-user-card text-left transition-opacity"
@@ -404,388 +718,14 @@ const ChatMessageRow = memo(function ChatMessageRow({
                   </div>
                 )}
               </div>
-            ) : (
-              <div
-                className="group min-w-0 w-full overflow-hidden"
-                // oxlint-disable-next-line jsx-a11y/prefer-tag-over-role -- wraps nested interactive buttons
-                role="button"
-                tabIndex={0}
-                onClick={() => {
-                  if (!readOnly) {
-                    onToggleActions(m.id);
-                  }
-                }}
-                onKeyDown={(event) => {
-                  if (
-                    !readOnly &&
-                    (event.key === "Enter" || event.key === " ")
-                  ) {
-                    event.preventDefault();
-                    onToggleActions(m.id);
-                  }
-                }}
-              >
-                {/* Markdown prose text */}
-                <div
-                  className={cn(
-                    "select-text",
-                    m.parts.slice(group.index + 1).some(isToolUIPart) &&
-                      isLeadIn(
-                        p.text,
-                        isMessageStreaming && p.state === "streaming",
-                      )
-                      ? "sable-lead-in"
-                      : "sable-md",
-                  )}
-                >
-                  <SmoothedAssistantMarkdown
-                    content={p.text}
-                    active={isMessageStreaming && p.state === "streaming"}
-                    streamKey={`${m.id}-${group.renderKey}`}
-                    isStreaming={
-                      isMessageStreaming &&
-                      !m.parts
-                        .slice(group.index + 1)
-                        .some(hasRenderableAssistantPart)
-                    }
-                    onOpenFile={onOpenFile}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      }
-
-      if (isToolUIPart(p)) {
-        const toolName = getToolPartName(p);
-        const isWidgetTool = toolName === "show_widget";
-        const isFileShareTool = toolName === "send_user_file";
-        const isAlwaysVisibleTool =
-          p.type === "tool-task" ||
-          toolName === "task" ||
-          p.type === "tool-visualize" ||
-          toolName === "visualize" ||
-          p.type === "tool-skill" ||
-          toolName === "skill" ||
-          isWidgetTool ||
-          isFileShareTool;
-        if (!isToolCallsExpanded && !isAlwaysVisibleTool) return null;
-        const hasLaterStepOrProse = m.parts
-          .slice(group.index + 1)
-          .some(
-            (laterPart) =>
-              laterPart.type === "step-start" ||
-              laterPart.type === "reasoning" ||
-              (laterPart.type === "text" &&
-                Boolean((laterPart.text ?? "").trim())),
-          );
-        const isToolPartStreaming = isMessageStreaming && !hasLaterStepOrProse;
-
-        if (isWidgetTool) {
-          const inp =
-            typeof p.input === "object" && p.input !== null
-              ? (p.input as Record<string, unknown>)
-              : null;
-          const code =
-            (typeof inp?.widget_code === "string" && inp.widget_code) ||
-            (typeof inp?.code === "string" && inp.code) ||
-            (typeof inp?.html === "string" && inp.html) ||
-            "";
-          const title = typeof inp?.title === "string" ? inp.title : undefined;
-          if (code) {
-            return (
-              <div
-                key={`${m.id}-${group.renderKey}`}
-                className="min-w-0 w-full py-1"
-              >
-                <WidgetBlock
-                  id={p.toolCallId}
-                  title={title}
-                  code={code}
-                  isStreaming={isToolPartStreaming}
-                />
-              </div>
-            );
-          }
-        }
-
-        if (isFileShareTool) {
-          const inp =
-            typeof p.input === "object" && p.input !== null
-              ? (p.input as Record<string, unknown>)
-              : null;
-          const out =
-            typeof p.output === "object" && p.output !== null
-              ? (p.output as Record<string, unknown>)
-              : null;
-          const rawFiles = Array.isArray(out?.files)
-            ? out.files
-            : Array.isArray(inp?.files)
-              ? inp.files
-              : typeof inp?.file_path === "string"
-                ? [{ path: inp.file_path }]
-                : typeof inp?.path === "string"
-                  ? [{ path: inp.path }]
-                  : [];
-          const files: SharedFileItem[] = rawFiles
-            .filter(
-              (f): f is Record<string, unknown> =>
-                typeof f === "object" && f !== null,
-            )
-            .map((f) => ({
-              path: typeof f.path === "string" ? f.path : "",
-              name: typeof f.name === "string" ? f.name : undefined,
-              size: typeof f.size === "number" ? f.size : undefined,
-            }))
-            .filter((f) => f.path.length > 0);
-          const caption =
-            typeof inp?.caption === "string" ? inp.caption : undefined;
-          if (files.length > 0) {
-            return (
-              <div
-                key={`${m.id}-${group.renderKey}`}
-                className="min-w-0 w-full py-1"
-              >
-                <FileShare
-                  files={files}
-                  caption={caption}
-                  failed={p.state === "output-error"}
-                  onOpenFile={onOpenFile}
-                />
-              </div>
-            );
-          }
-        }
-
-        return (
-          <div
-            key={`${m.id}-${group.renderKey}`}
-            className={cn(
-              "min-w-0 w-full overflow-hidden",
-              isAlwaysVisibleTool ? "py-1" : "pl-0 sm:pl-[22px]",
-            )}
-          >
-            <ToolCall
-              part={p as WebAgentUIToolPart}
-              isStreaming={isToolPartStreaming}
-              activeApprovalId={activeApprovalId}
-              cwd={cwd}
-              onApprove={onApproveTool}
-              onDeny={onDenyTool}
-            />
-          </div>
-        );
-      }
-
-      if (isGitDataPart(p)) {
-        if (!shouldRenderGitDataPart(p)) {
-          return null;
-        }
-
-        return (
-          <div key={`${m.id}-${group.renderKey}`} className="max-w-full">
-            <GitDataPartCard
-              part={p as WebAgentCommitDataPart | WebAgentPrDataPart}
-            />
-          </div>
-        );
-      }
-
-      // Render file attachments (images, audio/music, documents/code)
-      if (p.type === "file") {
-        if (!isToolCallsExpanded && m.role === "assistant") {
-          return null;
-        }
-
-        const isImage =
-          p.mediaType?.startsWith("image/") ||
-          /\.(png|jpe?g|gif|webp|svg|avif)$/i.test(p.filename ?? "");
-        const isAudio =
-          p.mediaType?.startsWith("audio/") ||
-          /\.(mp3|wav|ogg|m4a|aac|flac|weba)$/i.test(p.filename ?? "");
-
-        return (
-          <div
-            key={`${m.id}-${group.renderKey}`}
-            className={cn(
-              "flex",
-              m.role === "user" ? "justify-end" : "justify-start",
-            )}
-          >
-            <div className="group relative w-fit max-w-[80%]">
-              {isImage ? (
-                <MessageAttachmentChip
-                  url={p.url}
-                  filename={p.filename ?? "image"}
-                />
-              ) : isAudio ? (
-                <div className="rounded-xl border border-border/80 bg-card p-3 shadow-xs">
-                  <p className="mb-2 text-xs font-medium text-foreground truncate max-w-xs">
-                    {p.filename ?? "Audio clip"}
-                  </p>
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <audio
-                    controls
-                    src={p.url}
-                    className="h-8 max-w-[260px] sm:max-w-xs"
-                  />
-                </div>
-              ) : (
-                <a
-                  href={p.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="sable-user-file"
-                  title={p.filename ?? "Attached file"}
-                >
-                  <FileText
-                    className="size-3.5 shrink-0 text-muted-foreground"
-                    strokeWidth={1.6}
-                    aria-hidden="true"
-                  />
-                  <span className="truncate">{p.filename ?? "file"}</span>
-                </a>
-              )}
             </div>
-          </div>
-        );
-      }
-
-      // Render text snippet attachments
-      if (p.type === "data-snippet") {
-        const snippet = (p as WebAgentSnippetDataPart).data;
-        if (!snippet) return null;
-        return (
-          <div
-            key={`${m.id}-${group.renderKey}`}
-            className={cn(
-              "flex",
-              m.role === "user" ? "justify-end" : "justify-start",
-            )}
-          >
-            <div className="max-w-[85%] sm:max-w-[80%]">
-              <SnippetChip
-                filename={snippet.filename}
-                content={snippet.content}
-              />
-            </div>
-          </div>
-        );
-      }
-
-      return null;
-    });
-
-  if (m.role === "assistant" && m.metadata?.isCompactionNotice) {
-    const summaryLabel =
-      m.parts
-        .filter(
-          (part): part is { type: "text"; text: string } =>
-            part.type === "text" && part.text.trim().length > 0,
-        )
-        .map((part) => part.text.trim())
-        .join(" ") || "Conversation compacted";
-    return (
-      <div className="my-3 flex items-center gap-3 select-none text-xs text-muted-foreground">
-        <span className="h-px flex-1 bg-border/60" aria-hidden="true" />
-        <span className="shrink-0 font-medium">{summaryLabel}</span>
-        <span className="h-px flex-1 bg-border/60" aria-hidden="true" />
-      </div>
-    );
-  }
-
-  if (m.role === "assistant") {
-    return (
-      <AssistantMessageGroups
-        message={m}
-        isStreaming={isMessageStreaming}
-        durationMs={durationMs}
-        startedAt={startedAt}
-      >
-        {(isExpanded) => {
-          const combinedText = m.parts
-            .filter(
-              (part): part is { type: "text"; text: string } =>
-                part.type === "text" && part.text.trim().length > 0,
-            )
-            .map((part) => part.text)
-            .join("\n\n");
-          const canCopyAssistant =
-            !isMessageStreaming &&
-            combinedText.length > 0 &&
-            Boolean(onCopyAssistantMessage);
-
-          return (
-            <>
-              {renderGroups(isExpanded)}
-              {!isMessageStreaming && (
-                <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-border/40 pt-1.5 select-none text-xs text-muted-foreground">
-                  {canCopyAssistant ? (
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onCopyAssistantMessage?.(m.id, combinedText);
-                        }}
-                        aria-label="Copy assistant response"
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97]"
-                      >
-                        {isCopiedAssistant ? (
-                          <>
-                            <Check className="h-3.5 w-3.5 text-emerald-500" />
-                            <span className="text-emerald-600 dark:text-emerald-400 font-medium">
-                              Copied
-                            </span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-3.5 w-3.5" />
-                            <span>Copy</span>
-                          </>
-                        )}
-                      </button>
-                      {!readOnly && onForkAssistantMessage && (
-                        <button
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            onForkAssistantMessage(m.id);
-                          }}
-                          disabled={hasMessageActionInFlight}
-                          aria-label="Fork conversation from this response"
-                          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          {isForkingAssistant ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <GitBranch className="h-3.5 w-3.5" />
-                          )}
-                          <span>Fork</span>
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <div />
-                  )}
-                  <div className="flex items-center gap-2">
-                    <TimelineStamp timestamp={startedAt} />
-                    <MessageModelPill
-                      metadata={m.metadata}
-                      modelOptions={modelOptions}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
           );
-        }}
-      </AssistantMessageGroups>
-    );
-  }
+        }
 
-  return <div className="flex flex-col gap-1">{renderGroups(true)}</div>;
+        return renderShowPart(p, `${m.id}-${group.renderKey}`, false);
+      })}
+    </div>
+  );
 });
 
 /**
@@ -948,7 +888,13 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
     messageStartedAtMap,
   ]);
 
-  const showTail = isAwaitingInput || showThinkingIndicator || isStreaming;
+  const hasRunningAssistantTurn =
+    isStreaming &&
+    lastMessage?.role === "assistant" &&
+    !lastMessage.metadata?.isCompactionNotice;
+  const showTail =
+    !hasRunningAssistantTurn &&
+    (isAwaitingInput || showThinkingIndicator || isStreaming);
 
   if (groupedRenderMessages.length === 0 && !showTail) {
     return (
@@ -1027,6 +973,12 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
                 readOnly={readOnly}
                 isActionsActive={activeMessageActionsId === m.id}
                 onToggleActions={handleToggleActions}
+                workspaceStatusMessage={
+                  isMessageStreaming ? workspaceStatusMessage : undefined
+                }
+                isAwaitingInput={
+                  isMessageStreaming ? isAwaitingInput : undefined
+                }
               />
             </div>
           );
