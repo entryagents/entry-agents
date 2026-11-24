@@ -164,7 +164,65 @@ export const compactAndCheckpointStep = async (params: {
       }),
   );
 
+  const persistAutoCompactionNotice = async (
+    preTokens: number,
+    postTokens: number,
+  ) => {
+    try {
+      const { nanoid } = await import("nanoid");
+      const { formatTokens } =
+        await import("@entry-agents/shared/lib/tool-state");
+      const { updateChatAssistantActivity, upsertChatMessageScoped } =
+        await import("@/lib/db/sessions");
+      const noticeMessage = {
+        id: `compact_${nanoid()}`,
+        role: "assistant" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: `Conversation compacted (${formatTokens(preTokens)} → ${formatTokens(postTokens)} tokens · automatic)`,
+          },
+        ],
+        metadata: {
+          isCompactionNotice: true,
+          compactionMeta: { preTokens, postTokens },
+          lastStepUsage: {
+            inputTokens: postTokens,
+            outputTokens: 0,
+            totalTokens: postTokens,
+            inputTokenDetails: {
+              noCacheTokens: postTokens,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+            },
+            outputTokenDetails: {
+              textTokens: 0,
+              reasoningTokens: 0,
+            },
+          },
+        },
+      };
+      await upsertChatMessageScoped({
+        id: noticeMessage.id,
+        chatId: params.chatId,
+        role: "assistant",
+        parts: noticeMessage,
+      });
+      await updateChatAssistantActivity(params.chatId, new Date()).catch(
+        () => undefined,
+      );
+    } catch (err) {
+      console.warn(
+        `[chat-workflow] Failed to persist auto-compaction notice for chat ${params.chatId}:`,
+        err,
+      );
+    }
+  };
+
   if (!tier1.needsCheckpointSummary && !params.forceTier2) {
+    if (tier1.didCompact) {
+      await persistAutoCompactionNotice(tier1.preTokens, tier1.postTokens);
+    }
     return withoutUndefined({
       messages: tier1.didCompact ? tier1.messages : params.messages,
       changed: tier1.didCompact,
@@ -283,6 +341,8 @@ export const compactAndCheckpointStep = async (params: {
       sessionId: params.sessionId,
     },
   ).catch(() => {});
+
+  await persistAutoCompactionNotice(tier1.preTokens, postTokens);
 
   return withoutUndefined({
     messages: nextMessages,
