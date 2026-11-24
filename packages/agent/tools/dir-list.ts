@@ -132,20 +132,37 @@ USAGE:
         const entries: DirEntry[] = [];
         const maxLimit = Math.min(Math.max(1, limit), 500);
 
-        const scanDir = async (
-          currentAbs: string,
-          currentRel: string,
-          currentDepth: number,
-        ): Promise<void> => {
-          if (entries.length >= maxLimit) return;
+        // Breadth-first traversal ensures recursive listings on large repos
+        // always show the full top-level layout before descending into
+        // subdirectories, instead of starving root entries via DFS.
+        const queue: Array<{
+          abs: string;
+          rel: string;
+          depth: number;
+        }> = [
+          {
+            abs: absolutePath,
+            rel: displayBase === "." ? "" : displayBase,
+            depth: 0,
+          },
+        ];
 
-          const rawDirents = await sandbox.readdir(currentAbs, {
+        while (queue.length > 0 && entries.length < maxLimit) {
+          const current = queue.shift()!;
+          const rawDirents = await sandbox.readdir(current.abs, {
             withFileTypes: true,
           });
 
-          // Filter hidden
+          // Filter hidden and noisy build/dependency dirs during recursive walks
           const filtered = rawDirents.filter((d) => {
             if (!showHidden && d.name.startsWith(".")) return false;
+            if (
+              recursive &&
+              d.isDirectory() &&
+              IGNORED_RECURSIVE_DIRS.has(d.name)
+            ) {
+              return false;
+            }
             return true;
           });
 
@@ -160,10 +177,10 @@ USAGE:
           for (const dirent of filtered) {
             if (entries.length >= maxLimit) break;
 
-            const entryRelPath = currentRel
-              ? path.posix.join(currentRel, dirent.name)
+            const entryRelPath = current.rel
+              ? path.posix.join(current.rel, dirent.name)
               : dirent.name;
-            const entryAbsPath = path.posix.join(currentAbs, dirent.name);
+            const entryAbsPath = path.posix.join(current.abs, dirent.name);
 
             let type: DirEntry["type"] = "other";
             if (dirent.isDirectory()) type = "directory";
@@ -187,18 +204,15 @@ USAGE:
               ...(size !== undefined ? { size } : {}),
             });
 
-            if (
-              recursive &&
-              type === "directory" &&
-              currentDepth < 2 &&
-              !IGNORED_RECURSIVE_DIRS.has(dirent.name)
-            ) {
-              await scanDir(entryAbsPath, entryRelPath, currentDepth + 1);
+            if (recursive && type === "directory" && current.depth < 2) {
+              queue.push({
+                abs: entryAbsPath,
+                rel: entryRelPath,
+                depth: current.depth + 1,
+              });
             }
           }
-        };
-
-        await scanDir(absolutePath, displayBase === "." ? "" : displayBase, 0);
+        }
 
         const truncated = entries.length >= maxLimit;
         const formattedLines = entries.map((e) => {

@@ -182,7 +182,15 @@ export const compactAndCheckpointStep = async (params: {
   ) {
     tailStart++;
   }
-  const olderMessages = tier1.messages.slice(0, tailStart);
+  // Summarize from the pre-masked `params.messages` (when aligned with
+  // `tier1.messages`) so the Tier 2 summarizer sees real tool inputs, outputs,
+  // commands, and errors instead of Tier 1's "[Older tool output removed...]"
+  // placeholders.
+  const sourceMessages =
+    params.messages.length === tier1.messages.length
+      ? params.messages
+      : tier1.messages;
+  const olderMessages = sourceMessages.slice(0, tailStart);
   if (olderMessages.length < 2) {
     return withoutUndefined({
       messages: tier1.didCompact ? tier1.messages : params.messages,

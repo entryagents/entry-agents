@@ -55,8 +55,7 @@ export function summarizeMessagePartForDigest(part: unknown): string {
 
 export function buildOlderMessagesDigest(messages: ModelMessage[]): string {
   const MAX_DIGEST_CHARS = 28_000;
-  const lines: string[] = [];
-  let totalChars = 0;
+  const formatted: string[] = [];
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
@@ -71,18 +70,57 @@ export function buildOlderMessagesDigest(messages: ModelMessage[]): string {
               .join(" ")
           : "";
     if (!body) continue;
-    const entry = `[${i + 1} ${msg.role}]: ${body}`;
-    if (totalChars + entry.length > MAX_DIGEST_CHARS) {
-      lines.push(
-        `...(${messages.length - i} additional message(s) omitted due to digest cap)`,
-      );
-      break;
-    }
-    lines.push(entry);
-    totalChars += entry.length;
+    formatted.push(`[${i + 1} ${msg.role}]: ${body}`);
   }
 
-  return lines.join("\n");
+  const totalChars = formatted.reduce((sum, line) => sum + line.length + 1, 0);
+  if (totalChars <= MAX_DIGEST_CHARS) {
+    return formatted.join("\n");
+  }
+
+  // Keep the head (initial goal & early setup, ~25% of budget) and the tail
+  // (most recent work, edits, errors, and decisions right before the protected
+  // tail, ~75% of budget), omitting only the middle when over cap.
+  const HEAD_BUDGET = Math.floor(MAX_DIGEST_CHARS * 0.25);
+  const TAIL_BUDGET = MAX_DIGEST_CHARS - HEAD_BUDGET - 80;
+
+  const headLines: string[] = [];
+  let headChars = 0;
+  let headEnd = 0;
+  for (let i = 0; i < formatted.length; i++) {
+    const line = formatted[i]!;
+    if (headChars + line.length + 1 > HEAD_BUDGET && headLines.length > 0) {
+      break;
+    }
+    headLines.push(line);
+    headChars += line.length + 1;
+    headEnd = i + 1;
+  }
+
+  const tailLines: string[] = [];
+  let tailChars = 0;
+  let tailStart = formatted.length;
+  for (let i = formatted.length - 1; i >= headEnd; i--) {
+    const line = formatted[i]!;
+    if (tailChars + line.length + 1 > TAIL_BUDGET && tailLines.length > 0) {
+      break;
+    }
+    tailLines.push(line);
+    tailChars += line.length + 1;
+    tailStart = i;
+  }
+  tailLines.reverse();
+
+  const omittedCount = Math.max(0, tailStart - headEnd);
+  if (omittedCount === 0) {
+    return [...headLines, ...tailLines].join("\n");
+  }
+
+  return [
+    ...headLines,
+    `...(${omittedCount} middle message(s) omitted due to digest cap)`,
+    ...tailLines,
+  ].join("\n");
 }
 
 export function buildFallbackCompactionSummary(

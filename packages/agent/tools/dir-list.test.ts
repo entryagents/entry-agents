@@ -163,4 +163,26 @@ describe("dirListTool", () => {
 
     expect(result.success).toBe(false);
   });
+
+  test("recursive listing uses breadth-first order and skips node_modules", async () => {
+    const { sandbox, tempDir: root } = await createFixture();
+    await mkdir(path.join(root, "aaa-big-dir"), { recursive: true });
+    await mkdir(path.join(root, "node_modules", "pkg"), { recursive: true });
+    for (let i = 0; i < 8; i++) {
+      await writeFile(path.join(root, "aaa-big-dir", `file-${i}.ts`), "x");
+    }
+    await writeFile(path.join(root, "zzz-root.ts"), "export {};");
+
+    const tool = dirListTool();
+    const result = await (tool as unknown as ToolWithExecute).execute(
+      { path: ".", recursive: true, limit: 6 },
+      { experimental_context: { sandbox } },
+    );
+
+    expect(result.success).toBe(true);
+    const paths = result.entries.map((e) => e.path);
+    expect(paths).toContain("zzz-root.ts");
+    expect(paths).toContain("package.json");
+    expect(paths.some((p) => p.includes("node_modules"))).toBe(false);
+  });
 });
