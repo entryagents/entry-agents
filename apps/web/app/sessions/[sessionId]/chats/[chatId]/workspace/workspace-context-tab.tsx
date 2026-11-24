@@ -16,6 +16,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useCompactionThreshold } from "@/hooks/use-compaction-threshold";
 import type { ModelOption } from "@/lib/model-options";
 import {
   type ContextSegment,
@@ -165,6 +166,7 @@ export function WorkspaceContextTab({
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
+  const userCompactionThreshold = useCompactionThreshold();
   const view = useMemo(
     () =>
       deriveContextWindowBreakdown(
@@ -172,8 +174,9 @@ export function WorkspaceContextTab({
         modelId,
         modelOptions,
         contextLimit,
+        userCompactionThreshold,
       ),
-    [messages, modelId, modelOptions, contextLimit],
+    [messages, modelId, modelOptions, contextLimit, userCompactionThreshold],
   );
 
   const handleRefresh = useCallback(() => {

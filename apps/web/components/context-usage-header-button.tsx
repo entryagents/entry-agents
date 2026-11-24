@@ -20,6 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useCompactionThreshold } from "@/hooks/use-compaction-threshold";
 import type { ModelOption } from "@/lib/model-options";
 import { cn } from "@/lib/utils";
 
@@ -47,6 +48,7 @@ export function ContextUsageHeaderButton({
   isCompacting = false,
   isBusy = false,
 }: ContextUsageHeaderButtonProps) {
+  const userCompactionThreshold = useCompactionThreshold();
   const view = useMemo(
     () =>
       deriveContextWindowBreakdown(
@@ -54,8 +56,9 @@ export function ContextUsageHeaderButton({
         modelId,
         modelOptions,
         contextLimit,
+        userCompactionThreshold,
       ),
-    [messages, modelId, modelOptions, contextLimit],
+    [messages, modelId, modelOptions, contextLimit, userCompactionThreshold],
   );
 
   if (view.total === 0 || view.max <= 0) {

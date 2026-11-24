@@ -179,6 +179,7 @@ export function deriveContextWindowBreakdown(
   modelId: string,
   modelOptions: ModelOption[],
   contextLimitOverride?: number | null,
+  compactionThresholdOverride?: number | null,
 ): ContextWindowBreakdown {
   let latestNewInput = 0;
   let latestCacheRead = 0;
@@ -352,11 +353,15 @@ export function deriveContextWindowBreakdown(
     DEFAULT_CONTEXT_LIMIT;
 
   const thresholdRatio =
-    typeof activeOption?.compactionThreshold === "number" &&
-    activeOption.compactionThreshold > 0 &&
-    activeOption.compactionThreshold <= 1
-      ? activeOption.compactionThreshold
-      : AUTO_COMPACT_THRESHOLD;
+    typeof compactionThresholdOverride === "number" &&
+    compactionThresholdOverride > 0 &&
+    compactionThresholdOverride <= 1
+      ? compactionThresholdOverride
+      : typeof activeOption?.compactionThreshold === "number" &&
+          activeOption.compactionThreshold > 0 &&
+          activeOption.compactionThreshold <= 1
+        ? activeOption.compactionThreshold
+        : AUTO_COMPACT_THRESHOLD;
   const compactAt = max > 0 ? Math.round(max * thresholdRatio) : 0;
   const buffer = max > 0 ? Math.max(0, max - compactAt) : 0;
   const free = Math.max(0, max - latestTotal - buffer);
