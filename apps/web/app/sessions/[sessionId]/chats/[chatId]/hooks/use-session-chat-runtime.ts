@@ -156,6 +156,13 @@ export function useSessionChatRuntime({
   }, [contextLimit]);
 
   const [isReconnecting, setIsReconnecting] = useState(false);
+  const reconnectingStartedAtRef = useRef(0);
+  const markReconnecting = useCallback((next: boolean) => {
+    if (next) {
+      reconnectingStartedAtRef.current = Date.now();
+    }
+    setIsReconnecting(next);
+  }, []);
   const forceReconcileOnFinishRef = useRef(false);
   const pendingSegmentHandoffRef = useRef(false);
 
@@ -357,6 +364,27 @@ export function useSessionChatRuntime({
     experimental_throttle: CHAT_UI_UPDATE_THROTTLE_MS,
   });
 
+  const chatRef = useRef(chat);
+  chatRef.current = chat;
+
+  // Clear "Reconnecting to live stream" as soon as live chunks (text, reasoning,
+  // tool calls, or metadata) arrive on the reconnected stream. Previously this
+  // only cleared in `onData` (custom `data-*` parts) or `finally` (after the
+  // entire stream ended), leaving the banner stuck forever during active runs.
+  useEffect(() => {
+    if (!isReconnecting) return;
+    if (chat.status === "ready" || chat.status === "error") {
+      markReconnecting(false);
+      return;
+    }
+    if (
+      chat.status === "streaming" &&
+      transport.getLastChunkReceivedAt() >= reconnectingStartedAtRef.current
+    ) {
+      markReconnecting(false);
+    }
+  }, [isReconnecting, chat.status, chat.messages, markReconnecting, transport]);
+
   /**
    * Clear a transient chat error (e.g. iOS "Load failed") and attempt to
    * resume the server-side stream if one is still active.
@@ -517,14 +545,14 @@ export function useSessionChatRuntime({
                 text: CONTINUE_AFTER_ERROR_PROMPT,
               });
             } else if (retryAction === "regenerate") {
-              await chat.regenerate();
+              await chatRef.current.regenerate();
             }
             return;
           }
 
           // Server confirmed an active stream (or probe failed and we are
           // attempting recovery). Now show the reconnecting indicator.
-          setIsReconnecting(true);
+          markReconnecting(true);
 
           if (strategy === "hard" || strategy === "reconnect") {
             // Tear down any stale/hung local fetch before reconnecting.
@@ -537,7 +565,7 @@ export function useSessionChatRuntime({
           }
 
           if (serverSnapshotData?.messages) {
-            chat.setMessages(
+            chatRef.current.setMessages(
               mergePreservingLocalWork(
                 serverSnapshotData.messages,
                 chatInstance.messages,
@@ -549,7 +577,7 @@ export function useSessionChatRuntime({
           const lastMessageIdBeforeResume =
             messagesBeforeResume[messagesBeforeResume.length - 1]?.id;
 
-          await chat.resumeStream();
+          await chatRef.current.resumeStream();
 
           const messagesAfterResume = chatInstance.messages;
           const lastMessageIdAfterResume =
@@ -600,7 +628,7 @@ export function useSessionChatRuntime({
                     )
                   : chatInstance.messages;
                 if (data?.messages) {
-                  chat.setMessages(mergedMessages);
+                  chatRef.current.setMessages(mergedMessages);
                 }
                 clearChatWorkspaceStatus(chatId);
                 triggerBillingSync();
@@ -608,7 +636,7 @@ export function useSessionChatRuntime({
                 if (data?.status === "cancelled") {
                   markChatStoppedByUser(chatId);
                   userStoppedRef.current = true;
-                  chat.clearError();
+                  chatRef.current.clearError();
                   return;
                 }
 
@@ -629,7 +657,7 @@ export function useSessionChatRuntime({
                   (data?.status !== "failed" &&
                     lastIsCompletedNonErrorAssistant)
                 ) {
-                  chat.clearError();
+                  chatRef.current.clearError();
                   return;
                 }
 
@@ -642,26 +670,26 @@ export function useSessionChatRuntime({
                   strategy === "hard" ? "hard" : "soft",
                 );
                 if (retryAction === "continue") {
-                  await chat.sendMessage({
+                  await chatRef.current.sendMessage({
                     text: CONTINUE_AFTER_ERROR_PROMPT,
                   });
                 } else if (retryAction === "regenerate") {
-                  await chat.regenerate();
+                  await chatRef.current.regenerate();
                 }
                 return;
               }
               if (resumeAttachedToNothing) {
                 if (data?.messages) {
-                  chat.setMessages(
+                  chatRef.current.setMessages(
                     mergePreservingLocalWork(
                       data.messages,
                       chatInstance.messages,
                     ),
                   );
                 }
-                chat.clearError();
+                chatRef.current.clearError();
                 abortChatInstanceTransport(chatId);
-                await chat.resumeStream();
+                await chatRef.current.resumeStream();
                 return;
               }
             } catch {
@@ -681,11 +709,11 @@ export function useSessionChatRuntime({
               strategy === "hard" ? "hard" : "soft",
             );
             if (retryAction === "continue") {
-              await chat.sendMessage({
+              await chatRef.current.sendMessage({
                 text: CONTINUE_AFTER_ERROR_PROMPT,
               });
             } else if (retryAction === "regenerate") {
-              await chat.regenerate();
+              await chatRef.current.regenerate();
             }
           }
         } catch (error) {
@@ -697,12 +725,12 @@ export function useSessionChatRuntime({
         } finally {
           if (retryGenerationRef.current === retryGeneration) {
             retryInFlightRef.current = false;
-            setIsReconnecting(false);
+            markReconnecting(false);
           }
         }
       })();
     },
-    [chat, chatId, chatInstance, sessionId, transport],
+    [chatId, chatInstance, markReconnecting, sessionId],
   );
 
   // Clear workspace status when status transitions. Note: userStoppedRef is
