@@ -184,10 +184,23 @@ EXAMPLES:
         if (maxDepth !== undefined) {
           findArgs.push("-maxdepth", String(maxDepth));
         }
-        findArgs.push("-not", "-path", "'*/.*'");
-        for (const dir of GLOB_EXCLUDED_DIRS) {
-          findArgs.push("-not", "-path", shellEscape(`*/${dir}/*`));
-        }
+        // Use -prune so `find` never descends into node_modules, .git, .next,
+        // dist, etc. (`-not -path` still traverses every file inside them).
+        const pruneNames = [
+          "'.*'",
+          ...GLOB_EXCLUDED_DIRS.map((dir) => shellEscape(dir)),
+        ];
+        findArgs.push(
+          "\\(",
+          "-mindepth",
+          "1",
+          "\\(",
+          pruneNames.map((n) => `-name ${n}`).join(" -o "),
+          "\\)",
+          "-prune",
+          "\\)",
+          "-o",
+        );
         findArgs.push("-type", "f");
         if (!hasBraceInName && namePattern !== "**") {
           findArgs.push("-name", shellEscape(namePattern));

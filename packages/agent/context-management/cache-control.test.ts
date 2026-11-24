@@ -102,6 +102,43 @@ describe("addCacheControl", () => {
     });
   });
 
+  test("strips stale cacheControl breakpoints and aligns tool-loop checkpoint to previous step boundary", () => {
+    let msgs: ModelMessage[] = [{ role: "user", content: "Fix bug" }];
+    for (let step = 1; step <= 5; step++) {
+      msgs = addCacheControl({ messages: msgs, model: anthropicModel });
+      const bpIndices = msgs
+        .map((m, idx) =>
+          (m.providerOptions?.anthropic as { cacheControl?: unknown })
+            ?.cacheControl
+            ? idx
+            : -1,
+        )
+        .filter((idx) => idx >= 0);
+
+      // Never exceed 2 message breakpoints (4 total with instructions + tools)
+      expect(bpIndices.length).toBeLessThanOrEqual(2);
+      if (step >= 2) {
+        expect(bpIndices).toEqual([msgs.length - 3, msgs.length - 1]);
+      }
+
+      msgs = [
+        ...msgs,
+        { role: "assistant", content: `Step ${step}` },
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: `c${step}`,
+              toolName: "read",
+              output: { type: "text", value: "ok" },
+            },
+          ],
+        },
+      ];
+    }
+  });
+
   test("keeps staticCore cached separately from dynamicContext for Anthropic models", () => {
     const turn1 = buildSystemPromptParts({
       modelId: "claude-sonnet-4-6",

@@ -202,35 +202,69 @@ export function addCacheControl<T extends ToolSet>({
 
     // Anthropic supports max 4 cache breakpoints total:
     // 1 for instructions, 1 for tools, and up to 2 for conversation history.
-    // In multi-turn chat, we place:
-    // - Breakpoint on the last message (current turn end)
-    // - Breakpoint on the previous turn checkpoint (the last assistant message before the latest user message)
-    // This allows subsequent turns to hit the cache for earlier conversation history!
+    // - In tool loops (ending in `tool`), place checkpointIndex at lastIndex - 2
+    //   (the exact message that was lastIndex on the previous step) for a 100%
+    //   exact prefix-boundary cache hit.
+    // - In multi-turn user chats, place checkpointIndex on the last assistant
+    //   message before the latest user message.
+    // Always strip stale `cacheControl` from non-selected messages so multi-step
+    // loops never accumulate >4 breakpoints.
     const lastIndex = messages.length - 1;
     let checkpointIndex = -1;
     if (messages.length >= 3) {
-      for (let i = lastIndex - 1; i >= 0; i--) {
-        if (messages[i]?.role === "assistant") {
-          checkpointIndex = i;
-          break;
-        }
-      }
-      if (checkpointIndex === -1 && lastIndex > 1) {
+      if (messages[lastIndex]?.role === "tool") {
         checkpointIndex = lastIndex - 2;
+      } else {
+        for (let i = lastIndex - 1; i >= 0; i--) {
+          if (messages[i]?.role === "assistant") {
+            checkpointIndex = i;
+            break;
+          }
+        }
+        if (checkpointIndex === -1 && lastIndex > 1) {
+          checkpointIndex = lastIndex - 2;
+        }
       }
     }
 
-    return messages.map((message, index) =>
-      index === lastIndex || index === checkpointIndex
-        ? {
-            ...message,
-            providerOptions: {
-              ...message.providerOptions,
-              ...providerOptions,
-            },
-          }
-        : message,
-    );
+    return messages.map((message, index) => {
+      if (index === lastIndex || index === checkpointIndex) {
+        return {
+          ...message,
+          providerOptions: {
+            ...message.providerOptions,
+            ...providerOptions,
+          },
+        };
+      }
+
+      const existingAnthropic = message.providerOptions?.anthropic as
+        | Record<string, JSONValue>
+        | undefined;
+      if (!existingAnthropic || !("cacheControl" in existingAnthropic)) {
+        return message;
+      }
+
+      const { cacheControl: _removed, ...remainingAnthropic } =
+        existingAnthropic;
+      const { anthropic: _oldAnthropic, ...otherProviders } =
+        message.providerOptions ?? {};
+      const nextProviderOptions: ProviderOptions = {
+        ...otherProviders,
+        ...(Object.keys(remainingAnthropic).length > 0
+          ? { anthropic: remainingAnthropic }
+          : {}),
+      };
+
+      if (Object.keys(nextProviderOptions).length === 0) {
+        const { providerOptions: _dropped, ...rest } = message;
+        return rest as ModelMessage;
+      }
+      return {
+        ...message,
+        providerOptions: nextProviderOptions,
+      };
+    });
   }
 
   throw new Error("Either tools, messages, or instructions must be provided");
