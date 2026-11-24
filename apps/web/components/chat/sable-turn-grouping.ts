@@ -794,16 +794,35 @@ export function buildAssistantTurnFlow(
             typeof input.oldString === "string" ? input.oldString : "";
           const newStr =
             typeof input.newString === "string" ? input.newString : "";
-          const oldLines = countLines(oldStr);
-          const newLines = countLines(newStr);
-          if (newLines >= oldLines) {
-            const delta = Math.max(1, newLines - oldLines);
-            add += delta;
-            fileStats.added += delta;
-          } else {
-            const delta = oldLines - newLines;
-            del += delta;
-            fileStats.removed += delta;
+          const oldLinesArr = oldStr.length > 0 ? oldStr.split("\n") : [];
+          const newLinesArr = newStr.length > 0 ? newStr.split("\n") : [];
+          let prefix = 0;
+          const minLen = Math.min(oldLinesArr.length, newLinesArr.length);
+          while (
+            prefix < minLen &&
+            oldLinesArr[prefix] === newLinesArr[prefix]
+          ) {
+            prefix += 1;
+          }
+          let oldEnd = oldLinesArr.length;
+          let newEnd = newLinesArr.length;
+          while (
+            oldEnd > prefix &&
+            newEnd > prefix &&
+            oldLinesArr[oldEnd - 1] === newLinesArr[newEnd - 1]
+          ) {
+            oldEnd -= 1;
+            newEnd -= 1;
+          }
+          const removedLines = Math.max(0, oldEnd - prefix);
+          const addedLines = Math.max(0, newEnd - prefix);
+          if (addedLines > 0) {
+            add += addedLines;
+            fileStats.added += addedLines;
+          }
+          if (removedLines > 0) {
+            del += removedLines;
+            fileStats.removed += removedLines;
           }
         }
         changedFileMap.set(input.filePath, fileStats);

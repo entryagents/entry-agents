@@ -2991,7 +2991,7 @@ export async function runAgentWorkflow(options: Options) {
 
       const effectiveContextWindow = resolvedContextWindow ?? 200_000;
       const effectiveCompactionThreshold =
-        modelMeta?.compactionThreshold ?? userCompactionThreshold;
+        userCompactionThreshold ?? modelMeta?.compactionThreshold;
       const compactionTriggerTokens = Math.floor(
         effectiveContextWindow * effectiveCompactionThreshold,
       );

@@ -13,7 +13,6 @@ import {
   Loader2,
   RefreshCw,
   Share2,
-  WifiOff,
   X,
 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -3687,23 +3686,14 @@ export function SessionChatContent({
               {/* Input */}
               <div className="p-4 pb-2 sm:pb-8">
                 <div className="mx-auto max-w-4xl space-y-2">
-                  {(!isOnline || isReconnecting) && (
+                  {isOnline && isReconnecting && (
                     <div
                       role="status"
                       aria-live="polite"
                       className="flex items-center gap-2 rounded-md border border-border/70 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground"
                     >
-                      {!isOnline ? (
-                        <>
-                          <WifiOff className="h-3.5 w-3.5 shrink-0" />
-                          <span>Offline. Waiting to reconnect</span>
-                        </>
-                      ) : (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                          <span>Reconnecting to live stream</span>
-                        </>
-                      )}
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                      <span>Reconnecting to live stream</span>
                     </div>
                   )}
                   {sandboxCreateError && (
