@@ -429,6 +429,7 @@ describe("tools execute behavior", () => {
       stdout: "ok",
       stderr: "",
       truncated: true,
+      hint: "Tip: use the `dir_list` tool instead of bash `ls`.",
     });
   });
 

@@ -476,6 +476,8 @@ EXAMPLES:
         }
       }
 
+      const toolHint = detectSpecializedToolHint(command);
+
       return {
         success: result.success,
         exitCode: result.exitCode,
@@ -483,6 +485,32 @@ EXAMPLES:
         stderr: redact(sanitizeCommandOutput(result.stderr)),
         ...(result.truncated && { truncated: true }),
         ...(migrationNotice ? { migration: migrationNotice } : {}),
+        ...(toolHint ? { hint: toolHint } : {}),
       };
     },
   });
+
+/**
+ * Detects standalone shell commands that should use Entry's specialized tools
+ * (`read`, `grep`, `glob`, `dir_list`). Returns a concise non-blocking hint
+ * (ignores piped/chained commands where shell composition is intentional).
+ */
+export function detectSpecializedToolHint(command: string): string | null {
+  const trimmed = command.trim();
+  if (!trimmed || /[|;&`<>]|\$\(/.test(trimmed)) {
+    return null;
+  }
+  if (/^(?:cat|head|tail|nl)\s+\S/.test(trimmed)) {
+    return "Tip: use the `read` tool (with offset/limit) instead of bash `cat`/`head`/`tail` — `read` is faster, supports line ranges, and satisfies the read-before-edit gate.";
+  }
+  if (/^(?:grep|egrep|fgrep|rg)\s+/.test(trimmed)) {
+    return "Tip: use the `grep` tool (with `filesOnly: true` for broad discovery) instead of bash `grep`/`rg`.";
+  }
+  if (/^find\s+/.test(trimmed)) {
+    return "Tip: use the `glob` tool (e.g. `**/chat/*.tsx`) instead of bash `find`.";
+  }
+  if (/^ls(?:\s|$)/.test(trimmed)) {
+    return "Tip: use the `dir_list` tool instead of bash `ls`.";
+  }
+  return null;
+}
