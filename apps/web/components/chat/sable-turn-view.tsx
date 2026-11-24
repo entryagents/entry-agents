@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, FileDiff, Hourglass } from "lucide-react";
+import { ChevronRight, Hourglass } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -11,10 +11,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useOptionalGitPanel } from "@/app/sessions/[sessionId]/chats/[chatId]/git-panel-context";
 import type { WebAgentUIMessage } from "@/app/types";
 import { SableCollapse } from "@/components/sable-chat/collapse";
 import "@/components/tool-call/agent-row.css";
+import { ConversationFileSummaryPanel } from "./conversation-file-summary-panel";
 import { SableExploreRun } from "./sable-explore-run";
 import { foldKey, useFold } from "./sable-fold-store";
 import { SableTiles } from "./sable-tiles";
@@ -138,7 +138,6 @@ function TotalLine({
   thoughtOnly,
   totalSteps,
   durationMs,
-  changes,
   open,
   onToggle,
   landed,
@@ -151,7 +150,6 @@ function TotalLine({
   onToggle?: () => void;
   landed: boolean;
 }) {
-  const gitPanel = useOptionalGitPanel();
   const took =
     durationMs && durationMs >= 1000 ? shortDuration(durationMs) : "";
   const label = thoughtOnly
@@ -183,27 +181,6 @@ function TotalLine({
           aria-hidden="true"
         />
       </button>
-
-      {changes.files > 0 && (
-        <button
-          type="button"
-          className="sable-work-changes tabular-nums"
-          onClick={() => {
-            gitPanel?.setGitPanelTab("diff");
-            gitPanel?.setGitPanelOpen(true);
-          }}
-          aria-label={`${plural(changes.files, "file")} changed. Open Changes`}
-        >
-          <FileDiff size={13} strokeWidth={1.6} aria-hidden="true" />
-          <span>{plural(changes.files, "file")}</span>
-          {changes.add > 0 && (
-            <span className="sable-t-add">+{changes.add}</span>
-          )}
-          {changes.del > 0 && (
-            <span className="sable-t-del">−{changes.del}</span>
-          )}
-        </button>
-      )}
     </div>
   );
 }
@@ -546,6 +523,8 @@ export interface SableTurnViewProps {
   durationMs: number | null;
   startedAt: string | null;
   activeApprovalId?: string | null;
+  cwd?: string;
+  onOpenFile?: (filePath: string) => void;
   workspaceStatusMessage?: string | null;
   isAwaitingInput?: boolean;
   renderTextChunk: (chunk: TextFlowChunk) => ReactNode;
@@ -566,6 +545,8 @@ export const SableTurnView = memo(function SableTurnView({
   durationMs,
   startedAt,
   activeApprovalId = null,
+  cwd,
+  onOpenFile,
   workspaceStatusMessage = null,
   isAwaitingInput = false,
   renderTextChunk,
@@ -835,6 +816,15 @@ export const SableTurnView = memo(function SableTurnView({
             )}
           </div>
         </div>
+      )}
+
+      {turnFlow.changes.files > 0 && (
+        <ConversationFileSummaryPanel
+          changes={turnFlow.changes}
+          files={turnFlow.changedFileDetails}
+          cwd={cwd}
+          onOpenFile={onOpenFile}
+        />
       )}
 
       {footer}

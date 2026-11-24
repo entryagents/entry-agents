@@ -91,6 +91,10 @@ describe("Sable 1:1 tool-call grouping & checkpoint flow", () => {
     expect(summary.liveLabel).toBe("Editing app.ts");
 
     const turnFlow = buildAssistantTurnFlow(msg, false);
+    expect(turnFlow.changedFileDetails).toEqual([
+      { path: "src/new.ts", added: 3, removed: 0 },
+      { path: "src/app.ts", added: 0, removed: 2 },
+    ]);
     const stepsChunk = turnFlow.flow[0];
     expect(stepsChunk?.kind).toBe("steps");
     if (stepsChunk?.kind === "steps") {
