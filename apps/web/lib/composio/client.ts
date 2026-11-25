@@ -1045,6 +1045,13 @@ export async function initiateComposioConnection(
   );
   callbackUrlObj.searchParams.set("state", stateNonce);
   callbackUrlObj.searchParams.set("toolkit", normalizedSlug);
+  if (
+    input.returnPath &&
+    input.returnPath.startsWith("/") &&
+    !input.returnPath.startsWith("//")
+  ) {
+    callbackUrlObj.searchParams.set("returnTo", input.returnPath);
+  }
   const callbackUrl = callbackUrlObj.toString();
 
   const { session, client } = await getOrCreateUserComposioSession(

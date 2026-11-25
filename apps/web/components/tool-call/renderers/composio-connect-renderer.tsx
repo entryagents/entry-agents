@@ -1,13 +1,7 @@
 "use client";
 
-import {
-  CheckCircle2,
-  ExternalLink,
-  Plug,
-  RefreshCw,
-  Search,
-} from "lucide-react";
-import { useState } from "react";
+import { ExternalLink, Plug, Search } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import type { ToolRenderState } from "@/app/lib/render-tool";
 import type { WebAgentUIToolPart } from "@/app/types";
 import { ToolLayout } from "../tool-layout";
@@ -101,7 +95,6 @@ export function ComposioToolRenderer({
   const input = resolved?.input ?? {};
   const output = resolved?.output ?? null;
 
-  const [checkingStatus, setCheckingStatus] = useState(false);
   const [liveConnected, setLiveConnected] = useState<boolean | null>(null);
   const [deniedByUser, setDeniedByUser] = useState(false);
 
@@ -121,29 +114,76 @@ export function ComposioToolRenderer({
     }
   }
 
-  async function handleVerifyConnection() {
-    setCheckingStatus(true);
-    try {
-      const res = await fetch(
-        `/api/composio/toolkits?q=${encodeURIComponent(toolkit)}`,
-      );
-      if (res.ok) {
-        const data = (await res.json()) as {
-          toolkits?: Array<{ slug: string; isConnected: boolean }>;
-        };
-        const found = data.toolkits?.find(
-          (t) => t.slug.toLowerCase() === toolkit.toLowerCase(),
+  const verifyConnectionSilently = useCallback(
+    async (targetToolkit: string) => {
+      if (!targetToolkit || targetToolkit === "integration") return;
+      try {
+        const res = await fetch(
+          `/api/composio/toolkits?q=${encodeURIComponent(targetToolkit)}`,
+          { cache: "no-store" },
         );
-        if (found?.isConnected) {
-          setLiveConnected(true);
+        if (res.ok) {
+          const data = (await res.json()) as {
+            toolkits?: Array<{ slug: string; isConnected: boolean }>;
+          };
+          const found = data.toolkits?.find(
+            (t) => t.slug.toLowerCase() === targetToolkit.toLowerCase(),
+          );
+          if (found?.isConnected) {
+            setLiveConnected(true);
+          }
         }
+      } catch {
+        // Ignore transient verification errors
       }
-    } finally {
-      setCheckingStatus(false);
-    }
-  }
+    },
+    [],
+  );
 
-  if (effectiveToolName === "COMPOSIO_MANAGE_CONNECTIONS") {
+  const isManageConnections =
+    effectiveToolName === "COMPOSIO_MANAGE_CONNECTIONS";
+  const outputAlreadyConnected =
+    output?.isConnected === true ||
+    (typeof output?.status === "string" &&
+      output.status.toUpperCase() === "ACTIVE");
+
+  // Automatically verify connection status on mount and when the user returns
+  // to this tab/page after completing OAuth — no manual Verify click required.
+  useEffect(() => {
+    if (
+      !isManageConnections ||
+      outputAlreadyConnected ||
+      liveConnected === true ||
+      deniedByUser ||
+      toolkit === "integration"
+    ) {
+      return;
+    }
+    void verifyConnectionSilently(toolkit);
+    const onFocusOrVisible = () => {
+      if (
+        typeof document === "undefined" ||
+        document.visibilityState === "visible"
+      ) {
+        void verifyConnectionSilently(toolkit);
+      }
+    };
+    window.addEventListener("focus", onFocusOrVisible);
+    document.addEventListener("visibilitychange", onFocusOrVisible);
+    return () => {
+      window.removeEventListener("focus", onFocusOrVisible);
+      document.removeEventListener("visibilitychange", onFocusOrVisible);
+    };
+  }, [
+    deniedByUser,
+    isManageConnections,
+    liveConnected,
+    outputAlreadyConnected,
+    toolkit,
+    verifyConnectionSilently,
+  ]);
+
+  if (isManageConnections) {
     const isErrorResult = output?.action === "error";
     const errorMessage =
       isErrorResult && typeof output?.message === "string"
@@ -155,9 +195,7 @@ export function ComposioToolRenderer({
       typeof output?.status === "string" ? output.status : "INITIATED";
     const alias = typeof output?.alias === "string" ? output.alias : null;
     const isConnected =
-      !isErrorResult &&
-      (liveConnected ??
-        (output?.isConnected === true || status.toUpperCase() === "ACTIVE"));
+      !isErrorResult && (liveConnected ?? outputAlreadyConnected);
 
     const expandedContent = (
       <div className="mt-1 rounded-lg border border-border bg-card p-3.5 text-xs">
@@ -188,7 +226,7 @@ export function ComposioToolRenderer({
                   : deniedByUser
                     ? "Denied"
                     : isConnected
-                      ? "Active"
+                      ? "Connected"
                       : status}
               </span>
             </div>
@@ -204,9 +242,9 @@ export function ComposioToolRenderer({
             </p>
           </div>
 
-          {!isErrorResult && !deniedByUser ? (
+          {!isErrorResult && !deniedByUser && !isConnected ? (
             <div className="flex items-center gap-2">
-              {connectLinkUrl && !isConnected ? (
+              {connectLinkUrl ? (
                 <a
                   href={connectLinkUrl}
                   className="inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90"
@@ -215,34 +253,13 @@ export function ComposioToolRenderer({
                   <ExternalLink className="size-3.5" strokeWidth={1.5} />
                 </a>
               ) : null}
-              {!isConnected ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => handleDenyConnect(toolkit)}
-                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-                  >
-                    <span>Deny</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleVerifyConnection}
-                    disabled={checkingStatus}
-                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                  >
-                    <RefreshCw
-                      className={`size-3.5 ${checkingStatus ? "animate-spin" : ""}`}
-                      strokeWidth={1.5}
-                    />
-                    <span>Verify</span>
-                  </button>
-                </>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
-                  <span>Verified</span>
-                </span>
-              )}
+              <button
+                type="button"
+                onClick={() => handleDenyConnect(toolkit)}
+                className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+              >
+                <span>Deny</span>
+              </button>
             </div>
           ) : null}
         </div>
@@ -342,8 +359,7 @@ export function ComposioToolRenderer({
         summary={summary}
         state={state}
         isConnected={isConnected}
-        checkingStatus={checkingStatus}
-        onVerify={handleVerifyConnection}
+        onConnected={() => setLiveConnected(true)}
         onApprove={onApprove}
         onDeny={onDeny}
       />
@@ -390,8 +406,7 @@ function ComposioInlineConnectCard({
   summary,
   state,
   isConnected,
-  checkingStatus,
-  onVerify,
+  onConnected,
   onApprove,
   onDeny,
 }: {
@@ -399,14 +414,55 @@ function ComposioInlineConnectCard({
   summary: string;
   state: ToolRenderState;
   isConnected: boolean;
-  checkingStatus: boolean;
-  onVerify: () => void;
+  onConnected: () => void;
   onApprove?: (id: string) => void;
   onDeny?: (id: string, reason?: string) => void;
 }) {
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [deniedByUser, setDeniedByUser] = useState(false);
+
+  useEffect(() => {
+    if (isConnected || deniedByUser || !toolkit || toolkit === "integration") {
+      return;
+    }
+    const check = async () => {
+      try {
+        const res = await fetch(
+          `/api/composio/toolkits?q=${encodeURIComponent(toolkit)}`,
+          { cache: "no-store" },
+        );
+        if (res.ok) {
+          const data = (await res.json()) as {
+            toolkits?: Array<{ slug: string; isConnected: boolean }>;
+          };
+          const found = data.toolkits?.find(
+            (t) => t.slug.toLowerCase() === toolkit.toLowerCase(),
+          );
+          if (found?.isConnected) {
+            onConnected();
+          }
+        }
+      } catch {
+        // Ignore transient verification errors
+      }
+    };
+    void check();
+    const onFocusOrVisible = () => {
+      if (
+        typeof document === "undefined" ||
+        document.visibilityState === "visible"
+      ) {
+        void check();
+      }
+    };
+    window.addEventListener("focus", onFocusOrVisible);
+    document.addEventListener("visibilitychange", onFocusOrVisible);
+    return () => {
+      window.removeEventListener("focus", onFocusOrVisible);
+      document.removeEventListener("visibilitychange", onFocusOrVisible);
+    };
+  }, [deniedByUser, isConnected, onConnected, toolkit]);
 
   function handleDeny() {
     setDeniedByUser(true);
@@ -488,7 +544,7 @@ function ComposioInlineConnectCard({
                   {deniedByUser
                     ? "Denied"
                     : isConnected
-                      ? "Active"
+                      ? "Connected"
                       : "Not connected"}
                 </span>
               </div>
@@ -502,47 +558,26 @@ function ComposioInlineConnectCard({
                       : `Connect your ${toolkit} account so the agent can run this tool.`}
               </p>
             </div>
-            {!deniedByUser ? (
+            {!deniedByUser && !isConnected ? (
               <div className="flex items-center gap-2">
-                {!isConnected ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleConnect}
-                      disabled={connecting}
-                      className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
-                    >
-                      <span>
-                        {connecting ? "Connecting..." : `Connect ${toolkit}`}
-                      </span>
-                      <ExternalLink className="size-3.5" strokeWidth={1.5} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDeny}
-                      className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
-                    >
-                      <span>Deny</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={onVerify}
-                      disabled={checkingStatus}
-                      className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                    >
-                      <RefreshCw
-                        className={`size-3.5 ${checkingStatus ? "animate-spin" : ""}`}
-                        strokeWidth={1.5}
-                      />
-                      <span>Verify</span>
-                    </button>
-                  </>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                    <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
-                    <span>Verified</span>
+                <button
+                  type="button"
+                  onClick={handleConnect}
+                  disabled={connecting}
+                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  <span>
+                    {connecting ? "Connecting..." : `Connect ${toolkit}`}
                   </span>
-                )}
+                  <ExternalLink className="size-3.5" strokeWidth={1.5} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeny}
+                  className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                >
+                  <span>Deny</span>
+                </button>
               </div>
             ) : null}
           </div>

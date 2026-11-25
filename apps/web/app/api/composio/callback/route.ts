@@ -30,13 +30,34 @@ export async function GET(req: Request) {
     null;
   const statusParam = url.searchParams.get("status")?.trim() ?? null;
 
+  const rawReturnTo = url.searchParams.get("returnTo")?.trim() ?? "";
+  const safeReturnTo =
+    rawReturnTo.startsWith("/") && !rawReturnTo.startsWith("//")
+      ? rawReturnTo
+      : null;
+
   if (sessionUri) {
     try {
       const completed = await completeComposioDeferredAuth({
         authenticatedUserId: session.user.id,
         sessionUri,
       });
-      const dest = new URL("/settings/connections", origin);
+      let targetPath = safeReturnTo ?? "/settings/connections";
+      if (!safeReturnTo && stateNonce) {
+        const { getComposioOAuthAttemptByNonce } =
+          await import("@/lib/db/composio-sessions");
+        const attempt = await getComposioOAuthAttemptByNonce(stateNonce).catch(
+          () => null,
+        );
+        if (
+          attempt?.returnPath &&
+          attempt.returnPath.startsWith("/") &&
+          !attempt.returnPath.startsWith("//")
+        ) {
+          targetPath = attempt.returnPath;
+        }
+      }
+      const dest = new URL(targetPath, origin);
       dest.searchParams.set("composio", "connected");
       dest.searchParams.set("toolkit", completed.toolkitSlug);
       dest.searchParams.set("connectedAccountId", completed.connectedAccountId);
