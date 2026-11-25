@@ -48,11 +48,28 @@ export type SerializableCompactionCheckpoint = {
  */
 export function stripDanglingToolCalls(messages: ModelMessage[]): void {
   const resultedToolCallIds = new Set<string>();
+  const respondedApprovalIds = new Set<string>();
   for (const message of messages) {
     if (message.role === "tool" && Array.isArray(message.content)) {
       for (const part of message.content) {
         if (part.type === "tool-result") {
           resultedToolCallIds.add(part.toolCallId);
+        } else if (part.type === "tool-approval-response") {
+          respondedApprovalIds.add(part.approvalId);
+        }
+      }
+    }
+  }
+  if (respondedApprovalIds.size > 0) {
+    for (const message of messages) {
+      if (message.role === "assistant" && Array.isArray(message.content)) {
+        for (const part of message.content) {
+          if (
+            part.type === "tool-approval-request" &&
+            respondedApprovalIds.has(part.approvalId)
+          ) {
+            resultedToolCallIds.add(part.toolCallId);
+          }
         }
       }
     }

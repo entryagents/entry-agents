@@ -59,6 +59,7 @@ import {
   estimateNextStepInputTokens,
 } from "@/lib/chat/realtime-spend-cap";
 import { createCoalescingStreamWriter } from "@/lib/chat/coalescing-stream-writer";
+import { pruneStaleToolResults } from "@/lib/chat/prune-stale-tool-results";
 import type {
   WebAgentCommitData,
   WebAgentCommitDataPart,
@@ -3357,12 +3358,14 @@ export async function runAgentWorkflow(options: Options) {
         await persistAssistantMessage(options.chatId, pendingAssistantResponse);
       }
 
-      const prunedLoopMessages = withoutUndefined(
-        pruneMessages({
-          messages: modelMessages,
-          reasoning: "before-last-message",
-          emptyMessages: "remove",
-        }),
+      const prunedLoopMessages = pruneStaleToolResults(
+        withoutUndefined(
+          pruneMessages({
+            messages: modelMessages,
+            reasoning: "before-last-message",
+            emptyMessages: "remove",
+          }),
+        ),
       );
       if (
         prunedLoopMessages.length !== modelMessages.length ||
