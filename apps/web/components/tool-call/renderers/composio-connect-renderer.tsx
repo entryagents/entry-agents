@@ -26,6 +26,61 @@ export function isComposioMetaTool(toolName: string): boolean {
   return COMPOSIO_TOOLS.has(toolName) || toolName.startsWith("COMPOSIO_");
 }
 
+export function resolveComposioToolCall(
+  toolName: string,
+  part: WebAgentUIToolPart,
+): {
+  effectiveToolName: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown> | null;
+} | null {
+  const rawInput =
+    typeof part.input === "object" && part.input !== null
+      ? (part.input as Record<string, unknown>)
+      : {};
+  const rawOutput =
+    part.state === "output-available" &&
+    typeof part.output === "object" &&
+    part.output !== null
+      ? (part.output as Record<string, unknown>)
+      : null;
+
+  let effectiveToolName = toolName;
+  let input = rawInput;
+  let output = rawOutput;
+
+  if (toolName === "tool_call" && typeof rawInput.tool === "string") {
+    effectiveToolName = rawInput.tool;
+    if (
+      typeof rawInput.arguments === "object" &&
+      rawInput.arguments !== null &&
+      !Array.isArray(rawInput.arguments)
+    ) {
+      input = rawInput.arguments as Record<string, unknown>;
+    } else if (
+      typeof rawInput.input === "object" &&
+      rawInput.input !== null &&
+      !Array.isArray(rawInput.input)
+    ) {
+      input = rawInput.input as Record<string, unknown>;
+    }
+    if (
+      rawOutput &&
+      typeof rawOutput.result === "object" &&
+      rawOutput.result !== null &&
+      !Array.isArray(rawOutput.result)
+    ) {
+      output = rawOutput.result as Record<string, unknown>;
+    }
+  }
+
+  if (!isComposioMetaTool(effectiveToolName)) {
+    return null;
+  }
+
+  return { effectiveToolName, input, output };
+}
+
 export interface ComposioToolRendererProps {
   part: WebAgentUIToolPart;
   state: ToolRenderState;
@@ -41,13 +96,10 @@ export function ComposioToolRenderer({
   onApprove,
   onDeny,
 }: ComposioToolRendererProps) {
-  const input = (part.input as Record<string, unknown> | undefined) ?? {};
-  const output =
-    part.state === "output-available" &&
-    typeof part.output === "object" &&
-    part.output !== null
-      ? (part.output as Record<string, unknown>)
-      : null;
+  const resolved = resolveComposioToolCall(toolName, part);
+  const effectiveToolName = resolved?.effectiveToolName ?? toolName;
+  const input = resolved?.input ?? {};
+  const output = resolved?.output ?? null;
 
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [liveConnected, setLiveConnected] = useState<boolean | null>(null);
@@ -79,7 +131,7 @@ export function ComposioToolRenderer({
     }
   }
 
-  if (toolName === "COMPOSIO_MANAGE_CONNECTIONS") {
+  if (effectiveToolName === "COMPOSIO_MANAGE_CONNECTIONS") {
     const isErrorResult = output?.action === "error";
     const errorMessage =
       isErrorResult && typeof output?.message === "string"
@@ -199,7 +251,7 @@ export function ComposioToolRenderer({
     );
   }
 
-  if (toolName === "COMPOSIO_SEARCH_TOOLS") {
+  if (effectiveToolName === "COMPOSIO_SEARCH_TOOLS") {
     const query = typeof input.query === "string" ? input.query : "...";
     return (
       <ToolLayout
@@ -285,8 +337,8 @@ export function ComposioToolRenderer({
         )
       }
       name={
-        toolName === "COMPOSIO_MULTI_EXECUTE_TOOL" ||
-        toolName === "COMPOSIO_MULTI_EXECUTE"
+        effectiveToolName === "COMPOSIO_MULTI_EXECUTE_TOOL" ||
+        effectiveToolName === "COMPOSIO_MULTI_EXECUTE"
           ? "Integration Execute"
           : "Integration Tool"
       }
