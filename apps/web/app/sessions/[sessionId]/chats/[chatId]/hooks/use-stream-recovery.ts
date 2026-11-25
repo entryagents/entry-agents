@@ -210,7 +210,7 @@ export function useStreamRecovery({
         // Never overwrite `chat.messages` with a DB snapshot while an active
         // `@ai-sdk/react` SSE stream is running — the next SSE chunk would
         // overwrite it back and cause text/file-count flicker.
-        const staleThresholdMs = opts?.isVisibilityRecovery ? 5_000 : 30_000;
+        const staleThresholdMs = opts?.isVisibilityRecovery ? 5_000 : 90_000;
         const lastChunkAt = getLastChunkReceivedAt?.() ?? 0;
         const referenceActivityAt =
           lastChunkAt > 0 ? lastChunkAt : (inFlightStartedAtRef.current ?? 0);

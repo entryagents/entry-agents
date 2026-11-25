@@ -214,6 +214,7 @@ export class AbortableChatTransport<
     lastChunkAt: number;
     activeSendMessagesCount: number;
     activeReconnectCount: number;
+    streamGeneration: number;
   };
 
   constructor(options: AbortableWorkflowChatTransportOptions<UI_MESSAGE>) {
@@ -223,6 +224,7 @@ export class AbortableChatTransport<
       lastChunkAt: 0,
       activeSendMessagesCount: 0,
       activeReconnectCount: 0,
+      streamGeneration: 0,
     };
     const outerFetch: FetchFunction = options?.fetch ?? globalThis.fetch;
 
@@ -640,6 +642,11 @@ export class AbortableChatTransport<
     options: Parameters<WorkflowChatTransport<UI_MESSAGE>["sendMessages"]>[0],
   ) {
     const state = this._state;
+    const myGeneration = ++state.streamGeneration;
+    // Supersede any prior SSE reader so two streams can never ping-pong messages.
+    state.readController.abort();
+    state.readController = new AbortController();
+
     state.activeSendMessagesCount += 1;
     let decremented = false;
     const decrementOnce = () => {
@@ -656,8 +663,20 @@ export class AbortableChatTransport<
       const reader = stream.getReader();
       return new ReadableStream({
         async pull(controller) {
+          if (myGeneration !== state.streamGeneration) {
+            decrementOnce();
+            await reader.cancel().catch(() => {});
+            controller.close();
+            return;
+          }
           try {
             const next = await reader.read();
+            if (myGeneration !== state.streamGeneration) {
+              decrementOnce();
+              await reader.cancel().catch(() => {});
+              controller.close();
+              return;
+            }
             if (next.done) {
               decrementOnce();
               controller.close();
@@ -667,6 +686,10 @@ export class AbortableChatTransport<
             }
           } catch (err) {
             decrementOnce();
+            if (myGeneration !== state.streamGeneration) {
+              controller.close();
+              return;
+            }
             if (
               err instanceof Error &&
               err.message.startsWith("Failed to fetch chat: 204")
@@ -694,6 +717,11 @@ export class AbortableChatTransport<
     >[0],
   ) {
     const state = this._state;
+    const myGeneration = ++state.streamGeneration;
+    // Supersede any prior SSE reader so two streams can never ping-pong messages.
+    state.readController.abort();
+    state.readController = new AbortController();
+
     state.activeReconnectCount += 1;
     let decremented = false;
     const decrementOnce = () => {
@@ -713,8 +741,30 @@ export class AbortableChatTransport<
 
       return new ReadableStream({
         async pull(controller) {
+          if (myGeneration !== state.streamGeneration) {
+            decrementOnce();
+            await reader.cancel().catch(() => {});
+            try {
+              reader.releaseLock();
+            } catch {
+              // Lock already released
+            }
+            controller.close();
+            return;
+          }
           try {
             const next = await reader.read();
+            if (myGeneration !== state.streamGeneration) {
+              decrementOnce();
+              await reader.cancel().catch(() => {});
+              try {
+                reader.releaseLock();
+              } catch {
+                // Lock already released
+              }
+              controller.close();
+              return;
+            }
             if (next.done) {
               decrementOnce();
               try {
@@ -733,6 +783,10 @@ export class AbortableChatTransport<
               reader.releaseLock();
             } catch {
               // Lock already released
+            }
+            if (myGeneration !== state.streamGeneration) {
+              controller.close();
+              return;
             }
             if (
               err instanceof Error &&
