@@ -399,11 +399,38 @@ function compactImageVisionContext(messages: ModelMessage[]): ModelMessage[] {
 }
 
 const shouldPauseForToolInteraction = (parts: WebAgentUIMessage["parts"]) =>
-  parts.some(
-    (part) =>
-      isToolUIPart(part) &&
-      (part.state === "input-available" || part.state === "approval-requested"),
-  );
+  parts.some((part) => {
+    if (!isToolUIPart(part)) return false;
+    if (
+      part.state === "input-available" ||
+      part.state === "approval-requested"
+    ) {
+      return true;
+    }
+    if (
+      part.state === "output-available" &&
+      typeof part.output === "object" &&
+      part.output !== null
+    ) {
+      const rawOut = part.output as Record<string, unknown>;
+      const unwrappedOut =
+        typeof rawOut.result === "object" &&
+        rawOut.result !== null &&
+        !Array.isArray(rawOut.result)
+          ? (rawOut.result as Record<string, unknown>)
+          : rawOut;
+      // Pause like ask_user_question when Composio emits a Connect Link so
+      // the user can authorize or deny and return to the chat cleanly.
+      if (
+        typeof unwrappedOut.connectLinkUrl === "string" &&
+        unwrappedOut.connectLinkUrl.length > 0 &&
+        unwrappedOut.isConnected !== true
+      ) {
+        return true;
+      }
+    }
+    return false;
+  });
 
 const DIFF_REFRESHING_TOOL_TYPES = new Set([
   "tool-write",

@@ -1591,6 +1591,46 @@ export function SessionChatContent({
     onReconcileSnapshot: refreshCurrentChatSnapshot,
   });
 
+  // Auto-continue after returning from Composio OAuth (?composio=connected&toolkit=...)
+  // or when the user clicks Deny on an inline Composio Connect card.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const composioStatus = params.get("composio");
+    const toolkit = params.get("toolkit")?.trim();
+    if (composioStatus === "connected" && toolkit) {
+      params.delete("composio");
+      params.delete("toolkit");
+      params.delete("connectedAccountId");
+      params.delete("reason");
+      const nextSearch = params.toString();
+      const cleanUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", cleanUrl);
+      toast.success(`Connected ${toolkit}`);
+      if (!isChatInFlight) {
+        void sendMessage({
+          text: `I have connected ${toolkit}. Please continue.`,
+        });
+      }
+    }
+
+    const onConnectDenied = (event: Event) => {
+      const detail = (event as CustomEvent<{ toolkit?: string }>).detail;
+      const deniedToolkit = detail?.toolkit?.trim();
+      if (!deniedToolkit || isChatInFlight) return;
+      void sendMessage({
+        text: `I declined connecting ${deniedToolkit}. Please continue without it or suggest an alternative.`,
+      });
+    };
+    window.addEventListener("entry:composio-connect-denied", onConnectDenied);
+    return () => {
+      window.removeEventListener(
+        "entry:composio-connect-denied",
+        onConnectDenied,
+      );
+    };
+  }, [isChatInFlight, sendMessage]);
+
   const handleModelChange = useCallback(
     async (modelId: string) => {
       if (!modelId || modelId === chatInfo.modelId) return;
