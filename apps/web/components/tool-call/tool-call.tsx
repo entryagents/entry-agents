@@ -32,7 +32,7 @@ import { VisualizeToolRenderer } from "./renderers/visualize-tool-renderer";
 import { TeamBoardRenderer } from "./renderers/team-board-renderer";
 import {
   ComposioToolRenderer,
-  isComposioMetaTool,
+  resolveComposioToolCall,
 } from "./renderers/composio-connect-renderer";
 
 export type ToolCallProps = {
@@ -112,7 +112,8 @@ export function ToolCall({
       return <TeamBoardRenderer part={part} state={state} {...approvalProps} />;
     default: {
       const toolName = getToolName(part);
-      if (isComposioMetaTool(toolName)) {
+      const composioCall = resolveComposioToolCall(toolName, part);
+      if (composioCall) {
         return (
           <ComposioToolRenderer
             part={part}

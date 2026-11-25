@@ -413,21 +413,38 @@ function isAlwaysVisibleShowTool(part: WebAgentUIToolPart): boolean {
       typeof inp?.path === "string",
     );
   }
-  if (toolName === "COMPOSIO_MANAGE_CONNECTIONS") {
+  const rawInput =
+    typeof part.input === "object" && part.input !== null
+      ? (part.input as Record<string, unknown>)
+      : null;
+  const rawOutput =
+    part.state === "output-available" &&
+    typeof part.output === "object" &&
+    part.output !== null
+      ? (part.output as Record<string, unknown>)
+      : null;
+  const effectiveToolName =
+    toolName === "tool_call" && typeof rawInput?.tool === "string"
+      ? rawInput.tool
+      : toolName;
+  const effectiveOutput =
+    toolName === "tool_call" &&
+    rawOutput &&
+    typeof rawOutput.result === "object" &&
+    rawOutput.result !== null &&
+    !Array.isArray(rawOutput.result)
+      ? (rawOutput.result as Record<string, unknown>)
+      : rawOutput;
+
+  if (effectiveToolName === "COMPOSIO_MANAGE_CONNECTIONS") {
     return true;
   }
   if (
-    toolName === "COMPOSIO_MULTI_EXECUTE_TOOL" ||
-    toolName === "COMPOSIO_MULTI_EXECUTE"
+    effectiveToolName === "COMPOSIO_MULTI_EXECUTE_TOOL" ||
+    effectiveToolName === "COMPOSIO_MULTI_EXECUTE"
   ) {
-    const out =
-      part.state === "output-available" &&
-      typeof part.output === "object" &&
-      part.output !== null
-        ? (part.output as Record<string, unknown>)
-        : null;
-    const results = Array.isArray(out?.results)
-      ? (out.results as Array<Record<string, unknown>>)
+    const results = Array.isArray(effectiveOutput?.results)
+      ? (effectiveOutput.results as Array<Record<string, unknown>>)
       : [];
     return results.some((item) => {
       const code = typeof item?.code === "string" ? item.code : "";
