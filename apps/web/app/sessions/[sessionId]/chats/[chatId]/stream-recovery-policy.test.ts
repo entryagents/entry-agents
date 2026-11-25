@@ -161,7 +161,22 @@ describe("getStreamRecoveryDecision", () => {
     expect(decision).toBe("none");
   });
 
-  test("ignores visibility/poll probe while status is submitted with an active POST request", () => {
+  test("ignores visibility/poll probe while status is submitted with an active POST request before inFlightStartedAt is recorded", () => {
+    const decision = getStreamRecoveryDecision({
+      now,
+      lastRecoveryAt: now - STREAM_RECOVERY_MIN_INTERVAL_MS,
+      status: "submitted",
+      hasAssistantRenderableContent: false,
+      inFlightStartedAt: null,
+      isProbeInFlight: false,
+      isVisibilityRecovery: true,
+      hasActiveSendMessages: true,
+    });
+
+    expect(decision).toBe("none");
+  });
+
+  test("allows visibility/poll probe once submitted grace window expires even if POST stream stays hung", () => {
     const decision = getStreamRecoveryDecision({
       now,
       lastRecoveryAt: now - STREAM_RECOVERY_MIN_INTERVAL_MS,
@@ -173,7 +188,7 @@ describe("getStreamRecoveryDecision", () => {
       hasActiveSendMessages: true,
     });
 
-    expect(decision).toBe("none");
+    expect(decision).toBe("probe");
   });
 
   test("allows visibility probe once submitted grace window expires and no active POST exists", () => {

@@ -119,4 +119,47 @@ describe("createCoalescingStreamWriter", () => {
       { type: "message-metadata", value: 4 },
     ]);
   });
+
+  test("retries transient write errors so a single durable-stream hiccup never drops subsequent chunks", async () => {
+    const written: Array<{ type: string; id?: string; delta?: string }> = [];
+    let attempts = 0;
+
+    const writer = createCoalescingStreamWriter<{
+      type: string;
+      id?: string;
+      delta?: string;
+    }>({
+      write: async (chunk) => {
+        attempts += 1;
+        if (attempts <= 2) {
+          throw new Error("Transient 503 durable stream write error");
+        }
+        written.push(chunk);
+      },
+    });
+
+    writer.write({ type: "reasoning-delta", id: "r1", delta: "Planning..." });
+    writer.write({ type: "finish-step" });
+    await writer.flush();
+
+    expect(attempts).toBe(4);
+    expect(written).toEqual([
+      { type: "reasoning-delta", id: "r1", delta: "Planning..." },
+      { type: "finish-step" },
+    ]);
+  });
+
+  test("does not retry AbortError writes", async () => {
+    let attempts = 0;
+    const writer = createCoalescingStreamWriter<{ type: string }>({
+      write: async () => {
+        attempts += 1;
+        throw new DOMException("Aborted", "AbortError");
+      },
+    });
+
+    writer.write({ type: "finish-step" });
+    await expect(writer.flush()).rejects.toThrow("Aborted");
+    expect(attempts).toBe(1);
+  });
 });

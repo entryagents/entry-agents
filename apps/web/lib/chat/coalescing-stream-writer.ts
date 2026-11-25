@@ -23,12 +23,40 @@ export function createCoalescingStreamWriter<
     );
   }
 
+  const MAX_WRITE_ATTEMPTS = 3;
+  const RETRY_DELAYS_MS = [150, 400];
+
+  function isNonRetryableWriteError(error: unknown): boolean {
+    if (!error || typeof error !== "object") return false;
+    const name = (error as { name?: unknown }).name;
+    return name === "AbortError" || name === "ResponseAborted";
+  }
+
+  async function writeWithRetry(chunk: T): Promise<void> {
+    let attempt = 0;
+    while (true) {
+      try {
+        await writer.write(chunk);
+        return;
+      } catch (error: unknown) {
+        attempt += 1;
+        if (isNonRetryableWriteError(error) || attempt >= MAX_WRITE_ATTEMPTS) {
+          throw error;
+        }
+        const delayMs =
+          RETRY_DELAYS_MS[Math.min(attempt - 1, RETRY_DELAYS_MS.length - 1)] ??
+          400;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  }
+
   async function runDrain(): Promise<void> {
     try {
       while (queue.length > 0) {
         const next = queue.shift();
         if (next !== undefined) {
-          await writer.write(next);
+          await writeWithRetry(next);
         }
       }
     } catch (error: unknown) {
