@@ -413,6 +413,33 @@ function isAlwaysVisibleShowTool(part: WebAgentUIToolPart): boolean {
       typeof inp?.path === "string",
     );
   }
+  if (toolName === "COMPOSIO_MANAGE_CONNECTIONS") {
+    return true;
+  }
+  if (
+    toolName === "COMPOSIO_MULTI_EXECUTE_TOOL" ||
+    toolName === "COMPOSIO_MULTI_EXECUTE"
+  ) {
+    const out =
+      part.state === "output-available" &&
+      typeof part.output === "object" &&
+      part.output !== null
+        ? (part.output as Record<string, unknown>)
+        : null;
+    const results = Array.isArray(out?.results)
+      ? (out.results as Array<Record<string, unknown>>)
+      : [];
+    return results.some((item) => {
+      const code = typeof item?.code === "string" ? item.code : "";
+      return (
+        item?.success === false &&
+        (code === "CONNECTION_REQUIRED" ||
+          code === "CONNECTION_EXPIRED" ||
+          code === "CONNECTION_FAILED" ||
+          code === "CONNECTION_INACTIVE")
+      );
+    });
+  }
   return false;
 }
 
