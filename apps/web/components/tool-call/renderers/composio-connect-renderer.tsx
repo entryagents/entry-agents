@@ -103,11 +103,23 @@ export function ComposioToolRenderer({
 
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [liveConnected, setLiveConnected] = useState<boolean | null>(null);
+  const [deniedByUser, setDeniedByUser] = useState(false);
 
   const toolkit =
     (typeof output?.toolkit === "string" && output.toolkit) ||
     (typeof input.toolkit === "string" && input.toolkit) ||
     "integration";
+
+  function handleDenyConnect(targetToolkit: string) {
+    setDeniedByUser(true);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("entry:composio-connect-denied", {
+          detail: { toolkit: targetToolkit },
+        }),
+      );
+    }
+  }
 
   async function handleVerifyConnection() {
     setCheckingStatus(true);
@@ -164,35 +176,39 @@ export function ComposioToolRenderer({
                 className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${
                   isErrorResult
                     ? "bg-destructive/10 text-destructive"
-                    : isConnected
-                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                    : deniedByUser
+                      ? "bg-muted text-muted-foreground"
+                      : isConnected
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                 }`}
               >
                 {isErrorResult
                   ? "Setup required"
-                  : isConnected
-                    ? "Active"
-                    : status}
+                  : deniedByUser
+                    ? "Denied"
+                    : isConnected
+                      ? "Active"
+                      : status}
               </span>
             </div>
             <p className="text-muted-foreground">
               {isErrorResult
                 ? (errorMessage ??
                   `Unable to connect ${toolkit}. Check your integration configuration.`)
-                : isConnected
-                  ? `Your ${toolkit} account is connected and ready for tool execution.`
-                  : `Authorize ${toolkit} via Composio to allow the agent to continue this task.`}
+                : deniedByUser
+                  ? `You declined connecting ${toolkit}.`
+                  : isConnected
+                    ? `Your ${toolkit} account is connected and ready for tool execution.`
+                    : `Authorize ${toolkit} via Composio to allow the agent to continue this task.`}
             </p>
           </div>
 
-          {!isErrorResult ? (
+          {!isErrorResult && !deniedByUser ? (
             <div className="flex items-center gap-2">
               {connectLinkUrl && !isConnected ? (
                 <a
                   href={connectLinkUrl}
-                  target="_blank"
-                  rel="noreferrer"
                   className="inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90"
                 >
                   <span>Connect {toolkit}</span>
@@ -200,18 +216,27 @@ export function ComposioToolRenderer({
                 </a>
               ) : null}
               {!isConnected ? (
-                <button
-                  type="button"
-                  onClick={handleVerifyConnection}
-                  disabled={checkingStatus}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                >
-                  <RefreshCw
-                    className={`size-3.5 ${checkingStatus ? "animate-spin" : ""}`}
-                    strokeWidth={1.5}
-                  />
-                  <span>Verify</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleDenyConnect(toolkit)}
+                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                  >
+                    <span>Deny</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleVerifyConnection}
+                    disabled={checkingStatus}
+                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      className={`size-3.5 ${checkingStatus ? "animate-spin" : ""}`}
+                      strokeWidth={1.5}
+                    />
+                    <span>Verify</span>
+                  </button>
+                </>
               ) : (
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
                   <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
@@ -238,9 +263,11 @@ export function ComposioToolRenderer({
         meta={
           isErrorResult
             ? "Setup required"
-            : isConnected
-              ? "Connected"
-              : "Action required"
+            : deniedByUser
+              ? "Denied"
+              : isConnected
+                ? "Connected"
+                : "Action required"
         }
         state={state}
         defaultExpanded={!isConnected || isErrorResult}
@@ -379,22 +406,42 @@ function ComposioInlineConnectCard({
 }) {
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [deniedByUser, setDeniedByUser] = useState(false);
+
+  function handleDeny() {
+    setDeniedByUser(true);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("entry:composio-connect-denied", {
+          detail: { toolkit },
+        }),
+      );
+    }
+  }
 
   async function handleConnect() {
     setConnecting(true);
     setConnectError(null);
     try {
-      const res = await fetch("/api/integrations/connect", {
+      const returnPath =
+        typeof window !== "undefined"
+          ? window.location.pathname
+          : "/settings/connections";
+      const res = await fetch("/api/composio/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toolkitSlug: toolkit }),
+        body: JSON.stringify({
+          action: "connect",
+          toolkit,
+          returnPath,
+        }),
       });
       const data = (await res.json()) as {
         redirectUrl?: string;
         error?: string;
       };
       if (res.ok && data.redirectUrl) {
-        window.open(data.redirectUrl, "_blank", "noopener,noreferrer");
+        window.location.assign(data.redirectUrl);
       } else {
         setConnectError(data.error ?? `Unable to start ${toolkit} connection.`);
       }
@@ -416,7 +463,9 @@ function ComposioInlineConnectCard({
       }
       name="Connect"
       summary={summary}
-      meta={isConnected ? "Connected" : "Action required"}
+      meta={
+        deniedByUser ? "Denied" : isConnected ? "Connected" : "Action required"
+      }
       state={state}
       defaultExpanded={!isConnected}
       expandedContent={
@@ -429,56 +478,73 @@ function ComposioInlineConnectCard({
                 </span>
                 <span
                   className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${
-                    isConnected
-                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                    deniedByUser
+                      ? "bg-muted text-muted-foreground"
+                      : isConnected
+                        ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                        : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
                   }`}
                 >
-                  {isConnected ? "Active" : "Not connected"}
+                  {deniedByUser
+                    ? "Denied"
+                    : isConnected
+                      ? "Active"
+                      : "Not connected"}
                 </span>
               </div>
               <p className="text-muted-foreground">
                 {connectError
                   ? connectError
-                  : isConnected
-                    ? `Your ${toolkit} account is connected and ready.`
-                    : `Connect your ${toolkit} account so the agent can run this tool.`}
+                  : deniedByUser
+                    ? `You declined connecting ${toolkit}.`
+                    : isConnected
+                      ? `Your ${toolkit} account is connected and ready.`
+                      : `Connect your ${toolkit} account so the agent can run this tool.`}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              {!isConnected ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleConnect}
-                    disabled={connecting}
-                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
-                  >
-                    <span>
-                      {connecting ? "Opening..." : `Connect ${toolkit}`}
-                    </span>
-                    <ExternalLink className="size-3.5" strokeWidth={1.5} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onVerify}
-                    disabled={checkingStatus}
-                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                  >
-                    <RefreshCw
-                      className={`size-3.5 ${checkingStatus ? "animate-spin" : ""}`}
-                      strokeWidth={1.5}
-                    />
-                    <span>Verify</span>
-                  </button>
-                </>
-              ) : (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
-                  <span>Verified</span>
-                </span>
-              )}
-            </div>
+            {!deniedByUser ? (
+              <div className="flex items-center gap-2">
+                {!isConnected ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handleConnect}
+                      disabled={connecting}
+                      className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+                    >
+                      <span>
+                        {connecting ? "Connecting..." : `Connect ${toolkit}`}
+                      </span>
+                      <ExternalLink className="size-3.5" strokeWidth={1.5} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeny}
+                      className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+                    >
+                      <span>Deny</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onVerify}
+                      disabled={checkingStatus}
+                      className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                    >
+                      <RefreshCw
+                        className={`size-3.5 ${checkingStatus ? "animate-spin" : ""}`}
+                        strokeWidth={1.5}
+                      />
+                      <span>Verify</span>
+                    </button>
+                  </>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
+                    <span>Verified</span>
+                  </span>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       }
