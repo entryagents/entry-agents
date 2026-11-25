@@ -449,14 +449,34 @@ export function useSessionChatRuntime({
     });
   }, []);
 
+  const serializedAddToolApprovalResponse = useCallback<
+    UseChatHelpers<WebAgentUIMessage>["addToolApprovalResponse"]
+  >(
+    async (options) => {
+      // Explicit user Allow/Deny must always clear any prior stop-latch so
+      // `sendAutomaticallyWhen` is never blocked from resuming the agent.
+      userStoppedRef.current = false;
+      clearChatStoppedByUser(chatId);
+      await chatRef.current.addToolApprovalResponse(options);
+    },
+    [chatId],
+  );
+
   const wrappedChat = useMemo<UseChatHelpers<WebAgentUIMessage>>(
     () => ({
       ...chat,
       sendMessage: serializedSendMessage,
       regenerate: serializedRegenerate,
       resumeStream: serializedResumeStream,
+      addToolApprovalResponse: serializedAddToolApprovalResponse,
     }),
-    [chat, serializedRegenerate, serializedResumeStream, serializedSendMessage],
+    [
+      chat,
+      serializedAddToolApprovalResponse,
+      serializedRegenerate,
+      serializedResumeStream,
+      serializedSendMessage,
+    ],
   );
 
   // Clear "Reconnecting to live stream" as soon as the SSE stream attaches

@@ -191,6 +191,7 @@ export function ComposioToolRenderer({
               : "Action required"
         }
         state={state}
+        defaultExpanded={!isConnected || isErrorResult}
         expandedContent={expandedContent}
         onApprove={onApprove}
         onDeny={onDeny}
@@ -235,6 +236,41 @@ export function ComposioToolRenderer({
       ? toolsList.join(", ")
       : JSON.stringify(input).slice(0, 60);
 
+  const outputResults = Array.isArray(output?.results)
+    ? (output.results as Array<Record<string, unknown>>)
+    : [];
+  const connectionFailure = outputResults.find((item) => {
+    const code = typeof item?.code === "string" ? item.code : "";
+    return (
+      item?.success === false &&
+      (code === "CONNECTION_REQUIRED" ||
+        code === "CONNECTION_EXPIRED" ||
+        code === "CONNECTION_FAILED" ||
+        code === "CONNECTION_INACTIVE")
+    );
+  });
+
+  if (connectionFailure) {
+    const failedSlug =
+      typeof connectionFailure.toolSlug === "string"
+        ? connectionFailure.toolSlug.split("_")[0]?.toLowerCase() ||
+          inferredToolkit
+        : inferredToolkit;
+    const isConnected = liveConnected === true;
+    return (
+      <ComposioInlineConnectCard
+        toolkit={failedSlug}
+        summary={summary}
+        state={state}
+        isConnected={isConnected}
+        checkingStatus={checkingStatus}
+        onVerify={handleVerifyConnection}
+        onApprove={onApprove}
+        onDeny={onDeny}
+      />
+    );
+  }
+
   return (
     <ToolLayout
       icon={
@@ -263,6 +299,136 @@ export function ComposioToolRenderer({
             {JSON.stringify(output, null, 2)}
           </pre>
         ) : undefined
+      }
+      onApprove={onApprove}
+      onDeny={onDeny}
+    />
+  );
+}
+
+function ComposioInlineConnectCard({
+  toolkit,
+  summary,
+  state,
+  isConnected,
+  checkingStatus,
+  onVerify,
+  onApprove,
+  onDeny,
+}: {
+  toolkit: string;
+  summary: string;
+  state: ToolRenderState;
+  isConnected: boolean;
+  checkingStatus: boolean;
+  onVerify: () => void;
+  onApprove?: (id: string) => void;
+  onDeny?: (id: string, reason?: string) => void;
+}) {
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+
+  async function handleConnect() {
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const res = await fetch("/api/integrations/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ toolkitSlug: toolkit }),
+      });
+      const data = (await res.json()) as {
+        redirectUrl?: string;
+        error?: string;
+      };
+      if (res.ok && data.redirectUrl) {
+        window.open(data.redirectUrl, "_blank", "noopener,noreferrer");
+      } else {
+        setConnectError(data.error ?? `Unable to start ${toolkit} connection.`);
+      }
+    } catch {
+      setConnectError(`Unable to reach server to connect ${toolkit}.`);
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  return (
+    <ToolLayout
+      icon={
+        <ToolkitBrandIcon
+          slug={toolkit}
+          logo={`https://logos.composio.dev/api/${toolkit.toLowerCase()}`}
+          className="h-3.5 w-3.5"
+        />
+      }
+      name="Connect"
+      summary={summary}
+      meta={isConnected ? "Connected" : "Action required"}
+      state={state}
+      defaultExpanded={!isConnected}
+      expandedContent={
+        <div className="mt-1 rounded-lg border border-border bg-card p-3.5 text-xs">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="font-medium capitalize text-foreground">
+                  {toolkit}
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                    isConnected
+                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                  }`}
+                >
+                  {isConnected ? "Active" : "Not connected"}
+                </span>
+              </div>
+              <p className="text-muted-foreground">
+                {connectError
+                  ? connectError
+                  : isConnected
+                    ? `Your ${toolkit} account is connected and ready.`
+                    : `Connect your ${toolkit} account so the agent can run this tool.`}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!isConnected ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleConnect}
+                    disabled={connecting}
+                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50"
+                  >
+                    <span>
+                      {connecting ? "Opening..." : `Connect ${toolkit}`}
+                    </span>
+                    <ExternalLink className="size-3.5" strokeWidth={1.5} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onVerify}
+                    disabled={checkingStatus}
+                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      className={`size-3.5 ${checkingStatus ? "animate-spin" : ""}`}
+                      strokeWidth={1.5}
+                    />
+                    <span>Verify</span>
+                  </button>
+                </>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
+                  <span>Verified</span>
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
       }
       onApprove={onApprove}
       onDeny={onDeny}
