@@ -37,6 +37,7 @@ type UseStreamRecoveryParams = {
   retryChatStream: RetryChatStream;
   getLastChunkReceivedAt?: () => number;
   hasActiveSendMessages?: () => boolean;
+  isStreamOperationActive?: () => boolean;
   onReconcileSnapshot?: () => Promise<void> | void;
 };
 
@@ -50,11 +51,24 @@ export function useStreamRecovery({
   retryChatStream,
   getLastChunkReceivedAt,
   hasActiveSendMessages,
+  isStreamOperationActive,
   onReconcileSnapshot,
 }: UseStreamRecoveryParams): void {
   const inFlightStartedAtRef = useRef<number | null>(null);
   const retryChatStreamRef = useRef(retryChatStream);
   retryChatStreamRef.current = retryChatStream;
+  const liveStateRef = useRef({
+    status,
+    isChatInFlight,
+    hasAssistantRenderableContent,
+    hasPendingTurn,
+  });
+  liveStateRef.current = {
+    status,
+    isChatInFlight,
+    hasAssistantRenderableContent,
+    hasPendingTurn,
+  };
   const lastStreamRecoveryAtRef = useRef(0);
   const streamRecoveryProbeInFlightRef = useRef(false);
   const hasAutoRetriedCurrentErrorRef = useRef(false);
@@ -88,12 +102,13 @@ export function useStreamRecovery({
       return;
     }
 
+    const initialLive = liveStateRef.current;
     const now = Date.now();
     const recoveryDecision = getStreamRecoveryDecision({
       now,
       lastRecoveryAt: lastStreamRecoveryAtRef.current,
-      status,
-      hasAssistantRenderableContent,
+      status: initialLive.status,
+      hasAssistantRenderableContent: initialLive.hasAssistantRenderableContent,
       inFlightStartedAt: inFlightStartedAtRef.current,
       isProbeInFlight: streamRecoveryProbeInFlightRef.current,
       isVisibilityRecovery: Boolean(opts?.isVisibilityRecovery || opts?.isPoll),
@@ -136,6 +151,12 @@ export function useStreamRecovery({
           return;
         }
 
+        // Read LIVE client state AFTER the async network round-trip so a mount
+        // or send transition that happened while this probe was in flight is
+        // never misread through a stale closure.
+        const live = liveStateRef.current;
+        const operationActive = isStreamOperationActive?.() ?? false;
+
         const serverChat = payload.chats.find((chat) => chat.id === chatId);
         const serverStamp = serverChat
           ? `${serverChat.isStreaming}:${serverChat.status ?? ""}:${serverChat.updatedAt ?? ""}:${serverChat.lastAssistantMessageAt ?? ""}`
@@ -165,7 +186,7 @@ export function useStreamRecovery({
           // stays true for the entire SSE stream lifetime and would otherwise
           // keep a backgrounded tab stuck on stale buffered chunks forever.
           if (
-            status === "submitted" &&
+            live.status === "submitted" &&
             (hasActiveSendMessages?.() ||
               (inFlightStartedAtRef.current !== null &&
                 Date.now() - inFlightStartedAtRef.current <
@@ -176,10 +197,10 @@ export function useStreamRecovery({
           // If the client thinks the chat is in flight, or the server completed/updated
           // a turn while this tab was backgrounded/offline/idle (including before mount),
           // reconcile immediately so the user never has to reload the page to see latest results.
-          if (isChatInFlight && !isChatStoppedByUser(chatId)) {
+          if (live.isChatInFlight && !isChatStoppedByUser(chatId)) {
             retryChatStream({ auto: true, strategy: "soft" });
           } else if (
-            status === "error" &&
+            live.status === "error" &&
             serverChat &&
             serverChat.status !== "failed" &&
             serverChat.status !== "cancelled"
@@ -187,16 +208,18 @@ export function useStreamRecovery({
             await onReconcileSnapshot?.();
           } else if (
             (previous !== null && previous.stamp !== serverStamp) ||
-            (previous === null && hasPendingTurn)
+            (previous === null && live.hasPendingTurn)
           ) {
             await onReconcileSnapshot?.();
           }
           return;
         }
 
-        // Attach when this device is not yet streaming or errored out.
+        // Attach when this device is not yet streaming or errored out, and no
+        // single-flight mount resume / send operation is already connecting.
         if (
-          (!isChatInFlight || status === "error") &&
+          ((!live.isChatInFlight && !operationActive) ||
+            live.status === "error") &&
           !isChatStoppedByUser(chatId)
         ) {
           hasAutoRetriedCurrentErrorRef.current = false;
@@ -204,13 +227,16 @@ export function useStreamRecovery({
           return;
         }
 
-        // Watchdog: if the server reports an active stream and this client believes
-        // it is in flight, only tear down & reconnect if the SSE socket has gone
-        // genuinely silent (5s after returning from background, 30s foreground).
-        // Never overwrite `chat.messages` with a DB snapshot while an active
-        // `@ai-sdk/react` SSE stream is running — the next SSE chunk would
-        // overwrite it back and cause text/file-count flicker.
-        const staleThresholdMs = opts?.isVisibilityRecovery ? 5_000 : 90_000;
+        // Heartbeat-backed dead-socket watchdog:
+        // Both POST /api/chat and GET /api/chat/:id/stream emit SSE keepalive
+        // comments (`: keepalive\n\n`) every 10s whenever the model is thinking
+        // or a long tool command is running. `AbortableChatTransport` refreshes
+        // `lastChunkAt` on every received byte (including keepalives).
+        // Therefore:
+        // - Healthy 39s thinking / 5m bash runs NEVER exceed ~10s quiet -> 0 false reconnects.
+        // - A genuinely half-open / dead mobile TCP socket misses 2.5+ heartbeats
+        //   (>25s foreground, >5s on tab return) -> triggers serialized reconnect.
+        const staleThresholdMs = opts?.isVisibilityRecovery ? 5_000 : 25_000;
         const lastChunkAt = getLastChunkReceivedAt?.() ?? 0;
         const referenceActivityAt =
           lastChunkAt > 0 ? lastChunkAt : (inFlightStartedAtRef.current ?? 0);

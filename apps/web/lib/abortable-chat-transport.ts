@@ -666,7 +666,7 @@ export class AbortableChatTransport<
           if (myGeneration !== state.streamGeneration) {
             decrementOnce();
             await reader.cancel().catch(() => {});
-            controller.close();
+            controller.error(createAbortError());
             return;
           }
           try {
@@ -674,7 +674,7 @@ export class AbortableChatTransport<
             if (myGeneration !== state.streamGeneration) {
               decrementOnce();
               await reader.cancel().catch(() => {});
-              controller.close();
+              controller.error(createAbortError());
               return;
             }
             if (next.done) {
@@ -687,7 +687,7 @@ export class AbortableChatTransport<
           } catch (err) {
             decrementOnce();
             if (myGeneration !== state.streamGeneration) {
-              controller.close();
+              controller.error(createAbortError());
               return;
             }
             if (
@@ -749,7 +749,7 @@ export class AbortableChatTransport<
             } catch {
               // Lock already released
             }
-            controller.close();
+            controller.error(createAbortError());
             return;
           }
           try {
@@ -762,7 +762,7 @@ export class AbortableChatTransport<
               } catch {
                 // Lock already released
               }
-              controller.close();
+              controller.error(createAbortError());
               return;
             }
             if (next.done) {
@@ -785,7 +785,7 @@ export class AbortableChatTransport<
               // Lock already released
             }
             if (myGeneration !== state.streamGeneration) {
-              controller.close();
+              controller.error(createAbortError());
               return;
             }
             if (

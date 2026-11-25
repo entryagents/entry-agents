@@ -11,6 +11,7 @@ import {
 } from "@/lib/db/sessions";
 import { getLatestCompletedWorkflowRunIdForChat } from "@/lib/db/workflow-runs";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
+import { withSseHeartbeat } from "@/lib/chat/sse-heartbeat";
 import { verifyRunState } from "@/lib/workflow-run-recovery";
 
 export const maxDuration = 300;
@@ -62,15 +63,17 @@ async function openReadableStreamResponse(
         : undefined;
     const stream = createCancelableReadableStream(readable);
 
-    return createUIMessageStreamResponse({
-      stream,
-      headers: {
-        "x-workflow-run-id": runId,
-        ...(tailIndex !== undefined
-          ? { "x-workflow-stream-tail-index": String(tailIndex) }
-          : {}),
-      },
-    });
+    return withSseHeartbeat(
+      createUIMessageStreamResponse({
+        stream,
+        headers: {
+          "x-workflow-run-id": runId,
+          ...(tailIndex !== undefined
+            ? { "x-workflow-stream-tail-index": String(tailIndex) }
+            : {}),
+        },
+      }),
+    );
   } catch (error) {
     console.error("[chat-stream] readable open failed:", error);
     return null;
