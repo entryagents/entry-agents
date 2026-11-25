@@ -3590,6 +3590,7 @@ export async function runAgentWorkflow(options: Options) {
               () => {},
             );
           }
+          await sendFinish(writable).catch(() => {});
           await closeStream(writable).catch(() => {});
           streamClosed = true;
           break;
@@ -4359,6 +4360,7 @@ const runAgentStep = async (
   const streamedReasoningById = new Map<string, string>();
   const streamedReasoningOrder: string[] = [];
   let hasEmittedStepStartInInvocation = false;
+  let hasEmittedFinishStepInInvocation = false;
   const liveStepToolOrder: string[] = [];
   const liveStepToolParts = new Map<
     string,
@@ -5942,6 +5944,8 @@ const runAgentStep = async (
         })) {
           if (part.type === "start-step") {
             hasEmittedStepStartInInvocation = true;
+          } else if (part.type === "finish-step") {
+            hasEmittedFinishStepInInvocation = true;
           } else if (
             part.type === "text-start" &&
             typeof part.id === "string"
@@ -6085,7 +6089,7 @@ const runAgentStep = async (
         }
         if (!streamWriteFailed) {
           try {
-            await Promise.race([coalescingWriter.flush(), delay(5_000)]);
+            await Promise.race([coalescingWriter.flush(), delay(20_000)]);
           } catch (writeError) {
             streamWriteFailed = true;
             const errorName = (writeError as { name?: unknown })?.name;
@@ -6816,7 +6820,16 @@ const runAgentStep = async (
   } finally {
     try {
       if (coalescingWriter) {
-        await Promise.race([coalescingWriter.waitForIdle(), delay(3_000)]);
+        if (
+          hasEmittedStepStartInInvocation &&
+          !hasEmittedFinishStepInInvocation &&
+          !streamWriteFailed
+        ) {
+          coalescingWriter.write({ type: "finish-step" });
+          await Promise.race([coalescingWriter.flush(), delay(5_000)]);
+        } else {
+          await Promise.race([coalescingWriter.waitForIdle(), delay(5_000)]);
+        }
       }
     } catch {
       // Ignore drain errors during cleanup

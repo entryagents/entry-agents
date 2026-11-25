@@ -6,6 +6,7 @@ import {
   isChatStoppedByUser,
   markChatStoppedByUser,
 } from "@/lib/chat/stop-latch";
+import { StreamDivergenceTracker } from "@/lib/chat/stream-divergence-tracker";
 import {
   SUBMITTED_PROBE_GRACE_MS,
   getStreamRecoveryDecision,
@@ -36,6 +37,8 @@ type UseStreamRecoveryParams = {
   hasPendingTurn?: boolean;
   retryChatStream: RetryChatStream;
   getLastChunkReceivedAt?: () => number;
+  getLastUiChunkReceivedAt?: () => number;
+  getActiveWorkflowRunId?: () => string | null;
   hasActiveSendMessages?: () => boolean;
   isStreamOperationActive?: () => boolean;
   onReconcileSnapshot?: () => Promise<void> | void;
@@ -50,11 +53,14 @@ export function useStreamRecovery({
   hasPendingTurn = false,
   retryChatStream,
   getLastChunkReceivedAt,
+  getLastUiChunkReceivedAt,
+  getActiveWorkflowRunId,
   hasActiveSendMessages,
   isStreamOperationActive,
   onReconcileSnapshot,
 }: UseStreamRecoveryParams): void {
   const inFlightStartedAtRef = useRef<number | null>(null);
+  const divergenceTrackerRef = useRef(new StreamDivergenceTracker());
   const retryChatStreamRef = useRef(retryChatStream);
   retryChatStreamRef.current = retryChatStream;
   const liveStateRef = useRef({
@@ -172,6 +178,7 @@ export function useStreamRecovery({
         };
 
         if (serverChat?.status === "cancelled") {
+          divergenceTrackerRef.current.reset();
           markChatStoppedByUser(chatId);
           if (previous?.stamp !== serverStamp) {
             await onReconcileSnapshot?.();
@@ -180,18 +187,17 @@ export function useStreamRecovery({
         }
 
         if (!serverChat?.isStreaming) {
-          // Only protect the initial POST /api/chat handshake while status is
-          // "submitted" (before activeStreamId is claimed in DB). Never block
-          // reconciliation once status is "streaming", because hasActiveSendMessages()
-          // stays true for the entire SSE stream lifetime and would otherwise
-          // keep a backgrounded tab stuck on stale buffered chunks forever.
-          if (
-            live.status === "submitted" &&
-            (hasActiveSendMessages?.() ||
-              (inFlightStartedAtRef.current !== null &&
-                Date.now() - inFlightStartedAtRef.current <
-                  SUBMITTED_PROBE_GRACE_MS))
-          ) {
+          divergenceTrackerRef.current.reset();
+          // Protect the initial POST /api/chat handshake while status is
+          // "submitted" (before activeStreamId is claimed in DB), bounded to
+          // SUBMITTED_PROBE_GRACE_MS so a hung POST can never disable recovery
+          // forever. Never block once status is "streaming".
+          const withinSubmittedGrace =
+            inFlightStartedAtRef.current !== null
+              ? Date.now() - inFlightStartedAtRef.current <
+                SUBMITTED_PROBE_GRACE_MS
+              : Boolean(hasActiveSendMessages?.());
+          if (live.status === "submitted" && withinSubmittedGrace) {
             return;
           }
           // If the client thinks the chat is in flight, or the server completed/updated
@@ -227,23 +233,25 @@ export function useStreamRecovery({
           return;
         }
 
-        // Heartbeat-backed dead-socket watchdog:
-        // Both POST /api/chat and GET /api/chat/:id/stream emit SSE keepalive
-        // comments (`: keepalive\n\n`) every 10s whenever the model is thinking
-        // or a long tool command is running. `AbortableChatTransport` refreshes
-        // `lastChunkAt` on every received byte (including keepalives).
-        // Therefore:
-        // - Healthy 39s thinking / 5m bash runs NEVER exceed ~10s quiet -> 0 false reconnects.
-        // - A genuinely half-open / dead mobile TCP socket misses 2.5+ heartbeats
-        //   (>25s foreground, >5s on tab return) -> triggers serialized reconnect.
-        const staleThresholdMs = opts?.isVisibilityRecovery ? 5_000 : 25_000;
-        const lastChunkAt = getLastChunkReceivedAt?.() ?? 0;
-        const referenceActivityAt =
-          lastChunkAt > 0 ? lastChunkAt : (inFlightStartedAtRef.current ?? 0);
-        const quietMs =
-          referenceActivityAt > 0 ? Date.now() - referenceActivityAt : 0;
+        // Detect ALL three silent live-stream stalls cleanly without false positives:
+        // 1. Run handoff mismatch (`serverChat.activeStreamId !== clientActiveWorkflowRunId`)
+        // 2. Server-ahead-of-stream: Postgres `updatedAt` keeps advancing with new
+        //    reasoning/tool checkpoints while parsed UI chunks (`lastUiChunkAt`)
+        //    stay frozen (even if 10s `: keepalive\n\n` bytes keep arriving!).
+        // 3. Dead TCP socket: even 10s SSE keepalives stop arriving (>25s foreground,
+        //    >5s after tab visibility return).
+        const divergence = divergenceTrackerRef.current.evaluate({
+          now: Date.now(),
+          serverUpdatedAt: serverChat.updatedAt,
+          serverActiveStreamId: serverChat.activeStreamId,
+          clientActiveWorkflowRunId: getActiveWorkflowRunId?.() ?? null,
+          clientLastUiChunkAt: getLastUiChunkReceivedAt?.() ?? 0,
+          clientLastTransportByteAt: getLastChunkReceivedAt?.() ?? 0,
+          inFlightStartedAt: inFlightStartedAtRef.current,
+          isVisibilityRecovery: Boolean(opts?.isVisibilityRecovery),
+        });
 
-        if (referenceActivityAt > 0 && quietMs > staleThresholdMs) {
+        if (divergence.kind === "reconnect") {
           retryChatStream({ auto: true, strategy: "reconnect" });
         }
       } catch {
@@ -277,6 +285,7 @@ export function useStreamRecovery({
     }
 
     inFlightStartedAtRef.current = null;
+    divergenceTrackerRef.current.reset();
   }, [isChatInFlight, chatId]);
 
   // Recover from transient connection drops when the tab regains visibility

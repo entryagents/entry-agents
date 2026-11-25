@@ -459,4 +459,122 @@ describe("AbortableChatTransport durability", () => {
     expect(postAborted).toBe(true);
     expect(result).toBeInstanceOf(Error);
   });
+
+  test("keepalive comments refresh transport liveness without advancing lastUiChunkAt, and reconnect sends x-entry-expected-run-id", async () => {
+    const encoder = new TextEncoder();
+    const harness: {
+      reconnectExpectedRunId: string | null;
+      emitKeepalive: (() => void) | null;
+      closeFirstStream: (() => void) | null;
+    } = {
+      reconnectExpectedRunId: null,
+      emitKeepalive: null,
+      closeFirstStream: null,
+    };
+
+    const customFetch = (async (input: unknown, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : String(input);
+      if (url.includes("/stream")) {
+        harness.reconnectExpectedRunId = new Headers(init?.headers).get(
+          "x-entry-expected-run-id",
+        );
+        return new Response(
+          encoder.encode(
+            'data: {"type":"text-delta","id":"t1","delta":" resumed"}\n\ndata: {"type":"finish","finishReason":"stop"}\n\n',
+          ),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream",
+              "x-workflow-run-id": "wrun_seg_2",
+            },
+          },
+        );
+      }
+
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            encoder.encode(
+              'data: {"type":"start","messageId":"m1"}\n\ndata: {"type":"text-start","id":"t1"}\n\ndata: {"type":"text-delta","id":"t1","delta":"hi"}\n\n',
+            ),
+          );
+          harness.emitKeepalive = () => {
+            controller.enqueue(encoder.encode(": keepalive\n\n"));
+          };
+          harness.closeFirstStream = () => {
+            controller.close();
+          };
+        },
+      });
+      return new Response(body, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream",
+          "x-workflow-run-id": "wrun_seg_1",
+        },
+      });
+    }) as unknown as typeof globalThis.fetch;
+
+    const transport = new AbortableChatTransport({
+      api: "/api/chat",
+      body: { sessionId: "sess-1", chatId: "chat-1" },
+      prepareReconnectToStreamRequest: ({ id }) => ({
+        api: `/api/chat/${id}/stream`,
+      }),
+      fetch: customFetch,
+    });
+
+    const stream = await transport.sendMessages({
+      chatId: "chat-1",
+      trigger: "submit-message",
+      messageId: undefined,
+      abortSignal: undefined,
+      messages: [
+        {
+          id: "u1",
+          role: "user",
+          parts: [{ type: "text", text: "hello" }],
+        },
+      ],
+    });
+
+    const reader = stream.getReader();
+    // Read initial 3 UI chunks
+    await reader.read();
+    await reader.read();
+    await reader.read();
+
+    expect(transport.getActiveWorkflowRunId()).toBe("wrun_seg_1");
+    const uiChunkAtBeforeKeepalive = transport.getLastUiChunkReceivedAt();
+    const byteAtBeforeKeepalive = transport.getLastChunkReceivedAt();
+    expect(uiChunkAtBeforeKeepalive).toBeGreaterThan(0);
+
+    // Wait briefly then send a raw SSE keepalive comment while starting next read
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    const nextReadPromise = reader.read();
+    harness.emitKeepalive?.();
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    // Transport byte timestamp advanced from : keepalive, but UI chunk timestamp did NOT
+    expect(transport.getLastChunkReceivedAt()).toBeGreaterThan(
+      byteAtBeforeKeepalive,
+    );
+    expect(transport.getLastUiChunkReceivedAt()).toBe(uiChunkAtBeforeKeepalive);
+
+    // Close stream without finish -> triggers reconnect with x-entry-expected-run-id: wrun_seg_1
+    harness.closeFirstStream?.();
+    const resumedChunk = await nextReadPromise;
+    expect(resumedChunk.done).toBe(false);
+    expect(harness.reconnectExpectedRunId).toBe("wrun_seg_1");
+    expect(transport.getActiveWorkflowRunId()).toBe("wrun_seg_2");
+    expect(transport.getLastUiChunkReceivedAt()).toBeGreaterThan(
+      uiChunkAtBeforeKeepalive,
+    );
+
+    // Drain remaining chunks cleanly
+    while (!(await reader.read()).done) {
+      // drain
+    }
+  });
 });

@@ -9,6 +9,7 @@ export type ChatStreamingProbeResponse = {
   chats: {
     id: string;
     isStreaming: boolean;
+    activeStreamId?: string | null;
     status?: string;
     updatedAt?: string;
     lastAssistantMessageAt?: string | null;
@@ -61,15 +62,17 @@ export function getStreamRecoveryDecision(options: {
     if (isProbeInFlight) {
       return "none";
     }
-    // Never probe during the initial POST /api/chat submission window before
-    // persistLatestUserMessage / claimChatActiveStreamId completes, otherwise
-    // seeing isStreaming: false would abort the active submit and wipe the prompt.
-    if (
-      status === "submitted" &&
-      (hasActiveSendMessages ||
-        (inFlightStartedAt !== null &&
-          now - inFlightStartedAt < SUBMITTED_PROBE_GRACE_MS))
-    ) {
+    // Protect the initial POST /api/chat submission window before
+    // persistLatestUserMessage / claimChatActiveStreamId completes, so
+    // seeing isStreaming: false doesn't abort the active submit. Always bound
+    // this guard to SUBMITTED_PROBE_GRACE_MS so a hung POST stream that never
+    // transitions to "streaming" still recovers automatically instead of
+    // disabling recovery polling forever.
+    const withinSubmittedGrace =
+      inFlightStartedAt !== null
+        ? now - inFlightStartedAt < SUBMITTED_PROBE_GRACE_MS
+        : hasActiveSendMessages;
+    if (status === "submitted" && withinSubmittedGrace) {
       return "none";
     }
     return "probe";

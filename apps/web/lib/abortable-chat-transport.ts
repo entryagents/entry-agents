@@ -212,6 +212,8 @@ export class AbortableChatTransport<
     sendController: AbortController;
     readController: AbortController;
     lastChunkAt: number;
+    lastUiChunkAt: number;
+    activeWorkflowRunId: string | null;
     activeSendMessagesCount: number;
     activeReconnectCount: number;
     streamGeneration: number;
@@ -222,6 +224,8 @@ export class AbortableChatTransport<
       sendController: new AbortController(),
       readController: new AbortController(),
       lastChunkAt: 0,
+      lastUiChunkAt: 0,
+      activeWorkflowRunId: null as string | null,
       activeSendMessagesCount: 0,
       activeReconnectCount: 0,
       streamGeneration: 0,
@@ -248,6 +252,10 @@ export class AbortableChatTransport<
           statusText: response.statusText,
           headers: response.headers,
         });
+      }
+      const responseRunId = response.headers.get("x-workflow-run-id");
+      if (responseRunId && responseRunId !== "completed") {
+        state.activeWorkflowRunId = responseRunId;
       }
       state.lastChunkAt = Date.now();
       const sourceReader = response.body.getReader();
@@ -518,6 +526,9 @@ export class AbortableChatTransport<
             if (isMidTurnContext) {
               headers.set("x-entry-mid-turn", "1");
             }
+            if (startIndex > 0 && state.activeWorkflowRunId) {
+              headers.set("x-entry-expected-run-id", state.activeWorkflowRunId);
+            }
             const response = await outerFetch(input, {
               ...init,
               headers,
@@ -634,6 +645,14 @@ export class AbortableChatTransport<
     return this._state.lastChunkAt;
   }
 
+  getLastUiChunkReceivedAt(): number {
+    return this._state.lastUiChunkAt;
+  }
+
+  getActiveWorkflowRunId(): string | null {
+    return this._state.activeWorkflowRunId;
+  }
+
   hasActiveSendMessages(): boolean {
     return this._state.activeSendMessagesCount > 0;
   }
@@ -643,6 +662,8 @@ export class AbortableChatTransport<
   ) {
     const state = this._state;
     const myGeneration = ++state.streamGeneration;
+    // New turn supersedes any previous workflow run ID.
+    state.activeWorkflowRunId = null;
     // Supersede any prior SSE reader so two streams can never ping-pong messages.
     state.readController.abort();
     state.readController = new AbortController();
@@ -681,7 +702,9 @@ export class AbortableChatTransport<
               decrementOnce();
               controller.close();
             } else {
-              state.lastChunkAt = Date.now();
+              const now = Date.now();
+              state.lastChunkAt = now;
+              state.lastUiChunkAt = now;
               controller.enqueue(next.value);
             }
           } catch (err) {
@@ -774,7 +797,9 @@ export class AbortableChatTransport<
               }
               controller.close();
             } else {
-              state.lastChunkAt = Date.now();
+              const now = Date.now();
+              state.lastChunkAt = now;
+              state.lastUiChunkAt = now;
               controller.enqueue(next.value);
             }
           } catch (err) {

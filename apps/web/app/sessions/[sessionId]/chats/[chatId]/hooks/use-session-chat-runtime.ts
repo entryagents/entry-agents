@@ -66,6 +66,8 @@ type UseSessionChatRuntimeReturn = {
   stopChatStream: () => Promise<boolean>;
   retryChatStream: (opts?: RetryChatStreamOptions) => void;
   getLastChunkReceivedAt: () => number;
+  getLastUiChunkReceivedAt: () => number;
+  getActiveWorkflowRunId: () => string | null;
   hasActiveSendMessages: () => boolean;
   isStreamOperationActive: () => boolean;
   isReconnecting: boolean;
@@ -1074,6 +1076,16 @@ export function useSessionChatRuntime({
     [transport],
   );
 
+  const getLastUiChunkReceivedAt = useCallback(
+    () => transport.getLastUiChunkReceivedAt(),
+    [transport],
+  );
+
+  const getActiveWorkflowRunId = useCallback(
+    () => transport.getActiveWorkflowRunId(),
+    [transport],
+  );
+
   const hasActiveSendMessages = useCallback(
     () => transport.hasActiveSendMessages(),
     [transport],
@@ -1091,6 +1103,8 @@ export function useSessionChatRuntime({
     stopChatStream,
     retryChatStream,
     getLastChunkReceivedAt,
+    getLastUiChunkReceivedAt,
+    getActiveWorkflowRunId,
     hasActiveSendMessages,
     isStreamOperationActive,
     isReconnecting,

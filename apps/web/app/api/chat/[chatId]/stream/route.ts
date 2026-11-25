@@ -105,6 +105,7 @@ export async function GET(request: Request, context: RouteContext) {
   const { chat } = chatContext;
   const { startIndex } = parsedStartIndex;
   const isMidTurnHeader = request.headers.get("x-entry-mid-turn") === "1";
+  const expectedRunId = request.headers.get("x-entry-expected-run-id")?.trim();
   const isMidStreamReconnect =
     (typeof startIndex === "number" && startIndex > 0) || isMidTurnHeader;
 
@@ -132,9 +133,11 @@ export async function GET(request: Request, context: RouteContext) {
         chatId,
       ).catch(() => null);
       if (completedRunId) {
+        const tailStartIndex =
+          expectedRunId && expectedRunId !== completedRunId ? 0 : startIndex;
         const tailResponse = await openReadableStreamResponse(
           completedRunId,
-          startIndex,
+          tailStartIndex,
         );
         if (tailResponse) {
           return tailResponse;
@@ -145,6 +148,12 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const runId = chat.activeStreamId;
+  // If the client was reading an earlier workflow run (e.g. Segment 1 at
+  // startIndex=1420) and the server handed off to a new run (Segment 2 starting
+  // at index 0), passing startIndex=1420 to Segment 2 would hang forever waiting
+  // for chunk 1420. Always reset startIndex to 0 when the run ID changed.
+  const effectiveStartIndex =
+    expectedRunId && expectedRunId !== runId ? 0 : startIndex;
 
   const outcome = await verifyRunState(runId);
 
@@ -159,7 +168,10 @@ export async function GET(request: Request, context: RouteContext) {
       );
     });
     if (isMidStreamReconnect) {
-      const tailResponse = await openReadableStreamResponse(runId, startIndex);
+      const tailResponse = await openReadableStreamResponse(
+        runId,
+        effectiveStartIndex,
+      );
       if (tailResponse) {
         return tailResponse;
       }
@@ -177,7 +189,10 @@ export async function GET(request: Request, context: RouteContext) {
     });
   }
 
-  const liveResponse = await openReadableStreamResponse(runId, startIndex);
+  const liveResponse = await openReadableStreamResponse(
+    runId,
+    effectiveStartIndex,
+  );
   if (liveResponse) {
     return liveResponse;
   }

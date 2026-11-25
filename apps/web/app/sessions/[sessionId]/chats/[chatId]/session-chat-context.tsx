@@ -218,8 +218,12 @@ type SessionChatContextValue = {
   attemptReconnection: () => Promise<ReconnectionStatus>;
   /** Clear a transient chat error and attempt to resume an active stream */
   retryChatStream: (opts?: RetryChatStreamOptions) => void;
-  /** Timestamp (ms) of the last SSE chunk received on the active stream */
+  /** Timestamp (ms) of the last SSE byte received on the active stream (including keepalives) */
   getLastChunkReceivedAt: () => number;
+  /** Timestamp (ms) of the last parsed UIMessageChunk received on the active stream */
+  getLastUiChunkReceivedAt: () => number;
+  /** Workflow run ID observed on the current SSE response header */
+  getActiveWorkflowRunId: () => string | null;
   /** Whether a local POST /api/chat sendMessages request is currently open */
   hasActiveSendMessages: () => boolean;
   isStreamOperationActive: () => boolean;
@@ -270,6 +274,8 @@ type SessionChatRuntimeContextValue = Pick<
   | "clearWorkspaceStatus"
   | "retryChatStream"
   | "getLastChunkReceivedAt"
+  | "getLastUiChunkReceivedAt"
+  | "getActiveWorkflowRunId"
   | "hasActiveSendMessages"
   | "isStreamOperationActive"
   | "isReconnecting"
@@ -423,6 +429,8 @@ export function SessionChatProvider({
     stopChatStream,
     retryChatStream,
     getLastChunkReceivedAt,
+    getLastUiChunkReceivedAt,
+    getActiveWorkflowRunId,
     hasActiveSendMessages,
     isStreamOperationActive,
     isReconnecting,
@@ -1284,6 +1292,8 @@ export function SessionChatProvider({
       stopChatStream,
       retryChatStream,
       getLastChunkReceivedAt,
+      getLastUiChunkReceivedAt,
+      getActiveWorkflowRunId,
       hasActiveSendMessages,
       isStreamOperationActive,
       isReconnecting,
@@ -1298,6 +1308,8 @@ export function SessionChatProvider({
       stopChatStream,
       retryChatStream,
       getLastChunkReceivedAt,
+      getLastUiChunkReceivedAt,
+      getActiveWorkflowRunId,
       hasActiveSendMessages,
       isStreamOperationActive,
       isReconnecting,

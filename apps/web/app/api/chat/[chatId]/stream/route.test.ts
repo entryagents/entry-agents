@@ -338,4 +338,29 @@ describe("GET /api/chat/[chatId]/stream", () => {
     expect(response.status).toBe(204);
     expect(spies.updateChatActiveStreamId).toHaveBeenCalledWith("chat-1", null);
   });
+
+  test("resets startIndex to 0 when x-entry-expected-run-id differs from activeStreamId (segment handoff)", async () => {
+    chatRecord = {
+      sessionId: "session-1",
+      activeStreamId: "wrun_segment_2",
+    };
+    const { GET } = await routeModulePromise;
+
+    const request = new Request(
+      "http://localhost/api/chat/chat-1/stream?startIndex=1420",
+      {
+        method: "GET",
+        headers: {
+          cookie: "session=abc",
+          "x-entry-mid-turn": "1",
+          "x-entry-expected-run-id": "wrun_segment_1",
+        },
+      },
+    );
+
+    const response = await GET(request, routeContext);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-workflow-run-id")).toBe("wrun_segment_2");
+    expect(lastStartIndex).toBe(0);
+  });
 });
