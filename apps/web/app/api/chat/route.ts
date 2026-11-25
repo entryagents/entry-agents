@@ -18,6 +18,7 @@ import {
   updateChat,
 } from "@/lib/db/sessions";
 import { createCancelableReadableStream } from "@/lib/chat/create-cancelable-readable-stream";
+import { withSseHeartbeat } from "@/lib/chat/sse-heartbeat";
 import { verifyRunState } from "@/lib/workflow-run-recovery";
 import { sanitizeMessageForDatabase } from "@/lib/chat/sanitize-db-message";
 import { getServerSession } from "@/lib/session/get-server-session";
@@ -89,10 +90,12 @@ export async function POST(req: Request) {
     );
 
     if (existingStreamResolution.action === "resume") {
-      return createUIMessageStreamResponse({
-        stream: existingStreamResolution.stream,
-        headers: { "x-workflow-run-id": existingStreamResolution.runId },
-      });
+      return withSseHeartbeat(
+        createUIMessageStreamResponse({
+          stream: existingStreamResolution.stream,
+          headers: { "x-workflow-run-id": existingStreamResolution.runId },
+        }),
+      );
     }
 
     if (existingStreamResolution.action === "conflict") {
@@ -250,12 +253,14 @@ export async function POST(req: Request) {
     run.getReadable<WebAgentUIMessageChunk>(),
   );
 
-  return createUIMessageStreamResponse({
-    stream,
-    headers: {
-      "x-workflow-run-id": run.runId,
-    },
-  });
+  return withSseHeartbeat(
+    createUIMessageStreamResponse({
+      stream,
+      headers: {
+        "x-workflow-run-id": run.runId,
+      },
+    }),
+  );
 }
 
 type ExistingActiveStreamResolution =

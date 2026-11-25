@@ -18,6 +18,7 @@ import type {
 import { AbortableChatTransport } from "@/lib/abortable-chat-transport";
 import { triggerBillingSync } from "@/components/sidebar-billing-widget";
 import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
+import { SingleFlightStreamController } from "@/lib/chat/single-flight-stream-controller";
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
 import {
   abortChatInstanceTransport,
@@ -66,6 +67,7 @@ type UseSessionChatRuntimeReturn = {
   retryChatStream: (opts?: RetryChatStreamOptions) => void;
   getLastChunkReceivedAt: () => number;
   hasActiveSendMessages: () => boolean;
+  isStreamOperationActive: () => boolean;
   isReconnecting: boolean;
   workspaceStatus: WebAgentWorkspaceStatusData | null;
   clearWorkspaceStatus: () => void;
@@ -166,6 +168,13 @@ export function useSessionChatRuntime({
   const forceReconcileOnFinishRef = useRef(false);
   const pendingSegmentHandoffRef = useRef(false);
   const autoFailureRetriesRef = useRef(0);
+  const streamController = useMemo(
+    () => new SingleFlightStreamController(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one serialized controller per chatId
+    [chatId],
+  );
+  const streamControllerRef = useRef(streamController);
+  streamControllerRef.current = streamController;
 
   useEffect(() => {
     autoFailureRetriesRef.current = 0;
@@ -228,7 +237,16 @@ export function useSessionChatRuntime({
           }
           triggerBillingSync();
         },
-        onFinish: () => {
+        onFinish: ({ isAbort }) => {
+          const activeController = streamControllerRef.current;
+          if (
+            isAbort ||
+            activeController.isSuppressedGeneration(
+              activeController.getGeneration(),
+            )
+          ) {
+            return;
+          }
           if (
             pendingSegmentHandoffRef.current &&
             !userStoppedRef.current &&
@@ -236,7 +254,15 @@ export function useSessionChatRuntime({
           ) {
             pendingSegmentHandoffRef.current = false;
             setIsReconnecting(true);
-            void chat.resumeStream();
+            // Defer to next microtask so the current makeRequest() exits its
+            // finally block before the next segment stream starts.
+            queueMicrotask(() => {
+              void activeController.runExclusive({
+                kind: "resume",
+                forceReplace: false,
+                execute: () => chatRef.current.resumeStream(),
+              });
+            });
             return;
           }
           pendingSegmentHandoffRef.current = false;
@@ -363,14 +389,73 @@ export function useSessionChatRuntime({
         chatInstance.status === "error"),
   );
 
+  // Never pass `resume: true` to `useChat`: @ai-sdk/react fires an untracked,
+  // unlocked `resumeStream()` on mount that races with `useStreamRecovery` and
+  // our reactive resume effect, creating two concurrent `makeRequest()`
+  // coroutines that ping-pong `chat.messages`. Instead, ALL stream resume and
+  // send operations are serialized through `SingleFlightStreamController`.
   const chat = useChat<WebAgentUIMessage>({
     chat: chatInstance,
-    resume: shouldResumeOnMountRef.current,
+    resume: false,
     experimental_throttle: CHAT_UI_UPDATE_THROTTLE_MS,
   });
 
   const chatRef = useRef(chat);
   chatRef.current = chat;
+
+  const serializedSendMessage = useCallback<
+    UseChatHelpers<WebAgentUIMessage>["sendMessage"]
+  >(
+    async (message, options) => {
+      await streamControllerRef.current.runExclusive({
+        kind: "send",
+        forceReplace: true,
+        abortPrevious: async () => {
+          await chatInstance.stop().catch(() => {});
+          abortChatInstanceTransport(chatId);
+        },
+        execute: () => chatRef.current.sendMessage(message, options),
+      });
+    },
+    [chatId, chatInstance],
+  );
+
+  const serializedRegenerate = useCallback<
+    UseChatHelpers<WebAgentUIMessage>["regenerate"]
+  >(
+    async (options) => {
+      await streamControllerRef.current.runExclusive({
+        kind: "send",
+        forceReplace: true,
+        abortPrevious: async () => {
+          await chatInstance.stop().catch(() => {});
+          abortChatInstanceTransport(chatId);
+        },
+        execute: () => chatRef.current.regenerate(options),
+      });
+    },
+    [chatId, chatInstance],
+  );
+
+  const serializedResumeStream = useCallback<
+    UseChatHelpers<WebAgentUIMessage>["resumeStream"]
+  >(async (options) => {
+    await streamControllerRef.current.runExclusive({
+      kind: "resume",
+      forceReplace: false,
+      execute: () => chatRef.current.resumeStream(options),
+    });
+  }, []);
+
+  const wrappedChat = useMemo<UseChatHelpers<WebAgentUIMessage>>(
+    () => ({
+      ...chat,
+      sendMessage: serializedSendMessage,
+      regenerate: serializedRegenerate,
+      resumeStream: serializedResumeStream,
+    }),
+    [chat, serializedRegenerate, serializedResumeStream, serializedSendMessage],
+  );
 
   // Clear "Reconnecting to live stream" as soon as the SSE stream attaches
   // (`chat.status === "streaming"`), finishes (`ready`/`error`), or after a 5s
@@ -560,18 +645,30 @@ export function useSessionChatRuntime({
             return;
           }
 
+          // For soft auto-recovery, if another stream operation is already
+          // active in the single-flight controller, never open a second stream.
+          if (strategy === "soft" && streamControllerRef.current.isActive()) {
+            return;
+          }
+
           // Server confirmed an active stream (or probe failed and we are
           // attempting recovery). Now show the reconnecting indicator.
           markReconnecting(true);
 
           if (strategy === "hard" || strategy === "reconnect") {
-            // Tear down any stale/hung local fetch before reconnecting.
-            try {
-              await chatInstance.stop();
-            } catch {
-              // Ignore stale local stop failures and still attempt reconnect.
-            }
-            abortChatInstanceTransport(chatId);
+            // Abort the stale/hung local stream AND wait for AbstractChat's
+            // previous `makeRequest()` finally block to finish completely so it
+            // can never clobber the new stream's status or activeResponse.
+            await streamControllerRef.current.abortAndWaitForSettle(
+              async () => {
+                try {
+                  await chatInstance.stop();
+                } catch {
+                  // Ignore stale local stop failures and still attempt reconnect.
+                }
+                abortChatInstanceTransport(chatId);
+              },
+            );
           }
 
           if (serverSnapshotData?.messages) {
@@ -595,7 +692,18 @@ export function useSessionChatRuntime({
             retryInFlightRef.current = false;
           }
 
-          await chatRef.current.resumeStream();
+          const resumeOutcome = await streamControllerRef.current.runExclusive({
+            kind: "resume",
+            forceReplace: strategy === "hard" || strategy === "reconnect",
+            abortPrevious: async () => {
+              await chatInstance.stop().catch(() => {});
+              abortChatInstanceTransport(chatId);
+            },
+            execute: () => chatRef.current.resumeStream(),
+          });
+          if (!resumeOutcome.ran) {
+            return;
+          }
 
           const messagesAfterResume = chatInstance.messages;
           const lastMessageIdAfterResume =
@@ -706,8 +814,15 @@ export function useSessionChatRuntime({
                   );
                 }
                 chatRef.current.clearError();
-                abortChatInstanceTransport(chatId);
-                await chatRef.current.resumeStream();
+                await streamControllerRef.current.runExclusive({
+                  kind: "resume",
+                  forceReplace: true,
+                  abortPrevious: async () => {
+                    await chatInstance.stop().catch(() => {});
+                    abortChatInstanceTransport(chatId);
+                  },
+                  execute: () => chatRef.current.resumeStream(),
+                });
                 return;
               }
             } catch {
@@ -852,11 +967,16 @@ export function useSessionChatRuntime({
             data.isStreaming &&
             data.status !== "cancelled" &&
             chatInstance.status === "ready" &&
+            !streamControllerRef.current.isActive() &&
             !userStoppedRef.current &&
             !isChatStoppedByUser(chatId)
           ) {
             setIsReconnecting(true);
-            await chat.resumeStream();
+            await streamControllerRef.current.runExclusive({
+              kind: "resume",
+              forceReplace: false,
+              execute: () => chatRef.current.resumeStream(),
+            });
           }
         })
         .catch(() => {})
@@ -873,10 +993,12 @@ export function useSessionChatRuntime({
     }
 
     let cancelled = false;
-    // If `useChat({ resume: true })` already initiated resume on mount,
-    // skip the 0ms duplicate probe so we don't attach twice simultaneously.
+    // Because `useChat` runs with `resume: false`, this single-flight mount
+    // effect is the SOLE owner of initial stream attachment (at 0ms when SSR
+    // already knows `activeStreamId`), eliminating the mount race between
+    // `useChat({ resume: true })` and `useStreamRecovery`.
     const delaysMs = shouldResumeOnMountRef.current
-      ? [1_500, 3_500, 7_000]
+      ? [0, 1_500, 3_500, 7_000]
       : initialChatStatus === "queued"
         ? [150, 400, 800, 1_500, 3_000, 6_000]
         : [0, 1_000, 2_500, 5_500, 10_000];
@@ -886,6 +1008,7 @@ export function useSessionChatRuntime({
       if (
         cancelled ||
         retryInFlightRef.current ||
+        streamControllerRef.current.isActive() ||
         userStoppedRef.current ||
         isChatStoppedByUser(chatId)
       ) {
@@ -901,8 +1024,12 @@ export function useSessionChatRuntime({
       try {
         // GET /api/chat/:id/stream returns 204 when there's no active stream
         // (cheap no-op for the AI SDK) and 200 + stream bytes when one is
-        // live. resumeStream handles both paths.
-        await chat.resumeStream();
+        // live. SingleFlightStreamController guarantees at most one stream runs.
+        await streamControllerRef.current.runExclusive({
+          kind: "resume",
+          forceReplace: false,
+          execute: () => chatRef.current.resumeStream(),
+        });
       } catch {
         // Transient failure (network, stale session, etc.) — let the next
         // scheduled attempt retry.
@@ -915,7 +1042,7 @@ export function useSessionChatRuntime({
         await attemptResume();
         if (cancelled) return;
         // Keep probing until budget exhausted. Once resume attaches to a
-        // live stream, subsequent attempts self-skip via the status guard.
+        // live stream, subsequent attempts self-skip via the controller & status guard.
         schedule(index + 1);
       }, delaysMs[index]);
     };
@@ -952,12 +1079,20 @@ export function useSessionChatRuntime({
     [transport],
   );
 
+  const isStreamOperationActive = useCallback(
+    () =>
+      streamControllerRef.current.isActive() ||
+      transport.hasActiveSendMessages(),
+    [transport],
+  );
+
   return {
-    chat,
+    chat: wrappedChat,
     stopChatStream,
     retryChatStream,
     getLastChunkReceivedAt,
     hasActiveSendMessages,
+    isStreamOperationActive,
     isReconnecting,
     workspaceStatus,
     clearWorkspaceStatus,
