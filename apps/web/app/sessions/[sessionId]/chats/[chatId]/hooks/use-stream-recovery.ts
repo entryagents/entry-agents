@@ -6,6 +6,7 @@ import {
   isChatStoppedByUser,
   markChatStoppedByUser,
 } from "@/lib/chat/stop-latch";
+import { reportChatDiagnostic } from "@/lib/chat/report-chat-diagnostic";
 import { StreamDivergenceTracker } from "@/lib/chat/stream-divergence-tracker";
 import {
   SUBMITTED_PROBE_GRACE_MS,
@@ -252,6 +253,20 @@ export function useStreamRecovery({
         });
 
         if (divergence.kind === "reconnect") {
+          reportChatDiagnostic({
+            sessionId,
+            chatId,
+            eventType: "stream-divergence",
+            workflowRunId:
+              serverChat.activeStreamId ?? getActiveWorkflowRunId?.() ?? null,
+            details: {
+              reason: divergence.reason,
+              serverUpdatedAt: serverChat.updatedAt,
+              clientRunId: getActiveWorkflowRunId?.() ?? null,
+              serverRunId: serverChat.activeStreamId ?? null,
+              isVisibilityRecovery: Boolean(opts?.isVisibilityRecovery),
+            },
+          });
           retryChatStream({ auto: true, strategy: "reconnect" });
         }
       } catch {

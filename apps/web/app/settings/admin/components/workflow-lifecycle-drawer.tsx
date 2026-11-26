@@ -312,6 +312,37 @@ export function WorkflowLifecycleDrawer({
                   </div>
                 </div>
               )}
+
+              {detail.diagnosticEvents.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-foreground">
+                    Stream &amp; glitch diagnostics (
+                    {detail.diagnosticEvents.length})
+                  </h3>
+                  <div className="space-y-1.5">
+                    {detail.diagnosticEvents.map((ev) => (
+                      <div
+                        key={ev.id}
+                        className="rounded-md border border-border/60 px-2.5 py-1.5 font-mono text-[11px]"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-foreground">
+                            {ev.eventType}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {new Date(ev.createdAt).toLocaleString()}
+                          </span>
+                        </div>
+                        {Object.keys(ev.details).length > 0 && (
+                          <pre className="mt-1 whitespace-pre-wrap break-all text-[10.5px] text-muted-foreground">
+                            {JSON.stringify(ev.details)}
+                          </pre>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
