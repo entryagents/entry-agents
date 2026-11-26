@@ -34,7 +34,9 @@ const nextConfig: NextConfig = {
     // (hundreds of brand marks) can be pulled into the client bundle.
     optimizePackageImports: ["lucide-react", "@lobehub/icons"],
     // Keep recently visited dynamic routes (e.g. /chats/[chatId]) warm in
-    // Next.js's client router cache for instant back-and-forth switching.
+    // Next.js's client router cache for instant back-and-forth switching, and
+    // prefetch dynamic RSC payloads as soon as the user hovers a link.
+    dynamicOnHover: true,
     staleTimes: {
       dynamic: 30,
       static: 180,
