@@ -57,7 +57,7 @@ export function LandingFaq() {
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-10">
         <div className="grid gap-10 border-t border-(--l-border) py-16 sm:py-24 lg:grid-cols-[minmax(240px,360px)_1fr]">
           <div className="min-w-0">
-            <h2 className="text-balance text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
+            <h2 className="font-display text-balance text-4xl font-normal leading-[1.04] tracking-[-0.02em] sm:text-5xl">
               Frequently asked questions
             </h2>
             <p className="mt-3 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">

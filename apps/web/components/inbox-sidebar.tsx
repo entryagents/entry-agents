@@ -3,7 +3,6 @@
 import {
   Archive,
   ChevronDown,
-  CircleDashed,
   Folder,
   FolderGit2,
   FolderInput,
@@ -151,8 +150,8 @@ function getSessionStatusIcon(session: SessionWithUnread) {
   if (session.hasStreaming) {
     return (
       <Loader2
-        className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground"
-        strokeWidth={1.5}
+        className="h-3.5 w-3.5 shrink-0 animate-spin text-[#c85c20] dark:text-[#e07638]"
+        strokeWidth={1.6}
       />
     );
   }
@@ -171,7 +170,7 @@ function getSessionStatusIcon(session: SessionWithUnread) {
   if (session.prNumber && session.prStatus === "open") {
     return (
       <GitPullRequest
-        className="h-3.5 w-3.5 shrink-0 text-green-500"
+        className="h-3.5 w-3.5 shrink-0 text-emerald-500"
         strokeWidth={1.5}
       />
     );
@@ -181,7 +180,7 @@ function getSessionStatusIcon(session: SessionWithUnread) {
   if (session.prNumber && session.prStatus === "closed") {
     return (
       <GitPullRequest
-        className="h-3.5 w-3.5 shrink-0 text-red-500"
+        className="h-3.5 w-3.5 shrink-0 text-rose-500"
         strokeWidth={1.5}
       />
     );
@@ -192,13 +191,13 @@ function getSessionStatusIcon(session: SessionWithUnread) {
   if (session.branch && hasDiff) {
     return (
       <GitBranch
-        className="h-3.5 w-3.5 shrink-0 text-amber-500"
+        className="h-3.5 w-3.5 shrink-0 text-[#c85c20] dark:text-[#e07638]"
         strokeWidth={1.5}
       />
     );
   }
 
-  // Has a branch but no changes yet → new session, still getting started
+  // Has a branch but no changes yet
   if (session.branch) {
     return (
       <GitBranch
@@ -208,34 +207,8 @@ function getSessionStatusIcon(session: SessionWithUnread) {
     );
   }
 
-  // No repository — plain chat session
-  const isChat = !session.repoName?.trim();
-  if (isChat) {
-    return (
-      <CircleDashed
-        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // Creating / instantiating sandbox (no branch yet)
-  if (session.status === "running") {
-    return (
-      <Monitor
-        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // Default: sandbox icon
-  return (
-    <Monitor
-      className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50"
-      strokeWidth={1.5}
-    />
-  );
+  // Plain chat or idle workspace without branch: keep row uncluttered so chat titles breathe
+  return null;
 }
 
 function getRepoGroupLabel(session: SessionWithUnread): string {
@@ -475,14 +448,10 @@ const SessionRow = memo(function SessionRow({
     </>
   ) : null;
 
+  const statusIcon = getSessionStatusIcon(session);
+
   const actionButtonsContainer = actionButtons ? (
-    <span
-      className={`absolute top-1/2 right-1 flex shrink-0 -translate-y-1/2 items-center justify-end gap-0.5 rounded-md pl-5 pr-0.5 ${
-        isActive
-          ? "bg-gradient-to-l from-sidebar via-sidebar/95 to-transparent"
-          : "bg-gradient-to-l from-sidebar via-sidebar/95 to-transparent"
-      }`}
-    >
+    <span className="absolute top-1/2 right-1 flex shrink-0 -translate-y-1/2 items-center justify-end gap-0.5 rounded-lg border border-border/75 bg-sidebar/95 p-0.5 shadow-xs backdrop-blur-sm dark:bg-[#181715]/95">
       {actionButtons}
     </span>
   ) : null;
@@ -497,10 +466,10 @@ const SessionRow = memo(function SessionRow({
       ]
         .filter(Boolean)
         .join(" · ")}
-      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left outline-none transition-[background-color,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer focus-visible:ring-1 focus-visible:ring-ring ${
+      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left outline-none transition-[background-color,box-shadow,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer focus-visible:ring-1 focus-visible:ring-ring ${
         isActive
-          ? "bg-foreground/[0.08] text-foreground"
-          : "hover:bg-foreground/[0.05]"
+          ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)] ring-1 ring-border/80 before:absolute before:top-1.5 before:bottom-1.5 before:left-0 before:w-[2px] before:rounded-full before:bg-[#c85c20] dark:bg-white/[0.075] dark:ring-white/[0.09] dark:before:bg-[#e07638]"
+          : "hover:bg-foreground/[0.045]"
       } ${isPending ? "opacity-75" : "opacity-100"}`}
       onClick={() => {
         if (isMobile) setOpenMobile(false);
@@ -509,30 +478,37 @@ const SessionRow = memo(function SessionRow({
       onFocus={() => onSessionPrefetch(session)}
       aria-busy={isPending}
     >
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        {getSessionStatusIcon(session)}
-      </span>
+      {statusIcon ? (
+        <span className="flex size-3.5 shrink-0 items-center justify-center">
+          {statusIcon}
+        </span>
+      ) : session.hasUnread && !isActive ? (
+        <span
+          className="size-1.5 shrink-0 rounded-full bg-[#c85c20] dark:bg-[#e07638]"
+          aria-label="Unread activity"
+        />
+      ) : null}
       <span className="min-w-0 flex-1 text-left">
         <p
-          className={`truncate text-[13px] leading-[18px] transition-colors duration-120 ${
+          className={`truncate text-[13px] leading-[18px] tracking-[-0.005em] transition-colors duration-120 ${
             isActive
               ? "font-medium text-foreground"
               : session.hasUnread
                 ? "font-medium text-foreground"
-                : "font-normal text-foreground/75 group-hover:text-foreground"
+                : "font-normal text-foreground/78 group-hover:text-foreground"
           }`}
         >
           {session.title}
         </p>
       </span>
-      {session.hasUnread && !isActive && !actionButtons ? (
+      {session.hasUnread && !isActive && statusIcon && !actionButtons ? (
         <span
-          className="size-1.5 shrink-0 rounded-full bg-foreground/70"
+          className="size-1.5 shrink-0 rounded-full bg-[#c85c20] dark:bg-[#e07638]"
           aria-label="Unread activity"
         />
       ) : null}
       {!actionButtons && (session.prNumber || hasDiff) ? (
-        <span className="flex shrink-0 items-center justify-end gap-1.5 pl-1 font-mono text-[11px] tabular-nums text-muted-foreground">
+        <span className="flex shrink-0 items-center justify-end gap-1.5 pl-1 font-mono text-[10.5px] tabular-nums text-muted-foreground">
           {session.prNumber ? (
             <span
               className={
@@ -540,7 +516,7 @@ const SessionRow = memo(function SessionRow({
                   ? "text-indigo-500 dark:text-indigo-400"
                   : session.prStatus === "open"
                     ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-red-500 dark:text-red-400"
+                    : "text-rose-500 dark:text-rose-400"
               }
             >
               #{session.prNumber}
@@ -559,16 +535,18 @@ const SessionRow = memo(function SessionRow({
 
   const rowButton = isRenaming ? (
     <div
-      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left outline-none transition-[background-color,opacity] ${
-        isActive ? "bg-foreground/[0.08]" : "bg-foreground/[0.055]"
-      } ${renamePending ? "opacity-80" : "opacity-100"}`}
+      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-left outline-none transition-[background-color,opacity] ${
+        renamePending ? "opacity-80" : "opacity-100"
+      }`}
       style={sessionRowPerformanceStyle}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        {getSessionStatusIcon(session)}
-      </span>
+      {statusIcon ? (
+        <span className="flex size-3.5 shrink-0 items-center justify-center">
+          {statusIcon}
+        </span>
+      ) : null}
       <span className="min-w-0 flex-1 text-left">
         <input
           ref={renameInputRef}
@@ -930,63 +908,69 @@ export function InboxSidebar({
           </button>
         </div>
 
-        {/* New chat row + options */}
-        <div className="mt-1 flex shrink-0 items-center gap-1 px-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              if (isMobile) setOpenMobile(false);
-              onOpenNewSession();
-            }}
-            className="group flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium text-foreground/85 transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.06] hover:text-foreground active:bg-foreground/[0.09] cursor-pointer"
-          >
-            <span className="grid size-4 shrink-0 place-items-center text-muted-foreground transition-colors duration-120 group-hover:text-foreground">
-              <Plus className="size-4" strokeWidth={1.6} />
-            </span>
-            <span className="truncate">New chat</span>
-          </button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.06] hover:text-foreground cursor-pointer"
-                aria-label="New chat options"
-              >
-                <ChevronDown className="size-3.5" strokeWidth={1.6} />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem
-                onClick={() => {
-                  if (isMobile) setOpenMobile(false);
-                  onOpenNewSession();
-                }}
-                className="gap-2 text-xs"
-              >
-                <PlusCircle
-                  className="h-4 w-4 text-muted-foreground"
-                  strokeWidth={1.5}
-                />
-                <span>Blank chat</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => setImportGithubOpen(true)}
-                className="gap-2 text-xs"
-              >
-                <FolderGit2
-                  className="h-4 w-4 text-muted-foreground"
-                  strokeWidth={1.5}
-                />
-                <span>Import from GitHub</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        {/* New chat tactile split bar */}
+        <div className="mt-1 flex shrink-0 items-center px-1.5">
+          <div className="flex h-8 w-full items-center overflow-hidden rounded-lg border border-border/80 bg-background/90 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-foreground/20 dark:bg-white/[0.045] dark:hover:bg-white/[0.07]">
+            <button
+              type="button"
+              onClick={() => {
+                if (isMobile) setOpenMobile(false);
+                onOpenNewSession();
+              }}
+              className="group flex h-full min-w-0 flex-1 items-center gap-2 px-2.5 text-left text-[13px] font-medium text-foreground transition-transform duration-120 active:scale-[0.985] cursor-pointer"
+            >
+              <span className="grid size-4 shrink-0 place-items-center text-[#c85c20] dark:text-[#e07638]">
+                <Plus className="size-4" strokeWidth={1.75} />
+              </span>
+              <span className="truncate tracking-[-0.01em]">New chat</span>
+            </button>
+            <span
+              aria-hidden="true"
+              className="h-4 w-px shrink-0 bg-border/70"
+            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="grid h-full w-8 shrink-0 place-items-center text-muted-foreground transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05] hover:text-foreground cursor-pointer"
+                  aria-label="New chat options"
+                >
+                  <ChevronDown className="size-3.5" strokeWidth={1.6} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onClick={() => {
+                    if (isMobile) setOpenMobile(false);
+                    onOpenNewSession();
+                  }}
+                  className="gap-2 text-xs"
+                >
+                  <PlusCircle
+                    className="h-4 w-4 text-muted-foreground"
+                    strokeWidth={1.5}
+                  />
+                  <span>Blank chat</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setImportGithubOpen(true)}
+                  className="gap-2 text-xs"
+                >
+                  <FolderGit2
+                    className="h-4 w-4 text-muted-foreground"
+                    strokeWidth={1.5}
+                  />
+                  <span>Import from GitHub</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* Search */}
-        <div className="mt-1 px-1.5">
-          <div className="flex h-8 shrink-0 items-center rounded-lg border border-transparent bg-foreground/[0.035] pr-1.5 pl-2 transition-[background-color,border-color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05] focus-within:border-border focus-within:bg-background/80">
-            <span className="mr-2 grid size-4 shrink-0 place-items-center text-muted-foreground/80">
+        <div className="mt-1.5 px-1.5">
+          <div className="flex h-8 shrink-0 items-center rounded-lg border border-transparent bg-foreground/[0.035] pr-1.5 pl-2.5 transition-[background-color,border-color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05] focus-within:border-border focus-within:bg-background/90">
+            <span className="mr-2 grid size-3.5 shrink-0 place-items-center text-muted-foreground/75">
               <Search className="size-3.5" strokeWidth={1.6} />
             </span>
             <input
@@ -994,7 +978,7 @@ export function InboxSidebar({
               value={desktopSearchQuery}
               onChange={(e) => setDesktopSearchQuery(e.target.value)}
               placeholder="Search chats"
-              className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
+              className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/65 focus:outline-none"
             />
             {desktopSearchQuery ? (
               <button
@@ -1013,7 +997,7 @@ export function InboxSidebar({
                     new CustomEvent("entry:open-command-palette"),
                   );
                 }}
-                className="ml-1 shrink-0 rounded border border-border/60 bg-background/60 px-1.5 py-0.5 font-mono text-[10.5px] leading-none text-muted-foreground transition-colors duration-120 hover:border-border hover:text-foreground cursor-pointer"
+                className="ml-1 shrink-0 rounded border border-border/70 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground transition-colors duration-120 hover:border-border hover:text-foreground cursor-pointer"
                 title="Open command palette (⌘K)"
                 aria-label="Open command palette"
               >
@@ -1024,20 +1008,20 @@ export function InboxSidebar({
         </div>
 
         {/* Active / Archive */}
-        <div className="mt-2 mb-2 px-1.5">
-          <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-foreground/[0.04] p-0.5">
+        <div className="mt-2 mb-2.5 px-1.5">
+          <div className="grid grid-cols-2 gap-0.5 rounded-lg border border-border/50 bg-foreground/[0.035] p-0.5">
             <button
               type="button"
               onClick={() => setShowArchived(false)}
-              className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-[background-color,color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
+              className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-[background-color,color,box-shadow] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
                 !showArchived
-                  ? "bg-background text-foreground shadow-2xs"
+                  ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:bg-white/[0.08]"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <span>Active</span>
               {activeSessions.length > 0 ? (
-                <span className="font-mono text-[11px] tabular-nums text-muted-foreground/75">
+                <span className="font-mono text-[10.5px] tabular-nums text-muted-foreground/75">
                   {activeSessions.length}
                 </span>
               ) : null}
@@ -1045,15 +1029,15 @@ export function InboxSidebar({
             <button
               type="button"
               onClick={() => setShowArchived(true)}
-              className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-[background-color,color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
+              className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-[background-color,color,box-shadow] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
                 showArchived
-                  ? "bg-background text-foreground shadow-2xs"
+                  ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:bg-white/[0.08]"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
               <span>Archive</span>
               {archivedCount > 0 ? (
-                <span className="font-mono text-[11px] tabular-nums text-muted-foreground/75">
+                <span className="font-mono text-[10.5px] tabular-nums text-muted-foreground/75">
                   {archivedCount}
                 </span>
               ) : null}
@@ -1111,12 +1095,12 @@ export function InboxSidebar({
               />
 
               {standaloneSessions.length > 0 ? (
-                <div className="space-y-0.5">
-                  <div className="flex h-7 items-center justify-between px-2">
+                <div className="mt-2 space-y-0.5 border-t border-border/50 pt-2.5">
+                  <div className="mb-0.5 flex h-7 items-center justify-between px-2">
                     <span className="text-[11.5px] font-medium text-muted-foreground">
                       Chats
                     </span>
-                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground/65">
+                    <span className="rounded-md bg-foreground/[0.045] px-1.5 py-0.5 font-mono text-[10.5px] leading-none tabular-nums text-muted-foreground/75">
                       {standaloneSessions.length}
                     </span>
                   </div>

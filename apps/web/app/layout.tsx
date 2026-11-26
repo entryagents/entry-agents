@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Instrument_Serif, Inter, JetBrains_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { Providers } from "./providers";
 import { SITE_URL } from "@/lib/site";
@@ -11,6 +11,12 @@ import "./globals.css";
 
 const inter = Inter({
   variable: "--font-inter-sans",
+  subsets: ["latin"],
+});
+
+const instrumentSerif = Instrument_Serif({
+  weight: "400",
+  variable: "--font-display-serif",
   subsets: ["latin"],
 });
 
@@ -170,7 +176,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} ${jetbrainsMono.variable} font-sans overflow-x-hidden antialiased`}
+        className={`${inter.variable} ${instrumentSerif.variable} ${jetbrainsMono.variable} font-sans overflow-x-hidden antialiased`}
       >
         <script
           type="application/ld+json"

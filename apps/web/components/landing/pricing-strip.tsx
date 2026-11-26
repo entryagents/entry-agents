@@ -55,8 +55,8 @@ export function LandingPricingStrip() {
         <div className="border-t border-(--l-border) py-16 sm:py-24">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="max-w-xl">
-              <h2 className="text-balance text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
-                Straightforward credits, zero token markup
+              <h2 className="font-display text-balance text-4xl font-normal leading-[1.04] tracking-[-0.02em] sm:text-5xl">
+                Straightforward credits, zero markup
               </h2>
               <p className="mt-3 text-pretty text-base leading-relaxed text-(--l-fg-2)">
                 Every dollar of credit goes straight toward model usage at
@@ -86,24 +86,30 @@ export function LandingPricingStrip() {
             {PLANS.map((plan) => (
               <div
                 key={plan.id}
-                className={`flex flex-col justify-between rounded-2xl border p-6 ${
+                className={`flex flex-col justify-between rounded-2xl border p-6 sm:p-7 ${
                   plan.featured
-                    ? "border-(--l-fg)/30 bg-(--l-surface)"
+                    ? "border-(--l-accent)/55 bg-(--l-surface)"
                     : "border-(--l-border) bg-(--l-surface)"
                 }`}
               >
                 <div>
-                  <div className="flex items-baseline justify-between gap-2">
-                    <h3 className="text-base font-semibold tracking-tight text-(--l-fg)">
-                      {plan.name}
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="inline-flex items-center gap-2 text-base font-semibold tracking-tight text-(--l-fg)">
+                      {plan.featured && (
+                        <span
+                          aria-hidden="true"
+                          className="size-1.5 rounded-full bg-(--l-accent)"
+                        />
+                      )}
+                      <span>{plan.name}</span>
                     </h3>
                     <span className="font-mono text-xs tabular-nums text-(--l-fg-3)">
                       {plan.credit}
                     </span>
                   </div>
 
-                  <div className="mt-4 flex items-baseline gap-1.5 tabular-nums">
-                    <span className="text-3xl font-semibold tracking-[-0.03em] text-(--l-fg)">
+                  <div className="mt-5 flex items-baseline gap-1.5 tabular-nums">
+                    <span className="font-display text-5xl font-normal leading-none tracking-[-0.02em] text-(--l-fg)">
                       {plan.price}
                     </span>
                     <span className="text-xs text-(--l-fg-3)">
@@ -122,7 +128,11 @@ export function LandingPricingStrip() {
                         className="flex items-start gap-2.5 text-xs leading-relaxed text-(--l-fg-2)"
                       >
                         <Check
-                          className="mt-0.5 size-3.5 shrink-0 text-(--l-fg-3)"
+                          className={`mt-0.5 size-3.5 shrink-0 ${
+                            plan.featured
+                              ? "text-(--l-accent)"
+                              : "text-(--l-fg-3)"
+                          }`}
                           strokeWidth={1.75}
                         />
                         <span>{point}</span>
@@ -138,7 +148,7 @@ export function LandingPricingStrip() {
                         ? "/login"
                         : `/pricing?subscribe=${plan.id}`
                     }
-                    className={`inline-flex h-9 w-full items-center justify-center rounded-lg px-4 text-xs font-medium transition-[opacity,border-color,color] duration-150 ${
+                    className={`inline-flex h-10 w-full items-center justify-center rounded-xl px-4 text-xs font-medium transition-[opacity,border-color,color,transform] duration-150 active:scale-[0.98] ${
                       plan.featured
                         ? "bg-(--l-btn-bg) text-(--l-btn-fg) hover:opacity-90"
                         : "border border-(--l-border) bg-(--l-surface-2) text-(--l-fg) hover:border-(--l-fg-4)"

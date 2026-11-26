@@ -163,8 +163,8 @@ export function ConnectedStackShowcase() {
           <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-12">
             {/* Left column: headline + clean 3x3 real brand icon selector */}
             <div className="min-w-0 lg:col-span-5">
-              <h2 className="text-balance text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
-                Connected to the tools where work starts
+              <h2 className="font-display text-balance text-4xl font-normal leading-[1.04] tracking-[-0.02em] sm:text-5xl">
+                Connected where the work starts
               </h2>
               <p className="mt-3 text-pretty text-base leading-relaxed text-(--l-fg-2)">
                 Read tickets, inspect threads, edit the codebase in your Linux
@@ -188,7 +188,7 @@ export function ConnectedStackShowcase() {
                       onClick={() => setSelectedSlug(app.slug)}
                       className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-[border-color,background-color,color] duration-150 ${
                         isSelected
-                          ? "border-(--l-fg)/35 bg-(--l-surface-2) text-(--l-fg)"
+                          ? "border-(--l-accent)/60 bg-(--l-surface-2) text-(--l-fg)"
                           : "border-(--l-border) bg-(--l-surface) text-(--l-fg-2) hover:border-(--l-fg-4) hover:text-(--l-fg)"
                       }`}
                     >
