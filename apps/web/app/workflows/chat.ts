@@ -2992,7 +2992,7 @@ export async function runAgentWorkflow(options: Options) {
     const stepOffset = options.stepOffset ?? 0;
     const segmentMaxSteps = options.segmentMaxSteps ?? 50;
     const segmentMaxDurationMs = options.segmentMaxDurationMs ?? 25 * 60 * 1000; // 25 min per segment
-    const MAX_WORKFLOW_TURN_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours max
+    const MAX_WORKFLOW_TURN_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours max
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;

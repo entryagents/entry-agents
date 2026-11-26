@@ -40,6 +40,7 @@ import type {
   WebAgentUIMessagePart,
 } from "@/app/types";
 import { dedupeMessageList } from "@/lib/chat/dedupe-message-reasoning";
+import { isChatStoppedByUser } from "@/lib/chat/stop-latch";
 import { mergePreservingLocalWork } from "@/lib/chat/merge-preserving-local-work";
 import { consumePendingInitialPrompt } from "@/lib/chat/pending-initial-prompt";
 import { SubagentThreadView } from "@/components/team/subagent-thread-view";
@@ -1630,6 +1631,42 @@ export function SessionChatContent({
       );
     };
   }, [isChatInFlight, sendMessage]);
+
+  // Auto-continue a turn that hit the maximum turn duration cap (once per
+  // timed-out message, respecting manual stop and billing/spend limits).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (
+      isChatInFlight ||
+      session.status === "archived" ||
+      isChatStoppedByUser(chatInfo.id)
+    ) {
+      return;
+    }
+    const lastMessage = messages.at(-1);
+    if (
+      !lastMessage ||
+      lastMessage.role !== "assistant" ||
+      !lastMessage.metadata?.turnTimedOut ||
+      lastMessage.metadata?.windowExhausted ||
+      lastMessage.metadata?.creditExhausted ||
+      lastMessage.metadata?.turnSpendCapped
+    ) {
+      return;
+    }
+    const storageKey = `entry:auto-continued-timeout:${chatInfo.id}:${lastMessage.id}`;
+    try {
+      if (window.sessionStorage.getItem(storageKey) === "1") {
+        return;
+      }
+      window.sessionStorage.setItem(storageKey, "1");
+    } catch {
+      // Proceed even if sessionStorage is unavailable
+    }
+    void sendMessage({
+      text: "Continue from where you left off.",
+    });
+  }, [chatInfo.id, isChatInFlight, messages, sendMessage, session.status]);
 
   const handleModelChange = useCallback(
     async (modelId: string) => {
