@@ -33,6 +33,12 @@ const nextConfig: NextConfig = {
     // the package root; without this directive the whole icon index
     // (hundreds of brand marks) can be pulled into the client bundle.
     optimizePackageImports: ["lucide-react", "@lobehub/icons"],
+    // Keep recently visited dynamic routes (e.g. /chats/[chatId]) warm in
+    // Next.js's client router cache for instant back-and-forth switching.
+    staleTimes: {
+      dynamic: 30,
+      static: 180,
+    },
   },
   // SECURITY FIX (2026-08-27, pentest finding): the app shipped with
   // zero security-response headers at all (no CSP, no X-Frame-Options,

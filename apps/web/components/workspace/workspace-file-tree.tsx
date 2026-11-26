@@ -271,12 +271,17 @@ export function WorkspaceFileTree({
   className?: string;
 }) {
   const [filter, setFilter] = useState("");
+  const [visibleLimit, setVisibleLimit] = useState(250);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
     () => new Set(),
   );
   const [focusPath, setFocusPath] = useState<string | null>(null);
   const filterRef = useRef<HTMLInputElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setVisibleLimit(250);
+  }, [filter]);
 
   const changes = useMemo(() => {
     const fileMap = new Map<string, string>();
@@ -564,7 +569,7 @@ export function WorkspaceFileTree({
             aria-label="Workspace files"
             onKeyDown={onTreeKeyDown}
           >
-            {rows.map((row, idx) => (
+            {rows.slice(0, visibleLimit).map((row, idx) => (
               <TreeRow
                 key={row.node.path}
                 row={row}
@@ -588,6 +593,18 @@ export function WorkspaceFileTree({
                 onMentionInChat={onMentionInChat}
               />
             ))}
+            {rows.length > visibleLimit && (
+              <div className="px-2 py-2">
+                <button
+                  type="button"
+                  className="sable-btn-sm w-full justify-center"
+                  onClick={() => setVisibleLimit((prev) => prev + 250)}
+                >
+                  Show more ({(rows.length - visibleLimit).toLocaleString()}{" "}
+                  remaining)
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

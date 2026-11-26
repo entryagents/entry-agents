@@ -82,14 +82,6 @@ export function preloadWorkspaceTabChunks(): void {
   ]);
 }
 
-const PREMOUNT_RAIL_TABS: readonly RailTabId[] = [
-  "review",
-  "files",
-  "tasks",
-  "context",
-  "agents",
-];
-
 const WorkspaceReviewTab = dynamic(loadWorkspaceReviewTab, {
   ssr: false,
   loading: RailPaneLoading,
@@ -183,9 +175,9 @@ export function WorkspacePanel({
     ? normalizedTab
     : "files";
 
-  // Keep visited panes alive for 0ms instant tab switches without losing state.
-  // Lightweight/data panes are also pre-mounted on idle while live iframe/PTY
-  // panes (preview, terminal) preload their JS chunks and mount on first click.
+  // Keep visited panes alive for instant tab switches without losing state,
+  // but mount each pane only when visited so opening the workspace never
+  // force-mounts heavy diff/tree/agent tabs in the background.
   const [mountedPanes, setMountedPanes] = useState<Set<RailTabId>>(
     () => new Set([activeBuiltinTab]),
   );
@@ -196,51 +188,6 @@ export function WorkspacePanel({
       return new Set([...prev, activeBuiltinTab]);
     });
   }, [activeBuiltinTab]);
-
-  useEffect(() => {
-    const warmPanes = () => {
-      preloadWorkspaceTabChunks();
-      setMountedPanes((prev) => {
-        let missing = false;
-        for (const tab of PREMOUNT_RAIL_TABS) {
-          if (!prev.has(tab)) {
-            missing = true;
-            break;
-          }
-        }
-        if (!missing) {
-          return prev;
-        }
-        const next = new Set(prev);
-        for (const tab of PREMOUNT_RAIL_TABS) {
-          next.add(tab);
-        }
-        return next;
-      });
-    };
-
-    const idleWindow = window as Window & {
-      requestIdleCallback?: (
-        callback: () => void,
-        opts?: { timeout: number },
-      ) => number;
-      cancelIdleCallback?: (id: number) => void;
-    };
-
-    if (typeof idleWindow.requestIdleCallback === "function") {
-      const idleId = idleWindow.requestIdleCallback(warmPanes, {
-        timeout: 300,
-      });
-      return () => {
-        idleWindow.cancelIdleCallback?.(idleId);
-      };
-    }
-
-    const timer = window.setTimeout(warmPanes, 120);
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, []);
 
   const pickBuiltinTab = useCallback(
     (next: RailTabId) => {

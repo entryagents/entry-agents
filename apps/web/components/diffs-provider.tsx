@@ -7,7 +7,7 @@ export function DiffsProvider({ children }: { children: React.ReactNode }) {
   return (
     <WorkerPoolContextProvider
       poolOptions={{
-        poolSize: 2,
+        poolSize: 1,
         workerFactory: () =>
           new Worker(
             new URL("@pierre/diffs/worker/worker.js", import.meta.url),

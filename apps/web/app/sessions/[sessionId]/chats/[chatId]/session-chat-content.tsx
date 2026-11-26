@@ -580,34 +580,6 @@ export function SessionChatContent({
     useState<string | null | undefined>(undefined);
   const hasMounted = useHasMounted();
 
-  useEffect(() => {
-    const preload = () => {
-      void loadWorkspacePanel()
-        .then((m) => m.preloadWorkspaceTabChunks())
-        .catch(() => {});
-    };
-
-    const idleWindow = window as Window & {
-      requestIdleCallback?: (
-        callback: () => void,
-        opts?: { timeout: number },
-      ) => number;
-      cancelIdleCallback?: (id: number) => void;
-    };
-
-    if (typeof idleWindow.requestIdleCallback === "function") {
-      const idleId = idleWindow.requestIdleCallback(preload, { timeout: 500 });
-      return () => {
-        idleWindow.cancelIdleCallback?.(idleId);
-      };
-    }
-
-    const timer = window.setTimeout(preload, 250);
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, []);
-
   const {
     activeView,
     activeSubagentId,
