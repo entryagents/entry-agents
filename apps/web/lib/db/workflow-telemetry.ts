@@ -97,6 +97,14 @@ export interface WorkflowRunLifecycleDetail {
     details: Record<string, unknown>;
     createdAt: string;
   }>;
+  siblingRuns: Array<{
+    id: string;
+    status: string;
+    startedAt: string;
+    finishedAt: string;
+    totalDurationMs: number;
+    errorMessage: string | null;
+  }>;
 }
 
 export async function recordWorkflowRunTelemetry(
@@ -255,50 +263,64 @@ export async function getWorkflowRunLifecycle(
 
   const chatId = t?.chatId ?? r?.chatId ?? null;
 
-  const [compactionRows, recentMessages, diagnosticRows] = chatId
-    ? await Promise.all([
-        db
-          .select({
-            id: compactionEvents.id,
-            tokensBefore: compactionEvents.preCompactTokens,
-            tokensAfter: compactionEvents.postCompactTokens,
-            createdAt: compactionEvents.createdAt,
-          })
-          .from(compactionEvents)
-          .where(eq(compactionEvents.chatId, chatId))
-          .orderBy(desc(compactionEvents.createdAt))
-          .limit(20),
-        db
-          .select({
-            metadata: chatMessages.metadata,
-          })
-          .from(chatMessages)
-          .where(
-            and(
-              eq(chatMessages.chatId, chatId),
-              eq(chatMessages.role, "assistant"),
-            ),
-          )
-          .orderBy(desc(chatMessages.createdAt))
-          .limit(5),
-        db
-          .select({
-            id: chatDiagnosticEvents.id,
-            eventType: chatDiagnosticEvents.eventType,
-            detailsJson: chatDiagnosticEvents.detailsJson,
-            createdAt: chatDiagnosticEvents.createdAt,
-          })
-          .from(chatDiagnosticEvents)
-          .where(
-            or(
-              eq(chatDiagnosticEvents.workflowRunId, workflowRunId),
-              eq(chatDiagnosticEvents.chatId, chatId),
-            ),
-          )
-          .orderBy(desc(chatDiagnosticEvents.createdAt))
-          .limit(30),
-      ])
-    : [[], [], []];
+  const [compactionRows, recentMessages, diagnosticRows, siblingRunRows] =
+    chatId
+      ? await Promise.all([
+          db
+            .select({
+              id: compactionEvents.id,
+              tokensBefore: compactionEvents.preCompactTokens,
+              tokensAfter: compactionEvents.postCompactTokens,
+              createdAt: compactionEvents.createdAt,
+            })
+            .from(compactionEvents)
+            .where(eq(compactionEvents.chatId, chatId))
+            .orderBy(desc(compactionEvents.createdAt))
+            .limit(20),
+          db
+            .select({
+              metadata: chatMessages.metadata,
+            })
+            .from(chatMessages)
+            .where(
+              and(
+                eq(chatMessages.chatId, chatId),
+                eq(chatMessages.role, "assistant"),
+              ),
+            )
+            .orderBy(desc(chatMessages.createdAt))
+            .limit(5),
+          db
+            .select({
+              id: chatDiagnosticEvents.id,
+              eventType: chatDiagnosticEvents.eventType,
+              detailsJson: chatDiagnosticEvents.detailsJson,
+              createdAt: chatDiagnosticEvents.createdAt,
+            })
+            .from(chatDiagnosticEvents)
+            .where(
+              or(
+                eq(chatDiagnosticEvents.workflowRunId, workflowRunId),
+                eq(chatDiagnosticEvents.chatId, chatId),
+              ),
+            )
+            .orderBy(desc(chatDiagnosticEvents.createdAt))
+            .limit(30),
+          db
+            .select({
+              id: workflowRuns.id,
+              status: workflowRuns.status,
+              startedAt: workflowRuns.startedAt,
+              finishedAt: workflowRuns.finishedAt,
+              totalDurationMs: workflowRuns.totalDurationMs,
+              errorMessage: workflowRuns.errorMessage,
+            })
+            .from(workflowRuns)
+            .where(eq(workflowRuns.chatId, chatId))
+            .orderBy(desc(workflowRuns.startedAt))
+            .limit(30),
+        ])
+      : [[], [], [], []];
 
   const latestWithBreakdown = recentMessages.find((m) => {
     const meta = m.metadata as { stepBreakdown?: unknown[] } | null;
@@ -392,6 +414,14 @@ export async function getWorkflowRunLifecycle(
       eventType: d.eventType,
       details: d.detailsJson ?? {},
       createdAt: d.createdAt.toISOString(),
+    })),
+    siblingRuns: siblingRunRows.map((sr) => ({
+      id: sr.id,
+      status: sr.status,
+      startedAt: sr.startedAt.toISOString(),
+      finishedAt: sr.finishedAt.toISOString(),
+      totalDurationMs: sr.totalDurationMs,
+      errorMessage: sr.errorMessage,
     })),
   };
 }

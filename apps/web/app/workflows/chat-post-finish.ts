@@ -1420,6 +1420,7 @@ export async function continueAgentWorkflowSegmentStep(params: {
   teamRoleModels?: Record<string, string>;
   autoCommitEnabled?: boolean;
   autoCreatePrEnabled?: boolean;
+  telemetrySnapshot?: import("./workflow-telemetry-tracker").WorkflowTelemetrySnapshot;
 }): Promise<{ continued: boolean; nextRunId?: string }> {
   "use step";
 
@@ -1512,6 +1513,9 @@ export async function continueAgentWorkflowSegmentStep(params: {
           chatId: params.chatId,
           sessionId: params.sessionId,
           userId: params.userId,
+          previousWorkflowRunId: params.currentWorkflowRunId,
+          segmentOffset: String(params.nextStepOffset),
+          ...(params.modelId ? { modelId: params.modelId } : {}),
         },
       },
     );
@@ -1530,10 +1534,24 @@ export async function continueAgentWorkflowSegmentStep(params: {
       const latestChat = await getChatById(params.chatId).catch(() => null);
       if (latestChat?.activeStreamId !== nextRun.runId) {
         await getRun(nextRun.runId)
-          .cancel()
+          .cancel({ cancelReason: "Superseded during segment handoff" })
           .catch(() => {});
         return { continued: false };
       }
+    }
+
+    // 5. Record segment handoff telemetry so intermediate segments appear on Admin Workflows.
+    if (params.telemetrySnapshot) {
+      await import("@/lib/db/workflow-telemetry")
+        .then(({ recordWorkflowRunTelemetry }) =>
+          recordWorkflowRunTelemetry(params.telemetrySnapshot!),
+        )
+        .catch((err) => {
+          console.warn(
+            "[workflow] Best-effort segment handoff telemetry failed:",
+            err,
+          );
+        });
     }
 
     console.info(

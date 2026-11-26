@@ -22,9 +22,11 @@ function formatBytes(bytes: number): string {
 export function WorkflowLifecycleDrawer({
   workflowRunId,
   onClose,
+  onSelectRunId,
 }: {
   workflowRunId: string | null;
   onClose: () => void;
+  onSelectRunId?: (runId: string) => void;
 }) {
   const [detail, setDetail] = useState<WorkflowRunLifecycleDetail | null>(null);
   const [loading, setLoading] = useState(false);
@@ -308,6 +310,39 @@ export function WorkflowLifecycleDrawer({
                         </span>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {detail.siblingRuns && detail.siblingRuns.length > 1 && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-medium text-foreground">
+                    All runs in this chat ({detail.siblingRuns.length})
+                  </h3>
+                  <div className="space-y-1.5">
+                    {detail.siblingRuns.map((sr) => {
+                      const isCurrent = sr.id === workflowRunId;
+                      return (
+                        <button
+                          key={sr.id}
+                          type="button"
+                          onClick={() => onSelectRunId?.(sr.id)}
+                          className={`flex w-full cursor-pointer items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-left font-mono text-[11px] transition-colors ${
+                            isCurrent
+                              ? "border-foreground/40 bg-muted/40 text-foreground"
+                              : "border-border/60 text-muted-foreground hover:bg-muted/20 hover:text-foreground"
+                          }`}
+                        >
+                          <span className="truncate">
+                            {sr.id}
+                            {isCurrent ? " (current)" : ""}
+                          </span>
+                          <span className="shrink-0 tabular-nums">
+                            {sr.status} · {formatDuration(sr.totalDurationMs)}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
