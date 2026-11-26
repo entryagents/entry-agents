@@ -5,15 +5,19 @@ import { ThemeToggle } from "./theme-toggle";
 export function LandingFooter() {
   return (
     <footer>
-      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-10">
         <div className="border-t border-(--l-border) py-12 sm:py-16">
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             <div className="sm:col-span-2">
-              <Logo className="h-5" />
+              <Link
+                href="/"
+                className="inline-flex items-center text-(--l-fg) transition-opacity duration-150 hover:opacity-85"
+              >
+                <Logo className="h-5" />
+              </Link>
               <p className="mt-3 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">
-                Cloud software engineering workspaces with live in-chat
-                multi-agent coordination, real Linux containers, and durable
-                execution.
+                Cloud software engineering workspaces with isolated Linux VMs,
+                durable background runs, and direct GitHub and Vercel delivery.
               </p>
             </div>
 

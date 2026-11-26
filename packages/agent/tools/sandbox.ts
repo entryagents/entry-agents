@@ -6,6 +6,7 @@ import type { SandboxControlToolResult } from "../types";
 
 const sandboxActionSchema = z.enum([
   "status",
+  "info",
   "provision",
   "reconnect",
   "snapshot",
@@ -14,6 +15,9 @@ const sandboxActionSchema = z.enum([
   "stop_serve",
   "ps",
   "kill_process",
+  "ports",
+  "expose_port",
+  "unexpose_port",
   "env_get",
   "env_set",
   "checkpoint_create",
@@ -25,7 +29,7 @@ const sandboxActionSchema = z.enum([
 
 const sandboxControlInputSchema = z.object({
   action: sandboxActionSchema.describe(
-    "Workspace operation: 'status', 'info', 'serve', 'stop_serve', 'ps', 'kill_process', 'env_get', 'env_set', 'checkpoint_create', 'checkpoint_list', 'checkpoint_restore', 'checkpoint_delete', 'logs', 'provision', 'reconnect', 'snapshot', 'delete'.",
+    "Workspace operation: 'status', 'info', 'serve', 'stop_serve', 'ports', 'expose_port', 'unexpose_port', 'ps', 'kill_process', 'env_get', 'env_set', 'checkpoint_create', 'checkpoint_list', 'checkpoint_restore', 'checkpoint_delete', 'logs', 'provision', 'reconnect', 'snapshot', 'delete'.",
   ),
   port: z
     .number()
@@ -33,7 +37,13 @@ const sandboxControlInputSchema = z.object({
     .positive()
     .max(65535)
     .optional()
-    .describe("Port number (for serve, stop_serve, kill_process)"),
+    .describe(
+      "Port number (for serve, stop_serve, expose_port, unexpose_port, ports, kill_process)",
+    ),
+  proxyName: z
+    .string()
+    .optional()
+    .describe("Optional named HTTPS proxy route label (for expose_port)"),
   checkpointName: z
     .string()
     .optional()
@@ -82,19 +92,16 @@ function unsupportedAction(action: string): SandboxControlToolResult {
 
 export function sandboxControlTool() {
   return tool({
-    description: `Control this session's workspace (sandbox) lifecycle, runtime networking, checkpoints, sizing, and logs.
+    description: `Control this session's workspace (sandbox) lifecycle, runtime networking, checkpoints, and logs.
 
 ACTIONS:
-- status: read-only. Returns running/paused/missing state, lifecycle state, expiry, and supported capabilities. Call first when unsure of state.
+- status / info: read-only. Returns running/paused/missing state, lifecycle state, VM details, and public URL. Call first when unsure of state.
 - serve / stop_serve: start/inspect or stop a persistent dev server and return its public HTTPS (or localhost) URL + port.
+- ports / expose_port / unexpose_port: list active HTTPS proxy routes and exposed ports, or expose/unexpose a specific port publicly.
 - ps / kill_process: list running processes or kill a process/group by port or PID/name.
 - env_get / env_set: read or store session-scoped environment variables loaded into future bash calls.
 - checkpoint_create / checkpoint_list / checkpoint_restore / checkpoint_delete: capture, list, restore in-place (RAM + disk), or delete fast local checkpoints before risky changes.
-- expose_port / unexpose_port / ports: manage public HTTPS proxy routes (explicit port or portAuto: true, optional proxyName) or raw TCP/UDP port forwards.
 - logs: inspect bounded VM boot/console logs when debugging startup or service crashes.
-- resize: resize VM vCPU and/or memory ('4G', '8G', '16G', '32G') when workloads need more compute (may reboot a running VM).
-- fork: clone the current running workspace into a new isolated VM for safe side experiments.
-- egress_allow: update outbound network allowlist entries (hostnames/CIDRs; empty array removes restrictions).
 - provision / reconnect / snapshot / delete: start, resume, create an account-level snapshot, or tear down the workspace ('delete' destroys uncommitted work; only use when explicitly asked).`,
     inputSchema: sandboxControlInputSchema,
     toModelOutput: ({ output }) =>
@@ -122,9 +129,112 @@ ACTIONS:
 
       try {
         switch (input.action) {
-          case "status": {
+          case "status":
+          case "info": {
+            if (input.action === "info" && control.info) {
+              const res = await control.info();
+              return hostResult(res, input.action);
+            }
             const status = await control.status();
+            if (input.action === "info") {
+              const sandbox = await getSandbox(
+                experimental_context,
+                "sandbox",
+              ).catch(() => null);
+              const info = sandbox?.getInfo
+                ? await sandbox.getInfo().catch(() => null)
+                : null;
+              return hostResult(
+                { ...status, ...(info ? { info } : {}) },
+                input.action,
+              );
+            }
             return hostResult(status, input.action);
+          }
+          case "ports": {
+            if (control.ports) {
+              const res = await control.ports({ port: input.port });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            const [proxies, exposedPorts, listeners] = await Promise.all([
+              sandbox.listProxies
+                ? sandbox.listProxies().catch(() => [])
+                : Promise.resolve([]),
+              sandbox.listExposedPorts
+                ? sandbox.listExposedPorts().catch(() => [])
+                : Promise.resolve([]),
+              sandbox
+                .exec(
+                  "(ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true) | head -n 30",
+                  sandbox.workingDirectory,
+                  5000,
+                )
+                .then((r) => r.stdout.trim())
+                .catch(() => ""),
+            ]);
+            const portUrl =
+              input.port && sandbox.domain
+                ? sandbox.domain(input.port)
+                : undefined;
+            return hostResult(
+              {
+                ...(portUrl ? { port: input.port, url: portUrl } : {}),
+                proxies,
+                exposedPorts,
+                ...(listeners ? { listening: listeners } : {}),
+              },
+              input.action,
+            );
+          }
+          case "expose_port": {
+            if (!input.port) {
+              throw new Error("port is required for expose_port");
+            }
+            if (control.expose_port) {
+              const res = await control.expose_port({
+                port: input.port,
+                name: input.proxyName,
+              });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (sandbox.exposeProxy) {
+              const proxy = await sandbox.exposeProxy(
+                input.port,
+                input.proxyName,
+              );
+              return hostResult({ proxy, url: proxy.url }, input.action);
+            }
+            if (sandbox.exposePort) {
+              const exposed = await sandbox.exposePort(input.port, "tcp");
+              return hostResult({ exposed }, input.action);
+            }
+            if (sandbox.domain) {
+              return hostResult(
+                { port: input.port, url: sandbox.domain(input.port) },
+                input.action,
+              );
+            }
+            return unsupportedAction(input.action);
+          }
+          case "unexpose_port": {
+            if (!input.port) {
+              throw new Error("port is required for unexpose_port");
+            }
+            if (control.unexpose_port) {
+              const res = await control.unexpose_port({ port: input.port });
+              return hostResult(res, input.action);
+            }
+            const sandbox = await getSandbox(experimental_context, "sandbox");
+            if (sandbox.unexposePort) {
+              await sandbox.unexposePort(input.port);
+              return hostResult(
+                { unexposed: true, port: input.port },
+                input.action,
+              );
+            }
+            return unsupportedAction(input.action);
           }
           case "provision": {
             const provisioned = await control.provision();

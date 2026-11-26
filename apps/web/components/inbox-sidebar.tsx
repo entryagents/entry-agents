@@ -476,7 +476,13 @@ const SessionRow = memo(function SessionRow({
   ) : null;
 
   const actionButtonsContainer = actionButtons ? (
-    <span className="absolute top-1/2 right-1.5 flex shrink-0 -translate-y-1/2 items-center justify-end gap-0.5">
+    <span
+      className={`absolute top-1/2 right-1 flex shrink-0 -translate-y-1/2 items-center justify-end gap-0.5 rounded-md pl-5 pr-0.5 ${
+        isActive
+          ? "bg-gradient-to-l from-sidebar via-sidebar/95 to-transparent"
+          : "bg-gradient-to-l from-sidebar via-sidebar/95 to-transparent"
+      }`}
+    >
       {actionButtons}
     </span>
   ) : null;
@@ -491,11 +497,11 @@ const SessionRow = memo(function SessionRow({
       ]
         .filter(Boolean)
         .join(" · ")}
-      className={`group relative flex h-[30px] w-full items-center rounded-lg pl-9 text-left outline-none transition-[background-color,opacity] duration-100 ease-[cubic-bezier(0.2,0.8,0.2,1)] cursor-pointer focus-visible:ring-1 focus-visible:ring-ring ${
+      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left outline-none transition-[background-color,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer focus-visible:ring-1 focus-visible:ring-ring ${
         isActive
           ? "bg-foreground/[0.08] text-foreground"
-          : "hover:bg-foreground/[0.055]"
-      } ${isPending ? "opacity-80" : "opacity-100"} ${actionButtons ? "pr-11" : "pr-2.5"}`}
+          : "hover:bg-foreground/[0.05]"
+      } ${isPending ? "opacity-75" : "opacity-100"}`}
       onClick={() => {
         if (isMobile) setOpenMobile(false);
         onSessionClick(session);
@@ -503,30 +509,38 @@ const SessionRow = memo(function SessionRow({
       onFocus={() => onSessionPrefetch(session)}
       aria-busy={isPending}
     >
-      <span className="pointer-events-none absolute top-1/2 left-2.5 flex size-4 -translate-y-1/2 items-center justify-center">
+      <span className="flex size-4 shrink-0 items-center justify-center">
         {getSessionStatusIcon(session)}
       </span>
       <span className="min-w-0 flex-1 text-left">
         <p
-          className={`truncate text-[13px] leading-[18px] transition-colors duration-100 ${
-            isActive || session.hasUnread
+          className={`truncate text-[13px] leading-[18px] transition-colors duration-120 ${
+            isActive
               ? "font-medium text-foreground"
-              : "font-normal text-muted-foreground group-hover:text-foreground"
+              : session.hasUnread
+                ? "font-medium text-foreground"
+                : "font-normal text-foreground/75 group-hover:text-foreground"
           }`}
         >
           {session.title}
         </p>
       </span>
-      {actionButtons ? null : session.prNumber || hasDiff ? (
-        <span className="flex shrink-0 items-center justify-end gap-2 pl-2 text-[11.5px] tabular-nums text-muted-foreground">
+      {session.hasUnread && !isActive && !actionButtons ? (
+        <span
+          className="size-1.5 shrink-0 rounded-full bg-foreground/70"
+          aria-label="Unread activity"
+        />
+      ) : null}
+      {!actionButtons && (session.prNumber || hasDiff) ? (
+        <span className="flex shrink-0 items-center justify-end gap-1.5 pl-1 font-mono text-[11px] tabular-nums text-muted-foreground">
           {session.prNumber ? (
             <span
               className={
                 session.prStatus === "merged"
-                  ? "text-indigo-400"
+                  ? "text-indigo-500 dark:text-indigo-400"
                   : session.prStatus === "open"
-                    ? "text-emerald-400"
-                    : "text-red-400"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-red-500 dark:text-red-400"
               }
             >
               #{session.prNumber}
@@ -545,14 +559,14 @@ const SessionRow = memo(function SessionRow({
 
   const rowButton = isRenaming ? (
     <div
-      className={`group relative flex h-[30px] w-full items-center rounded-lg pr-2.5 pl-9 text-left outline-none transition-[background-color,opacity] ${
+      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left outline-none transition-[background-color,opacity] ${
         isActive ? "bg-foreground/[0.08]" : "bg-foreground/[0.055]"
       } ${renamePending ? "opacity-80" : "opacity-100"}`}
       style={sessionRowPerformanceStyle}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <span className="pointer-events-none absolute top-1/2 left-2.5 flex size-4 -translate-y-1/2 items-center justify-center">
+      <span className="flex size-4 shrink-0 items-center justify-center">
         {getSessionStatusIcon(session)}
       </span>
       <span className="min-w-0 flex-1 text-left">
@@ -899,35 +913,35 @@ export function InboxSidebar({
     <>
       <div className="flex h-full min-h-0 flex-col bg-sidebar pr-1 pl-0.5 select-none">
         {/* Brand */}
-        <div className="flex h-11 shrink-0 items-center pt-px">
+        <div className="flex h-11 shrink-0 items-center px-1.5 pt-px">
           <button
             type="button"
             onClick={() => {
               if (isMobile) setOpenMobile(false);
               onOpenNewSession();
             }}
-            className="flex h-8 items-center gap-2 rounded-lg pr-2.5 pl-2 text-left transition-colors duration-100 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:bg-foreground/[0.035] active:bg-foreground/[0.055] cursor-pointer"
+            className="flex h-8 items-center gap-2 rounded-lg px-2 text-left transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.04] active:bg-foreground/[0.06] cursor-pointer"
             title="Entry — New chat"
           >
-            <EntryMark className="size-5 shrink-0 text-foreground" />
-            <span className="text-[13px] font-medium tracking-tight text-foreground">
+            <EntryMark className="size-[18px] shrink-0 text-foreground" />
+            <span className="text-[13.5px] font-medium tracking-tight text-foreground">
               Entry
             </span>
           </button>
         </div>
 
         {/* New chat row + options */}
-        <div className="mt-1 flex shrink-0 items-center gap-0.5">
+        <div className="mt-1 flex shrink-0 items-center gap-1 px-1.5">
           <button
             type="button"
             onClick={() => {
               if (isMobile) setOpenMobile(false);
               onOpenNewSession();
             }}
-            className="group flex h-[30px] min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-medium text-muted-foreground transition-colors duration-100 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:bg-foreground/[0.06] hover:text-foreground active:bg-foreground/[0.09] cursor-pointer"
+            className="group flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium text-foreground/85 transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.06] hover:text-foreground active:bg-foreground/[0.09] cursor-pointer"
           >
-            <span className="grid w-4 shrink-0 place-items-center text-muted-foreground/80 transition-colors duration-100 group-hover:text-foreground">
-              <Plus className="size-4" strokeWidth={1.5} />
+            <span className="grid size-4 shrink-0 place-items-center text-muted-foreground transition-colors duration-120 group-hover:text-foreground">
+              <Plus className="size-4" strokeWidth={1.6} />
             </span>
             <span className="truncate">New chat</span>
           </button>
@@ -935,10 +949,10 @@ export function InboxSidebar({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="grid h-[30px] w-7 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors duration-100 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:bg-foreground/[0.06] hover:text-foreground cursor-pointer"
+                className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.06] hover:text-foreground cursor-pointer"
                 aria-label="New chat options"
               >
-                <ChevronDown className="size-3.5" strokeWidth={1.5} />
+                <ChevronDown className="size-3.5" strokeWidth={1.6} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
@@ -953,7 +967,7 @@ export function InboxSidebar({
                   className="h-4 w-4 text-muted-foreground"
                   strokeWidth={1.5}
                 />
-                <span>Blank Chat</span>
+                <span>Blank chat</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setImportGithubOpen(true)}
@@ -970,81 +984,85 @@ export function InboxSidebar({
         </div>
 
         {/* Search */}
-        <div className="mt-0.5 flex h-[30px] shrink-0 items-center rounded-lg pr-1.5 pl-2.5 transition-colors duration-100 ease-[cubic-bezier(0.2,0.8,0.2,1)] hover:bg-foreground/[0.035] focus-within:bg-foreground/[0.055]">
-          <span className="mr-2.5 grid w-4 shrink-0 place-items-center text-muted-foreground/80">
-            <Search className="size-3.5" strokeWidth={1.5} />
-          </span>
-          <input
-            type="text"
-            value={desktopSearchQuery}
-            onChange={(e) => setDesktopSearchQuery(e.target.value)}
-            placeholder="Search"
-            className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
-          />
-          {desktopSearchQuery ? (
-            <button
-              type="button"
-              onClick={() => setDesktopSearchQuery("")}
-              className="ml-1 grid size-5 place-items-center rounded-md text-muted-foreground transition-colors duration-100 hover:bg-foreground/[0.06] hover:text-foreground"
-              aria-label="Clear filter"
-            >
-              <X className="size-3" strokeWidth={1.5} />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                window.dispatchEvent(
-                  new CustomEvent("entry:open-command-palette"),
-                );
-              }}
-              className="ml-1 shrink-0 rounded-md px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground/70 transition-colors duration-100 hover:bg-foreground/[0.06] hover:text-foreground cursor-pointer"
-              title="Open command palette (⌘K)"
-              aria-label="Open command palette"
-            >
-              ⌘K
-            </button>
-          )}
+        <div className="mt-1 px-1.5">
+          <div className="flex h-8 shrink-0 items-center rounded-lg border border-transparent bg-foreground/[0.035] pr-1.5 pl-2 transition-[background-color,border-color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05] focus-within:border-border focus-within:bg-background/80">
+            <span className="mr-2 grid size-4 shrink-0 place-items-center text-muted-foreground/80">
+              <Search className="size-3.5" strokeWidth={1.6} />
+            </span>
+            <input
+              type="text"
+              value={desktopSearchQuery}
+              onChange={(e) => setDesktopSearchQuery(e.target.value)}
+              placeholder="Search chats"
+              className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
+            />
+            {desktopSearchQuery ? (
+              <button
+                type="button"
+                onClick={() => setDesktopSearchQuery("")}
+                className="ml-1 grid size-5 place-items-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.06] hover:text-foreground"
+                aria-label="Clear filter"
+              >
+                <X className="size-3" strokeWidth={1.6} />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("entry:open-command-palette"),
+                  );
+                }}
+                className="ml-1 shrink-0 rounded border border-border/60 bg-background/60 px-1.5 py-0.5 font-mono text-[10.5px] leading-none text-muted-foreground transition-colors duration-120 hover:border-border hover:text-foreground cursor-pointer"
+                title="Open command palette (⌘K)"
+                aria-label="Open command palette"
+              >
+                ⌘K
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Active / Archive */}
-        <div className="mt-1 mb-2 flex shrink-0 items-center gap-0.5 pl-1">
-          <button
-            type="button"
-            onClick={() => setShowArchived(false)}
-            className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-colors duration-100 ease-[cubic-bezier(0.2,0.8,0.2,1)] cursor-pointer ${
-              !showArchived
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <span>Active</span>
-            {activeSessions.length > 0 ? (
-              <span className="text-[11.5px] tabular-nums text-muted-foreground/70">
-                {activeSessions.length}
-              </span>
-            ) : null}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowArchived(true)}
-            className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[12px] font-medium transition-colors duration-100 ease-[cubic-bezier(0.2,0.8,0.2,1)] cursor-pointer ${
-              showArchived
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <span>Archive</span>
-            {archivedCount > 0 ? (
-              <span className="text-[11.5px] tabular-nums text-muted-foreground/70">
-                {archivedCount}
-              </span>
-            ) : null}
-          </button>
+        <div className="mt-2 mb-2 px-1.5">
+          <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-foreground/[0.04] p-0.5">
+            <button
+              type="button"
+              onClick={() => setShowArchived(false)}
+              className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-[background-color,color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
+                !showArchived
+                  ? "bg-background text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <span>Active</span>
+              {activeSessions.length > 0 ? (
+                <span className="font-mono text-[11px] tabular-nums text-muted-foreground/75">
+                  {activeSessions.length}
+                </span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowArchived(true)}
+              className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-[background-color,color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
+                showArchived
+                  ? "bg-background text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <span>Archive</span>
+              {archivedCount > 0 ? (
+                <span className="font-mono text-[11px] tabular-nums text-muted-foreground/75">
+                  {archivedCount}
+                </span>
+              ) : null}
+            </button>
+          </div>
         </div>
 
         {/* Unified Smooth Repository & Session Branch Tree */}
-        <div className="min-h-0 flex-1 overflow-y-auto pr-0.5 sable-side-list">
+        <div className="min-h-0 flex-1 overflow-y-auto px-1.5 sable-side-list">
           {showLoadingSkeleton ? (
             <div className="space-y-1 p-1">
               {Array.from({ length: 5 }).map((_, index) => (
@@ -1094,15 +1112,15 @@ export function InboxSidebar({
 
               {standaloneSessions.length > 0 ? (
                 <div className="space-y-0.5">
-                  <div className="flex items-center justify-between px-2 py-1">
-                    <span className="text-xs font-medium text-muted-foreground">
+                  <div className="flex h-7 items-center justify-between px-2">
+                    <span className="text-[11.5px] font-medium text-muted-foreground">
                       Chats
                     </span>
-                    <span className="font-mono text-[10px] tabular-nums text-muted-foreground/75">
+                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground/65">
                       {standaloneSessions.length}
                     </span>
                   </div>
-                  <div className="space-y-0.5 p-0.5">
+                  <div className="space-y-0.5">
                     {standaloneSessions.map((sessionItem) => (
                       <div key={sessionItem.id}>
                         <SessionRow
@@ -1151,7 +1169,7 @@ export function InboxSidebar({
             </div>
           ) : (
             <>
-              <div className="space-y-0.5 p-0.5">
+              <div className="space-y-0.5">
                 {filteredDisplayedSessions.map((sessionItem) => (
                   <div key={sessionItem.id}>
                     <SessionRow
@@ -1199,9 +1217,9 @@ export function InboxSidebar({
           )}
         </div>
 
-        {/* Entry-only Usage Windows Telemetry + Clickable User Profile Popover & Balance Box */}
+        {/* Usage Meters + Clickable User Profile Popover & Balance Box */}
         {sidebarUser ? (
-          <div className="mt-1.5 space-y-2 border-t border-border/60 pt-2">
+          <div className="mt-1.5 space-y-2 border-t border-border/60 px-2 pt-2.5 pb-2">
             <DesktopCodexBillingStatus />
             <div className="flex items-center gap-1.5">
               <Popover open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>

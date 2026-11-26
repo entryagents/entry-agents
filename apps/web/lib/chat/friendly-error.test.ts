@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { isFriendlyChatErrorText } from "./friendly-error";
+import {
+  classifyChatError,
+  isFriendlyChatErrorText,
+  toFriendlyChatErrorText,
+} from "./friendly-error";
 
 describe("isFriendlyChatErrorText", () => {
   test("matches an exact friendly error string", () => {
@@ -41,5 +45,22 @@ describe("isFriendlyChatErrorText", () => {
         "Here's what happened: The request was stopped. But I retried and it worked.",
       ),
     ).toBe(false);
+  });
+});
+
+describe("classifyChatError", () => {
+  test("classifies AI_InvalidToolInputError as tool_failure even when message mentions type validation failed", () => {
+    const err = new Error(
+      'AI_InvalidToolInputError: Invalid input for tool sandbox: Type validation failed: Value: {"action":"ports"}.',
+    );
+    expect(classifyChatError(err)).toBe("tool_failure");
+    expect(toFriendlyChatErrorText(err)).not.toContain("incomplete tool call");
+  });
+
+  test("classifies AI_NoSuchToolError as tool_failure", () => {
+    const err = new Error(
+      "AI_NoSuchToolError: Model tried to call unavailable tool foo.",
+    );
+    expect(classifyChatError(err)).toBe("tool_failure");
   });
 });

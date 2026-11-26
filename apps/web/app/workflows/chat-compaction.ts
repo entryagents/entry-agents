@@ -150,6 +150,7 @@ export const compactAndCheckpointStep = async (params: {
   messages: ModelMessage[];
   changed: boolean;
   didCheckpoint: boolean;
+  postTokens?: number;
 }> => {
   "use step";
   const { generateText } = await import("ai");
@@ -237,13 +238,18 @@ export const compactAndCheckpointStep = async (params: {
   };
 
   if (!tier1.needsCheckpointSummary && !params.forceTier2) {
+    const nextTier1Messages = tier1.didCompact
+      ? [...tier1.messages]
+      : params.messages;
     if (tier1.didCompact) {
+      stripDanglingToolCalls(nextTier1Messages);
       await persistAutoCompactionNotice(tier1.preTokens, tier1.postTokens);
     }
     return withoutUndefined({
-      messages: tier1.didCompact ? tier1.messages : params.messages,
+      messages: nextTier1Messages,
       changed: tier1.didCompact,
       didCheckpoint: false,
+      ...(tier1.didCompact ? { postTokens: tier1.postTokens } : {}),
     });
   }
 
@@ -267,10 +273,17 @@ export const compactAndCheckpointStep = async (params: {
       : tier1.messages;
   const olderMessages = sourceMessages.slice(0, tailStart);
   if (olderMessages.length < 2) {
+    const fallbackMessages = tier1.didCompact
+      ? [...tier1.messages]
+      : params.messages;
+    if (tier1.didCompact) {
+      stripDanglingToolCalls(fallbackMessages);
+    }
     return withoutUndefined({
-      messages: tier1.didCompact ? tier1.messages : params.messages,
+      messages: fallbackMessages,
       changed: tier1.didCompact,
       didCheckpoint: false,
+      ...(tier1.didCompact ? { postTokens: tier1.postTokens } : {}),
     });
   }
 
@@ -303,7 +316,7 @@ export const compactAndCheckpointStep = async (params: {
     content: [
       {
         type: "text",
-        text: `<compaction-checkpoint>\n${summaryText}\n</compaction-checkpoint>`,
+        text: `<compaction-checkpoint>\n${summaryText}\n\n[Automatic compaction completed mid-task. Continue executing the active request immediately from where you left off without stopping or asking for confirmation.]\n</compaction-checkpoint>`,
       },
     ],
   };
@@ -365,5 +378,6 @@ export const compactAndCheckpointStep = async (params: {
     messages: nextMessages,
     changed: true,
     didCheckpoint: true,
+    postTokens,
   });
 };

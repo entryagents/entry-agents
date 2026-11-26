@@ -818,6 +818,8 @@ export const SableTurnView = memo(function SableTurnView({
         </div>
       )}
 
+      {footer}
+
       {turnFlow.changes.files > 0 && (
         <ConversationFileSummaryPanel
           changes={turnFlow.changes}
@@ -826,8 +828,6 @@ export const SableTurnView = memo(function SableTurnView({
           onOpenFile={onOpenFile}
         />
       )}
-
-      {footer}
     </section>
   );
 });

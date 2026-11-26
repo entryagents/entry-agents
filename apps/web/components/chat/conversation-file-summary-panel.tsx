@@ -29,11 +29,9 @@ export interface ConversationFileSummaryPanelProps {
 }
 
 /**
- * Ported 1:1 from ZCode `packages/ui/src/v4/ConversationFileSummaryPanel.tsx`.
- * Rendered at the bottom of an assistant turn (right after the final response
- * prose and before the turn action bar), collapsed by default so it never
- * pushes the latest reply upward. Expanding reveals every changed file with
- * per-file +/- counts and Review / Open actions.
+ * Rendered at the bottom of an assistant turn (below the Copy / Fork action bar),
+ * collapsed by default so it stays out of the way of the final reply.
+ * Expanding reveals every changed file with per-file +/- counts and Review / Open actions.
  */
 export const ConversationFileSummaryPanel = memo(
   function ConversationFileSummaryPanel({

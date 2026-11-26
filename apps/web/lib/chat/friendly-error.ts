@@ -160,6 +160,21 @@ export function classifyChatError(error: unknown): ChatErrorCategory {
     return "context_overflow";
   }
 
+  // Model passed invalid arguments to a tool (AI_InvalidToolInputError) or
+  // invoked an unknown tool (AI_NoSuchToolError). Checked BEFORE
+  // `invalid_prompt` because Zod schema errors also say "Type validation
+  // failed", which must never claim the stored conversation history is broken.
+  if (
+    matchesAny(signal, [
+      "ai_invalidtoolinputerror",
+      "invalid input for tool",
+      "ai_nosuchtoolerror",
+      "no such tool",
+    ])
+  ) {
+    return "tool_failure";
+  }
+
   // The conversation replayed into convertToModelMessages no longer
   // satisfies the ModelMessage[] schema -- an interrupted/partial turn,
   // or a tool result carrying a type the schema rejects (a Date).

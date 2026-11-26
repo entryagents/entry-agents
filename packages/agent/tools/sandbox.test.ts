@@ -239,6 +239,37 @@ describe("sandboxControlTool", () => {
     expect(
       await toolDef.execute?.({ action: "logs" }, executionOptions(context)),
     ).toMatchObject({ success: true, action: "logs", logs: "ready" });
+    expect(
+      await toolDef.execute?.({ action: "info" }, executionOptions(context)),
+    ).toMatchObject({ success: true, action: "info", status: "running" });
+    expect(
+      await toolDef.execute?.({ action: "ports" }, executionOptions(context)),
+    ).toMatchObject({
+      success: true,
+      action: "ports",
+      proxies: [],
+      rawPorts: [],
+    });
+    expect(
+      await toolDef.execute?.(
+        { action: "expose_port", port: 3000, proxyName: "api" },
+        executionOptions(context),
+      ),
+    ).toMatchObject({
+      success: true,
+      action: "expose_port",
+      url: "https://api.vm.boxd.sh",
+    });
+    expect(
+      await toolDef.execute?.(
+        { action: "unexpose_port", port: 3000 },
+        executionOptions(context),
+      ),
+    ).toMatchObject({
+      success: true,
+      action: "unexpose_port",
+      unexposed: true,
+    });
 
     expect(calls).toEqual([
       "cp_create:safe-point",
@@ -246,6 +277,9 @@ describe("sandboxControlTool", () => {
       "cp_restore:safe-point",
       "cp_delete:safe-point",
       "logs",
+      "ports",
+      "expose:3000:api",
+      "unexpose:3000",
     ]);
   });
 
