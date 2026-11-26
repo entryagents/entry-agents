@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Activity, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Activity,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import type { WorkflowTelemetrySummary } from "@/lib/db/workflow-telemetry";
+import { WorkflowLifecycleDrawer } from "./workflow-lifecycle-drawer";
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -14,22 +21,39 @@ function formatDuration(ms: number): string {
 }
 
 export function AdminWorkflowSection({
-  windowParam = "7d",
+  windowParam = "all",
 }: {
   windowParam?: string;
 }) {
   const [data, setData] = useState<WorkflowTelemetrySummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [search, setSearch] = useState("");
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const apiWindow =
-        windowParam === "24h" || windowParam === "30d" ? windowParam : "7d";
+        windowParam === "24h" ||
+        windowParam === "7d" ||
+        windowParam === "30d" ||
+        windowParam === "all"
+          ? windowParam
+          : "all";
+      const params = new URLSearchParams({
+        window: apiWindow,
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (search.trim()) {
+        params.set("search", search.trim());
+      }
       const res = await fetch(
-        `/api/admin/telemetry/workflow?window=${apiWindow}`,
+        `/api/admin/telemetry/workflow?${params.toString()}`,
       );
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}`);
@@ -45,37 +69,70 @@ export function AdminWorkflowSection({
     } finally {
       setLoading(false);
     }
-  };
+  }, [windowParam, page, pageSize, search]);
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [windowParam]);
+  }, [load]);
+
+  const pagination = data?.pagination;
 
   return (
     <section className="space-y-4 rounded-lg border border-border bg-card p-5">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <Activity
             className="size-4 text-muted-foreground"
             strokeWidth={1.6}
           />
           <h2 className="text-sm font-medium text-foreground">
-            Workflow events &amp; step telemetry
+            Workflow events &amp; lifecycle telemetry
           </h2>
         </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-        >
-          <RefreshCw
-            className={`size-3 ${loading ? "animate-spin" : ""}`}
-            strokeWidth={1.6}
-          />
-          Refresh
-        </button>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+              strokeWidth={1.6}
+            />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search workflow ID, chat, model…"
+              className="h-7 w-56 rounded-md border border-border bg-background pr-2.5 pl-8 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+            />
+          </div>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              setPageSize(Number(e.target.value));
+              setPage(1);
+            }}
+            aria-label="Rows per page"
+            className="h-7 rounded-md border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value={25}>25 / page</option>
+            <option value={50}>50 / page</option>
+            <option value={100}>100 / page</option>
+          </select>
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`size-3 ${loading ? "animate-spin" : ""}`}
+              strokeWidth={1.6}
+            />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error ? (
@@ -86,7 +143,7 @@ export function AdminWorkflowSection({
         </p>
       ) : !data || data.totalRuns === 0 ? (
         <p className="text-xs text-muted-foreground">
-          No workflow runs recorded in this window yet.
+          No workflow runs recorded matching this filter.
         </p>
       ) : (
         <div className="space-y-4">
@@ -120,102 +177,111 @@ export function AdminWorkflowSection({
               </div>
             </div>
             <div className="rounded-md border border-border/70 bg-muted/20 p-3">
-              <div className="text-[11px] text-muted-foreground">Retries</div>
+              <div className="text-[11px] text-muted-foreground">
+                Retries recovered
+              </div>
               <div className="mt-1 font-mono text-base font-medium tabular-nums">
                 {data.totalRetryRecoveries.toLocaleString()}
               </div>
             </div>
           </div>
 
-          {data.stepBreakdown.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-border text-muted-foreground">
-                    <th className="py-1.5 pr-4 font-medium">Step</th>
-                    <th className="py-1.5 px-3 text-right font-medium">
-                      Calls
-                    </th>
-                    <th className="py-1.5 pl-3 text-right font-medium">
-                      Est. events
-                    </th>
+          <div className="overflow-x-auto rounded-md border border-border/70">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-border/70 bg-muted/30 text-[11px] text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Workflow ID</th>
+                  <th className="px-3 py-2 font-medium">Model</th>
+                  <th className="px-3 py-2 font-medium">Steps</th>
+                  <th className="px-3 py-2 font-medium">Events</th>
+                  <th className="px-3 py-2 font-medium">Duration</th>
+                  <th className="px-3 py-2 font-medium">Finish</th>
+                  <th className="px-3 py-2 font-medium">Created</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/50 font-mono text-[11px]">
+                {data.topRuns.map((run) => (
+                  <tr
+                    key={`${run.workflowRunId}-${run.createdAt}`}
+                    className="transition-colors hover:bg-muted/20"
+                  >
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedRunId(run.workflowRunId)}
+                        className="cursor-pointer text-left text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+                      >
+                        {run.workflowRunId.slice(0, 18)}…
+                      </button>
+                    </td>
+                    <td className="max-w-[140px] truncate px-3 py-2 text-muted-foreground">
+                      {run.modelId ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {run.llmSteps} / {run.totalStepCalls}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {run.estimatedEvents.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2 tabular-nums">
+                      {formatDuration(run.durationMs)}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {run.finishReason}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {new Date(run.createdAt).toLocaleString()}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {data.stepBreakdown.map((row) => (
-                    <tr
-                      key={row.stepName}
-                      className="border-b border-border/50 last:border-0"
-                    >
-                      <td className="py-1.5 pr-4 font-mono text-foreground">
-                        {row.stepName}
-                      </td>
-                      <td className="py-1.5 px-3 text-right font-mono tabular-nums text-muted-foreground">
-                        {row.calls.toLocaleString()}
-                      </td>
-                      <td className="py-1.5 pl-3 text-right font-mono tabular-nums text-foreground">
-                        {row.estimatedEvents.toLocaleString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-          {data.topRuns.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-border text-muted-foreground">
-                    <th className="py-1.5 pr-3 font-medium">Run ID</th>
-                    <th className="py-1.5 px-2 font-medium">Model</th>
-                    <th className="py-1.5 px-2 text-right font-medium">
-                      LLM steps
-                    </th>
-                    <th className="py-1.5 px-2 text-right font-medium">
-                      Events
-                    </th>
-                    <th className="py-1.5 px-2 text-right font-medium">
-                      Duration
-                    </th>
-                    <th className="py-1.5 pl-2 text-right font-medium">
-                      Finish
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.topRuns.slice(0, 10).map((run) => (
-                    <tr
-                      key={run.workflowRunId}
-                      className="border-b border-border/50 last:border-0"
-                    >
-                      <td className="py-1.5 pr-3 font-mono text-[11px] text-foreground">
-                        {run.workflowRunId.slice(0, 18)}
-                      </td>
-                      <td className="py-1.5 px-2 text-muted-foreground">
-                        {run.modelId ?? "—"}
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-mono tabular-nums">
-                        {run.llmSteps}
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-mono tabular-nums">
-                        {run.estimatedEvents}
-                      </td>
-                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-muted-foreground">
-                        {formatDuration(run.durationMs)}
-                      </td>
-                      <td className="py-1.5 pl-2 text-right text-muted-foreground">
-                        {run.finishReason}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {pagination && (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span className="tabular-nums">
+                Showing {(pagination.page - 1) * pagination.pageSize + 1}–
+                {Math.min(
+                  pagination.page * pagination.pageSize,
+                  pagination.totalCount,
+                )}{" "}
+                of {pagination.totalCount.toLocaleString()} workflows
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={pagination.page <= 1 || loading}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft className="size-3.5" strokeWidth={1.6} />
+                  Prev
+                </button>
+                <span className="px-2 font-mono text-[11px] tabular-nums">
+                  Page {pagination.page} / {pagination.totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={pagination.page >= pagination.totalPages || loading}
+                  onClick={() =>
+                    setPage((p) => Math.min(pagination.totalPages, p + 1))
+                  }
+                  className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                  <ChevronRight className="size-3.5" strokeWidth={1.6} />
+                </button>
+              </div>
             </div>
           )}
         </div>
       )}
+
+      <WorkflowLifecycleDrawer
+        workflowRunId={selectedRunId}
+        onClose={() => setSelectedRunId(null)}
+      />
     </section>
   );
 }

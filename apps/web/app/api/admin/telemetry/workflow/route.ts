@@ -27,7 +27,8 @@ async function isAuthorized(req: Request): Promise<boolean> {
   return false;
 }
 
-function resolveWindowSince(rawWindow: string | null): Date {
+function resolveWindowSince(rawWindow: string | null): Date | null {
+  if (rawWindow === "all") return null;
   const days = rawWindow === "24h" ? 1 : rawWindow === "30d" ? 30 : 7;
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
@@ -39,11 +40,26 @@ export async function GET(req: Request) {
 
   try {
     const url = new URL(req.url);
-    const windowParam = url.searchParams.get("window") ?? "7d";
+    const windowParam = url.searchParams.get("window") ?? "all";
     const since = resolveWindowSince(windowParam);
-    const summary = await getWorkflowTelemetrySummary(since);
+    const page = Number.parseInt(url.searchParams.get("page") ?? "1", 10) || 1;
+    const pageSize =
+      Number.parseInt(url.searchParams.get("pageSize") ?? "25", 10) || 25;
+    const search = url.searchParams.get("search") ?? "";
+    const finishReason = url.searchParams.get("finishReason") ?? "";
+
+    const summary = await getWorkflowTelemetrySummary(since, {
+      page,
+      pageSize,
+      search,
+      finishReason,
+    });
     return NextResponse.json(
-      { window: windowParam, since: since.toISOString(), ...summary },
+      {
+        window: windowParam,
+        since: since ? since.toISOString() : null,
+        ...summary,
+      },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
   } catch (error) {

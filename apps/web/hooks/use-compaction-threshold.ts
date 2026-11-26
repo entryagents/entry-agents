@@ -4,6 +4,9 @@ import useSWR from "swr";
 
 interface PreferencesResponse {
   compactionThreshold?: number;
+  preferences?: {
+    compactionThreshold?: number;
+  };
 }
 
 const fetcher = async (url: string): Promise<PreferencesResponse | null> => {
@@ -14,7 +17,7 @@ const fetcher = async (url: string): Promise<PreferencesResponse | null> => {
 
 /**
  * Returns the user's configured compaction threshold as a ratio in (0, 1]
- * (e.g. 98 -> 0.98), or undefined while loading / unavailable.
+ * (e.g. 80 -> 0.80), or undefined while loading / unavailable.
  */
 export function useCompactionThreshold(): number | undefined {
   const { data } = useSWR<PreferencesResponse | null>(
@@ -26,7 +29,8 @@ export function useCompactionThreshold(): number | undefined {
     },
   );
 
-  const pct = data?.compactionThreshold;
+  const pct =
+    data?.preferences?.compactionThreshold ?? data?.compactionThreshold;
   if (
     typeof pct === "number" &&
     Number.isFinite(pct) &&
