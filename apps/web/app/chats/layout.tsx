@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import { getLastRepoByUserId } from "@/lib/db/last-repo";
 import {
   getArchivedSessionCountByUserId,
@@ -7,12 +7,13 @@ import {
 } from "@/lib/db/sessions";
 import { getServerSession } from "@/lib/session/get-server-session";
 import { SessionsRouteShell } from "../sessions/sessions-route-shell";
+import ChatsIndexLoading from "./loading";
 
 type ChatsLayoutProps = {
   children: ReactNode;
 };
 
-export default async function ChatsLayout({ children }: ChatsLayoutProps) {
+async function ChatsLayoutContent({ children }: ChatsLayoutProps) {
   const session = await getServerSession();
   if (!session?.user) {
     redirect("/");
@@ -35,5 +36,13 @@ export default async function ChatsLayout({ children }: ChatsLayoutProps) {
     >
       {children}
     </SessionsRouteShell>
+  );
+}
+
+export default function ChatsLayout({ children }: ChatsLayoutProps) {
+  return (
+    <Suspense fallback={<ChatsIndexLoading />}>
+      <ChatsLayoutContent>{children}</ChatsLayoutContent>
+    </Suspense>
   );
 }

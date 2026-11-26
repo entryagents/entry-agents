@@ -48,6 +48,8 @@ export function SessionChildChats({ sessionId }: { sessionId: string }) {
             data-on={isActive ? "" : undefined}
             className={cn("sable-child-row", isActive && "font-medium")}
             onClick={() => router.push(`/chats/${chat.id}`)}
+            onMouseEnter={() => router.prefetch(`/chats/${chat.id}`)}
+            onFocus={() => router.prefetch(`/chats/${chat.id}`)}
           >
             <MessageSquare
               size={12}

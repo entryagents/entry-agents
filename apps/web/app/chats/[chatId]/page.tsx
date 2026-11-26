@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { Suspense } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
 import { DiffsProvider } from "@/components/diffs-provider";
 import {
@@ -27,6 +28,7 @@ import { getInitialIsOnlyChatInSession } from "@/app/sessions/[sessionId]/chats/
 import { SessionChatContent } from "@/app/sessions/[sessionId]/chats/[chatId]/session-chat-content";
 import { SessionChatProvider } from "@/app/sessions/[sessionId]/chats/[chatId]/session-chat-context";
 import { SessionLayoutShell } from "@/app/sessions/[sessionId]/session-layout-shell";
+import ChatLoading from "./loading";
 
 export const maxDuration = 120;
 
@@ -130,7 +132,15 @@ export async function generateMetadata({
   };
 }
 
-export default async function ChatPage({ params }: ChatPageProps) {
+export default function ChatPage({ params }: ChatPageProps) {
+  return (
+    <Suspense fallback={<ChatLoading />}>
+      <ChatPageContent params={params} />
+    </Suspense>
+  );
+}
+
+async function ChatPageContent({ params }: ChatPageProps) {
   const { chatId } = await params;
 
   const sessionPromise = getServerSession();
