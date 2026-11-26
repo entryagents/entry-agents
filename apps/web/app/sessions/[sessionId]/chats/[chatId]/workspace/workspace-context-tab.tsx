@@ -3,13 +3,7 @@
 import { formatTokens } from "@entry-agents/shared";
 import { BrushCleaning, Loader2, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import {
-  type CSSProperties,
-  useCallback,
-  useId,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import type { WebAgentUIMessage } from "@/app/types";
 import {
   Tooltip,
@@ -254,21 +248,6 @@ export function WorkspaceContextTab({
 
                 {view.detailed && (
                   <ul className="cx-legend">
-                    {view.segments.map((s) => (
-                      <li key={s.name} className="cx-row">
-                        <span
-                          className="cx-swatch"
-                          style={{ "--c": s.color } as CSSProperties}
-                        />
-                        <span className="cx-name truncate">{s.name}</span>
-                        <span className="cx-tokens num">
-                          {formatTokens(s.tokens)}
-                        </span>
-                        <span className="cx-share num">
-                          {formatShare(s.tokens, view.max)}
-                        </span>
-                      </li>
-                    ))}
                     {view.buffer > 0 && (
                       <li className="cx-row cx-row-quiet">
                         <span className="cx-swatch cx-swatch-buffer" />

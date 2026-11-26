@@ -135,20 +135,6 @@ export function ContextUsageHeaderButton({
           </div>
 
           <div className="mt-2 space-y-1">
-            {view.segments.map((s) => (
-              <div
-                key={s.name}
-                className="flex items-center justify-between gap-2 text-[11.5px]"
-              >
-                <span className="text-muted-foreground">{s.name}</span>
-                <span className="font-mono tabular-nums text-foreground">
-                  {formatTokens(s.tokens)}{" "}
-                  <span className="text-muted-foreground">
-                    ({formatShare(s.tokens, view.max)})
-                  </span>
-                </span>
-              </div>
-            ))}
             <div className="flex items-center justify-between gap-2 text-[11.5px] text-muted-foreground">
               <span>Free space</span>
               <span className="font-mono tabular-nums">
