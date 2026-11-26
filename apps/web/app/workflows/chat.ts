@@ -160,6 +160,8 @@ type Options = {
   isContinuationSegment?: boolean;
   previousWorkflowRunId?: string;
   turnStartedAt?: number;
+  originTurnStartedAt?: number;
+  autoContinueCount?: number;
   stepOffset?: number;
   segmentMaxSteps?: number;
   segmentMaxDurationMs?: number;
@@ -2988,11 +2990,14 @@ export async function runAgentWorkflow(options: Options) {
       modelMeta?.contextWindow ?? catalogModelMeta?.context_window;
     let lastKnownInputTokens: number | undefined;
     const turnStartedAt = options.turnStartedAt ?? Date.now();
+    const originTurnStartedAt = options.originTurnStartedAt ?? turnStartedAt;
+    const autoContinueCount = options.autoContinueCount ?? 0;
+    const MAX_AUTO_CONTINUATIONS = 3;
     const segmentStartedAt = Date.now();
     const stepOffset = options.stepOffset ?? 0;
     const segmentMaxSteps = options.segmentMaxSteps ?? 50;
     const segmentMaxDurationMs = options.segmentMaxDurationMs ?? 25 * 60 * 1000; // 25 min per segment
-    const MAX_WORKFLOW_TURN_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours max
+    const MAX_WORKFLOW_TURN_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours per window (auto-continues in background up to MAX_AUTO_CONTINUATIONS)
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
@@ -3008,6 +3013,63 @@ export async function runAgentWorkflow(options: Options) {
       step++
     ) {
       if (Date.now() - turnStartedAt > MAX_WORKFLOW_TURN_DURATION_MS) {
+        if (
+          autoContinueCount < MAX_AUTO_CONTINUATIONS &&
+          pendingAssistantResponse
+        ) {
+          telemetry.recordStep("continueAgentWorkflowSegmentStep");
+          const handoff = await continueAgentWorkflowSegmentStep({
+            chatId: options.chatId,
+            sessionId: options.sessionId,
+            userId: options.userId,
+            requestUrl: options.requestUrl,
+            authSession: options.authSession,
+            currentWorkflowRunId: workflowRunId,
+            assistantId,
+            pendingAssistantResponse: {
+              ...pendingAssistantResponse,
+              metadata: {
+                ...pendingAssistantResponse.metadata,
+                turnDurationMs: Math.max(0, Date.now() - originTurnStartedAt),
+              },
+            },
+            turnStartedAt: Date.now(),
+            originTurnStartedAt,
+            autoContinueCount: autoContinueCount + 1,
+            nextStepOffset: stepOffset + step,
+            ...(options.maxSteps !== undefined
+              ? { maxSteps: options.maxSteps }
+              : {}),
+            ...(selectedModelId !== undefined ? { selectedModelId } : {}),
+            ...(modelId !== undefined ? { modelId } : {}),
+            ...(options.overrideModelId !== undefined
+              ? { overrideModelId: options.overrideModelId }
+              : {}),
+            ...(options.overrideReasoningEffort !== undefined
+              ? { overrideReasoningEffort: options.overrideReasoningEffort }
+              : {}),
+            ...(options.teamRoleModels
+              ? { teamRoleModels: options.teamRoleModels }
+              : {}),
+            ...(options.autoCommitEnabled !== undefined
+              ? { autoCommitEnabled: options.autoCommitEnabled }
+              : {}),
+            ...(options.autoCreatePrEnabled !== undefined
+              ? { autoCreatePrEnabled: options.autoCreatePrEnabled }
+              : {}),
+          });
+          if (handoff.continued) {
+            continuedToNextSegment = true;
+            if (handoff.nextRunId) {
+              await sendSegmentHandoffMarker(writable, handoff.nextRunId).catch(
+                () => {},
+              );
+            }
+            await sendFinish(writable).catch(() => {});
+            await closeStream(writable).catch(() => {});
+            break;
+          }
+        }
         console.warn(
           `[chat-workflow] Turn exceeded maximum duration (${MAX_WORKFLOW_TURN_DURATION_MS}ms) for chat ${options.chatId}`,
         );
@@ -3576,10 +3638,12 @@ export async function runAgentWorkflow(options: Options) {
         Date.now() - segmentStartedAt >= segmentMaxDurationMs;
       const hasRemainingTurnTime =
         Date.now() - turnStartedAt < MAX_WORKFLOW_TURN_DURATION_MS;
+      const canAutoContinueAfterWindow =
+        !hasRemainingTurnTime && autoContinueCount < MAX_AUTO_CONTINUATIONS;
 
       if (
         (hitSegmentStepCap || hitSegmentDurationCap) &&
-        hasRemainingTurnTime
+        (hasRemainingTurnTime || canAutoContinueAfterWindow)
       ) {
         telemetry.recordStep("continueAgentWorkflowSegmentStep");
         const handoff = await continueAgentWorkflowSegmentStep({
@@ -3590,8 +3654,20 @@ export async function runAgentWorkflow(options: Options) {
           authSession: options.authSession,
           currentWorkflowRunId: workflowRunId,
           assistantId,
-          pendingAssistantResponse,
-          turnStartedAt,
+          pendingAssistantResponse: {
+            ...pendingAssistantResponse,
+            metadata: {
+              ...pendingAssistantResponse.metadata,
+              turnDurationMs: Math.max(0, Date.now() - originTurnStartedAt),
+            },
+          },
+          turnStartedAt: canAutoContinueAfterWindow
+            ? Date.now()
+            : turnStartedAt,
+          originTurnStartedAt,
+          autoContinueCount: canAutoContinueAfterWindow
+            ? autoContinueCount + 1
+            : autoContinueCount,
           nextStepOffset: stepOffset + step + 1,
           ...(options.maxSteps !== undefined
             ? { maxSteps: options.maxSteps }
@@ -3713,6 +3789,14 @@ export async function runAgentWorkflow(options: Options) {
         };
       }
     }
+
+    pendingAssistantResponse = {
+      ...pendingAssistantResponse,
+      metadata: {
+        ...pendingAssistantResponse.metadata,
+        turnDurationMs: Math.max(0, Date.now() - originTurnStartedAt),
+      },
+    };
 
     if (sandboxState) {
       await persistSandboxState(options.sessionId, sandboxState);
