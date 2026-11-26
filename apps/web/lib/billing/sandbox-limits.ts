@@ -57,15 +57,61 @@ export function getSandboxPlanPolicy(
     };
   }
 
-  // Builder ("entry") and legacy dedicated tiers: dedicated per-session 2 vCPU VMs, max 3 concurrent
+  // Builder ("entry") and legacy dedicated tiers: dedicated per-session 2 vCPU VMs, max 3 concurrent.
+  // Generous yet aggressive idle timeouts (5m suspend, 15m hibernate) to keep compute costs tight.
   return {
     sharedVm: false,
     vcpus: HIGH_SUBSCRIBER_SANDBOX_VCPUS,
     maxConcurrentActiveVms: 3,
-    autoSuspendSeconds: 180,
-    autoHibernateSeconds: 600,
+    autoSuspendSeconds: 300,
+    autoHibernateSeconds: 900,
     autoDestroySeconds: 14 * 24 * 3600,
     monthlyActiveHoursLimit: 50,
+  };
+}
+
+export interface WorkflowRunPlanLimits {
+  maxSteps: number;
+  windowDurationMs: number;
+  maxAutoContinuations: number;
+}
+
+/**
+ * Plan-tiered background execution caps:
+ * - Free:    30m single window, 0 auto-continues (30m max), 50 steps/turn
+ * - Plus:    2h window, 1 background auto-continue (4h max), 200 steps/turn
+ * - Builder / Pro / Max / Admin: 4h window, 3 background auto-continues (16h max), 400 steps/turn
+ */
+export function getWorkflowRunPlanLimits(
+  planId: string | null | undefined,
+  isAdmin = false,
+): WorkflowRunPlanLimits {
+  if (isAdmin) {
+    return {
+      maxSteps: 400,
+      windowDurationMs: 4 * 60 * 60 * 1000,
+      maxAutoContinuations: 3,
+    };
+  }
+  const plan = getPlanDefinition(planId);
+  if (plan.id === "free") {
+    return {
+      maxSteps: 50,
+      windowDurationMs: 30 * 60 * 1000,
+      maxAutoContinuations: 0,
+    };
+  }
+  if (plan.id === "plus") {
+    return {
+      maxSteps: 200,
+      windowDurationMs: 2 * 60 * 60 * 1000,
+      maxAutoContinuations: 1,
+    };
+  }
+  return {
+    maxSteps: 400,
+    windowDurationMs: 4 * 60 * 60 * 1000,
+    maxAutoContinuations: 3,
   };
 }
 

@@ -205,13 +205,13 @@ describe("getSandboxPlanPolicy (all tier scenarios)", () => {
     });
   });
 
-  test("builder ($10 / entry) gets dedicated 2-vCPU VMs up to 3 concurrent, 3m suspend, 10m hibernate, 14d TTL, 50 hrs/mo", () => {
+  test("builder ($10 / entry) gets dedicated 2-vCPU VMs up to 3 concurrent, 5m suspend, 15m hibernate, 14d TTL, 50 hrs/mo", () => {
     expect(getSandboxPlanPolicy("entry")).toEqual({
       sharedVm: false,
       vcpus: 2,
       maxConcurrentActiveVms: 3,
-      autoSuspendSeconds: 180,
-      autoHibernateSeconds: 600,
+      autoSuspendSeconds: 300,
+      autoHibernateSeconds: 900,
       autoDestroySeconds: 14 * 24 * 3600,
       monthlyActiveHoursLimit: 50,
     });

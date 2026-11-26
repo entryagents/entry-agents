@@ -208,6 +208,7 @@ type ChatModelRuntime = {
    * abort the stream when the running balance hits zero. Admins are
    * still billed (see runAgentStep) but never blocked. */
   enforceCreditBlock: boolean;
+  workflowRunLimits?: import("@/lib/billing/sandbox-limits").WorkflowRunPlanLimits;
 };
 
 type Writable = WritableStream<UIMessageChunk>;
@@ -796,6 +797,7 @@ async function resolveChatModelRuntime(params: {
   let windowBudgetCents: number | null = null;
   let planUsageWindows: PlanUsageWindows | null = null;
   let freeAllowedModelIds: string[] | null = null;
+  let resolvedPlanId: string | null = null;
   if (!isAdminUser) {
     const { enforcePlanExpiry, claimUserBillingTurn } =
       await import("@/lib/billing/credit-ledger");
@@ -835,6 +837,7 @@ async function resolveChatModelRuntime(params: {
     // webhook delivery involved; it cannot be missed.
     const billingState = await enforcePlanExpiry(params.userId);
     const plan = getPlanDefinition(billingState?.plan);
+    resolvedPlanId = plan.id;
     planUsageWindows = plan.usageWindows ?? null;
     const balanceCents = billingState?.creditBalanceCents ?? 0;
     startingBalanceCents = balanceCents;
@@ -1096,6 +1099,9 @@ async function resolveChatModelRuntime(params: {
     startingBalanceCents,
     windowBudgetCents,
     enforceCreditBlock: !isAdminUser,
+    workflowRunLimits: (
+      await import("@/lib/billing/sandbox-limits")
+    ).getWorkflowRunPlanLimits(resolvedPlanId, isAdminUser),
     guidedFrontendWorkflowEnabled:
       preferences?.guidedFrontendWorkflowEnabled ?? false,
   });
@@ -2992,12 +2998,18 @@ export async function runAgentWorkflow(options: Options) {
     const turnStartedAt = options.turnStartedAt ?? Date.now();
     const originTurnStartedAt = options.originTurnStartedAt ?? turnStartedAt;
     const autoContinueCount = options.autoContinueCount ?? 0;
-    const MAX_AUTO_CONTINUATIONS = 3;
+    const planLimits = modelRuntime?.workflowRunLimits;
+    const MAX_AUTO_CONTINUATIONS = planLimits?.maxAutoContinuations ?? 3;
+    const effectiveMaxSteps =
+      options.maxSteps !== undefined && planLimits?.maxSteps !== undefined
+        ? Math.min(options.maxSteps, planLimits.maxSteps)
+        : (options.maxSteps ?? planLimits?.maxSteps);
     const segmentStartedAt = Date.now();
     const stepOffset = options.stepOffset ?? 0;
     const segmentMaxSteps = options.segmentMaxSteps ?? 50;
     const segmentMaxDurationMs = options.segmentMaxDurationMs ?? 25 * 60 * 1000; // 25 min per segment
-    const MAX_WORKFLOW_TURN_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours per window (auto-continues in background up to MAX_AUTO_CONTINUATIONS)
+    const MAX_WORKFLOW_TURN_DURATION_MS =
+      planLimits?.windowDurationMs ?? 4 * 60 * 60 * 1000;
     let lastConsecutiveToolSignature: string | undefined;
     let consecutiveIdenticalToolCount = 0;
     const MAX_CONSECUTIVE_IDENTICAL_TOOL_CALLS = 3;
@@ -3009,7 +3021,7 @@ export async function runAgentWorkflow(options: Options) {
 
     for (
       let step = 0;
-      options.maxSteps === undefined || stepOffset + step < options.maxSteps;
+      effectiveMaxSteps === undefined || stepOffset + step < effectiveMaxSteps;
       step++
     ) {
       if (Date.now() - turnStartedAt > MAX_WORKFLOW_TURN_DURATION_MS) {
