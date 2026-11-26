@@ -33,12 +33,14 @@ export function getOrCreateChatInstance(
   init: ChatInstanceInit,
 ): {
   instance: Chat<WebAgentUIMessage>;
+  transport: ChatInstanceInit["transport"];
   alreadyExisted: boolean;
 } {
   const existing = chatInstances.get(chatId);
   if (existing) {
     return {
       instance: existing.instance,
+      transport: existing.transport,
       alreadyExisted: true,
     };
   }
@@ -52,6 +54,7 @@ export function getOrCreateChatInstance(
 
   return {
     instance,
+    transport: managed.transport,
     alreadyExisted: false,
   };
 }

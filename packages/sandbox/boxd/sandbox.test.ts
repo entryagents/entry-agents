@@ -298,4 +298,32 @@ describe("BoxdSandbox capabilities", () => {
       "failed",
     );
   });
+
+  test("execDetached spawns on persistent VMs and fails fast on legacy ubuntu container images", async () => {
+    const { client } = createFakeBoxdClient();
+    const vmSandbox = new BoxdSandbox(
+      client,
+      "vm_1",
+      "entry-test",
+      undefined,
+      "boxd.sh",
+      new Set(),
+      false,
+    );
+    const spawned = await vmSandbox.execDetached("npm run dev", "/tmp");
+    expect(spawned.commandId).toStartWith("cmd_");
+
+    const legacySandbox = new BoxdSandbox(
+      client,
+      "vm_legacy",
+      "entry-legacy",
+      undefined,
+      "boxd.sh",
+      new Set(),
+      true,
+    );
+    await expect(
+      legacySandbox.execDetached("npm run dev", "/tmp"),
+    ).rejects.toThrow(/legacy container image/i);
+  });
 });

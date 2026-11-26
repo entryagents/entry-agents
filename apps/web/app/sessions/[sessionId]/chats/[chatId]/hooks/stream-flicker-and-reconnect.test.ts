@@ -43,14 +43,25 @@ describe("stream flicker, replay, and stuck-reconnecting regressions", () => {
       "[chat, chatId, chatInstance, sessionId, transport]",
     );
 
-    // `useStreamRecovery`'s visibility/online/polling effect must use a ref
-    // for `retryChatStream` so it never tears down on stream chunks.
+    // `useStreamRecovery`'s visibility/online/polling effect must use refs for
+    // `retryChatStream` and `isChatInFlight` so it never tears down on stream
+    // chunks or fires a spurious 5s visibility check right when sending.
     expect(recoverySrc).toContain("retryChatStreamRef.current(");
     const effectDepsMatch = recoverySrc.match(
       /window\.clearInterval\(recoveryPoll\);\s*\};\s*\},\s*\[([^\]]+)\]/,
     );
     expect(effectDepsMatch).not.toBeNull();
     expect(effectDepsMatch?.[1]).not.toContain("retryChatStream");
+    expect(effectDepsMatch?.[1]).not.toContain("isChatInFlight");
+
+    // Regression for orphaned transport bug (`clientRunId: null` across 100% of
+    // stream-divergence reconnect storms): when `getOrCreateChatInstance`
+    // reuses an existing Chat instance, transport getters must read from the
+    // managed `activeTransport`, not a discarded local transport.
+    expect(runtimeSrc).toContain("transport: managedTransport");
+    expect(runtimeSrc).toContain("activeTransport.getActiveWorkflowRunId()");
+    expect(runtimeSrc).toContain("activeTransport.getLastChunkReceivedAt()");
+    expect(runtimeSrc).toContain("activeTransport.getLastUiChunkReceivedAt()");
   });
 
   test("isReconnecting clears when live chunks arrive on reconnected stream (Video 2)", () => {

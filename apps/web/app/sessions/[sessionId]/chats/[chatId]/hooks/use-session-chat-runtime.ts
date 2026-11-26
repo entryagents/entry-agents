@@ -222,7 +222,11 @@ export function useSessionChatRuntime({
     [sessionId, chatId],
   );
 
-  const { instance: chatInstance, alreadyExisted } = useMemo(
+  const {
+    instance: chatInstance,
+    transport: managedTransport,
+    alreadyExisted,
+  } = useMemo(
     () =>
       getOrCreateChatInstance(chatId, {
         id: chatId,
@@ -1091,31 +1095,36 @@ export function useSessionChatRuntime({
     };
   }, [chatId]);
 
+  const activeTransport =
+    managedTransport instanceof AbortableChatTransport
+      ? managedTransport
+      : transport;
+
   const getLastChunkReceivedAt = useCallback(
-    () => transport.getLastChunkReceivedAt(),
-    [transport],
+    () => activeTransport.getLastChunkReceivedAt(),
+    [activeTransport],
   );
 
   const getLastUiChunkReceivedAt = useCallback(
-    () => transport.getLastUiChunkReceivedAt(),
-    [transport],
+    () => activeTransport.getLastUiChunkReceivedAt(),
+    [activeTransport],
   );
 
   const getActiveWorkflowRunId = useCallback(
-    () => transport.getActiveWorkflowRunId(),
-    [transport],
+    () => activeTransport.getActiveWorkflowRunId(),
+    [activeTransport],
   );
 
   const hasActiveSendMessages = useCallback(
-    () => transport.hasActiveSendMessages(),
-    [transport],
+    () => activeTransport.hasActiveSendMessages(),
+    [activeTransport],
   );
 
   const isStreamOperationActive = useCallback(
     () =>
       streamControllerRef.current.isActive() ||
-      transport.hasActiveSendMessages(),
-    [transport],
+      activeTransport.hasActiveSendMessages(),
+    [activeTransport],
   );
 
   return {
