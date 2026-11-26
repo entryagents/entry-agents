@@ -3,6 +3,12 @@ import { tool } from "ai";
 import { z } from "zod";
 import { wrapExternalFileContent } from "./content-boundary";
 import { ensureReadFileState, normalizeGatePath } from "./read-state";
+import {
+  ensureReadLedger,
+  getReadEvidence,
+  isRangeCovered,
+  recordReadEvidence,
+} from "./read-ledger";
 import type { SecretRedactor } from "../lib/secret-redactor";
 import {
   checkUnchangedRead,
@@ -41,6 +47,12 @@ const readInputSchema = z.object({
     .number()
     .optional()
     .describe("Maximum number of lines to read. Default: 500"),
+  freshness: z
+    .enum(["auto", "force"])
+    .optional()
+    .describe(
+      "Read freshness policy. Default 'auto' uses the range-aware read ledger to return a compact 10-line anchor when the requested lines were already read and the file is unchanged. Pass 'force' to re-read full content.",
+    ),
 });
 
 /** IANA media type for extensions we hand to the model as pixels. */
@@ -119,6 +131,10 @@ USAGE:
 - Re-reading the SAME range of an unchanged file returns a cheap "unchanged" notice instead of the full content; a different offset/limit always returns the requested lines
 - Results include line numbers starting at 1 in "N: content" format
 
+WHEN NOT TO USE:
+- You only need a file's API, exports, or symbol signatures — use \`sightline_file\` (~40 tokens vs thousands)
+- You want to locate a symbol definition or callers — use \`sightline_find\` or \`sightline_callers\`
+
 IMPORTANT:
 - Always read a file at least once before editing it with the edit/write tools
 - This tool can only read files, not directories - attempting to read a directory returns an error
@@ -129,7 +145,7 @@ EXAMPLES:
 - Read a slice of a long file: filePath: "logs/app.log", offset: 500, limit: 200`,
     inputSchema: readInputSchema,
     execute: async (
-      { filePath, offset = 1, limit = 500 },
+      { filePath, offset = 1, limit = 500, freshness = "auto" },
       { experimental_context },
     ) => {
       let sandbox;
@@ -285,7 +301,10 @@ EXAMPLES:
         // failure the read-before-edit gate exists to prevent). The same
         // request on an unchanged file still short-circuits.
         const dedupKey = `${workingDirectory}:${absolutePath}:${offset}:${limit}`;
-        if (checkUnchangedRead(dedupKey, contentHash)) {
+        if (
+          freshness !== "force" &&
+          checkUnchangedRead(dedupKey, contentHash)
+        ) {
           return {
             success: true,
             path: displayPath,
@@ -296,7 +315,6 @@ EXAMPLES:
               "File unchanged since your previous read — same content, same size. Read again if you need the full content back.",
           };
         }
-        recordRead(dedupKey, contentHash);
 
         // Three ceilings: line window (offset/limit, negative = tail),
         // per-line clamp (minified bundles), byte budget (logs).
@@ -318,21 +336,75 @@ EXAMPLES:
           };
         }
 
+        const redactor = (
+          experimental_context as
+            | { secretRedactor?: SecretRedactor }
+            | undefined
+        )?.secretRedactor;
+
+        // Sightline-style range-aware ledger (hybrid policy): if the model
+        // already read every line in [startLine, endLine] and the file hash
+        // is unchanged, return a compact 10-line anchor instead of re-sending
+        // thousands of tokens. Pass freshness="force" to bypass.
+        const readLedger = ensureReadLedger(
+          (experimental_context ?? {}) as { readLedger?: unknown },
+        );
+        const existingEvidence = getReadEvidence(readLedger, displayPath);
+        if (
+          freshness !== "force" &&
+          existingEvidence &&
+          existingEvidence.contentHash === contentHash &&
+          isRangeCovered(
+            [selection.startLine, selection.endLine],
+            existingEvidence.ranges,
+          )
+        ) {
+          const anchorLines = selection.lines
+            .slice(0, 10)
+            .map(
+              (line, i) =>
+                `${selection.startLine + i}: ${clampLine(line).line}`,
+            );
+          const anchorText = redactor?.hasSecrets()
+            ? redactor.redact(anchorLines.join("\n"))
+            : anchorLines.join("\n");
+          const notice = `[already read: lines ${selection.startLine}-${selection.endLine} of ${lines.length}, unchanged — showing ${anchorLines.length}-line anchor; pass freshness="force" to re-read full content]`;
+          return {
+            success: true,
+            path: displayPath,
+            totalLines: lines.length,
+            startLine: selection.startLine,
+            endLine: selection.endLine,
+            unchanged: true,
+            ledgerHit: true,
+            contentHash,
+            content: wrapExternalFileContent(
+              displayPath,
+              `${notice}\n${anchorText}`,
+            ),
+          };
+        }
+
+        recordRead(dedupKey, contentHash);
+
         const clamped = selection.lines.map((line) => clampLine(line));
         selection = applyByteCeiling({
           ...selection,
           lines: clamped.map((c) => c.line),
         });
 
+        recordReadEvidence(
+          readLedger,
+          displayPath,
+          contentHash,
+          [selection.startLine, selection.endLine],
+          lines.length,
+        );
+
         const numberedLines = selection.lines.map(
           (line, i) => `${selection.startLine + i}: ${line}`,
         );
 
-        const redactor = (
-          experimental_context as
-            | { secretRedactor?: SecretRedactor }
-            | undefined
-        )?.secretRedactor;
         const safeContent = redactor?.hasSecrets()
           ? redactor.redact(numberedLines.join("\n"))
           : numberedLines.join("\n");
