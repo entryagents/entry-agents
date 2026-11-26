@@ -292,6 +292,8 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
   let hasToolDuplicates = false;
   let extractedTurnError: string | undefined;
   const filteredParts: WebAgentUIMessage["parts"] = [];
+  const seenSnippetKeys = new Set<string>();
+  const seenFileKeys = new Set<string>();
 
   let lastTextIndex = -1;
 
@@ -474,6 +476,37 @@ export function dedupeMessageParts<T extends WebAgentUIMessage>(message: T): T {
     ) {
       hasToolDuplicates = true;
       continue;
+    }
+
+    if (part.type === "data-snippet") {
+      const snippetPart = part as {
+        id?: string;
+        data?: { filename?: string; content?: string };
+      };
+      const snippetKey = snippetPart.id
+        ? `id:${snippetPart.id}`
+        : `content:${snippetPart.data?.filename ?? ""}:${snippetPart.data?.content?.length ?? 0}:${snippetPart.data?.content?.slice(0, 128) ?? ""}`;
+      if (seenSnippetKeys.has(snippetKey)) {
+        hasToolDuplicates = true;
+        continue;
+      }
+      seenSnippetKeys.add(snippetKey);
+    }
+
+    if (part.type === "file") {
+      const filePart = part as {
+        url?: string;
+        filename?: string;
+        mediaType?: string;
+      };
+      const fileKey = filePart.url
+        ? `url:${filePart.url}`
+        : `file:${filePart.filename ?? ""}:${filePart.mediaType ?? ""}`;
+      if (seenFileKeys.has(fileKey)) {
+        hasToolDuplicates = true;
+        continue;
+      }
+      seenFileKeys.add(fileKey);
     }
 
     filteredParts.push(part);

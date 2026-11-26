@@ -238,4 +238,40 @@ describe("mergePreservingLocalWork", () => {
         .map((p) => (p as { text: string }).text),
     ).toEqual(["Running command.", "All done."]);
   });
+
+  test("does not duplicate user data-snippet or file parts across repeated merges", () => {
+    const serverMsgs: WebAgentUIMessage[] = [
+      {
+        id: "u-snippet",
+        role: "user",
+        parts: [
+          {
+            type: "data-snippet",
+            id: "snip-1",
+            data: { filename: "pasted.log", content: "line1\nline2" },
+          },
+          {
+            type: "file",
+            mediaType: "image/png",
+            url: "https://example.com/a.png",
+            filename: "a.png",
+          },
+        ],
+      },
+    ];
+
+    let localMsgs: WebAgentUIMessage[] = structuredClone(serverMsgs);
+    for (let i = 0; i < 4; i++) {
+      localMsgs = mergePreservingLocalWork(serverMsgs, localMsgs);
+    }
+
+    expect(localMsgs).toHaveLength(1);
+    expect(localMsgs[0]?.parts).toHaveLength(2);
+    expect(
+      localMsgs[0]?.parts.filter((p) => p.type === "data-snippet"),
+    ).toHaveLength(1);
+    expect(localMsgs[0]?.parts.filter((p) => p.type === "file")).toHaveLength(
+      1,
+    );
+  });
 });

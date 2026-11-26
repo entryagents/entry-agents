@@ -6,9 +6,9 @@ import {
 } from "./random-city";
 
 describe("getDefaultSessionTitle & getRandomCityName", () => {
-  test("returns 'New Session' when no names are used", () => {
+  test("returns 'New Chat' when no names are used", () => {
     const result = getRandomCityName(new Set());
-    expect(result).toBe("New Session");
+    expect(result).toBe("New Chat");
   });
 
   test("uses repoName when provided", () => {
@@ -25,10 +25,10 @@ describe("getDefaultSessionTitle & getRandomCityName", () => {
   });
 
   test("returned name is not in the usedNames set", () => {
-    const used = new Set(["New Session", "New Session 2"]);
+    const used = new Set(["New Chat", "New Chat 2"]);
     const result = getRandomCityName(used);
     expect(used.has(result)).toBe(false);
-    expect(result).toBe("New Session 3");
+    expect(result).toBe("New Chat 3");
   });
 
   test("generates unique names across many calls", () => {
@@ -42,24 +42,20 @@ describe("getDefaultSessionTitle & getRandomCityName", () => {
   });
 
   test("falls back to numbered suffix when base title is used", () => {
-    const used = new Set<string>(["New Session"]);
+    const used = new Set<string>(["New Chat"]);
     const result = getRandomCityName(used);
     expect(/ \d+$/.test(result)).toBe(true);
-    expect(result).toBe("New Session 2");
+    expect(result).toBe("New Chat 2");
   });
 
   test("numbered suffix increments to avoid collisions", () => {
-    const used = new Set<string>([
-      "New Session",
-      "New Session 2",
-      "New Session 3",
-    ]);
+    const used = new Set<string>(["New Chat", "New Chat 2", "New Chat 3"]);
     const result = getRandomCityName(used);
-    expect(result).toBe("New Session 4");
+    expect(result).toBe("New Chat 4");
   });
 
   test("does not mutate the usedNames set", () => {
-    const used = new Set(["New Session"]);
+    const used = new Set(["New Chat"]);
     const sizeBefore = used.size;
     getRandomCityName(used);
     expect(used.size).toBe(sizeBefore);
@@ -77,8 +73,8 @@ describe("sanitizePromptToTitle", () => {
   });
 
   test("handles empty string gracefully", () => {
-    expect(sanitizePromptToTitle("")).toBe("New Session");
-    expect(sanitizePromptToTitle("   ")).toBe("New Session");
+    expect(sanitizePromptToTitle("")).toBe("New Chat");
+    expect(sanitizePromptToTitle("   ")).toBe("New Chat");
   });
 
   test("truncates long prompt cleanly without trailing punctuation", () => {
