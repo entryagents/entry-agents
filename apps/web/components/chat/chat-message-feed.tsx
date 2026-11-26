@@ -773,11 +773,26 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
   const [activeMessageActionsId, setActiveMessageActionsId] = useState<
     string | null
   >(null);
+  const [expandedHeavyMessages, setExpandedHeavyMessages] = useState<
+    Set<string>
+  >(() => new Set());
 
   const handleToggleActions = useCallback((messageId: string) => {
     setActiveMessageActionsId((current) =>
       current === messageId ? null : messageId,
     );
+  }, []);
+
+  const toggleHeavyMessage = useCallback((messageId: string) => {
+    setExpandedHeavyMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
   }, []);
 
   const lastUserMessageId = useMemo(() => {
@@ -909,8 +924,19 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
   return (
     <div className="space-y-4">
       {groupedRenderMessages.map(
-        ({ message: m, groups, isStreaming: isMessageStreaming }) => {
+        ({ message: m, groups, isStreaming: isMessageStreaming }, idx) => {
           const modelSwitch = modelSwitches.get(m.id);
+          const isOlderHeavyAssistant =
+            !isMessageStreaming &&
+            idx < groupedRenderMessages.length - 1 &&
+            m.role === "assistant" &&
+            m.parts.length > 60;
+          const isFoldedHeavy =
+            isOlderHeavyAssistant && !expandedHeavyMessages.has(m.id);
+          const stepCount = Array.isArray(m.metadata?.stepBreakdown)
+            ? m.metadata.stepBreakdown.length
+            : m.parts.filter((p) => p.type === "step-start").length;
+
           return (
             <div
               key={m.id}
@@ -934,54 +960,86 @@ export const ChatMessageFeed = memo(function ChatMessageFeed({
                   onSwitchBack={readOnly ? undefined : onSwitchModel}
                 />
               )}
-              <ChatMessageRow
-                message={m}
-                groups={groups}
-                isMessageStreaming={isMessageStreaming}
-                onOpenFile={onOpenFile}
-                activeApprovalId={activeApprovalId}
-                onApproveTool={onApproveTool}
-                onDenyTool={onDenyTool}
-                onOpenSubagentTab={onOpenSubagentTab}
-                onCopyAssistantMessage={onCopyAssistantMessage}
-                isCopiedAssistant={copiedAssistantMessageId === m.id}
-                onForkAssistantMessage={onForkAssistantMessage}
-                isForkingAssistant={forkingAssistantMessageId === m.id}
-                onCopyUserMessage={onCopyUserMessage}
-                isCopiedUser={copiedUserMessageId === m.id}
-                onEditUserMessage={onEditUserMessage}
-                isEditingUser={editingMessageId === m.id}
-                isLastUserMessage={
-                  m.role === "user" && m.id === lastUserMessageId
-                }
-                onResendUserMessage={onResendUserMessage}
-                isResendingUser={resendingMessageId === m.id}
-                onDeleteMessage={onDeleteMessage}
-                isDeletingMessage={deletingMessageId === m.id}
-                hasMessageActionInFlight={
-                  hasMessageActionInFlight || forkingAssistantMessageId !== null
-                }
-                modelOptions={modelOptions}
-                durationMs={messageDurationMap[m.id] ?? null}
-                startedAt={
-                  messageStartedAtMap[m.id] ??
-                  (isMessageStreaming
-                    ? lastSendTimestamp
-                      ? new Date(lastSendTimestamp).toISOString()
-                      : lastUserMessageSentAt
-                    : null)
-                }
-                cwd={cwd}
-                readOnly={readOnly}
-                isActionsActive={activeMessageActionsId === m.id}
-                onToggleActions={handleToggleActions}
-                workspaceStatusMessage={
-                  isMessageStreaming ? workspaceStatusMessage : undefined
-                }
-                isAwaitingInput={
-                  isMessageStreaming ? isAwaitingInput : undefined
-                }
-              />
+              {isFoldedHeavy ? (
+                <div className="my-2 flex items-center justify-between gap-3 rounded-lg border border-border/70 bg-muted/20 px-3.5 py-2.5 text-xs">
+                  <span className="text-muted-foreground tabular-nums">
+                    Previous turn ·{" "}
+                    {stepCount > 0
+                      ? `${stepCount} steps`
+                      : `${m.parts.length} items`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => toggleHeavyMessage(m.id)}
+                    className="cursor-pointer font-medium text-foreground underline decoration-border underline-offset-4 transition-colors hover:decoration-foreground"
+                  >
+                    Show full turn
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {isOlderHeavyAssistant && (
+                    <div className="mb-1 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => toggleHeavyMessage(m.id)}
+                        className="cursor-pointer text-[11px] text-muted-foreground underline decoration-border underline-offset-4 transition-colors hover:text-foreground"
+                      >
+                        Collapse turn ({stepCount || m.parts.length} steps)
+                      </button>
+                    </div>
+                  )}
+                  <ChatMessageRow
+                    message={m}
+                    groups={groups}
+                    isMessageStreaming={isMessageStreaming}
+                    onOpenFile={onOpenFile}
+                    activeApprovalId={activeApprovalId}
+                    onApproveTool={onApproveTool}
+                    onDenyTool={onDenyTool}
+                    onOpenSubagentTab={onOpenSubagentTab}
+                    onCopyAssistantMessage={onCopyAssistantMessage}
+                    isCopiedAssistant={copiedAssistantMessageId === m.id}
+                    onForkAssistantMessage={onForkAssistantMessage}
+                    isForkingAssistant={forkingAssistantMessageId === m.id}
+                    onCopyUserMessage={onCopyUserMessage}
+                    isCopiedUser={copiedUserMessageId === m.id}
+                    onEditUserMessage={onEditUserMessage}
+                    isEditingUser={editingMessageId === m.id}
+                    isLastUserMessage={
+                      m.role === "user" && m.id === lastUserMessageId
+                    }
+                    onResendUserMessage={onResendUserMessage}
+                    isResendingUser={resendingMessageId === m.id}
+                    onDeleteMessage={onDeleteMessage}
+                    isDeletingMessage={deletingMessageId === m.id}
+                    hasMessageActionInFlight={
+                      hasMessageActionInFlight ||
+                      forkingAssistantMessageId !== null
+                    }
+                    modelOptions={modelOptions}
+                    durationMs={messageDurationMap[m.id] ?? null}
+                    startedAt={
+                      messageStartedAtMap[m.id] ??
+                      (isMessageStreaming
+                        ? lastSendTimestamp
+                          ? new Date(lastSendTimestamp).toISOString()
+                          : lastUserMessageSentAt
+                        : null)
+                    }
+                    cwd={cwd}
+                    readOnly={readOnly}
+                    isActionsActive={activeMessageActionsId === m.id}
+                    onToggleActions={handleToggleActions}
+                    workspaceStatusMessage={
+                      isMessageStreaming ? workspaceStatusMessage : undefined
+                    }
+                    isAwaitingInput={
+                      isMessageStreaming ? isAwaitingInput : undefined
+                    }
+                  />
+                </>
+              )}
             </div>
           );
         },

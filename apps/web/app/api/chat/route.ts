@@ -200,6 +200,7 @@ export async function POST(req: Request) {
           chatId,
           sessionId,
           userId,
+          segmentOffset: "0",
         },
       },
     );

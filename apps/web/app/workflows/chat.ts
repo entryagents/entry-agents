@@ -3070,6 +3070,10 @@ export async function runAgentWorkflow(options: Options) {
             ...(options.autoCreatePrEnabled !== undefined
               ? { autoCreatePrEnabled: options.autoCreatePrEnabled }
               : {}),
+            telemetrySnapshot: telemetry.snapshot({
+              modelId: modelId ?? selectedModelId ?? null,
+              finishReason: "segment_handoff",
+            }),
           });
           if (handoff.continued) {
             continuedToNextSegment = true;
@@ -3190,7 +3194,16 @@ export async function runAgentWorkflow(options: Options) {
           modelRuntime.enforceCreditBlock,
           remainingWindowBudgetCents,
         ]);
-        telemetry.recordStep("runAgentStep", { isLlmStep: true });
+        let estimatedInputBytes = 0;
+        try {
+          estimatedInputBytes = JSON.stringify(stepModelMessages).length;
+        } catch {
+          estimatedInputBytes = 0;
+        }
+        telemetry.recordStep("runAgentStep", {
+          isLlmStep: true,
+          inputBytes: estimatedInputBytes,
+        });
         result = await runAgentStep(
           stepModelMessages,
           originalMessagesForStep,
@@ -3702,6 +3715,10 @@ export async function runAgentWorkflow(options: Options) {
           ...(options.autoCreatePrEnabled !== undefined
             ? { autoCreatePrEnabled: options.autoCreatePrEnabled }
             : {}),
+          telemetrySnapshot: telemetry.snapshot({
+            modelId: modelId ?? selectedModelId ?? null,
+            finishReason: "segment_handoff",
+          }),
         });
         if (handoff.continued) {
           continuedToNextSegment = true;

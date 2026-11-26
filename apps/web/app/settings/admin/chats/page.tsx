@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   MessageSquare,
   Activity,
@@ -11,6 +11,8 @@ import {
   ExternalLink,
   Search,
   Box,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -44,7 +46,14 @@ interface ChatMetricData {
     userId: string | null;
     userEmail: string | null;
     userName: string | null;
+    runCount?: number;
   }>;
+  pagination?: {
+    page: number;
+    pageSize: number;
+    totalCount: number;
+    totalPages: number;
+  };
 }
 
 interface SandboxInfo {
@@ -57,19 +66,38 @@ export default function AdminChatsPage() {
   const [sandboxes, setSandboxes] = useState<SandboxInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [isPurgingSandboxes, setIsPurgingSandboxes] = useState(false);
   const [isReconciling, setIsReconciling] = useState(false);
 
-  const fetchData = async () => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(search.trim());
+      setPage(1);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+      });
+      if (debouncedSearch) {
+        params.set("search", debouncedSearch);
+      }
+
       const [chatRes, sandboxRes] = await Promise.all([
-        fetch("/api/admin/chats"),
+        fetch(`/api/admin/chats?${params.toString()}`),
         fetch("/api/admin/sandboxes"),
       ]);
 
       if (chatRes.ok) {
-        const json = await chatRes.json();
+        const json = (await chatRes.json()) as ChatMetricData;
         setData(json);
       }
       if (sandboxRes.ok) {
@@ -82,11 +110,11 @@ export default function AdminChatsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [debouncedSearch, page, pageSize]);
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    void fetchData();
+  }, [fetchData]);
 
   const handlePurgeSandboxes = async () => {
     setIsPurgingSandboxes(true);
@@ -95,7 +123,7 @@ export default function AdminChatsPage() {
       const json = await res.json();
       if (res.ok) {
         toast.success(json.message ?? "All Boxd sandboxes purged successfully");
-        fetchData();
+        void fetchData();
       } else {
         toast.error(json.error ?? "Failed to purge sandboxes");
       }
@@ -113,7 +141,7 @@ export default function AdminChatsPage() {
       const json = await res.json();
       if (res.ok) {
         toast.success(json.message ?? "All runs reconciled");
-        fetchData();
+        void fetchData();
       } else {
         toast.error(json.error ?? "Failed to reconcile runs");
       }
@@ -124,16 +152,8 @@ export default function AdminChatsPage() {
     }
   };
 
-  const filteredChats =
-    data?.recentChats.filter((c) => {
-      const q = search.toLowerCase();
-      return (
-        c.title.toLowerCase().includes(q) ||
-        (c.userEmail && c.userEmail.toLowerCase().includes(q)) ||
-        (c.modelId && c.modelId.toLowerCase().includes(q)) ||
-        c.status.toLowerCase().includes(q)
-      );
-    }) ?? [];
+  const chatsList = data?.recentChats ?? [];
+  const pagination = data?.pagination;
 
   return (
     <div className="space-y-6">
@@ -214,7 +234,7 @@ export default function AdminChatsPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={fetchData}
+              onClick={() => void fetchData()}
               disabled={isLoading}
             >
               <RefreshCw
@@ -265,20 +285,36 @@ export default function AdminChatsPage() {
           <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
             <div>
               <CardTitle className="text-base">
-                Recent chats &amp; assistant runs
+                Chats &amp; assistant runs
               </CardTitle>
               <CardDescription>
-                Latest 50 conversations and their run states.
+                Search by chat ID, session ID, user email, title, model, or
+                status.
               </CardDescription>
             </div>
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Search user, title, model..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-8 text-xs"
-              />
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search chat ID, user, title, model..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                aria-label="Chats per page"
+                className="h-8 rounded-md border border-border bg-background px-2 text-xs text-foreground"
+              >
+                <option value={25}>25 / page</option>
+                <option value={50}>50 / page</option>
+                <option value={100}>100 / page</option>
+              </select>
             </div>
           </div>
         </CardHeader>
@@ -290,13 +326,14 @@ export default function AdminChatsPage() {
                   <th className="px-4 py-2.5">Title &amp; chat ID</th>
                   <th className="px-4 py-2.5">User</th>
                   <th className="px-4 py-2.5">Model</th>
+                  <th className="px-4 py-2.5">Runs</th>
                   <th className="px-4 py-2.5">Status</th>
                   <th className="px-4 py-2.5">Updated</th>
                   <th className="px-4 py-2.5 text-right">Inspect</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/40">
-                {filteredChats.map((c) => {
+                {chatsList.map((c) => {
                   const isRunActive =
                     ["queued", "running", "sleeping", "resuming"].includes(
                       c.status,
@@ -307,7 +344,7 @@ export default function AdminChatsPage() {
                       key={c.id}
                       className="transition-colors hover:bg-muted/20"
                     >
-                      <td className="max-w-[280px] px-4 py-3">
+                      <td className="max-w-[260px] px-4 py-3">
                         <p className="truncate font-medium text-foreground">
                           {c.title || "Untitled"}
                         </p>
@@ -326,6 +363,18 @@ export default function AdminChatsPage() {
                       <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">
                         {c.modelId ?? "default"}
                       </td>
+                      <td className="px-4 py-3 font-mono text-[11px] tabular-nums text-muted-foreground">
+                        {(c.runCount ?? 0) > 0 ? (
+                          <Link
+                            href={`/settings/admin/workflows?search=${encodeURIComponent(c.id)}`}
+                            className="text-foreground underline decoration-border underline-offset-2 hover:decoration-foreground"
+                          >
+                            {c.runCount} runs
+                          </Link>
+                        ) : (
+                          "0"
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <span
                           className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium ${
@@ -342,8 +391,10 @@ export default function AdminChatsPage() {
                           {c.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                        {new Date(c.updatedAt).toLocaleTimeString([], {
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap tabular-nums">
+                        {new Date(c.updatedAt).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
@@ -363,10 +414,10 @@ export default function AdminChatsPage() {
                     </tr>
                   );
                 })}
-                {filteredChats.length === 0 && (
+                {chatsList.length === 0 && (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="text-center py-8 text-muted-foreground"
                     >
                       No chats found.
@@ -376,6 +427,50 @@ export default function AdminChatsPage() {
               </tbody>
             </table>
           </div>
+
+          {pagination && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
+              <span className="tabular-nums">
+                Showing{" "}
+                {pagination.totalCount === 0
+                  ? 0
+                  : (pagination.page - 1) * pagination.pageSize + 1}
+                –
+                {Math.min(
+                  pagination.page * pagination.pageSize,
+                  pagination.totalCount,
+                )}{" "}
+                of {pagination.totalCount.toLocaleString()} chats
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={pagination.page <= 1 || isLoading}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft className="size-3.5" strokeWidth={1.6} />
+                  Prev
+                </button>
+                <span className="px-2 font-mono text-[11px] tabular-nums">
+                  Page {pagination.page} / {pagination.totalPages}
+                </span>
+                <button
+                  type="button"
+                  disabled={
+                    pagination.page >= pagination.totalPages || isLoading
+                  }
+                  onClick={() =>
+                    setPage((p) => Math.min(pagination.totalPages, p + 1))
+                  }
+                  className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md border border-border px-2 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Next
+                  <ChevronRight className="size-3.5" strokeWidth={1.6} />
+                </button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

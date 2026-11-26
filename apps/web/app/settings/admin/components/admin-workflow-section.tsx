@@ -30,7 +30,10 @@ export function AdminWorkflowSection({
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("search") ?? "";
+  });
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -281,6 +284,7 @@ export function AdminWorkflowSection({
       <WorkflowLifecycleDrawer
         workflowRunId={selectedRunId}
         onClose={() => setSelectedRunId(null)}
+        onSelectRunId={setSelectedRunId}
       />
     </section>
   );

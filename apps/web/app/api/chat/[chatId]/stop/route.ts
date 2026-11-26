@@ -106,7 +106,7 @@ export async function POST(request: Request, context: RouteContext) {
   let cancelError: unknown = null;
   try {
     const run = getRun(activeStreamId);
-    await run.cancel();
+    await run.cancel({ cancelReason: "User stopped chat run" });
     await compareAndSetChatActiveStreamId(chatId, activeStreamId, null).catch(
       (err: unknown) => {
         console.error(
