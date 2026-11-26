@@ -23,7 +23,7 @@ export function SessionChildChats({ sessionId }: { sessionId: string }) {
     try {
       const created = await createChat();
       if (created?.chat?.id) {
-        router.push(`/sessions/${sessionId}/chats/${created.chat.id}`);
+        router.push(`/chats/${created.chat.id}`);
       }
     } finally {
       setCreating(false);
@@ -47,9 +47,7 @@ export function SessionChildChats({ sessionId }: { sessionId: string }) {
             role="listitem"
             data-on={isActive ? "" : undefined}
             className={cn("sable-child-row", isActive && "font-medium")}
-            onClick={() =>
-              router.push(`/sessions/${sessionId}/chats/${chat.id}`)
-            }
+            onClick={() => router.push(`/chats/${chat.id}`)}
           >
             <MessageSquare
               size={12}

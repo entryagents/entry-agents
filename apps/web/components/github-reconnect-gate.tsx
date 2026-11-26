@@ -15,7 +15,7 @@ import { GitHubReconnectDialog } from "./github-reconnect-dialog";
 // gate should never be the thing standing between someone and an
 // unrelated setting.
 function pathNeedsGitHub(pathname: string): boolean {
-  return pathname.startsWith("/sessions");
+  return pathname.startsWith("/chats") || pathname.startsWith("/sessions");
 }
 
 export function GitHubReconnectGate() {

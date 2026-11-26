@@ -68,7 +68,7 @@ export function LandingNav({
           {!loading && isAuthenticated ? (
             <>
               <Button asChild size="sm" variant="ghost">
-                <Link href="/sessions">Open Entry</Link>
+                <Link href="/chats">Open Entry</Link>
               </Button>
               <UserAvatarDropdown />
             </>

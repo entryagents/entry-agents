@@ -2142,7 +2142,7 @@ export async function createComposioAgentMetaTools(input: {
             sessionId: input.sessionId ?? null,
             returnPath:
               input.sessionId && input.chatId
-                ? `/sessions/${input.sessionId}/chats/${input.chatId}`
+                ? `/chats/${input.chatId}`
                 : "/settings/connections",
           });
 

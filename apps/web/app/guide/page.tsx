@@ -185,9 +185,9 @@ export default function GuidePage() {
                 with Vercel, GitHub, or Google.
               </li>
               <li>
-                Head to <PageLink href="/sessions">Sessions</PageLink> and start
-                a blank Workspace for a new idea, upload existing files, or
-                attach a GitHub repository.
+                Head to <PageLink href="/chats">Chats</PageLink> and start a
+                blank Workspace for a new idea, upload existing files, or attach
+                a GitHub repository.
               </li>
               <li>
                 Give Entry a concrete outcome and how it should check the work.
@@ -271,7 +271,7 @@ Reproduce the bug, inspect network and server route responses, apply the smalles
             <div className="grid gap-4 md:grid-cols-2">
               <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4">
                 <h3 className="font-semibold text-(--l-fg)">
-                  <PageLink href="/sessions">Sessions</PageLink>
+                  <PageLink href="/chats">Chats</PageLink>
                 </h3>
                 <p className="mt-1 text-sm">
                   Project dashboard to create workspaces, search conversations,
@@ -440,7 +440,7 @@ Reproduce the bug, inspect network and server route responses, apply the smalles
               Sign in and start
             </Link>
             <Link
-              href="/sessions"
+              href="/chats"
               className="inline-flex h-9 items-center rounded-lg border border-(--l-border) bg-(--l-surface-2) px-4 text-xs font-medium text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
             >
               Open chats

@@ -58,7 +58,9 @@ export function CommandPalette({
   const router = useRouter();
   const pathname = usePathname();
 
-  const isInSession = pathname?.startsWith("/sessions/") ?? false;
+  const isInSession =
+    (pathname?.startsWith("/chats/") || pathname?.startsWith("/sessions/")) ??
+    false;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -144,11 +146,9 @@ export function CommandPalette({
         <CommandEmpty>No matching commands or sessions found.</CommandEmpty>
 
         <CommandGroup heading="Workspace">
-          <CommandItem
-            onSelect={() => runAction(() => router.push("/sessions"))}
-          >
+          <CommandItem onSelect={() => runAction(() => router.push("/chats"))}>
             <Plus />
-            <span>New Session</span>
+            <span>New chat</span>
           </CommandItem>
           {isInSession && (
             <CommandItem
@@ -208,8 +208,8 @@ export function CommandPalette({
               ) : (
                 sessions.map((session) => {
                   const targetHref = session.latestChatId
-                    ? `/sessions/${session.id}/chats/${session.latestChatId}`
-                    : `/sessions/${session.id}`;
+                    ? `/chats/${session.latestChatId}`
+                    : `/chats/${session.id}`;
                   const repoLabel =
                     session.repoOwner && session.repoName
                       ? `${session.repoOwner}/${session.repoName}`

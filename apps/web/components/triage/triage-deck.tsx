@@ -193,7 +193,7 @@ function Deck() {
   const openChat = useCallback(
     (p: TriagePrompt) => {
       setOpen(false);
-      router.push(`/sessions/${p.sessionId}/chats/${p.chatId}`);
+      router.push(`/chats/${p.chatId}`);
     },
     [router, setOpen],
   );

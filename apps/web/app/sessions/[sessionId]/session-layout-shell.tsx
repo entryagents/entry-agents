@@ -387,10 +387,7 @@ export function SessionLayoutShell({
     renameChat,
   } = useSessionChats(sessionId, { initialData: initialChatsData });
 
-  const getChatHref = useCallback(
-    (chatId: string) => `/sessions/${sessionId}/chats/${chatId}`,
-    [sessionId],
-  );
+  const getChatHref = useCallback((chatId: string) => `/chats/${chatId}`, []);
 
   const switchChat = useCallback(
     (chatId: string) => {

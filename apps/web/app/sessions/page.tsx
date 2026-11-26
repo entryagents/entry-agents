@@ -1,16 +1,20 @@
-import type { Metadata } from "next";
-import { Suspense } from "react";
-import { SessionsIndexShell } from "./sessions-index-shell";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Chats",
-  description: "View and manage your chats.",
-};
+interface LegacySessionsPageProps {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}
 
-export default function SessionsPage() {
-  return (
-    <Suspense>
-      <SessionsIndexShell />
-    </Suspense>
-  );
+export default async function LegacySessionsPage({
+  searchParams,
+}: LegacySessionsPageProps) {
+  const params = await searchParams;
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (typeof v === "string") qs.set(k, v);
+    else if (Array.isArray(v)) {
+      for (const item of v) qs.append(k, item);
+    }
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  redirect(`/chats${suffix}`);
 }

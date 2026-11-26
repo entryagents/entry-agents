@@ -31,7 +31,7 @@ export function GetStartedFlow() {
   const isGitHubReconnect = searchParams.get("step") === "github";
   const redirectPath = sanitizeInternalRedirect(
     searchParams.get("next"),
-    "/sessions",
+    "/chats",
   );
   const [activeStep, setActiveStep] = useState<StepId>(
     isGitHubReconnect ? 2 : 1,

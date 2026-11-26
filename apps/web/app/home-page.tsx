@@ -45,7 +45,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
   }) => {
     setIsCreating(true);
     try {
-      const { session: createdSession, chat } = await createSession({
+      const { chat } = await createSession({
         repoOwner: input.repoOwner,
         repoName: input.repoName,
         branch: input.branch,
@@ -57,7 +57,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
         vercelProject: input.vercelProject,
       });
 
-      router.push(`/sessions/${createdSession.id}/chats/${chat.id}`);
+      router.push(`/chats/${chat.id}`);
     } catch (error) {
       console.error("Failed to create session:", error);
     } finally {
@@ -66,7 +66,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
   };
 
   const handleSessionClick = (sessionId: string) => {
-    router.push(`/sessions/${sessionId}`);
+    router.push(`/chats/${sessionId}`);
   };
 
   if (sessionLoading && hasSessionCookie) {

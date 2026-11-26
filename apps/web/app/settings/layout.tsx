@@ -200,7 +200,7 @@ function SettingsLayout({
       "/settings/mcp-servers",
       "/settings/secrets",
       "/settings/skills",
-      "/sessions",
+      "/chats",
     ],
     [sidebarItems],
   );
@@ -247,7 +247,7 @@ function SettingsLayout({
         <div className="flex h-full w-full flex-col overflow-y-auto">
           <div className="flex items-center gap-4 px-5 py-4">
             <Link
-              href="/sessions"
+              href="/chats"
               prefetch={true}
               className="flex h-8 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground"
             >
@@ -281,7 +281,7 @@ function SettingsLayout({
           </SheetHeader>
           <div className="flex items-center gap-4 px-5 py-4">
             <Link
-              href="/sessions"
+              href="/chats"
               prefetch={true}
               onClick={() => setMobileSidebarOpen(false)}
               className="flex h-8 items-center gap-2 rounded-lg px-2 text-sm text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/60 hover:text-foreground"
@@ -323,7 +323,7 @@ function SettingsLayout({
             {mobileTitle}
           </span>
           <Link
-            href="/sessions"
+            href="/chats"
             prefetch={true}
             className="text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
