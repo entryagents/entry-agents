@@ -7,6 +7,23 @@ export {
   type DirListInput,
   type DirListResult,
 } from "./dir-list";
+export {
+  sightlineMapTool,
+  sightlineListTool,
+  sightlineFileTool,
+  sightlineFindTool,
+  sightlineCallersTool,
+  type SightlineMapInput,
+  type SightlineMapResult,
+  type SightlineListInput,
+  type SightlineListResult,
+  type SightlineFileInput,
+  type SightlineFileResult,
+  type SightlineFindInput,
+  type SightlineFindResult,
+  type SightlineCallersInput,
+  type SightlineCallersResult,
+} from "./sightline";
 export { grepTool } from "./grep";
 export { globTool } from "./glob";
 export { bashTool, commandNeedsApproval } from "./bash";
