@@ -85,6 +85,8 @@ export type WebAgentMessageMetadata = {
    * (MAX_WORKFLOW_TURN_DURATION_MS in app/workflows/chat.ts).
    */
   turnTimedOut?: boolean;
+  /** Total elapsed wall-clock duration of this assistant turn in ms (across all segments). */
+  turnDurationMs?: number;
   /**
    * Friendly error notice when a turn produced partial assistant output
    * (reasoning, tool calls, or prose) before failing mid-turn. Stored in

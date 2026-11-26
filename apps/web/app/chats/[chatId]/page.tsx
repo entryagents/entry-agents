@@ -218,15 +218,25 @@ export default async function ChatPage({ params }: ChatPageProps) {
     if (m.role === "assistant" && i > 0) {
       const prev = dbMessages[i - 1];
       if (prev && prev.role === "user") {
-        const isLastMessage = i === dbMessages.length - 1;
-        const endMs =
-          isLastMessage && chat.updatedAt
-            ? Math.max(m.createdAt.getTime(), chat.updatedAt.getTime())
-            : m.createdAt.getTime();
-        messageDurationMap[m.id] = Math.max(
-          0,
-          endMs - prev.createdAt.getTime(),
-        );
+        const persistedDurationMs =
+          initialMessages[i]?.metadata?.turnDurationMs;
+        if (
+          typeof persistedDurationMs === "number" &&
+          Number.isFinite(persistedDurationMs) &&
+          persistedDurationMs > 0
+        ) {
+          messageDurationMap[m.id] = persistedDurationMs;
+        } else {
+          const isLastMessage = i === dbMessages.length - 1;
+          const endMs =
+            isLastMessage && chat.updatedAt
+              ? Math.max(m.createdAt.getTime(), chat.updatedAt.getTime())
+              : m.createdAt.getTime();
+          messageDurationMap[m.id] = Math.max(
+            0,
+            endMs - prev.createdAt.getTime(),
+          );
+        }
         messageStartedAtMap[m.id] = prev.createdAt.toISOString();
       }
     }

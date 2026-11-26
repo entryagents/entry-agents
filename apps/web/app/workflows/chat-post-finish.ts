@@ -1409,6 +1409,8 @@ export async function continueAgentWorkflowSegmentStep(params: {
   assistantId: string;
   pendingAssistantResponse: WebAgentUIMessage;
   turnStartedAt: number;
+  originTurnStartedAt?: number;
+  autoContinueCount?: number;
   nextStepOffset: number;
   maxSteps?: number;
   selectedModelId?: string;
@@ -1473,6 +1475,12 @@ export async function continueAgentWorkflowSegmentStep(params: {
           isContinuationSegment: true,
           previousWorkflowRunId: params.currentWorkflowRunId,
           turnStartedAt: params.turnStartedAt,
+          ...(params.originTurnStartedAt !== undefined
+            ? { originTurnStartedAt: params.originTurnStartedAt }
+            : {}),
+          ...(params.autoContinueCount !== undefined
+            ? { autoContinueCount: params.autoContinueCount }
+            : {}),
           stepOffset: params.nextStepOffset,
           ...(params.maxSteps !== undefined
             ? { maxSteps: params.maxSteps }
