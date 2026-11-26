@@ -47,7 +47,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { DiffFile } from "@/lib/diff/compute-diff";
 import { getDiffOptions } from "@/lib/diffs-config";
 import { discardChanges } from "@/lib/git/actions/discard";
 import {
@@ -64,34 +63,11 @@ import { cn } from "@/lib/utils";
 import type { GitPanelProps } from "../git-panel";
 import { useGitPanel } from "../git-panel-context";
 import { useReview } from "../review-context";
-import { toChangeLetter } from "./sable-rail-helpers";
 
 export type WorkspaceReviewTabProps = GitPanelProps & {
   onOpenFile?: (filePath: string) => void;
   onMentionInChat?: (mention: string) => void;
 };
-
-const STATUS_LABELS: Record<string, string> = {
-  M: "Modified",
-  A: "Added",
-  D: "Deleted",
-  R: "Renamed",
-};
-
-function StatusLetter({ status }: { status?: DiffFile["status"] }) {
-  const letter = toChangeLetter(status) ?? "M";
-  const label = STATUS_LABELS[letter] ?? "Modified";
-  return (
-    <span
-      className="st-letter"
-      data-status={letter}
-      title={label}
-      aria-label={label}
-    >
-      {letter}
-    </span>
-  );
-}
 
 export function WorkspaceReviewTab({
   session,
@@ -663,7 +639,6 @@ export function WorkspaceReviewTab({
                       aria-expanded={isExpanded}
                       onClick={() => toggleFile(file.path)}
                     >
-                      <StatusLetter status={file.status} />
                       <FileTypeIcon
                         path={file.path}
                         className="h-3.5 w-3.5 shrink-0"

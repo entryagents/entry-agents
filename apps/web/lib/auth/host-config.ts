@@ -45,6 +45,17 @@ export function getAuthBaseURLFallback(
 export function getAllowedAuthHosts(
   env: NodeJS.ProcessEnv = process.env,
 ): string[] {
+  // In Vercel production, pin OAuth host resolution to the canonical
+  // BETTER_AUTH_URL host (e.g. entry-agents.dev) so requests arriving on
+  // www. or *.vercel.app aliases never send unregistered redirect_uri values
+  // to Google, Vercel, or GitHub OAuth.
+  if (env.VERCEL_ENV === "production" && env.BETTER_AUTH_URL) {
+    const canonicalHost = normalizeHost(env.BETTER_AUTH_URL);
+    if (canonicalHost) {
+      return [canonicalHost];
+    }
+  }
+
   const hosts = new Set<string>([
     "localhost:3000",
     "localhost:*",

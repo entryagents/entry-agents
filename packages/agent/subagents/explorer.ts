@@ -4,10 +4,16 @@ import { createInertPlaceholderModel, sharedProvider } from "../models";
 import { defaultModelLabel } from "../default-model";
 import { z } from "zod";
 import { bashTool } from "../tools/bash";
-import { dirListTool } from "../tools/dir-list";
 import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
+import {
+  sightlineCallersTool,
+  sightlineFileTool,
+  sightlineFindTool,
+  sightlineListTool,
+  sightlineMapTool,
+} from "../tools/sightline";
 import { teamBoardTool } from "../tools/team";
 import {
   buildSubagentExperimentalContext,
@@ -63,10 +69,11 @@ You have access to: read, grep, glob, bash (read-only commands only), team_board
 - Sharing discovered symbols and call sites with teammates via \`team_board\`
 
 **Guidelines:**
+- Start with \`sightline_map\` (repo map), \`sightline_list\` (directory inventory), \`sightline_file\` (file API), \`sightline_find\` (definitions), and \`sightline_callers\` (import callers) before reading full files
 - Use glob for broad file pattern matching
 - Use grep for searching file contents with regex
-- Use read when you know the specific file path
-- Use bash ONLY for read-only operations (ls, git status, git log, git diff, find)
+- Use read when you need full file implementation
+- Use bash ONLY for read-only operations (git status, git log, git diff)
 - All bash commands automatically run in the working directory — NEVER prepend \`cd <working-directory> &&\` or similar to commands
 - NEVER use bash for: mkdir, touch, rm, cp, mv, git add, git commit, npm install, or any file creation/modification
 - Return workspace-relative file paths in your final response (e.g., "src/index.ts:42")`;
@@ -83,7 +90,11 @@ export type ExplorerCallOptions = z.infer<typeof callOptionsSchema>;
 
 const explorerTools = {
   read: readFileTool(),
-  dir_list: dirListTool(),
+  sightline_map: sightlineMapTool(),
+  sightline_list: sightlineListTool(),
+  sightline_file: sightlineFileTool(),
+  sightline_find: sightlineFindTool(),
+  sightline_callers: sightlineCallersTool(),
   grep: grepTool(),
   glob: globTool(),
   bash: bashTool(),

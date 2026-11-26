@@ -6,11 +6,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import type { WorkspaceFileContentResponse } from "@/app/api/sessions/[sessionId]/files/content/route";
 import { useTheme } from "@/app/providers";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import { MarkdownArtifactPreview } from "@/components/workspace/artifact-preview";
 import { formatBytes } from "@/components/workspace/workspace-file-stats";
 import { getFileOptions } from "@/lib/diffs-config";
 import { fetcher } from "@/lib/swr";
-import { splitFileSegments, toChangeLetter } from "./sable-rail-helpers";
+import { splitFileSegments } from "./sable-rail-helpers";
 
 type WorkspaceFileTabProps = {
   sessionId: string;
@@ -36,7 +37,7 @@ const SVG_RE = /\.svg$/i;
 export function WorkspaceFileTab({
   sessionId,
   filePath,
-  status,
+  status: _status,
   onBack,
   onClose,
   onMentionInChat,
@@ -56,7 +57,6 @@ export function WorkspaceFileTab({
     () => splitFileSegments(filePath),
     [filePath],
   );
-  const statusLetter = toChangeLetter(status);
 
   useEffect(() => {
     setMdView("rendered");
@@ -145,6 +145,7 @@ export function WorkspaceFileTab({
             <ArrowLeft size={14} strokeWidth={1.7} aria-hidden="true" />
           </button>
         )}
+        <FileTypeIcon path={filePath} className="h-3.5 w-3.5 shrink-0" />
         <nav className="fp-crumbs" aria-label="Path">
           {segments.map((seg, i) => (
             <span
@@ -159,11 +160,6 @@ export function WorkspaceFileTab({
             </span>
           ))}
         </nav>
-        {statusLetter ? (
-          <span className="st-letter" data-small="" data-status={statusLetter}>
-            {statusLetter}
-          </span>
-        ) : null}
       </div>
 
       <div className="fp-actions">
