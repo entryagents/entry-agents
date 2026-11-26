@@ -205,7 +205,16 @@ export async function POST(req: Request) {
           customerId,
           subscriptionId,
         );
-        if (!result.downgraded && result.userId) {
+        if (result.downgraded && result.userId) {
+          void import("@/lib/email/client")
+            .then(({ sendSubscriptionCancelledEmail }) =>
+              sendSubscriptionCancelledEmail({
+                userId: result.userId!,
+                subscriptionId,
+              }),
+            )
+            .catch(() => {});
+        } else if (!result.downgraded && result.userId) {
           console.log(
             "[billing/webhook] subscription.deleted for user:",
             result.userId,
