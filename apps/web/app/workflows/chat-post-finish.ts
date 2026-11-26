@@ -1556,3 +1556,43 @@ export async function continueAgentWorkflowSegmentStep(params: {
     return { continued: false };
   }
 }
+
+const BACKGROUND_EMAIL_MIN_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+
+export async function notifyBackgroundTaskCompletedStep(params: {
+  userId: string;
+  workflowRunId: string;
+  chatId: string;
+  durationMs: number;
+  stepsCount: number;
+  costUsd?: number;
+}): Promise<void> {
+  "use step";
+
+  if (params.durationMs < BACKGROUND_EMAIL_MIN_DURATION_MS) {
+    return;
+  }
+
+  try {
+    const [{ getChatById }, { sendBackgroundTaskCompletedEmail }] =
+      await Promise.all([
+        import("@/lib/db/sessions"),
+        import("@/lib/email/client"),
+      ]);
+    const chat = await getChatById(params.chatId);
+    await sendBackgroundTaskCompletedEmail({
+      userId: params.userId,
+      workflowRunId: params.workflowRunId,
+      chatId: params.chatId,
+      chatTitle: chat?.title || "Entry Chat",
+      durationMs: params.durationMs,
+      stepsCount: params.stepsCount,
+      costUsd: params.costUsd,
+    });
+  } catch (err) {
+    console.warn(
+      "[workflow] Best-effort background completion email failed:",
+      err,
+    );
+  }
+}

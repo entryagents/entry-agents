@@ -1290,3 +1290,31 @@ export const chatDiagnosticEvents = pgTable(
 export type ChatDiagnosticEventRow = typeof chatDiagnosticEvents.$inferSelect;
 export type NewChatDiagnosticEventRow =
   typeof chatDiagnosticEvents.$inferInsert;
+
+// Transactional email delivery log with unique idempotencyKey so webhook/workflow
+// retries never send duplicate emails and admins can inspect delivery status.
+export const emailLogs = pgTable(
+  "email_logs",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id"),
+    toEmail: text("to_email").notNull(),
+    template: text("template").notNull(),
+    subject: text("subject").notNull(),
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    providerMessageId: text("provider_message_id"),
+    status: text("status", { enum: ["sent", "failed", "skipped"] }).notNull(),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("email_logs_user_created_idx").on(table.userId, table.createdAt),
+    index("email_logs_template_created_idx").on(
+      table.template,
+      table.createdAt,
+    ),
+  ],
+);
+
+export type EmailLogRow = typeof emailLogs.$inferSelect;
+export type NewEmailLogRow = typeof emailLogs.$inferInsert;

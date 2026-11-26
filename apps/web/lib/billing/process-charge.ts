@@ -187,5 +187,31 @@ export async function processChargeSuccess(
     });
   }
 
+  if (result.credited) {
+    if (isTopup && topupCents) {
+      void import("@/lib/email/client")
+        .then(({ sendCreditTopupReceiptEmail }) =>
+          sendCreditTopupReceiptEmail({
+            userId,
+            reference: outcome.reference,
+            amountCents: topupCents,
+          }),
+        )
+        .catch(() => {});
+    } else if (planId && planId !== "free") {
+      const plan = getPlanDefinition(planId);
+      void import("@/lib/email/client")
+        .then(({ sendSubscriptionConfirmedEmail }) =>
+          sendSubscriptionConfirmedEmail({
+            userId,
+            reference: outcome.reference,
+            planName: plan.name,
+            creditGrantCents: plan.creditGrantCents,
+          }),
+        )
+        .catch(() => {});
+    }
+  }
+
   return result;
 }

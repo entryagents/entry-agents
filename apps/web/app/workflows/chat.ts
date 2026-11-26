@@ -91,6 +91,7 @@ import {
   runAutoCommitStep,
   runAutoCreatePrStep,
   continueAgentWorkflowSegmentStep,
+  notifyBackgroundTaskCompletedStep,
   loadContinuationMessagesStep,
   runPostTurnPluginsStep,
   sendFinish,
@@ -3865,6 +3866,22 @@ export async function runAgentWorkflow(options: Options) {
       !wasTimedOut &&
       finalFinishReason !== undefined &&
       finalFinishReason !== "tool-calls";
+
+    const finalTurnDurationMs =
+      pendingAssistantResponse.metadata?.turnDurationMs ??
+      Math.max(0, Date.now() - originTurnStartedAt);
+    if (finishedNaturally && finalTurnDurationMs >= 5 * 60 * 1000) {
+      await notifyBackgroundTaskCompletedStep({
+        userId: options.userId,
+        workflowRunId,
+        chatId: options.chatId,
+        durationMs: finalTurnDurationMs,
+        stepsCount:
+          pendingAssistantResponse.metadata?.stepBreakdown?.length ??
+          stepOffset + stepTimings.length,
+        costUsd: pendingAssistantResponse.metadata?.totalMessageCost,
+      }).catch(() => {});
+    }
     const commitPartId = `${assistantId}:commit`;
     const prPartId = `${assistantId}:pr`;
     const repoOwner = runtime?.repoOwner;

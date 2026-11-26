@@ -214,6 +214,20 @@ export const auth = betterAuth({
               err,
             );
           }
+
+          if (user.email) {
+            void import("@/lib/email/client")
+              .then(({ sendWelcomeEmail }) =>
+                sendWelcomeEmail({
+                  userId: user.id,
+                  email: user.email,
+                  name: user.name,
+                }),
+              )
+              .catch((err) => {
+                console.warn("[auth] Failed to send welcome email:", err);
+              });
+          }
         },
       },
     },

@@ -575,6 +575,13 @@
       "when": 1795686011103,
       "tag": "0081_productive_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1795718270509,
+      "tag": "0082_cold_oracle",
+      "breakpoints": true
     }
   ]
 }
