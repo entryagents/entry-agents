@@ -146,13 +146,32 @@ export function WorkspaceReviewTab({
   );
 
   const uncommittedFiles = useMemo(() => diffFiles ?? [], [diffFiles]);
+  const [revealedLargeDiffs, setRevealedLargeDiffs] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const didInitExpandRef = useRef(false);
 
-  // Expand all by default on first load of uncommitted files
+  // Auto-expand only small change sets (<= 4 files and <= 40 KB total patch)
+  // so opening a large diff never mounts dozens of Shiki/Shadow-DOM PatchDiff
+  // instances simultaneously and crashes Chrome.
   useEffect(() => {
-    if (uncommittedFiles.length > 0 && expandedFiles.size === 0) {
+    if (didInitExpandRef.current || uncommittedFiles.length === 0) return;
+    didInitExpandRef.current = true;
+    const totalPatchChars = uncommittedFiles.reduce(
+      (sum, f) => sum + (f.diff?.length ?? 0),
+      0,
+    );
+    if (uncommittedFiles.length <= 4 && totalPatchChars <= 40_000) {
       setExpandedFiles(new Set(uncommittedFiles.map((f) => f.path)));
+    } else {
+      const firstSmall = uncommittedFiles.find(
+        (f) => !f.binary && !f.generated && (f.diff?.length ?? 0) <= 25_000,
+      );
+      if (firstSmall) {
+        setExpandedFiles(new Set([firstSmall.path]));
+      }
     }
-  }, [uncommittedFiles, expandedFiles.size]);
+  }, [uncommittedFiles]);
 
   // Auto-expand and scroll to focusedDiffFile when openDiffToFile is triggered
   useEffect(() => {
@@ -741,6 +760,25 @@ export function WorkspaceReviewTab({
                       ) : file.generated ? (
                         <div className="p-8 text-center text-xs text-muted-foreground font-mono">
                           Generated file &mdash; diff hidden
+                        </div>
+                      ) : patch &&
+                        patch.length > 60_000 &&
+                        !revealedLargeDiffs.has(file.path) ? (
+                        <div className="flex flex-col items-center gap-2 p-6 text-center text-xs text-muted-foreground">
+                          <span className="font-mono tabular-nums">
+                            Large diff ({Math.round(patch.length / 1024)} KB)
+                          </span>
+                          <button
+                            type="button"
+                            className="sable-btn-sm"
+                            onClick={() =>
+                              setRevealedLargeDiffs(
+                                (prev) => new Set([...prev, file.path]),
+                              )
+                            }
+                          >
+                            Load diff
+                          </button>
                         </div>
                       ) : patch ? (
                         <PatchDiff<DiffAnnotationMetadata>
