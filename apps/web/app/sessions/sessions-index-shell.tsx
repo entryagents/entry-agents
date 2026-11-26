@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
-import { FirstRunOnboarding } from "@/components/first-run-onboarding";
 import { DEFAULT_SANDBOX_TYPE } from "@/components/sandbox-selector-compact";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -16,7 +15,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useModelOptions } from "@/hooks/use-model-options";
 import { useProjects } from "@/hooks/use-projects";
-import { useSessions, type SessionWithUnread } from "@/hooks/use-sessions";
+import type { SessionWithUnread } from "@/hooks/use-sessions";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
 import { buildUserMessageFromComposerPayload } from "@/lib/chat/build-user-message";
 import {
@@ -36,10 +35,6 @@ export function SessionsIndexShell() {
   const selectedProjectId = searchParams.get("projectId");
   const { mutate: globalMutate } = useSWRConfig();
   const { createSession } = useSessionsShell();
-  const { sessions, loading: sessionsLoading } = useSessions({ enabled: true });
-  const activeSessionCount = sessions.filter(
-    (s) => s.status !== "archived",
-  ).length;
   const { projects } = useProjects({ enabled: Boolean(selectedProjectId) });
   const selectedFolder = selectedProjectId
     ? (projects.find((p) => p.id === selectedProjectId) ?? null)
@@ -336,33 +331,6 @@ export function SessionsIndexShell() {
               ) : null
             }
           />
-
-          {!sessionsLoading && activeSessionCount === 0 && (
-            <div className="flex justify-center">
-              <FirstRunOnboarding
-                isCreating={isCreating}
-                onQuickStartSandbox={() => {
-                  if (isCreating) return;
-                  setIsCreating(true);
-                  void createSession({
-                    isNewBranch: false,
-                    sandboxType: DEFAULT_SANDBOX_TYPE,
-                    autoCommitPush: false,
-                    autoCreatePr: false,
-                  })
-                    .then(({ chat }) => {
-                      router.push(`/chats/${chat.id}`);
-                    })
-                    .catch(() => {
-                      toast.error("Failed to start sandbox");
-                    })
-                    .finally(() => {
-                      setIsCreating(false);
-                    });
-                }}
-              />
-            </div>
-          )}
         </div>
       </div>
     </div>
