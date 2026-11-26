@@ -355,10 +355,7 @@ export default function AdminChatsPage() {
                           variant="ghost"
                           className="h-7 w-7 p-0"
                         >
-                          <Link
-                            href={`/sessions/${c.sessionId}/chats/${c.id}`}
-                            target="_blank"
-                          >
+                          <Link href={`/chats/${c.id}`} target="_blank">
                             <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
                           </Link>
                         </Button>

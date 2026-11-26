@@ -39,5 +39,5 @@ export default async function SessionPage({ params }: SessionPageProps) {
     notFound();
   }
 
-  redirect(`/sessions/${sessionId}/chats/${targetChat.id}`);
+  redirect(`/chats/${targetChat.id}`);
 }

@@ -1020,7 +1020,7 @@ export function SessionChatContent({
       try {
         const { persisted } = forkChat(chatInfo.id, messageId);
         const forkedChat = await persisted;
-        router.push(`/sessions/${session.id}/chats/${forkedChat.id}`, {
+        router.push(`/chats/${forkedChat.id}`, {
           scroll: false,
         });
       } catch (forkError) {
@@ -1033,7 +1033,7 @@ export function SessionChatContent({
         }
       }
     },
-    [chatInfo.id, forkChat, forkingAssistantMessageId, router, session.id],
+    [chatInfo.id, forkChat, forkingAssistantMessageId, router],
   );
   const upsertSyntheticAssistantGitMessage = useCallback(
     async (message: WebAgentUIMessage) => {
@@ -3374,7 +3374,7 @@ export function SessionChatContent({
 
       try {
         await archiveSession();
-        router.push("/sessions");
+        router.push("/chats");
       } catch (archiveError) {
         const archiveMessage =
           archiveError instanceof Error
@@ -3400,7 +3400,7 @@ export function SessionChatContent({
 
       try {
         await archiveSession();
-        router.push("/sessions");
+        router.push("/chats");
       } catch (archiveError) {
         const archiveMessage =
           archiveError instanceof Error
@@ -3550,8 +3550,8 @@ export function SessionChatContent({
               <DialogHeader>
                 <DialogTitle>Archive chat?</DialogTitle>
                 <DialogDescription>
-                  This will stop the sandbox and archive the session. You can
-                  still view it in the archive tab.
+                  This will stop the sandbox and archive the chat. You can still
+                  view it in the archive tab.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
@@ -3564,7 +3564,7 @@ export function SessionChatContent({
                       void archiveSession().catch((error: unknown) => {
                         console.error("Failed to archive session:", error);
                       });
-                      router.push("/sessions");
+                      router.push("/chats");
                     }}
                   >
                     Archive
@@ -3601,7 +3601,7 @@ export function SessionChatContent({
                 onOpenFile={openFileTab}
                 onKeepChat={(keptId) => {
                   setRaceConfig(null);
-                  router.push(`/sessions/${session.id}/chats/${keptId}`);
+                  router.push(`/chats/${keptId}`);
                 }}
                 onClose={() => setRaceConfig(null)}
               />

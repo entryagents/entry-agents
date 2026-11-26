@@ -18,6 +18,7 @@ import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { DiffFile } from "@/app/api/sessions/[sessionId]/diff/route";
+import { useSessionLayout } from "../../session-layout-context";
 import { useGitPanel } from "./git-panel-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -233,6 +234,8 @@ function FileDiffSection({
  */
 export function DiffTabView() {
   const params = useParams<{ sessionId?: string }>();
+  const { session: layoutSession } = useSessionLayout();
+  const effectiveSessionId = params.sessionId ?? layoutSession.id;
   const {
     diff,
     diffLoading,
@@ -316,7 +319,7 @@ export function DiffTabView() {
   );
 
   const downloadDiff = useCallback(async () => {
-    const sessionId = params.sessionId;
+    const sessionId = effectiveSessionId;
     if (!sessionId) return;
 
     setDiffDownloading(true);
@@ -359,7 +362,7 @@ export function DiffTabView() {
     } finally {
       setDiffDownloading(false);
     }
-  }, [params.sessionId, downloadFilename]);
+  }, [effectiveSessionId, downloadFilename]);
 
   const openDownloadDialog = useCallback(() => {
     setDownloadFilename(
@@ -375,7 +378,7 @@ export function DiffTabView() {
   const summaryDels = visibleFiles.reduce((sum, f) => sum + f.deletions, 0);
   const hasDownloadableDiff = (diff?.files.length ?? 0) > 0;
   const canDownloadDiff = Boolean(
-    params.sessionId && sandboxInfo && hasDownloadableDiff,
+    effectiveSessionId && sandboxInfo && hasDownloadableDiff,
   );
   return (
     <div className="flex h-full flex-col">

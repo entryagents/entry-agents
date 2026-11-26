@@ -105,7 +105,7 @@ export default async function SharedPage({ params }: SharedPageProps) {
   const modelName: string | null = null;
   const ownerSessionHref =
     viewerSession?.user?.id === session.userId
-      ? `/sessions/${sharedChat.sessionId}/chats/${sharedChat.id}`
+      ? `/chats/${sharedChat.id}`
       : null;
 
   return (

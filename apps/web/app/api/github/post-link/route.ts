@@ -21,7 +21,7 @@ export async function GET(req: Request): Promise<Response> {
   const requestUrl = new URL(req.url);
   const next = sanitizeInternalRedirect(
     requestUrl.searchParams.get("next"),
-    "/sessions",
+    "/chats",
     req.url,
   );
   const redirectUrl = new URL(next, req.url);

@@ -58,9 +58,7 @@ export function SessionsRouteShell({
   lastRepo,
 }: SessionsRouteShellProps) {
   const router = useRouter();
-  const params = useParams<{ sessionId?: string }>();
-  const routeSessionId =
-    typeof params.sessionId === "string" ? params.sessionId : null;
+  const params = useParams<{ sessionId?: string; chatId?: string }>();
   const [newSessionOpen, setNewSessionOpen] = useState(false);
   const [optimisticActiveSessionId, setOptimisticActiveSessionId] = useState<
     string | null
@@ -83,6 +81,14 @@ export function SessionsRouteShell({
     initialData: initialSessionsData,
   });
 
+  const routeChatId = typeof params.chatId === "string" ? params.chatId : null;
+  const routeSessionId =
+    typeof params.sessionId === "string"
+      ? params.sessionId
+      : routeChatId
+        ? (sessions.find((s) => s.latestChatId === routeChatId)?.id ?? null)
+        : null;
+
   const {
     projects: customProjects,
     createProject,
@@ -92,22 +98,22 @@ export function SessionsRouteShell({
 
   const getSessionHref = useCallback((targetSession: SessionWithUnread) => {
     if (targetSession.latestChatId) {
-      return `/sessions/${targetSession.id}/chats/${targetSession.latestChatId}`;
+      return `/chats/${targetSession.latestChatId}`;
     }
 
-    return `/sessions/${targetSession.id}`;
+    return `/chats/${targetSession.id}`;
   }, []);
 
   const { preferences } = useUserPreferences();
 
   const openNewSessionDialog = useCallback(() => {
     setOptimisticActiveSessionId(null);
-    if (routeSessionId) {
+    if (routeSessionId || routeChatId) {
       startNavigationTransition(() => {
-        router.push("/sessions", { scroll: false });
+        router.push("/chats", { scroll: false });
       });
     }
-  }, [routeSessionId, router, startNavigationTransition]);
+  }, [routeChatId, routeSessionId, router, startNavigationTransition]);
 
   const handleSessionClick = useCallback(
     (targetSession: SessionWithUnread) => {
@@ -146,11 +152,7 @@ export function SessionsRouteShell({
 
   useEffect(() => {
     const prefetchSidebarTargets = () => {
-      const staticTargets = [
-        "/sessions",
-        "/settings/profile",
-        "/settings/usage",
-      ];
+      const staticTargets = ["/chats", "/settings/profile", "/settings/usage"];
       for (const href of staticTargets) {
         if (prefetchedSessionHrefsRef.current.has(href)) {
           continue;
@@ -207,7 +209,7 @@ export function SessionsRouteShell({
       if (targetSessionId === routeSessionId) {
         setOptimisticActiveSessionId(null);
         startNavigationTransition(() => {
-          router.push("/sessions", { scroll: false });
+          router.push("/chats", { scroll: false });
         });
       }
     },
@@ -228,7 +230,7 @@ export function SessionsRouteShell({
   const handleCreateSessionForRepo = useCallback(
     async (repoOwner: string, repoName: string) => {
       try {
-        const { session: created, chat } = await createSession({
+        const { chat } = await createSession({
           repoOwner,
           repoName,
           cloneUrl: `https://github.com/${repoOwner}/${repoName}`,
@@ -237,7 +239,7 @@ export function SessionsRouteShell({
           autoCommitPush: preferences?.autoCommitPush ?? false,
           autoCreatePr: preferences?.autoCreatePr ?? false,
         });
-        router.push(`/sessions/${created.id}/chats/${chat.id}`, {
+        router.push(`/chats/${chat.id}`, {
           scroll: false,
         });
       } catch (error) {
@@ -250,7 +252,7 @@ export function SessionsRouteShell({
   const handleCreateSessionFromBranch = useCallback(
     async (repoOwner: string, repoName: string, branch: string) => {
       try {
-        const { session: created, chat } = await createSession({
+        const { chat } = await createSession({
           repoOwner,
           repoName,
           branch,
@@ -260,7 +262,7 @@ export function SessionsRouteShell({
           autoCommitPush: preferences?.autoCommitPush ?? false,
           autoCreatePr: preferences?.autoCreatePr ?? false,
         });
-        router.push(`/sessions/${created.id}/chats/${chat.id}`, {
+        router.push(`/chats/${chat.id}`, {
           scroll: false,
         });
       } catch (error) {
@@ -299,7 +301,7 @@ export function SessionsRouteShell({
     (projectId: string) => {
       setOptimisticActiveSessionId(null);
       startNavigationTransition(() => {
-        router.push(`/sessions?projectId=${encodeURIComponent(projectId)}`, {
+        router.push(`/chats?projectId=${encodeURIComponent(projectId)}`, {
           scroll: false,
         });
       });

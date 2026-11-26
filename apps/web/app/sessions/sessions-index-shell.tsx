@@ -111,7 +111,7 @@ export function SessionsIndexShell() {
 
         // Navigate immediately while background cache updates / workflow startup
         // proceed asynchronously.
-        router.push(`/sessions/${createdSession.id}/chats/${chat.id}`, {
+        router.push(`/chats/${chat.id}`, {
           scroll: false,
         });
 
@@ -238,7 +238,7 @@ export function SessionsIndexShell() {
                 <span className="max-w-40 truncate">{selectedFolder.name}</span>
                 <button
                   type="button"
-                  onClick={() => router.replace("/sessions", { scroll: false })}
+                  onClick={() => router.replace("/chats", { scroll: false })}
                   className="ml-0.5 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
                   aria-label="Clear folder selection"
                 >
@@ -350,10 +350,8 @@ export function SessionsIndexShell() {
                     autoCommitPush: false,
                     autoCreatePr: false,
                   })
-                    .then(({ session: createdSession, chat }) => {
-                      router.push(
-                        `/sessions/${createdSession.id}/chats/${chat.id}`,
-                      );
+                    .then(({ chat }) => {
+                      router.push(`/chats/${chat.id}`);
                     })
                     .catch(() => {
                       toast.error("Failed to start sandbox");

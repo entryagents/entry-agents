@@ -148,7 +148,7 @@ function BillingCallbackInner() {
 
               <div className="space-y-2 pt-2">
                 <Button asChild className="w-full h-10 rounded-xl font-medium">
-                  <Link href="/sessions">
+                  <Link href="/chats">
                     Go to Dashboard
                     <ArrowRight className="ml-1.5 h-4 w-4" />
                   </Link>
@@ -206,7 +206,7 @@ function BillingCallbackInner() {
                 variant="outline"
                 className="mt-4 w-full rounded-xl"
               >
-                <Link href="/sessions">Return to Dashboard</Link>
+                <Link href="/chats">Return to Dashboard</Link>
               </Button>
             </div>
           )}
@@ -229,7 +229,7 @@ function BillingCallbackInner() {
                   <Link href="/pricing">Return to Pricing</Link>
                 </Button>
                 <Button asChild className="rounded-xl">
-                  <Link href="/sessions">Dashboard</Link>
+                  <Link href="/chats">Dashboard</Link>
                 </Button>
               </div>
             </div>

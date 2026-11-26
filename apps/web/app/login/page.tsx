@@ -31,7 +31,7 @@ export default async function LoginPage({
   const callbackUrl =
     nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//")
       ? nextParam
-      : "/sessions";
+      : "/chats";
 
   const session = await getServerSession();
   if (session?.user) {

@@ -729,7 +729,7 @@ export function AdminUserDetailView({ userId }: { userId: string }) {
                         <TableRow key={session.id}>
                           <TableCell>
                             <Link
-                              href={`/sessions/${session.id}`}
+                              href={`/chats/${session.id}`}
                               className="flex items-center gap-1 font-medium hover:underline"
                             >
                               <span className="max-w-[180px] truncate">

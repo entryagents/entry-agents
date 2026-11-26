@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { GitCompare, Pencil, Plus, X } from "lucide-react";
 import {
   type ReactNode,
@@ -37,8 +37,6 @@ type ChatTabsProps = {
 
 export function ChatTabs({ activeChatId }: ChatTabsProps) {
   const router = useRouter();
-  const params = useParams<{ sessionId?: string }>();
-  const sessionId = params.sessionId ?? "";
   const { chats, createChat, switchChat, deleteChat, renameChat } =
     useSessionLayout();
   const {
@@ -102,11 +100,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
 
   const prefetchChat = useCallback(
     (chatId: string) => {
-      if (!sessionId) {
-        return;
-      }
-
-      const href = `/sessions/${sessionId}/chats/${chatId}`;
+      const href = `/chats/${chatId}`;
       if (prefetchedChatHrefsRef.current.has(href)) {
         return;
       }
@@ -114,7 +108,7 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
       prefetchedChatHrefsRef.current.add(href);
       router.prefetch(href);
     },
-    [router, sessionId],
+    [router],
   );
 
   const [changesTabIndex, setChangesTabIndex] = useState<number | null>(null);

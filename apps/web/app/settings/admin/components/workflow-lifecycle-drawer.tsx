@@ -66,7 +66,6 @@ export function WorkflowLifecycleDrawer({
 
   if (!workflowRunId) return null;
 
-  const sessionId = detail?.telemetry?.sessionId ?? detail?.run?.sessionId;
   const chatId = detail?.telemetry?.chatId ?? detail?.run?.chatId;
 
   return (
@@ -93,9 +92,9 @@ export function WorkflowLifecycleDrawer({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {sessionId && chatId && (
+            {chatId && (
               <a
-                href={`/sessions/${sessionId}/chats/${chatId}`}
+                href={`/chats/${chatId}`}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground"

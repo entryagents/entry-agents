@@ -24,6 +24,7 @@ const MARKETING_RULES = {
     "/admin/",
     "/settings/",
     "/sessions/",
+    "/chats/",
     // Remaining auth-gated surfaces: billing (its public catalog lives at
     // /pricing), the codespace session view, and the desktop approve flow.
     "/billing/",
