@@ -4,6 +4,7 @@ import { History } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SignedOutHero } from "@/components/auth/signed-out-hero";
+import { FirstRunOnboarding } from "@/components/first-run-onboarding";
 import { HomeSkeleton } from "@/components/home-skeleton";
 import type { SandboxType } from "@/components/sandbox-selector-compact";
 import { SessionDrawer } from "@/components/session-drawer";
@@ -115,6 +116,20 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
           isLoading={isCreating}
           lastRepo={lastRepo}
         />
+
+        {!loading && activeSessionCount === 0 && (
+          <FirstRunOnboarding
+            isCreating={isCreating}
+            onQuickStartSandbox={() => {
+              void handleCreateSession({
+                isNewBranch: false,
+                sandboxType: "boxd",
+                autoCommitPush: false,
+                autoCreatePr: false,
+              });
+            }}
+          />
+        )}
       </main>
 
       <SessionDrawer
