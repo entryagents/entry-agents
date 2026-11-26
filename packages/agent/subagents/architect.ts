@@ -4,10 +4,16 @@ import { addCacheControl } from "../context-management";
 import { defaultModelLabel } from "../default-model";
 import { createInertPlaceholderModel, sharedProvider } from "../models";
 import { bashTool } from "../tools/bash";
-import { dirListTool } from "../tools/dir-list";
 import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
+import {
+  sightlineCallersTool,
+  sightlineFileTool,
+  sightlineFindTool,
+  sightlineListTool,
+  sightlineMapTool,
+} from "../tools/sightline";
 import { teamBoardTool } from "../tools/team";
 import {
   buildSubagentExperimentalContext,
@@ -47,7 +53,8 @@ ${SUBAGENT_RESPONSE_FORMAT}
 - Decompose non-trivial changes via \`team_board\` (\`action: "plan_tasks"\`) with explicit \`dependsOn\` edges, strictly non-overlapping \`files\` claims across concurrent workers, and \`status: "parked"\` for optional/out-of-scope follow-ups.
 
 ## TOOLS & GUIDELINES
-You have access to: \`read\`, \`dir_list\`, \`grep\`, \`glob\`, \`bash\` (read-only commands only), \`team_board\`.
+You have access to: \`sightline_map\`, \`sightline_list\`, \`sightline_file\`, \`sightline_find\`, \`sightline_callers\`, \`read\`, \`grep\`, \`glob\`, \`bash\` (read-only commands only), \`team_board\`.
+- Prefer \`sightline_*\` tools for repo discovery before reading full files.
 - Trace exact call sites, schemas, and imports before proposing contracts.
 - Return workspace-relative paths with line references.`;
 
@@ -63,7 +70,11 @@ export type ArchitectCallOptions = z.infer<typeof callOptionsSchema>;
 
 const architectTools = {
   read: readFileTool(),
-  dir_list: dirListTool(),
+  sightline_map: sightlineMapTool(),
+  sightline_list: sightlineListTool(),
+  sightline_file: sightlineFileTool(),
+  sightline_find: sightlineFindTool(),
+  sightline_callers: sightlineCallersTool(),
   grep: grepTool(),
   glob: globTool(),
   bash: bashTool(),

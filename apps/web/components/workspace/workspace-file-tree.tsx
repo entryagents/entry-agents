@@ -4,12 +4,8 @@ import {
   AtSign,
   ChevronRight,
   ChevronsDownUp,
-  File,
-  FileCode,
-  FileText,
   Folder,
   FolderOpen,
-  Image as ImageIcon,
   Loader2,
   RefreshCw,
   Search,
@@ -25,30 +21,10 @@ import {
   useState,
 } from "react";
 import type { FileSuggestion } from "@/app/api/sessions/[sessionId]/files/route";
-import {
-  highlightSegments,
-  toChangeLetter,
-} from "@/app/sessions/[sessionId]/chats/[chatId]/workspace/sable-rail-helpers";
+import { highlightSegments } from "@/app/sessions/[sessionId]/chats/[chatId]/workspace/sable-rail-helpers";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import type { DiffFile } from "@/lib/diff/compute-diff";
 import { cn } from "@/lib/utils";
-
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp|svg|avif|ico|bmp)$/i;
-const CODE_EXT =
-  /\.(tsx?|jsx?|mjs|cjs|json|css|scss|html?|vue|svelte|py|rs|go|java|kt|swift|c|h|cpp|hpp|cs|rb|php|sh|ps1|ya?ml|toml|sql|lua)$/i;
-const TEXT_EXT = /\.(md|mdx|txt|rst|log)$/i;
-
-function SableFileIcon({ name }: { name: string }) {
-  if (IMAGE_EXT.test(name)) {
-    return <ImageIcon size={14} strokeWidth={1.6} className="fl-icon" />;
-  }
-  if (CODE_EXT.test(name)) {
-    return <FileCode size={14} strokeWidth={1.6} className="fl-icon" />;
-  }
-  if (TEXT_EXT.test(name)) {
-    return <FileText size={14} strokeWidth={1.6} className="fl-icon" />;
-  }
-  return <File size={14} strokeWidth={1.6} className="fl-icon" />;
-}
 
 interface TreeNode {
   name: string;
@@ -142,7 +118,7 @@ const TreeRow = memo(function TreeRow({
   isOpen,
   isActive,
   isFocused,
-  statusLetter,
+  isChanged,
   hasChangedInside,
   query,
   onActivate,
@@ -154,7 +130,7 @@ const TreeRow = memo(function TreeRow({
   isOpen: boolean;
   isActive: boolean;
   isFocused: boolean;
-  statusLetter?: string;
+  isChanged: boolean;
   hasChangedInside: boolean;
   query: string;
   onActivate: (node: TreeNode) => void;
@@ -206,23 +182,20 @@ const TreeRow = memo(function TreeRow({
           <Folder size={14} strokeWidth={1.6} className="fl-icon" />
         )
       ) : (
-        <SableFileIcon name={node.name} />
+        <FileTypeIcon
+          path={node.path}
+          className="fl-icon h-3.5 w-3.5 shrink-0"
+        />
       )}
       <span className="fl-name truncate">
         {renderHighlighted(node.name, query)}
       </span>
       <span className="rail-row-deco fl-deco">
-        {statusLetter ? (
+        {isChanged || hasChangedInside ? (
           <span
-            className="st-letter"
-            data-small=""
-            data-status={statusLetter}
-            title={`Changed (${statusLetter})`}
-          >
-            {statusLetter}
-          </span>
-        ) : hasChangedInside ? (
-          <span className="fl-dot" aria-label="Contains changes" />
+            className="fl-dot"
+            aria-label={isChanged ? "Changed" : "Contains changes"}
+          />
         ) : null}
       </span>
       {onMentionInChat && (
@@ -284,18 +257,15 @@ export function WorkspaceFileTree({
   }, [filter]);
 
   const changes = useMemo(() => {
-    const fileMap = new Map<string, string>();
+    const fileSet = new Set<string>();
     const folderSet = new Set<string>();
     for (const df of diffFiles) {
-      const letter = toChangeLetter(df.status);
-      if (letter) {
-        fileMap.set(df.path, letter);
-      }
+      fileSet.add(df.path);
       for (const dir of getAncestorDirPaths(df.path)) {
         folderSet.add(dir);
       }
     }
-    return { fileMap, folderSet };
+    return { fileSet, folderSet };
   }, [diffFiles]);
 
   const treeRoot = useMemo(() => {
@@ -578,10 +548,8 @@ export function WorkspaceFileTree({
                   !row.node.isDirectory && activeFilePath === row.node.path
                 }
                 isFocused={idx === focusIndex}
-                statusLetter={
-                  row.node.isDirectory
-                    ? undefined
-                    : changes.fileMap.get(row.node.path)
+                isChanged={
+                  !row.node.isDirectory && changes.fileSet.has(row.node.path)
                 }
                 hasChangedInside={
                   row.node.isDirectory && changes.folderSet.has(row.node.path)

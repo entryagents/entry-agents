@@ -4,11 +4,17 @@ import { createInertPlaceholderModel, sharedProvider } from "../models";
 import { defaultModelLabel } from "../default-model";
 import { z } from "zod";
 import { bashTool } from "../tools/bash";
-import { dirListTool } from "../tools/dir-list";
 import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
 import { createReadFileState } from "../tools/read-state";
+import {
+  sightlineCallersTool,
+  sightlineFileTool,
+  sightlineFindTool,
+  sightlineListTool,
+  sightlineMapTool,
+} from "../tools/sightline";
 import { editFileTool, writeFileTool } from "../tools/write";
 import { teamBoardTool } from "../tools/team";
 import { webFetchTool } from "../tools/fetch";
@@ -72,7 +78,11 @@ const executorTools = {
   read: readFileTool(),
   write: writeFileTool(),
   edit: editFileTool(),
-  dir_list: dirListTool(),
+  sightline_map: sightlineMapTool(),
+  sightline_list: sightlineListTool(),
+  sightline_file: sightlineFileTool(),
+  sightline_find: sightlineFindTool(),
+  sightline_callers: sightlineCallersTool(),
   grep: grepTool(),
   glob: globTool(),
   bash: bashTool(),

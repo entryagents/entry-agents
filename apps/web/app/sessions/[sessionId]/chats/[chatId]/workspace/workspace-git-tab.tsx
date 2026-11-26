@@ -15,7 +15,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { DiffFile } from "@/app/api/sessions/[sessionId]/diff/route";
 import type { GitPanelProps } from "../git-panel";
 import { useGitPanel } from "../git-panel-context";
 import { Button } from "@/components/ui/button";
@@ -54,30 +53,8 @@ import {
   type MergeReadinessResponse,
 } from "@/lib/github/queries/pr";
 import type { MergeMethod } from "@/lib/github/pulls";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import { cn } from "@/lib/utils";
-
-function StatusBadge({ status }: { status: DiffFile["status"] }) {
-  switch (status) {
-    case "added":
-      return (
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-emerald-500/15 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
-          A
-        </span>
-      );
-    case "deleted":
-      return (
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-rose-500/15 text-[10px] font-bold text-rose-600 dark:text-rose-400">
-          D
-        </span>
-      );
-    default:
-      return (
-        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-amber-500/15 text-[10px] font-bold text-amber-600 dark:text-amber-400">
-          M
-        </span>
-      );
-  }
-}
 
 export function WorkspaceGitTab(props: GitPanelProps) {
   const {
@@ -536,7 +513,10 @@ export function WorkspaceGitTab(props: GitPanelProps) {
                     onClick={() => openFileTab(file.path)}
                     className="flex flex-1 items-center gap-2 min-w-0 text-left cursor-pointer focus-visible:outline-none focus-visible:underline"
                   >
-                    <StatusBadge status={file.status} />
+                    <FileTypeIcon
+                      path={file.path}
+                      className="h-3.5 w-3.5 shrink-0"
+                    />
                     <div className="flex items-baseline gap-1 min-w-0 font-mono">
                       <span className="font-medium text-foreground truncate">
                         {name}

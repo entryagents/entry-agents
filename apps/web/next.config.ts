@@ -57,6 +57,16 @@ const nextConfig: NextConfig = {
   // or hashing the inline script) with real testing before shipping,
   // rather than risking breaking prod to add defense-in-depth for a
   // hypothetical future XSS that hasn't been found.
+  async redirects() {
+    return [
+      {
+        source: "/:path*",
+        has: [{ type: "host", value: "www.entry-agents.dev" }],
+        destination: "https://entry-agents.dev/:path*",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       // `entry-agents.dev` is canonical. Vercel already noindexes previews,

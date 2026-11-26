@@ -50,4 +50,16 @@ describe("auth host config", () => {
       } as unknown as NodeJS.ProcessEnv),
     ).toBe("https://preview.vercel.app");
   });
+
+  test("pins allowedHosts to canonical BETTER_AUTH_URL in Vercel production", () => {
+    const hosts = getAllowedAuthHosts({
+      NODE_ENV: "production",
+      VERCEL_ENV: "production",
+      BETTER_AUTH_URL: "https://entry-agents.dev",
+      VERCEL_URL: "entry-agents-abc.vercel.app",
+      VERCEL_PROJECT_PRODUCTION_URL: "www.entry-agents.dev",
+    } as unknown as NodeJS.ProcessEnv);
+
+    expect(hosts).toEqual(["entry-agents.dev"]);
+  });
 });

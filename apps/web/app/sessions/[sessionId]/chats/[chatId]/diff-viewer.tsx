@@ -4,13 +4,13 @@ import { PatchDiff } from "@pierre/diffs/react";
 import {
   ChevronDown,
   ChevronRight,
-  FileText,
   GitCommitHorizontal,
   Loader2,
   RefreshCw,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { DiffFile } from "@/app/api/sessions/[sessionId]/diff/route";
+import { FileTypeIcon } from "@/components/file-type-icons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -83,33 +83,6 @@ function StaleBanner({ cachedAt }: { cachedAt: Date | null }) {
   );
 }
 
-function StatusBadge({ status }: { status: DiffFile["status"] }) {
-  const styles = {
-    added: "bg-green-500/20 text-green-700 dark:text-green-400",
-    modified: "bg-blue-500/20 text-blue-700 dark:text-blue-400",
-    deleted: "bg-red-500/20 text-red-700 dark:text-red-400",
-    renamed: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400",
-  };
-
-  const labels = {
-    added: "New",
-    modified: "Modified",
-    deleted: "Deleted",
-    renamed: "Renamed",
-  };
-
-  return (
-    <span
-      className={cn(
-        "rounded px-1.5 py-0.5 text-[10px] font-medium uppercase",
-        styles[status],
-      )}
-    >
-      {labels[status]}
-    </span>
-  );
-}
-
 function StagingBadge({
   stagingStatus,
 }: {
@@ -178,7 +151,7 @@ function FileEntry({
         ) : (
           <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         )}
-        <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <FileTypeIcon path={file.path} className="h-4 w-4 shrink-0" />
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <span className="truncate text-sm">
             {dirPath && (
@@ -186,7 +159,6 @@ function FileEntry({
             )}
             <span className="font-medium text-foreground">{fileName}</span>
           </span>
-          <StatusBadge status={file.status} />
           <StagingBadge stagingStatus={file.stagingStatus} />
           {isGenerated && (
             <span className="rounded px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground bg-muted">

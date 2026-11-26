@@ -4425,6 +4425,8 @@ const runAgentStep = async (
   // only (it restarts on a replay). The real task-tool path always sends
   // an id; see buildSubagentBillingReference.
   let subagentStepSeq = 0;
+  let totalMessageCost: number | undefined;
+  let subagentCostThisStep = 0;
   // Real-time subagent budget guard (framework SubagentBudgetGuard):
   // shares these same in-memory counters with the main model, so
   // subagent spend eats the same window/balance budgets mid-turn, AND
@@ -4437,6 +4439,8 @@ const runAgentStep = async (
     spendCents: (costCents, costUsd, subagentModelId, subagentStepId) => {
       if (costUsd !== undefined && costUsd > 0 && subagentModelId) {
         subagentStepSeq += 1;
+        subagentCostThisStep += costUsd;
+        totalMessageCost = (totalMessageCost ?? 0) + costUsd;
         const seq = subagentStepSeq;
         recordDebit(costUsd, {
           // The reference must identify the (subagent, step) pair,
@@ -4514,7 +4518,6 @@ const runAgentStep = async (
   let lastStepCost: number | undefined;
   let stepFinishReasons: WebAgentStepFinishMetadata[] = [];
   let totalMessageUsage: LanguageModelUsage | undefined;
-  let totalMessageCost: number | undefined;
   let stepSecretRedactor: SecretRedactor | undefined;
   const usedSecretNames = new Set<string>();
   const triggeredPluginSlugs = new Set<string>();
@@ -6512,8 +6515,12 @@ const runAgentStep = async (
 
     const resolvedTotalCost =
       stepsCost !== undefined
-        ? (existingTotalMessageCost ?? 0) + stepsCost
-        : totalMessageCost;
+        ? (existingTotalMessageCost ?? 0) + stepsCost + subagentCostThisStep
+        : totalMessageCost !== undefined
+          ? totalMessageCost
+          : subagentCostThisStep > 0
+            ? (existingTotalMessageCost ?? 0) + subagentCostThisStep
+            : undefined;
 
     if (resolvedTotalCost !== undefined) {
       responseMessage = {
