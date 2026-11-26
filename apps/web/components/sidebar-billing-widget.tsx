@@ -226,7 +226,7 @@ export function DesktopBalanceBox() {
         router.push("/pricing");
       }}
       title={`Credit balance: ${formatUsdCents(data.creditBalanceCents)} (View plans & top up)`}
-      className="flex h-8 min-w-[44px] shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60 px-2.5 font-mono text-xs font-medium tabular-nums text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border hover:bg-muted/70 cursor-pointer"
+      className="flex h-8 min-w-[48px] shrink-0 items-center justify-center rounded-lg border border-border/80 bg-background/85 px-2.5 font-mono text-xs font-medium tabular-nums text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,background-color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-foreground/25 hover:bg-background active:scale-[0.98] cursor-pointer dark:bg-white/[0.04] dark:hover:bg-white/[0.07]"
     >
       {formatCompactUsdCents(data.creditBalanceCents)}
     </button>
@@ -263,7 +263,7 @@ export function SidebarPlanBadge({ showIcon = false }: { showIcon?: boolean }) {
 /**
  * Usage Windows Telemetry for the Desktop Sidebar.
  * Rendered when the user is on a paid plan with 5h / 7d / 30d usage windows
- * (Plus $3/mo and Pro $10/mo).
+ * (Plus $3/mo and Builder $10/mo).
  */
 function getUsageWindowPercent(usedCents: number, limitCents: number): number {
   if (limitCents <= 0) return 0;
@@ -271,6 +271,9 @@ function getUsageWindowPercent(usedCents: number, limitCents: number): number {
   if (usedCents <= 0) return 0;
   return Math.max(1, Math.min(99, Math.floor((usedCents / limitCents) * 100)));
 }
+
+const SEGMENT_COUNT = 10;
+const SEGMENT_INDICES = Array.from({ length: SEGMENT_COUNT }, (_, idx) => idx);
 
 export function DesktopCodexBillingStatus() {
   const { data, isLoading } = useBillingMe();
@@ -312,21 +315,27 @@ export function DesktopCodexBillingStatus() {
         router.push("/settings/usage");
       }}
       title="Open usage and billing details"
-      className="group w-full cursor-pointer rounded-xl border border-border/70 bg-background/50 p-2.5 text-left transition-[border-color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border hover:bg-background/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="group w-full cursor-pointer rounded-xl border border-border/80 bg-background/80 p-3 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,background-color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-foreground/20 hover:bg-background active:scale-[0.99] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:bg-white/[0.03] dark:hover:bg-white/[0.05]"
     >
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-[12px] font-medium text-foreground">
-          {data.planName || "Usage"}
+      <div className="flex items-center justify-between gap-2">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="size-1.5 shrink-0 rounded-full bg-[#c85c20] dark:bg-[#e07638]"
+          />
+          <span className="truncate text-[12px] font-medium tracking-[-0.01em] text-foreground">
+            {data.planName || "Usage"}
+          </span>
         </span>
-        <span className="shrink-0 font-mono text-[11.5px] tabular-nums">
-          <span className="font-medium text-foreground">
+        <span className="shrink-0 font-mono text-[12px] tabular-nums">
+          <span className="font-semibold text-foreground">
             {formatUsdCents(effectiveRemainingCents)}
           </span>
-          <span className="ml-1 text-muted-foreground">left</span>
+          <span className="ml-1 text-[10.5px] text-muted-foreground">left</span>
         </span>
       </div>
 
-      <div className="mt-2 space-y-1.5">
+      <div className="mt-2.5 space-y-2">
         {(
           [
             { label: "5h", win: windows.fiveHour },
@@ -337,39 +346,52 @@ export function DesktopCodexBillingStatus() {
           const pct = getUsageWindowPercent(win.usedCents, win.limitCents);
           const isFull = win.usedCents >= win.limitCents;
           const isWarn = !isFull && pct >= 80;
+          const filledSegments =
+            pct <= 0
+              ? 0
+              : isFull
+                ? SEGMENT_COUNT
+                : Math.max(1, Math.round((pct / 100) * SEGMENT_COUNT));
           const remaining = Math.max(0, win.limitCents - win.usedCents);
           return (
             <div
               key={label}
               title={`${label}: ${formatUsdCents(win.usedCents)} of ${formatUsdCents(win.limitCents)} used (${formatUsdCents(remaining)} left)`}
-              className="flex items-center gap-2"
+              className="grid grid-cols-[24px_1fr_30px] items-center gap-2"
             >
-              <span className="w-6 shrink-0 font-mono text-[11px] text-muted-foreground">
+              <span className="font-mono text-[10.5px] text-muted-foreground">
                 {label}
               </span>
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-foreground/[0.08]">
-                <div
-                  className={cn(
-                    "h-full rounded-full transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                    isFull
-                      ? "bg-red-500"
-                      : isWarn
-                        ? "bg-amber-500"
-                        : "bg-foreground/75",
-                  )}
-                  style={{ width: `${pct}%` }}
-                />
+              <div aria-hidden="true" className="grid grid-cols-10 gap-[2.5px]">
+                {SEGMENT_INDICES.map((segmentIdx) => {
+                  const active = segmentIdx < filledSegments;
+                  return (
+                    <span
+                      key={segmentIdx}
+                      className={cn(
+                        "h-[5px] rounded-[1.5px] transition-colors duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                        active
+                          ? isFull
+                            ? "bg-red-500"
+                            : isWarn
+                              ? "bg-amber-500"
+                              : "bg-[#c85c20] dark:bg-[#e07638]"
+                          : "bg-foreground/[0.08] dark:bg-white/[0.08]",
+                      )}
+                    />
+                  );
+                })}
               </div>
               <span
                 className={cn(
-                  "w-8 shrink-0 text-right font-mono text-[11px] tabular-nums",
+                  "text-right font-mono text-[10.5px] tabular-nums",
                   isFull
-                    ? "font-medium text-red-500 dark:text-red-400"
+                    ? "font-semibold text-red-500 dark:text-red-400"
                     : isWarn
-                      ? "font-medium text-amber-600 dark:text-amber-400"
+                      ? "font-semibold text-amber-600 dark:text-amber-400"
                       : pct > 0
                         ? "text-foreground/85"
-                        : "text-muted-foreground/70",
+                        : "text-muted-foreground/65",
                 )}
               >
                 {pct}%
@@ -380,8 +402,8 @@ export function DesktopCodexBillingStatus() {
       </div>
 
       {data.expiresAt ? (
-        <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-1.5 text-[11px] text-muted-foreground">
-          <span>Renews</span>
+        <div className="mt-2.5 flex items-center justify-between border-t border-border/50 pt-2 text-[10.5px] text-muted-foreground">
+          <span>Cycle renews</span>
           <span className="font-mono tabular-nums text-foreground/80">
             {formatExpirationDate(data.expiresAt)}
           </span>

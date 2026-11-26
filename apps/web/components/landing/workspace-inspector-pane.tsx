@@ -9,32 +9,29 @@ import {
   Globe,
   RefreshCw,
 } from "lucide-react";
-import {
-  CONTEXT_STATS,
-  DIFF_FILES,
-  DIFF_LINES,
-  type InspectorTab,
-} from "./workspace-preview-data";
+import type { InspectorTab, PreviewScenario } from "./workspace-preview-data";
 
 interface WorkspaceInspectorPaneProps {
   readonly activeTab: InspectorTab;
   readonly onSelectTab: (tab: InspectorTab) => void;
+  readonly scenario: PreviewScenario;
 }
-
-const INSPECTOR_TABS: readonly {
-  readonly id: InspectorTab;
-  readonly label: string;
-  readonly badge?: string;
-}[] = [
-  { id: "diff", label: "Diff", badge: "4" },
-  { id: "preview", label: "Preview" },
-  { id: "context", label: "Context" },
-];
 
 export function WorkspaceInspectorPane({
   activeTab,
   onSelectTab,
+  scenario,
 }: WorkspaceInspectorPaneProps) {
+  const tabs: readonly {
+    readonly id: InspectorTab;
+    readonly label: string;
+    readonly badge?: string;
+  }[] = [
+    { id: "diff", label: "Diff", badge: String(scenario.filesChangedCount) },
+    { id: "preview", label: "Preview" },
+    { id: "context", label: "Context" },
+  ];
+
   return (
     <div className="flex min-h-[470px] min-w-0 flex-col bg-(--l-panel) lg:min-h-0">
       {/* Rail tab bar matching Entry workspace inspector */}
@@ -44,7 +41,7 @@ export function WorkspaceInspectorPane({
           aria-label="Workspace inspector"
           className="flex items-center gap-1"
         >
-          {INSPECTOR_TABS.map((tab) => {
+          {tabs.map((tab) => {
             const active = activeTab === tab.id;
             return (
               <button
@@ -81,37 +78,39 @@ export function WorkspaceInspectorPane({
 
         <span className="hidden shrink-0 items-center gap-1 font-mono text-[11px] tabular-nums text-(--l-panel-fg-3) xl:inline-flex">
           <GitBranch className="size-3 shrink-0" strokeWidth={1.5} />
-          <span>#324</span>
+          <span>{scenario.prTag}</span>
         </span>
       </div>
 
       {/* Tab Body */}
       <div className="flex flex-1 flex-col overflow-hidden p-3.5">
-        {activeTab === "diff" && <DiffTabContent />}
-        {activeTab === "preview" && <PreviewTabContent />}
-        {activeTab === "context" && <ContextTabContent />}
+        {activeTab === "diff" && <DiffTabContent scenario={scenario} />}
+        {activeTab === "preview" && <PreviewTabContent scenario={scenario} />}
+        {activeTab === "context" && <ContextTabContent scenario={scenario} />}
       </div>
     </div>
   );
 }
 
-function DiffTabContent() {
+function DiffTabContent({ scenario }: { readonly scenario: PreviewScenario }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3">
-      {/* File summary header */}
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="truncate font-mono text-(--l-panel-fg-2)">
-          apps/web/lib/email/send.ts
+          {scenario.activeDiffPath}
         </span>
         <span className="shrink-0 font-mono text-[11px] tabular-nums">
-          <span className="text-emerald-600 dark:text-emerald-400">+248</span>{" "}
-          <span className="text-rose-600 dark:text-rose-400">-19</span>
+          <span className="text-emerald-600 dark:text-emerald-400">
+            +{scenario.totalAdded}
+          </span>{" "}
+          <span className="text-rose-600 dark:text-rose-400">
+            -{scenario.totalRemoved}
+          </span>
         </span>
       </div>
 
-      {/* Unified code diff */}
       <div className="overflow-x-auto rounded-lg border border-(--l-panel-border) bg-(--l-code-bg) py-2 font-mono text-[11px] leading-[1.55] tabular-nums">
-        {DIFF_LINES.map((line, index) => {
+        {scenario.diffLines.map((line, index) => {
           const isAdd = line.kind === "add";
           const isDel = line.kind === "del";
           return (
@@ -137,9 +136,8 @@ function DiffTabContent() {
         })}
       </div>
 
-      {/* Changed files list */}
       <div className="mt-auto space-y-1 border-t border-(--l-panel-border) pt-3">
-        {DIFF_FILES.map((file) => (
+        {scenario.diffFiles.map((file) => (
           <div
             key={file.path}
             className="flex items-center justify-between gap-2 rounded-md px-2 py-1 text-[11px] transition-colors hover:bg-(--l-panel-surface)"
@@ -164,15 +162,18 @@ function DiffTabContent() {
   );
 }
 
-function PreviewTabContent() {
+function PreviewTabContent({
+  scenario,
+}: {
+  readonly scenario: PreviewScenario;
+}) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3">
-      {/* Live sandbox URL bar */}
       <div className="flex items-center justify-between gap-2 rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-2.5 py-1.5">
         <div className="flex min-w-0 items-center gap-2">
           <span className="size-1.5 shrink-0 rounded-full bg-emerald-500" />
           <span className="truncate font-mono text-[11px] text-(--l-panel-fg-2)">
-            https://p3000.entry-vm.boxd.sh/emails/preview
+            {scenario.previewUrl}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1.5 text-(--l-panel-fg-3)">
@@ -183,7 +184,6 @@ function PreviewTabContent() {
         </div>
       </div>
 
-      {/* Rendered sandbox preview card */}
       <div className="flex flex-1 flex-col justify-between rounded-lg border border-(--l-panel-border) bg-(--l-surface) p-4">
         <div className="space-y-3">
           <div className="flex items-center justify-between border-b border-(--l-panel-border) pb-3">
@@ -191,23 +191,22 @@ function PreviewTabContent() {
               Entry Agents
             </div>
             <span className="font-mono text-[10px] text-(--l-panel-fg-3)">
-              Template · Welcome
+              {scenario.previewTag}
             </span>
           </div>
 
           <div className="space-y-1.5 pt-1">
             <div className="text-sm font-semibold tracking-tight text-(--l-panel-fg)">
-              Your cloud workspace is ready
+              {scenario.previewHeading}
             </div>
             <p className="text-xs leading-relaxed text-(--l-panel-fg-2)">
-              Connect a repository or start in a clean Ubuntu sandbox. Your
-              sessions keep running in the background after you close the tab.
+              {scenario.previewBody}
             </p>
           </div>
 
           <div className="pt-1">
             <span className="inline-flex h-7 items-center rounded-md bg-(--l-btn-bg) px-3 text-[11px] font-medium text-(--l-btn-fg)">
-              Open workspace
+              {scenario.previewCta}
             </span>
           </div>
         </div>
@@ -218,24 +217,29 @@ function PreviewTabContent() {
               className="size-3.5 text-emerald-500"
               strokeWidth={1.5}
             />
-            <span>Rendered inside isolated VM · port 3000</span>
+            <span>{scenario.previewMeta}</span>
           </span>
-          <span className="font-mono tabular-nums">18ms</span>
+          <span className="font-mono tabular-nums">
+            {scenario.previewLatency}
+          </span>
         </div>
       </div>
     </div>
   );
 }
 
-function ContextTabContent() {
+function ContextTabContent({
+  scenario,
+}: {
+  readonly scenario: PreviewScenario;
+}) {
   const radius = 34;
   const circumference = 2 * Math.PI * radius;
-  const fillRatio = 0.45;
+  const fillRatio = scenario.contextPct / 100;
   const dashOffset = circumference * (1 - fillRatio);
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3.5">
-      {/* Model bar */}
       <div className="flex items-center justify-between text-xs">
         <span className="font-medium text-(--l-panel-fg)">Claude Opus 4.6</span>
         <RefreshCw
@@ -244,7 +248,6 @@ function ContextTabContent() {
         />
       </div>
 
-      {/* Signature Entry Context Ring Card */}
       <div className="rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface) p-4">
         <div className="flex items-center gap-4">
           <svg
@@ -265,7 +268,7 @@ function ContextTabContent() {
               cy="42"
               r={radius}
               fill="none"
-              stroke="var(--l-panel-fg)"
+              stroke="var(--l-accent)"
               strokeWidth="6.5"
               strokeLinecap="round"
               strokeDasharray={circumference}
@@ -274,16 +277,16 @@ function ContextTabContent() {
           </svg>
           <div className="min-w-0">
             <div className="text-2xl font-semibold tracking-tight tabular-nums text-(--l-panel-fg)">
-              45
+              {scenario.contextPct}
               <span className="text-sm font-normal text-(--l-panel-fg-3)">
                 %
               </span>
             </div>
             <div className="mt-0.5 text-xs font-medium tabular-nums text-(--l-panel-fg-2)">
-              453.2k of 1.0m tokens
+              {scenario.contextUsed}
             </div>
             <div className="text-[11px] tabular-nums text-(--l-panel-fg-3)">
-              526.8k left before autocompact
+              {scenario.contextLeft}
             </div>
           </div>
         </div>
@@ -296,19 +299,18 @@ function ContextTabContent() {
           <div className="flex items-center justify-between text-(--l-panel-fg-2)">
             <span>Free space</span>
             <span className="font-mono text-(--l-panel-fg-3)">
-              526.8k · 53%
+              {scenario.contextFreePct}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Session metrics grid */}
       <div className="mt-auto">
         <div className="mb-2 text-xs font-medium text-(--l-panel-fg-2)">
           This session
         </div>
         <div className="grid grid-cols-3 gap-2">
-          {CONTEXT_STATS.map((stat) => (
+          {scenario.contextStats.map((stat) => (
             <div
               key={stat.label}
               className="rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-2.5 py-2"

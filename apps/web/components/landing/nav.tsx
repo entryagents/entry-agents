@@ -32,7 +32,7 @@ export function LandingNav({
       : "/login";
 
   useEffect(() => {
-    const handle = () => setScrolled(window.scrollY > 12);
+    const handle = () => setScrolled(window.scrollY > 16);
     handle();
     window.addEventListener("scroll", handle, { passive: true });
     return () => window.removeEventListener("scroll", handle);
@@ -43,8 +43,8 @@ export function LandingNav({
       aria-label="Primary navigation"
       className={`fixed left-0 right-0 top-0 z-50 border-b transition-[border-color,background-color] duration-150 ${
         scrolled || mobileMenuOpen
-          ? "border-(--l-border) bg-(--l-bg)/92 backdrop-blur-md"
-          : "border-transparent bg-(--l-bg)/80 backdrop-blur-xs"
+          ? "border-(--l-border) bg-(--l-bg)/90 backdrop-blur-md"
+          : "border-transparent bg-transparent"
       }`}
     >
       <div className="mx-auto flex h-14 max-w-[1280px] items-center justify-between px-4 sm:h-16 sm:px-6 lg:px-10">
@@ -86,7 +86,7 @@ export function LandingNav({
             showSignIn && (
               <Link
                 href={signInHref}
-                className="inline-flex h-8 items-center rounded-lg border border-(--l-border) bg-(--l-surface) px-3 text-xs font-medium text-(--l-fg) transition-[border-color,background-color] duration-150 hover:border-(--l-fg-4) hover:bg-(--l-surface-2)"
+                className="inline-flex h-8 items-center rounded-lg border border-(--l-border) bg-(--l-surface)/80 px-3 text-xs font-medium text-(--l-fg) backdrop-blur-sm transition-[border-color,background-color,transform] duration-150 hover:border-(--l-fg-4) hover:bg-(--l-surface) active:scale-[0.98]"
               >
                 Sign in
               </Link>
@@ -98,7 +98,7 @@ export function LandingNav({
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileMenuOpen}
             onClick={() => setMobileMenuOpen((prev) => !prev)}
-            className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-(--l-border) text-(--l-fg-2) transition-colors hover:text-(--l-fg) md:hidden"
+            className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-(--l-border) bg-(--l-surface)/80 text-(--l-fg-2) backdrop-blur-sm transition-colors hover:text-(--l-fg) md:hidden"
           >
             {mobileMenuOpen ? (
               <X className="size-4" strokeWidth={1.5} />
