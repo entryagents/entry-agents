@@ -1,767 +1,420 @@
 "use client";
 
 import {
-  CheckCircle2,
-  FileCode2,
-  GitBranch,
-  Terminal,
-  Users,
+  ArrowUp,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Folder,
+  FolderGit2,
+  GitFork,
+  PanelLeft,
+  Paperclip,
+  ShieldCheck,
+  SquarePen,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-
-const EASE_OUT = [0.22, 1, 0.36, 1] as const;
-
-type SessionId = "oauth" | "direct" | "reconnect" | "integrations";
-type InspectorTab = "changes" | "branch";
-
-type InlineAgentEntry = {
-  readonly role: string;
-  readonly summary: string;
-  readonly file: string;
-  readonly duration: string;
-};
-
-type DirectStepEntry = {
-  readonly kind: "edit" | "bash" | "plug";
-  readonly label: string;
-  readonly arg: string;
-  readonly meta: string;
-};
-
-type DiffLine = {
-  readonly type: "ctx" | "add" | "del";
-  readonly lineNum?: number;
-  readonly text: string;
-};
-
-type BranchFileRow = {
-  readonly path: string;
-  readonly additions: number;
-  readonly deletions: number;
-};
-
-type WorkspaceSession = {
-  readonly id: SessionId;
-  readonly title: string;
-  readonly branch: string;
-  readonly age: string;
-  readonly modeLabel: string;
-  readonly prompt: string;
-  readonly inlineTeam: readonly InlineAgentEntry[] | null;
-  readonly directSteps: readonly DirectStepEntry[];
-  readonly response: string;
-  readonly diffFile: string;
-  readonly diffStats: {
-    readonly additions: number;
-    readonly deletions: number;
-  };
-  readonly diffLines: readonly DiffLine[];
-  readonly branchFiles: readonly BranchFileRow[];
-  readonly prCheckSummary: string;
-  readonly model: string;
-  readonly effort: string;
-};
-
-const WORKSPACE_SESSIONS: readonly WorkspaceSession[] = [
-  {
-    id: "oauth",
-    title: "GitHub OAuth & PR checks",
-    branch: "feat/github-oauth",
-    age: "2m",
-    modeLabel: "Team mode inline",
-    prompt:
-      "Wire GitHub App installation callback into session storage and verify token scoping across API routes.",
-    inlineTeam: [
-      {
-        role: "Architect",
-        summary:
-          "Defined callback state contract & locked 3 non-overlapping files",
-        file: "oauth-contract.ts",
-        duration: "1.2s",
-      },
-      {
-        role: "Explorer",
-        summary: "Mapped auth handlers & session lookup helpers",
-        file: "lib/auth/config.ts",
-        duration: "1.6s",
-      },
-      {
-        role: "Executor",
-        summary:
-          "Implemented verified callback route & installation persistence",
-        file: "api/github/callback/route.ts",
-        duration: "3.4s",
-      },
-      {
-        role: "Reviewer",
-        summary: "Verified CSRF cookie check, token redaction & 14 tests",
-        file: "callback.test.ts",
-        duration: "1.5s",
-      },
-    ],
-    directSteps: [
-      {
-        kind: "bash",
-        label: "Test suite",
-        arg: "pnpm typecheck && bun test github-callback.test.ts",
-        meta: "14/14 passed",
-      },
-    ],
-    response:
-      "Connected the GitHub App installation callback cleanly, scoped tokens per repository, and verified all 14 callback tests in the sandbox.",
-    diffFile: "app/api/github/callback/route.ts",
-    diffStats: { additions: 34, deletions: 6 },
-    diffLines: [
-      {
-        type: "ctx",
-        lineNum: 41,
-        text: "  const session = await getServerSession(request);",
-      },
-      {
-        type: "del",
-        lineNum: 42,
-        text: "  if (!installationId) return NextResponse.redirect('/');",
-      },
-      {
-        type: "add",
-        lineNum: 42,
-        text: "  const verified = await verifyInstallationState(stateCookie, state);",
-      },
-      {
-        type: "add",
-        lineNum: 43,
-        text: "  if (!verified || !installationId) {",
-      },
-      {
-        type: "add",
-        lineNum: 44,
-        text: "    return NextResponse.redirect(new URL('/settings/connections', request.url));",
-      },
-      {
-        type: "add",
-        lineNum: 45,
-        text: "  }",
-      },
-      {
-        type: "ctx",
-        lineNum: 46,
-        text: "  await linkGithubInstallation(session.user.id, installationId);",
-      },
-    ],
-    branchFiles: [
-      { path: "app/api/github/callback/route.ts", additions: 22, deletions: 4 },
-      { path: "lib/github/installations.ts", additions: 8, deletions: 2 },
-      { path: "lib/github/callback.test.ts", additions: 4, deletions: 0 },
-    ],
-    prCheckSummary: "Typecheck & 14 callback tests green",
-    model: "Claude Opus 4.6",
-    effort: "high",
-  },
-  {
-    id: "direct",
-    title: "Fix retry backoff guard",
-    branch: "fix/retry-backoff",
-    age: "14m",
-    modeLabel: "Direct agent",
-    prompt:
-      "Cap exponential retry delay in the transport client at 15s and add jitter bounds.",
-    inlineTeam: null,
-    directSteps: [
-      {
-        kind: "edit",
-        label: "Edit file",
-        arg: "apps/web/lib/abortable-chat-transport.ts",
-        meta: "+12 −3",
-      },
-      {
-        kind: "bash",
-        label: "Verify",
-        arg: "bun test apps/web/lib/chat/friendly-error.test.ts",
-        meta: "18/18 passed",
-      },
-    ],
-    response:
-      "Updated the backoff curve to clamp jittered delays at 15s directly without spinning up extra agents.",
-    diffFile: "lib/abortable-chat-transport.ts",
-    diffStats: { additions: 12, deletions: 3 },
-    diffLines: [
-      {
-        type: "ctx",
-        lineNum: 108,
-        text: "export function computeRetryDelayMs(attempt: number): number {",
-      },
-      {
-        type: "del",
-        lineNum: 109,
-        text: "  return 1000 * 2 ** attempt;",
-      },
-      {
-        type: "add",
-        lineNum: 109,
-        text: "  const capped = Math.min(15_000, 1000 * 2 ** Math.min(attempt, 5));",
-      },
-      {
-        type: "add",
-        lineNum: 110,
-        text: "  const jitter = Math.round(capped * 0.15 * Math.random());",
-      },
-      {
-        type: "add",
-        lineNum: 111,
-        text: "  return capped + jitter;",
-      },
-      {
-        type: "ctx",
-        lineNum: 112,
-        text: "}",
-      },
-    ],
-    branchFiles: [
-      { path: "lib/abortable-chat-transport.ts", additions: 12, deletions: 3 },
-    ],
-    prCheckSummary: "Single-agent pass · 18/18 green",
-    model: "Claude Sonnet 4.6",
-    effort: "medium",
-  },
-  {
-    id: "reconnect",
-    title: "Offline-proof mobile run",
-    branch: "fix/stream-resume",
-    age: "1h",
-    modeLabel: "Durable resume",
-    prompt:
-      "Ensure losing cellular signal mid-turn resumes live server progress without duplicate messages.",
-    inlineTeam: null,
-    directSteps: [
-      {
-        kind: "edit",
-        label: "Edit file",
-        arg: "apps/web/app/api/chat/[chatId]/stream/route.ts",
-        meta: "+22 −4",
-      },
-      {
-        kind: "bash",
-        label: "Verify",
-        arg: "bun test apps/web/app/workflows/chat.test.ts",
-        meta: "29/29 passed",
-      },
-    ],
-    response:
-      "Server checkpoints persisted each tool step while offline and reattached seamlessly when the browser came back online.",
-    diffFile: "app/api/chat/[chatId]/stream/route.ts",
-    diffStats: { additions: 22, deletions: 4 },
-    diffLines: [
-      {
-        type: "ctx",
-        lineNum: 142,
-        text: "  const streamResult = await attachDurableStream(runId, startIndex);",
-      },
-      {
-        type: "del",
-        lineNum: 143,
-        text: "  return createEmptyResponse();",
-      },
-      {
-        type: "add",
-        lineNum: 143,
-        text: "  if (streamResult.status === 'active') {",
-      },
-      {
-        type: "add",
-        lineNum: 144,
-        text: "    return createUIMessageStreamResponse({ stream: streamResult.stream });",
-      },
-      {
-        type: "add",
-        lineNum: 145,
-        text: "  }",
-      },
-    ],
-    branchFiles: [
-      {
-        path: "app/api/chat/[chatId]/stream/route.ts",
-        additions: 22,
-        deletions: 4,
-      },
-    ],
-    prCheckSummary: "Reconnect tests 29/29 passing",
-    model: "Claude Sonnet 4.6",
-    effort: "high",
-  },
-  {
-    id: "integrations",
-    title: "Linear issue to PR",
-    branch: "feat/linear-triage",
-    age: "3h",
-    modeLabel: "Connected apps",
-    prompt:
-      "Fetch bug ENG-418 from Linear, reproduce the failing webhook signature check, and post the PR link to #engineering in Slack.",
-    inlineTeam: [
-      {
-        role: "Explorer",
-        summary: "Read Linear issue ENG-418 & located webhook verifier",
-        file: "lib/webhooks/verify.ts",
-        duration: "1.4s",
-      },
-      {
-        role: "Executor",
-        summary: "Patched raw-body HMAC verification & added replay test",
-        file: "verify.test.ts",
-        duration: "2.9s",
-      },
-    ],
-    directSteps: [
-      {
-        kind: "plug",
-        label: "Connected",
-        arg: "Linear · GitHub · Slack #engineering",
-        meta: "synced",
-      },
-    ],
-    response:
-      "Fixed the raw-body HMAC check for ENG-418, opened PR #142, and posted verification notes to Slack.",
-    diffFile: "lib/webhooks/verify.ts",
-    diffStats: { additions: 19, deletions: 7 },
-    diffLines: [
-      {
-        type: "del",
-        lineNum: 28,
-        text: "  const payload = JSON.stringify(await request.json());",
-      },
-      {
-        type: "add",
-        lineNum: 28,
-        text: "  const rawPayload = await request.text();",
-      },
-      {
-        type: "ctx",
-        lineNum: 29,
-        text: "  return timingSafeVerify(rawPayload, signatureHeader);",
-      },
-    ],
-    branchFiles: [
-      { path: "lib/webhooks/verify.ts", additions: 11, deletions: 5 },
-      { path: "lib/webhooks/verify.test.ts", additions: 8, deletions: 2 },
-    ],
-    prCheckSummary: "PR #142 open · Linear ENG-418 updated",
-    model: "GPT-5.2",
-    effort: "high",
-  },
-];
-
-function StepIcon({ kind }: { readonly kind: DirectStepEntry["kind"] }) {
-  if (kind === "bash") {
-    return (
-      <Terminal
-        className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
-        strokeWidth={1.5}
-        aria-hidden="true"
-      />
-    );
-  }
-  if (kind === "plug") {
-    return (
-      <GitBranch
-        className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
-        strokeWidth={1.5}
-        aria-hidden="true"
-      />
-    );
-  }
-  return (
-    <FileCode2
-      className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
-      strokeWidth={1.5}
-      aria-hidden="true"
-    />
-  );
-}
+import { EntryMark } from "@/components/entry-mark";
+import { WorkspaceInspectorPane } from "./workspace-inspector-pane";
+import {
+  type InspectorTab,
+  SIDEBAR_CHATS,
+  SIDEBAR_PROJECTS,
+  USAGE_WINDOWS,
+  WORK_STEPS,
+} from "./workspace-preview-data";
 
 export function AppMockup() {
-  const [selectedId, setSelectedId] = useState<SessionId>("oauth");
-  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("changes");
-  const [mobilePane, setMobilePane] = useState<"chat" | "changes" | "branch">(
-    "chat",
-  );
-  const session =
-    WORKSPACE_SESSIONS.find((s) => s.id === selectedId) ??
-    WORKSPACE_SESSIONS[0];
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("diff");
+  const [stepsExpanded, setStepsExpanded] = useState(false);
+  const [mobilePane, setMobilePane] = useState<"chat" | "inspector">("chat");
+
+  const openInspectorTab = (tab: InspectorTab) => {
+    setInspectorTab(tab);
+    setMobilePane("inspector");
+  };
 
   return (
     <div
-      className="min-w-0 w-full overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-panel) ring-1 ring-(--l-panel-border)"
-      style={{ boxShadow: "var(--l-window-shadow)" }}
+      aria-label="Entry workspace preview"
+      className="min-w-0 overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-panel) shadow-(--l-window-shadow)"
     >
-      {/* Workspace top bar */}
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs">
-          <span className="truncate font-medium text-(--l-panel-fg)">
-            acme-labs/web-platform
-          </span>
-          <span className="text-(--l-panel-fg-4)">/</span>
-          <span className="truncate font-mono text-xs text-(--l-panel-fg-2)">
-            {session.branch}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3 font-mono text-xs text-(--l-panel-fg-3)">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-emerald-500" />
-            <span>{session.modeLabel}</span>
-          </span>
-          <span className="text-(--l-panel-fg-4)">·</span>
-          <span className="tabular-nums">
-            +{session.diffStats.additions} −{session.diffStats.deletions}
-          </span>
-        </div>
-      </div>
-
-      {/* Mobile & tablet switcher */}
-      <div className="flex min-w-0 flex-col gap-2 border-b border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 lg:hidden">
-        <div className="flex max-w-full items-center gap-1 overflow-x-auto pb-1 sm:hidden">
-          {WORKSPACE_SESSIONS.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setSelectedId(s.id)}
-              className={`shrink-0 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-medium transition-colors duration-150 ${
-                s.id === selectedId
-                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                  : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg-2)"
-              }`}
-            >
-              {s.title}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex min-w-0 items-center justify-between gap-2">
-          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-1 rounded-lg border border-(--l-panel-border) bg-(--l-panel) p-1 text-xs">
-            <button
-              type="button"
-              onClick={() => setMobilePane("chat")}
-              className={`rounded-md px-2.5 py-1 font-medium transition-colors duration-150 ${
-                mobilePane === "chat"
-                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                  : "text-(--l-panel-fg-3)"
-              }`}
-            >
-              Chat
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobilePane("changes")}
-              className={`rounded-md px-2.5 py-1 font-medium tabular-nums transition-colors duration-150 ${
-                mobilePane === "changes"
-                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                  : "text-(--l-panel-fg-3)"
-              }`}
-            >
-              Diff +{session.diffStats.additions} −{session.diffStats.deletions}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobilePane("branch")}
-              className={`rounded-md px-2.5 py-1 font-medium tabular-nums transition-colors duration-150 ${
-                mobilePane === "branch"
-                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                  : "text-(--l-panel-fg-3)"
-              }`}
-            >
-              Files ({session.branchFiles.length})
-            </button>
-          </div>
-          <span className="hidden font-mono text-xs text-(--l-panel-fg-3) sm:inline">
-            {session.model}
-          </span>
-        </div>
-      </div>
-
-      {/* 3-pane workspace layout */}
-      <div className="flex min-w-0">
-        {/* Left pane: sessions */}
-        <div className="hidden w-52 shrink-0 border-r border-(--l-panel-border) sm:block lg:w-56">
-          <div className="p-3">
-            <div className="mb-2 flex items-center justify-between px-2 py-1 text-xs text-(--l-panel-fg-3)">
-              <span className="font-medium">Chats</span>
-              <span className="rounded border border-(--l-panel-border) px-1 py-0.5 font-mono text-[10px] text-(--l-panel-fg-4)">
-                ⌘K
+      <div className="grid min-w-0 lg:grid-cols-[224px_minmax(0,1fr)_356px] md:grid-cols-[minmax(0,1fr)_320px]">
+        {/* Left Sidebar — mirrors redesigned Entry sidebar */}
+        <aside
+          aria-label="Workspace sidebar preview"
+          className="hidden min-w-0 flex-col border-r border-(--l-panel-border) bg-(--l-surface) lg:flex"
+        >
+          {/* Sidebar top bar */}
+          <div className="flex h-11 shrink-0 items-center justify-between px-3">
+            <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-tight text-(--l-panel-fg)">
+              <EntryMark className="size-4 shrink-0" />
+              <span>Entry</span>
+            </span>
+            <div className="flex items-center gap-1 text-(--l-panel-fg-3)">
+              <span className="inline-flex size-6 items-center justify-center rounded-md hover:bg-(--l-panel-surface)">
+                <SquarePen className="size-3.5" strokeWidth={1.5} />
+              </span>
+              <span className="inline-flex size-6 items-center justify-center rounded-md hover:bg-(--l-panel-surface)">
+                <PanelLeft className="size-3.5" strokeWidth={1.5} />
               </span>
             </div>
-            <div className="space-y-1">
-              {WORKSPACE_SESSIONS.map((s) => {
-                const active = s.id === selectedId;
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    onClick={() => setSelectedId(s.id)}
-                    className={`flex w-full cursor-pointer flex-col rounded-lg px-2.5 py-2 text-left transition-colors duration-150 ${
-                      active
-                        ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                        : "text-(--l-panel-fg-3) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg-2)"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium">
-                        {s.title}
-                      </span>
-                      <span className="shrink-0 font-mono text-xs tabular-nums text-(--l-panel-fg-4)">
-                        {s.age}
-                      </span>
-                    </div>
-                    <span className="mt-0.5 truncate font-mono text-[11px] text-(--l-panel-fg-4)">
-                      {s.branch}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
           </div>
-        </div>
 
-        {/* Center pane: live chat + inline team coordination */}
-        <div
-          className={`min-w-0 flex-1 flex-col ${
-            mobilePane === "chat" ? "flex" : "hidden lg:flex"
-          }`}
-        >
-          <div className="min-h-[340px] min-w-0 flex-1 overflow-hidden sm:min-h-[416px]">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={session.id}
-                initial={{ opacity: 0, transform: "translateY(4px)" }}
-                animate={{ opacity: 1, transform: "translateY(0px)" }}
-                exit={{ opacity: 0, transform: "translateY(-4px)" }}
-                transition={{ duration: 0.16, ease: EASE_OUT }}
-                className="mx-auto min-w-0 max-w-2xl space-y-4 px-4 py-4 sm:px-5 sm:py-5"
-              >
-                {/* Prompt bubble */}
-                <div className="flex justify-end">
-                  <div className="max-w-[92%] rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3.5 py-2.5">
-                    <p className="text-xs leading-relaxed text-(--l-panel-fg)">
-                      {session.prompt}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Live in-chat Team timeline card (when team mode runs in the turn) */}
-                {session.inlineTeam && (
-                  <div className="min-w-0 overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface)">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-panel-border) px-3 py-2 text-xs">
-                      <div className="flex items-center gap-2 font-medium text-(--l-panel-fg)">
-                        <Users
-                          className="size-3.5 text-(--l-accent)"
+          {/* Projects & Chats */}
+          <div className="flex-1 space-y-4 overflow-hidden px-2 py-2">
+            {/* Projects */}
+            <div>
+              <div className="flex h-7 items-center justify-between px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
+                <span>Projects</span>
+                <span className="font-mono text-[10px] tabular-nums opacity-70">
+                  2
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {SIDEBAR_PROJECTS.map((project) => (
+                  <div key={project.name}>
+                    <div className="flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-(--l-panel-fg)">
+                      {project.expanded ? (
+                        <ChevronDown
+                          className="size-3 shrink-0 text-(--l-panel-fg-3)"
+                          strokeWidth={1.75}
+                        />
+                      ) : (
+                        <ChevronRight
+                          className="size-3 shrink-0 text-(--l-panel-fg-3)"
+                          strokeWidth={1.75}
+                        />
+                      )}
+                      {project.expanded ? (
+                        <FolderGit2
+                          className="size-3.5 shrink-0 text-(--l-panel-fg-2)"
                           strokeWidth={1.5}
                         />
-                        <span>Team execution inline</span>
-                      </div>
-                      <span className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-3)">
-                        {session.inlineTeam.length} specialists · 0 conflicts
-                      </span>
+                      ) : (
+                        <Folder
+                          className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
+                          strokeWidth={1.5}
+                        />
+                      )}
+                      <span className="truncate">{project.name}</span>
                     </div>
-                    <div className="divide-y divide-(--l-panel-border)">
-                      {session.inlineTeam.map((agent) => (
+
+                    {project.expanded && project.chats.length > 0 && (
+                      <div className="ml-[13px] mt-0.5 space-y-0.5 border-l border-(--l-panel-border) pl-2">
+                        {project.chats.map((chat) => (
+                          <div
+                            key={chat.title}
+                            className={`flex h-7 items-center rounded-md px-2 text-[12px] ${
+                              chat.active
+                                ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
+                                : "text-(--l-panel-fg-2)"
+                            }`}
+                          >
+                            <span className="truncate">{chat.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Chats */}
+            <div>
+              <div className="flex h-7 items-center justify-between px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
+                <span>Chats</span>
+              </div>
+              <div className="space-y-0.5">
+                {SIDEBAR_CHATS.map((chat) => (
+                  <div
+                    key={chat.title}
+                    className="flex h-8 items-center gap-2 rounded-md px-2 text-[12px] text-(--l-panel-fg-2)"
+                  >
+                    {chat.unread && (
+                      <span className="size-1.5 shrink-0 rounded-full bg-(--l-accent)" />
+                    )}
+                    <span className="truncate">{chat.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Redesigned horizontal Usage card */}
+          <div className="border-t border-(--l-panel-border) p-2.5">
+            <div className="rounded-lg border border-(--l-panel-border) bg-(--l-panel) px-2.5 py-2">
+              <div className="flex items-baseline justify-between text-[11px]">
+                <span className="font-medium text-(--l-panel-fg)">Builder</span>
+                <span className="font-mono text-[11px] font-medium tabular-nums text-(--l-panel-fg-2)">
+                  $21.40 left
+                </span>
+              </div>
+              <div className="mt-2 space-y-1.5">
+                {USAGE_WINDOWS.map((win) => (
+                  <div
+                    key={win.label}
+                    className="grid grid-cols-[24px_1fr_28px] items-center gap-2 text-[10px] tabular-nums"
+                  >
+                    <span className="text-(--l-panel-fg-3)">{win.label}</span>
+                    <div className="h-[3px] w-full overflow-hidden rounded-full bg-(--l-panel-border)">
+                      <div
+                        className="h-full rounded-full bg-(--l-panel-fg)/75"
+                        style={{ width: `${win.pct}%` }}
+                      />
+                    </div>
+                    <span className="text-right font-mono text-(--l-panel-fg-3)">
+                      {win.pct}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Center Pane — Authentic Entry Chat */}
+        <div
+          className={`min-w-0 flex-col border-(--l-panel-border) bg-(--l-panel) md:flex md:border-r ${
+            mobilePane === "chat" ? "flex" : "hidden md:flex"
+          }`}
+        >
+          {/* Chat top bar */}
+          <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-(--l-panel-border) px-3.5 sm:px-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="inline-flex size-4 shrink-0 items-center justify-center lg:hidden">
+                <EntryMark className="size-4" />
+              </span>
+              <span className="truncate text-xs font-medium text-(--l-panel-fg) sm:text-[13px]">
+                Ship Resend transactional emails
+              </span>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              {/* Mobile switch between Chat and Workspace */}
+              <div className="inline-flex rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) p-0.5 text-[11px] md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setMobilePane("chat")}
+                  className="cursor-pointer rounded-xs bg-(--l-panel-active) px-2 py-0.5 font-medium text-(--l-panel-fg)"
+                >
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobilePane("inspector")}
+                  className="cursor-pointer rounded-xs px-2 py-0.5 text-(--l-panel-fg-3)"
+                >
+                  Workspace
+                </button>
+              </div>
+
+              {/* Compact Context indicator button */}
+              <button
+                type="button"
+                onClick={() => openInspectorTab("context")}
+                className="hidden cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-[11px] font-medium tabular-nums text-(--l-panel-fg-3) transition-colors hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg) sm:inline-flex"
+                title="Inspect session context"
+              >
+                <svg
+                  viewBox="0 0 18 18"
+                  className="size-3.5 -rotate-90"
+                  aria-hidden="true"
+                >
+                  <circle
+                    cx="9"
+                    cy="9"
+                    r="6.5"
+                    fill="none"
+                    stroke="var(--l-panel-border)"
+                    strokeWidth="2.2"
+                  />
+                  <circle
+                    cx="9"
+                    cy="9"
+                    r="6.5"
+                    fill="none"
+                    stroke="var(--l-panel-fg)"
+                    strokeWidth="2.2"
+                    strokeDasharray="40.84"
+                    strokeDashoffset="22.46"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span>45%</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Chat messages */}
+          <div className="flex flex-1 flex-col justify-between gap-5 p-4 sm:p-5">
+            <div className="space-y-5">
+              {/* Previous turn collapsed banner */}
+              <div className="flex items-center justify-between rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-[11px] text-(--l-panel-fg-3)">
+                <span className="tabular-nums">Previous turn · 11 steps</span>
+                <span className="font-medium text-(--l-panel-fg-2)">
+                  Show full turn
+                </span>
+              </div>
+
+              {/* Right-aligned User Bubble */}
+              <div className="flex justify-end">
+                <div className="max-w-[90%] rounded-2xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3.5 py-2.5 text-[13px] leading-relaxed text-(--l-panel-fg) sm:max-w-[82%]">
+                  Wire up welcome and billing emails with Resend, preview the
+                  template on port 3000, and open a PR once tests pass.
+                </div>
+              </div>
+
+              {/* Assistant Turn */}
+              <div className="space-y-3">
+                {/* Expandable work summary */}
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setStepsExpanded((prev) => !prev)}
+                    className="inline-flex cursor-pointer items-center gap-1.5 text-xs tabular-nums text-(--l-panel-fg-3) transition-colors hover:text-(--l-panel-fg)"
+                  >
+                    {stepsExpanded ? (
+                      <ChevronDown className="size-3.5" strokeWidth={1.5} />
+                    ) : (
+                      <ChevronRight className="size-3.5" strokeWidth={1.5} />
+                    )}
+                    <span>Worked 4m 18s · 14 steps</span>
+                  </button>
+
+                  {stepsExpanded && (
+                    <div className="mt-2 space-y-1 border-l border-(--l-panel-border) pl-3 font-mono text-[11px] tabular-nums">
+                      {WORK_STEPS.map((step) => (
                         <div
-                          key={agent.role}
-                          className="flex min-w-0 flex-wrap items-center justify-between gap-2 px-3 py-2 text-xs"
+                          key={step.id}
+                          className="flex items-center justify-between gap-3 py-0.5 text-(--l-panel-fg-2)"
                         >
-                          <div className="flex min-w-0 flex-1 items-center gap-2">
-                            <CheckCircle2
-                              className="size-3.5 shrink-0 text-emerald-500"
-                              strokeWidth={1.5}
-                              aria-hidden="true"
-                            />
-                            <span className="w-16 shrink-0 font-medium text-(--l-panel-fg)">
-                              {agent.role}
-                            </span>
-                            <span className="truncate text-(--l-panel-fg-2)">
-                              {agent.summary}
-                            </span>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-2 font-mono text-[11px] text-(--l-panel-fg-4)">
-                            <span className="hidden sm:inline">
-                              {agent.file}
-                            </span>
-                            <span className="tabular-nums">
-                              {agent.duration}
-                            </span>
-                          </div>
+                          <span className="min-w-0 truncate">
+                            <span className="text-(--l-panel-fg-3)">
+                              {step.tool}
+                            </span>{" "}
+                            <span>{step.detail}</span>
+                          </span>
+                          <span className="shrink-0 text-(--l-panel-fg-4)">
+                            {step.duration}
+                          </span>
                         </div>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {/* Direct tool steps */}
-                <div className="space-y-1">
-                  {session.directSteps.map((step) => (
-                    <div
-                      key={`${session.id}-${step.label}-${step.arg}`}
-                      className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-xs transition-colors duration-150 hover:bg-(--l-panel-surface)"
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <StepIcon kind={step.kind} />
-                        <span className="shrink-0 font-medium text-(--l-panel-fg-2)">
-                          {step.label}
-                        </span>
-                        <span className="truncate font-mono text-[11px] text-(--l-panel-fg-3)">
-                          {step.arg}
-                        </span>
-                      </div>
-                      <span className="shrink-0 font-mono text-[11px] tabular-nums text-(--l-panel-fg-4)">
-                        {step.meta}
-                      </span>
-                    </div>
-                  ))}
+                  )}
                 </div>
 
-                {/* Synthesized assistant summary */}
-                <p className="text-xs leading-relaxed text-(--l-panel-fg-2)">
-                  {session.response}
+                {/* Assistant response prose */}
+                <p className="text-[13.5px] leading-relaxed text-(--l-panel-fg)">
+                  Added the welcome and subscription templates in{" "}
+                  <code className="rounded bg-(--l-panel-surface) px-1 py-0.5 font-mono text-[12px]">
+                    apps/web/lib/email
+                  </code>
+                  , wired Resend webhook delivery, verified the live preview on
+                  port 3000, and opened{" "}
+                  <span className="font-medium underline decoration-(--l-panel-border) underline-offset-4">
+                    PR #324
+                  </span>{" "}
+                  with all 12 unit tests passing.
                 </p>
-              </motion.div>
-            </AnimatePresence>
-          </div>
 
-          {/* Composer bar */}
-          <div className="px-4 pb-4 pt-1 sm:px-5">
-            <div className="mx-auto max-w-2xl overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface)">
-              <div className="px-3.5 py-2.5">
-                <span className="text-xs text-(--l-panel-fg-4)">
-                  Describe what to build, or ask a team of specialists to
-                  collaborate
-                </span>
+                {/* Action row ABOVE file changes summary */}
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[11px] text-(--l-panel-fg-3)">
+                  <div className="flex items-center gap-3">
+                    <span className="inline-flex items-center gap-1 text-(--l-panel-fg-2)">
+                      <Copy className="size-3" strokeWidth={1.5} />
+                      <span>Copy</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-(--l-panel-fg-2)">
+                      <GitFork className="size-3" strokeWidth={1.5} />
+                      <span>Fork</span>
+                    </span>
+                  </div>
+                  <div className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-3)">
+                    14:22 · Opus 4.6 · $0.184
+                  </div>
+                </div>
+
+                {/* File changes summary BELOW Copy / Fork */}
+                <button
+                  type="button"
+                  onClick={() => openInspectorTab("diff")}
+                  className="flex w-full cursor-pointer items-center justify-between rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-left text-xs transition-colors hover:border-(--l-fg-5)"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <ChevronRight
+                      className="size-3.5 text-(--l-panel-fg-3)"
+                      strokeWidth={1.5}
+                    />
+                    <span className="font-medium text-(--l-panel-fg)">
+                      4 files changed
+                    </span>
+                    <span className="font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
+                      +248
+                    </span>
+                    <span className="font-mono text-[11px] tabular-nums text-rose-600 dark:text-rose-400">
+                      -19
+                    </span>
+                  </span>
+                  <span className="text-[11px] text-(--l-panel-fg-3)">
+                    Inspect diff
+                  </span>
+                </button>
               </div>
-              <div className="flex items-center justify-between border-t border-(--l-panel-border) px-3 py-1.5">
-                <div className="flex items-center gap-2 font-mono text-[11px] text-(--l-panel-fg-3)">
-                  <span className="text-(--l-panel-fg-2)">{session.model}</span>
-                  <span className="text-(--l-panel-fg-4)">·</span>
-                  <span>{session.effort}</span>
+            </div>
+
+            {/* Real Entry Composer Bar */}
+            <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) px-3.5 py-2.5">
+              <div className="text-xs text-(--l-panel-fg-3)">
+                Follow up on PR #324 or inspect another route...
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-(--l-panel-fg-2)">
+                  <Paperclip
+                    className="size-3.5 text-(--l-panel-fg-3)"
+                    strokeWidth={1.5}
+                  />
+                  <span className="font-medium text-(--l-panel-fg)">
+                    Claude Opus 4.6
+                  </span>
+                  <span className="text-(--l-panel-fg-3)">high</span>
+                  <span className="hidden items-center gap-1 text-(--l-accent) sm:inline-flex">
+                    <ShieldCheck className="size-3" strokeWidth={1.5} />
+                    <span>Full access</span>
+                  </span>
                 </div>
-                <div className="flex size-5 items-center justify-center rounded-md bg-(--l-btn-bg)">
-                  <svg
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    className="size-2.5 text-(--l-btn-fg)"
-                    aria-hidden="true"
-                  >
-                    <path d="M8 12V4M8 4l-3 3M8 4l3 3" />
-                  </svg>
-                </div>
+                <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-(--l-btn-bg) text-(--l-btn-fg)">
+                  <ArrowUp className="size-3.5" strokeWidth={1.75} />
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Right pane: diff & branch changes */}
+        {/* Right Pane — Workspace Inspector */}
         <div
-          className={`min-w-0 w-full shrink-0 flex-col border-(--l-panel-border) lg:flex lg:w-80 lg:border-l ${
-            mobilePane === "chat" ? "hidden" : "flex"
+          className={`min-w-0 flex-col md:flex ${
+            mobilePane === "inspector" ? "flex" : "hidden md:flex"
           }`}
         >
-          <div className="hidden items-center justify-between border-b border-(--l-panel-border) px-3 py-2 lg:flex">
-            <div className="flex items-center gap-1 rounded-md bg-(--l-panel-surface) p-0.5 text-xs">
-              <button
-                type="button"
-                onClick={() => setInspectorTab("changes")}
-                className={`cursor-pointer rounded px-2 py-0.5 font-medium transition-colors duration-150 ${
-                  inspectorTab === "changes"
-                    ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                    : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg-2)"
-                }`}
-              >
-                Diff
-              </button>
-              <button
-                type="button"
-                onClick={() => setInspectorTab("branch")}
-                className={`cursor-pointer rounded px-2 py-0.5 font-medium transition-colors duration-150 ${
-                  inspectorTab === "branch"
-                    ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                    : "text-(--l-panel-fg-3) hover:text-(--l-panel-fg-2)"
-                }`}
-              >
-                Files ({session.branchFiles.length})
-              </button>
-            </div>
-            <span className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-4)">
-              +{session.diffStats.additions} −{session.diffStats.deletions}
+          {/* Mobile header return switch */}
+          <div className="flex h-10 items-center justify-between border-b border-(--l-panel-border) px-3.5 md:hidden">
+            <span className="text-xs font-medium text-(--l-panel-fg)">
+              Workspace inspector
             </span>
+            <button
+              type="button"
+              onClick={() => setMobilePane("chat")}
+              className="cursor-pointer rounded-md border border-(--l-panel-border) px-2 py-0.5 text-[11px] font-medium text-(--l-panel-fg-2)"
+            >
+              Back to chat
+            </button>
           </div>
-
-          <div className="min-w-0 flex-1 overflow-hidden p-3.5">
-            {mobilePane === "changes" ||
-            (mobilePane === "chat" && inspectorTab === "changes") ? (
-              <div className="min-w-0 space-y-3">
-                <div className="flex min-w-0 items-center justify-between gap-2 font-mono text-[11px]">
-                  <span className="truncate text-(--l-panel-fg-2)">
-                    {session.diffFile}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-(--l-panel-fg-3)">
-                    +{session.diffStats.additions} −
-                    {session.diffStats.deletions}
-                  </span>
-                </div>
-                <div className="min-w-0 max-w-full overflow-x-auto rounded-lg border border-(--l-panel-border) bg-(--l-code-bg) py-1.5 font-mono text-[11px] leading-[1.6]">
-                  {session.diffLines.map((line, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex px-2 ${
-                        line.type === "add"
-                          ? "bg-emerald-500/10 text-emerald-500"
-                          : line.type === "del"
-                            ? "bg-rose-500/10 text-rose-500"
-                            : "text-(--l-panel-fg-3)"
-                      }`}
-                    >
-                      <span className="w-6 shrink-0 select-none pr-1.5 text-right tabular-nums opacity-45">
-                        {line.lineNum ?? ""}
-                      </span>
-                      <span className="w-3 shrink-0 select-none opacity-70">
-                        {line.type === "add"
-                          ? "+"
-                          : line.type === "del"
-                            ? "−"
-                            : " "}
-                      </span>
-                      <span className="truncate">{line.text}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-xs text-(--l-panel-fg-2)">
-                  {session.prCheckSummary}
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="text-xs font-medium text-(--l-panel-fg-3)">
-                  Changed on branch
-                </div>
-                <div className="space-y-1">
-                  {session.branchFiles.map((file) => (
-                    <div
-                      key={file.path}
-                      className="flex items-center justify-between gap-2 rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) px-2.5 py-2 font-mono text-[11px]"
-                    >
-                      <span className="truncate text-(--l-panel-fg-2)">
-                        {file.path}
-                      </span>
-                      <span className="shrink-0 tabular-nums text-(--l-panel-fg-4)">
-                        +{file.additions} −{file.deletions}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t border-(--l-panel-border) pt-3 text-xs text-(--l-panel-fg-3)">
-                  {session.prCheckSummary}
-                </div>
-              </div>
-            )}
-          </div>
+          <WorkspaceInspectorPane
+            activeTab={inspectorTab}
+            onSelectTab={setInspectorTab}
+          />
         </div>
       </div>
     </div>

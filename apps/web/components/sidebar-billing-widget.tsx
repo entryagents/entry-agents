@@ -225,8 +225,8 @@ export function DesktopBalanceBox() {
         if (isMobile) setOpenMobile(false);
         router.push("/pricing");
       }}
-      title={`Credit balance: ${formatUsdCents(data.creditBalanceCents)} (Click to view plans & top up)`}
-      className="flex h-9 min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-border bg-background/80 px-2.5 font-mono text-xs font-semibold tabular-nums text-foreground shadow-2xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-muted/80 cursor-pointer"
+      title={`Credit balance: ${formatUsdCents(data.creditBalanceCents)} (View plans & top up)`}
+      className="flex h-8 min-w-[44px] shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60 px-2.5 font-mono text-xs font-medium tabular-nums text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border hover:bg-muted/70 cursor-pointer"
     >
       {formatCompactUsdCents(data.creditBalanceCents)}
     </button>
@@ -263,7 +263,7 @@ export function SidebarPlanBadge({ showIcon = false }: { showIcon?: boolean }) {
 /**
  * Usage Windows Telemetry for the Desktop Sidebar.
  * Rendered when the user is on a paid plan with 5h / 7d / 30d usage windows
- * (Plus $3/mo and Builder $10/mo).
+ * (Plus $3/mo and Pro $10/mo).
  */
 function getUsageWindowPercent(usedCents: number, limitCents: number): number {
   if (limitCents <= 0) return 0;
@@ -303,9 +303,6 @@ export function DesktopCodexBillingStatus() {
     data.creditBalanceCents >= 0
       ? Math.min(data.creditBalanceCents, monthlyRemainingCents)
       : 0;
-  const cardStyle =
-    (isPlusPlan ? PLAN_STYLES.plus?.card : PLAN_STYLES.entry.card) ??
-    PLAN_STYLES.entry.card;
 
   return (
     <button
@@ -314,26 +311,22 @@ export function DesktopCodexBillingStatus() {
         if (isMobile) setOpenMobile(false);
         router.push("/settings/usage");
       }}
-      title="View detailed usage & balance"
-      className={cn(
-        "w-full text-left space-y-1.5 rounded-xl border p-2 shadow-2xs transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer hover:border-foreground/30",
-        cardStyle,
-      )}
+      title="Open usage and billing details"
+      className="group w-full cursor-pointer rounded-xl border border-border/70 bg-background/50 p-2.5 text-left transition-[border-color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border hover:bg-background/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
-      <div className="flex items-center justify-between gap-1.5 px-0.5">
-        <span className="text-[11px] font-medium text-muted-foreground">
-          {windows.mode === "fixed" ? "Fixed windows" : "Sliding windows"}
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-[12px] font-medium text-foreground">
+          {data.planName || "Usage"}
         </span>
-
-        <div className="flex items-baseline gap-1 font-mono text-[11px] tabular-nums">
-          <span className="font-semibold text-foreground">
+        <span className="shrink-0 font-mono text-[11.5px] tabular-nums">
+          <span className="font-medium text-foreground">
             {formatUsdCents(effectiveRemainingCents)}
           </span>
-          <span className="text-[10px] text-muted-foreground/75">left</span>
-        </div>
+          <span className="ml-1 text-muted-foreground">left</span>
+        </span>
       </div>
 
-      <div className="grid grid-cols-3 gap-1">
+      <div className="mt-2 space-y-1.5">
         {(
           [
             { label: "5h", win: windows.fiveHour },
@@ -343,57 +336,53 @@ export function DesktopCodexBillingStatus() {
         ).map(({ label, win }) => {
           const pct = getUsageWindowPercent(win.usedCents, win.limitCents);
           const isFull = win.usedCents >= win.limitCents;
-          const isWarn = !isFull && pct >= 75;
+          const isWarn = !isFull && pct >= 80;
+          const remaining = Math.max(0, win.limitCents - win.usedCents);
           return (
             <div
               key={label}
-              title={
-                label === "30d"
-                  ? `Monthly Limit: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`
-                  : `${windows.mode === "fixed" ? "Fixed" : "Sliding"} ${label}: ${formatUsdCents(win.usedCents)} used of ${formatUsdCents(win.limitCents)} (${formatUsdCents(Math.max(0, win.limitCents - win.usedCents))} remaining)`
-              }
-              className="rounded-lg border border-border/60 bg-background/75 px-1.5 py-1"
+              title={`${label}: ${formatUsdCents(win.usedCents)} of ${formatUsdCents(win.limitCents)} used (${formatUsdCents(remaining)} left)`}
+              className="flex items-center gap-2"
             >
-              <div className="flex items-center justify-between font-mono text-[10px] leading-none">
-                <span className="text-muted-foreground">{label}</span>
-                <span
-                  className={cn(
-                    "tabular-nums",
-                    isFull
-                      ? "font-semibold text-red-400"
-                      : isWarn
-                        ? "font-medium text-amber-400"
-                        : "text-foreground/90",
-                  )}
-                >
-                  {pct}%
-                </span>
-              </div>
-              <div className="my-1 h-1 w-full overflow-hidden rounded-full bg-muted">
+              <span className="w-6 shrink-0 font-mono text-[11px] text-muted-foreground">
+                {label}
+              </span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-foreground/[0.08]">
                 <div
                   className={cn(
                     "h-full rounded-full transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
                     isFull
                       ? "bg-red-500"
                       : isWarn
-                        ? "bg-amber-400"
-                        : "bg-emerald-400",
+                        ? "bg-amber-500"
+                        : "bg-foreground/75",
                   )}
                   style={{ width: `${pct}%` }}
                 />
               </div>
-              <div className="truncate font-mono text-[9px] leading-none tabular-nums text-muted-foreground/75">
-                {formatCompactUsdCents(win.usedCents)}/
-                {formatCompactUsdCents(win.limitCents)}
-              </div>
+              <span
+                className={cn(
+                  "w-8 shrink-0 text-right font-mono text-[11px] tabular-nums",
+                  isFull
+                    ? "font-medium text-red-500 dark:text-red-400"
+                    : isWarn
+                      ? "font-medium text-amber-600 dark:text-amber-400"
+                      : pct > 0
+                        ? "text-foreground/85"
+                        : "text-muted-foreground/70",
+                )}
+              >
+                {pct}%
+              </span>
             </div>
           );
         })}
       </div>
+
       {data.expiresAt ? (
-        <div className="flex items-center justify-between border-t border-border/40 pt-1 text-[10px] text-muted-foreground/80">
-          <span>Expires</span>
-          <span className="font-mono font-medium tabular-nums text-foreground/90">
+        <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-1.5 text-[11px] text-muted-foreground">
+          <span>Renews</span>
+          <span className="font-mono tabular-nums text-foreground/80">
             {formatExpirationDate(data.expiresAt)}
           </span>
         </div>

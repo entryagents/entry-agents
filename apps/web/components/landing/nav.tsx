@@ -4,8 +4,8 @@ import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { UserAvatarDropdown } from "@/components/user-avatar-dropdown";
 import { Button } from "@/components/ui/button";
+import { UserAvatarDropdown } from "@/components/user-avatar-dropdown";
 import { useSession } from "@/hooks/use-session";
 import { Logo } from "./logo";
 
@@ -32,7 +32,7 @@ export function LandingNav({
       : "/login";
 
   useEffect(() => {
-    const handle = () => setScrolled(window.scrollY > 16);
+    const handle = () => setScrolled(window.scrollY > 12);
     handle();
     window.addEventListener("scroll", handle, { passive: true });
     return () => window.removeEventListener("scroll", handle);
@@ -43,24 +43,34 @@ export function LandingNav({
       aria-label="Primary navigation"
       className={`fixed left-0 right-0 top-0 z-50 border-b transition-[border-color,background-color] duration-150 ${
         scrolled || mobileMenuOpen
-          ? "border-(--l-border) bg-(--l-bg)/90 backdrop-blur-md"
-          : "border-transparent bg-(--l-bg)/70 backdrop-blur-xs"
+          ? "border-(--l-border) bg-(--l-bg)/92 backdrop-blur-md"
+          : "border-transparent bg-(--l-bg)/80 backdrop-blur-xs"
       }`}
     >
-      <div className="mx-auto flex h-14 max-w-[1320px] items-center justify-between px-4 sm:h-16 sm:px-6 lg:px-10">
+      <div className="mx-auto flex h-14 max-w-[1280px] items-center justify-between px-4 sm:h-16 sm:px-6 lg:px-10">
         <div className="flex items-center gap-8">
-          <Logo className="h-5" />
+          <Link
+            href="/"
+            className="inline-flex items-center text-(--l-fg) transition-opacity duration-150 hover:opacity-85"
+          >
+            <Logo className="h-5" />
+          </Link>
 
           <div className="hidden items-center gap-6 text-sm text-(--l-fg-2) md:flex">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                className="transition-colors duration-150 hover:text-(--l-fg)"
-              >
-                {link.label}
-              </Link>
-            ))}
+            {NAV_LINKS.map((link) => {
+              const active = pathname === link.href;
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`transition-colors duration-150 ${
+                    active ? "font-medium text-(--l-fg)" : "hover:text-(--l-fg)"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
           </div>
         </div>
 
@@ -76,7 +86,7 @@ export function LandingNav({
             showSignIn && (
               <Link
                 href={signInHref}
-                className="inline-flex h-8 items-center rounded-lg border border-(--l-border) bg-(--l-surface) px-3 text-xs font-medium text-(--l-fg) transition-colors duration-150 hover:border-(--l-fg-4)"
+                className="inline-flex h-8 items-center rounded-lg border border-(--l-border) bg-(--l-surface) px-3 text-xs font-medium text-(--l-fg) transition-[border-color,background-color] duration-150 hover:border-(--l-fg-4) hover:bg-(--l-surface-2)"
               >
                 Sign in
               </Link>
@@ -88,7 +98,7 @@ export function LandingNav({
             aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
             aria-expanded={mobileMenuOpen}
             onClick={() => setMobileMenuOpen((prev) => !prev)}
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-(--l-border) text-(--l-fg-2) transition-colors hover:text-(--l-fg) md:hidden"
+            className="inline-flex size-8 cursor-pointer items-center justify-center rounded-lg border border-(--l-border) text-(--l-fg-2) transition-colors hover:text-(--l-fg) md:hidden"
           >
             {mobileMenuOpen ? (
               <X className="size-4" strokeWidth={1.5} />

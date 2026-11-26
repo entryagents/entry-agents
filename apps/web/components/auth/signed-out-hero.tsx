@@ -1,126 +1,112 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
-import { motion, MotionConfig, useScroll, useTransform } from "motion/react";
-import Image from "next/image";
+import { motion, MotionConfig } from "motion/react";
 import Link from "next/link";
-import { useRef } from "react";
 import { AppMockup } from "@/components/landing/app-mockup";
 import { ConnectedStackShowcase } from "@/components/landing/connected-stack-showcase";
 import { LandingFaq } from "@/components/landing/faq";
 import { LandingFeatures } from "@/components/landing/features";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNav } from "@/components/landing/nav";
-import { Stage } from "@/components/landing/stage";
+import { LandingPricingStrip } from "@/components/landing/pricing-strip";
 
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
 export function SignedOutHero() {
-  const heroStageRef = useRef<HTMLDivElement>(null);
-  const { scrollYProgress } = useScroll({
-    target: heroStageRef,
-    offset: ["start start", "end start"],
-  });
-  const bgScale = useTransform(scrollYProgress, [0, 1], [1.01, 1.06]);
-  const bgShiftY = useTransform(scrollYProgress, [0, 1], [0, 24]);
-  const stageY = useTransform(scrollYProgress, [0, 0.5], [14, 0]);
-  const stageScale = useTransform(scrollYProgress, [0, 0.5], [0.988, 1]);
-
   return (
     <MotionConfig reducedMotion="user">
-      <div className="landing relative isolate min-h-dvh overflow-x-clip bg-(--l-bg) text-(--l-fg) selection:bg-(--l-fg)/20">
-        {/* Full-site dense architectural background image, calibrated for both light and dark modes */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
-        >
-          <motion.div
-            style={{ scale: bgScale, y: bgShiftY }}
-            className="absolute inset-0"
-          >
-            <Image
-              src="/images/entry-site-bg.jpg"
-              alt=""
-              fill
-              priority
-              sizes="100vw"
-              className="object-cover object-[72%_center] opacity-75 contrast-115 dark:opacity-55 dark:contrast-110"
-            />
-          </motion.div>
-          <div className="absolute inset-0 bg-gradient-to-b from-[#fafafa]/15 via-[#fafafa]/35 to-[#fafafa]/60 dark:from-[#0a0a0c]/55 dark:via-[#0a0a0c]/74 dark:to-[#0a0a0c]/88" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#fafafa]/45 via-[#fafafa]/10 to-transparent dark:from-[#0a0a0c]/80 dark:via-[#0a0a0c]/40 dark:to-transparent" />
-        </div>
+      <div className="landing relative min-h-dvh overflow-x-clip bg-(--l-bg) text-(--l-fg) selection:bg-(--l-fg)/15">
+        <LandingNav showSignIn />
 
-        <LandingNav showSignIn={false} />
+        <main>
+          {/* Hero + Authentic Entry Workspace */}
+          <section className="pt-20 pb-16 sm:pt-24 sm:pb-24 lg:pt-26">
+            <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-10">
+              <div className="max-w-3xl">
+                <motion.h1
+                  initial={{ opacity: 0, transform: "translateY(10px)" }}
+                  animate={{ opacity: 1, transform: "translateY(0px)" }}
+                  transition={{ duration: 0.32, ease: EASE_OUT }}
+                  className="text-balance text-3xl font-semibold leading-[1.06] tracking-[-0.03em] sm:text-5xl lg:text-[3.25rem]"
+                >
+                  Cloud coding agents that finish the work
+                </motion.h1>
 
-        <section
-          ref={heroStageRef}
-          className="relative overflow-hidden pt-24 pb-12 sm:pt-32 md:pt-36 md:pb-20"
-        >
-          <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-10">
-            <div className="max-w-3xl">
-              <motion.h1
-                initial={{ opacity: 0, transform: "translateY(12px)" }}
-                animate={{ opacity: 1, transform: "translateY(0px)" }}
-                transition={{ duration: 0.36, ease: EASE_OUT }}
-                className="text-balance text-3xl font-semibold leading-[1.06] tracking-tight sm:text-5xl md:text-[3.5rem]"
-              >
-                Software engineering workspaces that run alone or as a team
-              </motion.h1>
+                <motion.p
+                  initial={{ opacity: 0, transform: "translateY(8px)" }}
+                  animate={{ opacity: 1, transform: "translateY(0px)" }}
+                  transition={{ duration: 0.32, delay: 0.05, ease: EASE_OUT }}
+                  className="mt-3.5 max-w-[54ch] text-pretty text-base leading-relaxed text-(--l-fg-2) sm:mt-4 sm:text-[17px]"
+                >
+                  An isolated Ubuntu VM per session, durable background runs
+                  that outlive your tab, and direct GitHub and Vercel delivery —
+                  starting at $3/mo.
+                </motion.p>
 
-              <motion.p
-                initial={{ opacity: 0, transform: "translateY(10px)" }}
-                animate={{ opacity: 1, transform: "translateY(0px)" }}
-                transition={{ duration: 0.36, delay: 0.05, ease: EASE_OUT }}
-                className="mt-4 max-w-[56ch] text-pretty text-base leading-relaxed text-(--l-fg-2) sm:mt-6 sm:text-lg"
-              >
-                Build and ship code inside an isolated Linux cloud container
-                connected to GitHub, Vercel, Gmail, Slack, and Linear. Simple
-                tasks finish in one fast pass, while broad builds run as
-                dependency waves inside the same chat.
-              </motion.p>
+                <motion.div
+                  initial={{ opacity: 0, transform: "translateY(6px)" }}
+                  animate={{ opacity: 1, transform: "translateY(0px)" }}
+                  transition={{ duration: 0.32, delay: 0.1, ease: EASE_OUT }}
+                  className="mt-5 flex flex-wrap items-center gap-3 sm:mt-6"
+                >
+                  <Link
+                    href="/login"
+                    className="inline-flex h-10 items-center gap-2 rounded-lg bg-(--l-btn-bg) px-4 text-sm font-medium text-(--l-btn-fg) transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.98]"
+                  >
+                    <span>Start building</span>
+                    <ArrowRight className="size-4" strokeWidth={1.5} />
+                  </Link>
+                  <Link
+                    href="/pricing"
+                    className="inline-flex h-10 items-center rounded-lg border border-(--l-border) bg-(--l-surface) px-4 text-sm font-medium text-(--l-fg-2) transition-[border-color,color,background-color] duration-150 hover:border-(--l-fg-4) hover:text-(--l-fg)"
+                  >
+                    View pricing
+                  </Link>
+                </motion.div>
+              </div>
 
               <motion.div
-                initial={{ opacity: 0, transform: "translateY(8px)" }}
+                initial={{ opacity: 0, transform: "translateY(12px)" }}
                 animate={{ opacity: 1, transform: "translateY(0px)" }}
-                transition={{ duration: 0.36, delay: 0.1, ease: EASE_OUT }}
-                className="mt-6 flex flex-wrap items-center gap-3 sm:mt-8"
+                transition={{ duration: 0.38, delay: 0.12, ease: EASE_OUT }}
+                className="mt-8 min-w-0 sm:mt-10"
               >
+                <AppMockup />
+              </motion.div>
+            </div>
+          </section>
+
+          <LandingFeatures />
+          <ConnectedStackShowcase />
+          <LandingPricingStrip />
+          <LandingFaq />
+
+          {/* Quiet closing call to action */}
+          <section aria-label="Get started">
+            <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-10">
+              <div className="flex flex-col items-start justify-between gap-6 border-t border-(--l-border) py-16 sm:flex-row sm:items-center sm:py-20">
+                <div className="max-w-xl">
+                  <h2 className="text-balance text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
+                    Hand off your next branch
+                  </h2>
+                  <p className="mt-2 text-base text-(--l-fg-2)">
+                    Start free with $1 in trial credits and an isolated Linux
+                    workspace in seconds.
+                  </p>
+                </div>
                 <Link
                   href="/login"
-                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-(--l-btn-bg) px-4 text-sm font-medium text-(--l-btn-fg) transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.98]"
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-lg bg-(--l-btn-bg) px-5 text-sm font-medium text-(--l-btn-fg) transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.98]"
                 >
                   <span>Start building</span>
                   <ArrowRight className="size-4" strokeWidth={1.5} />
                 </Link>
-                <Link
-                  href="/pricing"
-                  className="inline-flex h-10 items-center rounded-lg border border-(--l-border) bg-(--l-surface)/90 px-4 text-sm font-medium text-(--l-fg-2) backdrop-blur-xs transition-[border-color,color,background-color] duration-150 hover:border-(--l-fg-4) hover:text-(--l-fg)"
-                >
-                  Plans from $3/mo
-                </Link>
-              </motion.div>
+              </div>
             </div>
+          </section>
+        </main>
 
-            {/* Interactive 3-pane workspace showcase */}
-            <motion.div
-              style={{ y: stageY, scale: stageScale }}
-              initial={{ opacity: 0, transform: "translateY(14px)" }}
-              whileInView={{ opacity: 1, transform: "translateY(0px)" }}
-              viewport={{ once: true, amount: 0.15 }}
-              transition={{ duration: 0.42, ease: EASE_OUT }}
-              className="mt-10 min-w-0 sm:mt-14"
-            >
-              <Stage>
-                <AppMockup />
-              </Stage>
-            </motion.div>
-          </div>
-        </section>
-
-        <ConnectedStackShowcase />
-        <LandingFeatures />
-        <LandingFaq />
         <LandingFooter />
       </div>
     </MotionConfig>

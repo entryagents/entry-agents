@@ -3119,6 +3119,7 @@ export async function runAgentWorkflow(options: Options) {
           lastKnownInputTokens >= compactionTriggerTokens) ||
           isUnmeasuredPreStepCheck);
 
+      let justCompactedBeforeStep = false;
       if (shouldCheckPreStepCompaction) {
         if (isUnmeasuredPreStepCheck) {
           checkedUnmeasuredCompaction = true;
@@ -3150,9 +3151,13 @@ export async function runAgentWorkflow(options: Options) {
           return null;
         });
         if (compacted?.changed && compacted.messages.length > 0) {
+          justCompactedBeforeStep = true;
           modelMessages.splice(0, modelMessages.length, ...compacted.messages);
+          lastKnownInputTokens =
+            typeof compacted.postTokens === "number" && compacted.postTokens > 0
+              ? compacted.postTokens
+              : undefined;
           if (compacted.didCheckpoint) {
-            lastKnownInputTokens = undefined;
             checkedUnmeasuredCompaction = false;
           }
         }
@@ -3570,6 +3575,35 @@ export async function runAgentWorkflow(options: Options) {
         );
 
       if (!shouldContinue) {
+        const producedFinalText = result.responseMessages.some(
+          (msg) =>
+            msg.role === "assistant" &&
+            (typeof msg.content === "string"
+              ? msg.content.trim().length > 0
+              : Array.isArray(msg.content) &&
+                msg.content.some(
+                  (part) =>
+                    part &&
+                    typeof part === "object" &&
+                    part.type === "text" &&
+                    typeof part.text === "string" &&
+                    part.text.trim().length > 0,
+                )),
+        );
+        if (
+          justCompactedBeforeStep &&
+          !producedFinalText &&
+          !shouldPauseForToolInteraction(
+            result.responseMessage?.parts ?? pendingAssistantResponse.parts,
+          )
+        ) {
+          modelMessages.push({
+            role: "user",
+            content:
+              "[System notice: Context compaction just completed. Continue the task in progress and provide your full response without stopping early.]",
+          });
+          continue;
+        }
         break;
       }
 
@@ -6217,6 +6251,26 @@ const runAgentStep = async (
               maybeScheduleMidStepCheckpoint(!part.preliminary);
             }
           } else if (
+            part.type === "tool-input-error" &&
+            typeof part.toolCallId === "string" &&
+            typeof part.toolName === "string"
+          ) {
+            if (!liveStepToolParts.has(part.toolCallId)) {
+              liveStepToolOrder.push(part.toolCallId);
+            }
+            const rawErr =
+              "errorText" in part && typeof part.errorText === "string"
+                ? part.errorText
+                : "Invalid tool input";
+            liveStepToolParts.set(part.toolCallId, {
+              type: `tool-${part.toolName}`,
+              toolCallId: part.toolCallId,
+              state: "output-error",
+              input: "input" in part ? part.input : {},
+              errorText: rawErr,
+            } as unknown as WebAgentUIMessage["parts"][number]);
+            maybeScheduleMidStepCheckpoint(true);
+          } else if (
             part.type === "tool-output-error" &&
             typeof part.toolCallId === "string"
           ) {
@@ -6252,6 +6306,7 @@ const runAgentStep = async (
             part.type === "tool-input-start" ||
             part.type === "tool-input-delta" ||
             part.type === "tool-input-available" ||
+            part.type === "tool-input-error" ||
             part.type === "tool-output-available" ||
             part.type === "tool-output-error"
           ) {

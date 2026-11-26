@@ -34,7 +34,6 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 6px;
 }
 
 .sable-side-list::before,
@@ -48,40 +47,40 @@
 
 .sable-side-list::before {
   top: 0;
-  height: 10px;
-  margin-bottom: -10px;
+  height: 8px;
+  margin-bottom: -8px;
   background: linear-gradient(to bottom, var(--side-bg), transparent);
 }
 
 .sable-side-list::after {
   bottom: 0;
-  height: 26px;
+  height: 20px;
   background: linear-gradient(to top, var(--side-bg), transparent);
 }
 
 .sable-child-list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  margin: 2px 0 6px 18px;
-  padding-left: 10px;
+  gap: 2px;
+  margin: 2px 0 6px 15px;
+  padding-left: 8px;
   border-left: 1px solid var(--side-line);
 }
 
 .sable-child-row {
   display: flex;
   align-items: center;
-  gap: 7px;
-  height: 26px;
+  gap: 8px;
+  height: 28px;
   padding: 0 8px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--side-text-2);
   text-align: left;
   cursor: pointer;
   transition:
-    background-color 110ms var(--side-ease),
-    color 110ms var(--side-ease);
+    background-color 120ms var(--side-ease),
+    color 120ms var(--side-ease);
 }
 
 .sable-child-row:hover {

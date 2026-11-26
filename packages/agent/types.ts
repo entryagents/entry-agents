@@ -116,6 +116,14 @@ export interface SandboxControlContext {
     value: string;
   }) => Promise<Record<string, unknown>>;
   info?: () => Promise<Record<string, unknown>>;
+  ports?: (options?: { port?: number }) => Promise<Record<string, unknown>>;
+  expose_port?: (options: {
+    port?: number;
+    name?: string;
+  }) => Promise<Record<string, unknown>>;
+  unexpose_port?: (options: {
+    port: number;
+  }) => Promise<Record<string, unknown>>;
   checkpoint_create?: (options?: {
     name?: string;
   }) => Promise<Record<string, unknown>>;

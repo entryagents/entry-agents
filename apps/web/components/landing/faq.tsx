@@ -1,25 +1,26 @@
+import { Plus } from "lucide-react";
 import Link from "next/link";
 
 const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "What is Entry Agents",
     answer:
-      "Entry Agents is a cloud software engineering workspace where every session runs inside an isolated Linux environment with git branches, terminal, live preview, connected workplace apps, and wave-coordinated specialist multi-agent teams.",
+      "Entry Agents is a cloud coding workspace where every session runs inside an isolated Ubuntu environment with git branches, terminal, live port previews, connected tools, and durable background execution.",
   },
   {
     question: "How is Team Mode different from single-agent mode",
     answer:
-      "By default, Entry executes directly in a fast single-agent loop so focused fixes finish immediately. For broad multi-file builds, Team Mode coordinates dependency waves visibly inside your main chat: Wave 0 locks interface contracts, parallel builders edit disjoint files, and reviewers verify tests and diffs.",
+      "Routine tasks execute directly in a fast single-agent loop so focused fixes finish immediately. For broad multi-file builds, Team Mode coordinates specialists with non-overlapping file edits visibly inside the same chat.",
   },
   {
-    question: "How does prompt caching and usage work",
+    question: "How do credits and plans work",
     answer:
-      "We achieve a 90% to 99% cache hit rate across all models we support, reusing repository context, tool schemas, and workspace history across turns. Combined with zero per-token markup and affordable plans with generous usage allowances, your credits go significantly further. Visit the Pricing page for full plan details.",
+      "Plans include monthly AI credits with zero per-token markup, billed at provider model rates. Start free with a $1 trial credit, or move to Plus ($3/mo) or Builder ($10/mo) for higher allowances and dedicated VMs.",
   },
   {
     question: "What happens if I lose internet or close my browser mid-turn",
     answer:
-      "All work runs on durable cloud checkpoints. If you drop cellular signal, close your laptop, or open the session on your phone, Entry finishes the turn on the server and automatically reconciles every message and file diff when you reconnect.",
+      "All work runs on durable server checkpoints. If you drop signal, close your laptop, or open the session on your phone, Entry finishes the turn on the server and reconciles every message and diff when you return.",
   },
   {
     question: "Which tools and workplace apps can the agent use",
@@ -53,25 +54,25 @@ export function LandingFaq() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqStructuredData) }}
       />
-      <div className="mx-auto max-w-[1320px] px-4 sm:px-6 lg:px-10">
-        <div className="grid gap-10 border-t border-(--l-border) py-16 md:py-24 lg:grid-cols-[minmax(240px,360px)_1fr]">
+      <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-10">
+        <div className="grid gap-10 border-t border-(--l-border) py-16 sm:py-24 lg:grid-cols-[minmax(240px,360px)_1fr]">
           <div className="min-w-0">
-            <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl md:text-4xl">
+            <h2 className="text-balance text-2xl font-semibold tracking-[-0.02em] sm:text-3xl">
               Frequently asked questions
             </h2>
-            <p className="mt-4 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">
-              How workspaces run in the cloud, how inline team mode coordinates,
-              and how usage pricing works. See{" "}
+            <p className="mt-3 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">
+              How workspaces run in the cloud, how credits are billed, and how
+              sessions survive disconnect. See{" "}
               <Link
                 href="/pricing"
-                className="underline underline-offset-4 hover:text-(--l-fg)"
+                className="underline decoration-(--l-border) underline-offset-4 transition-colors hover:text-(--l-fg)"
               >
                 pricing
               </Link>{" "}
               and{" "}
               <Link
                 href="/model"
-                className="underline underline-offset-4 hover:text-(--l-fg)"
+                className="underline decoration-(--l-border) underline-offset-4 transition-colors hover:text-(--l-fg)"
               >
                 models
               </Link>{" "}
@@ -88,12 +89,11 @@ export function LandingFaq() {
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-medium text-(--l-fg) marker:content-none [&::-webkit-details-marker]:hidden">
                   <span>{f.question}</span>
-                  <span
+                  <Plus
                     aria-hidden="true"
-                    className="font-mono text-xs text-(--l-fg-3) transition-transform duration-150 group-open:rotate-45"
-                  >
-                    +
-                  </span>
+                    className="size-4 shrink-0 text-(--l-fg-3) transition-transform duration-150 group-open:rotate-45"
+                    strokeWidth={1.5}
+                  />
                 </summary>
                 <p className="mt-3 pr-8 text-sm leading-relaxed text-(--l-fg-2)">
                   {f.answer}
