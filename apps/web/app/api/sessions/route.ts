@@ -523,7 +523,11 @@ export async function POST(req: Request) {
         sandboxState: {
           type: sandboxType,
         } as import("@entry-agents/sandbox").SandboxState,
-        lifecycleState: "provisioning",
+        // Lazy sandbox provisioning: non-repo chats (general Q&A, Composio apps,
+        // web research) do NOT eagerly spin up a VM until a workspace tool or UI
+        // action actually needs one. Repo-backed sessions provision eagerly so
+        // cloning is ready immediately.
+        lifecycleState: hasRepo ? "provisioning" : null,
         lifecycleVersion: 0,
       },
       initialChat: {
@@ -560,14 +564,17 @@ export async function POST(req: Request) {
     };
 
     scheduleBackgroundWork(async () => {
-      const tasks: Array<Promise<unknown>> = [
-        kickSandboxProvisioningWorkflow(result.session.id).catch((error) => {
-          console.error(
-            `Failed to kick sandbox provisioning for session ${result.session.id}:`,
-            error,
-          );
-        }),
-      ];
+      const tasks: Array<Promise<unknown>> = [];
+      if (hasRepo) {
+        tasks.push(
+          kickSandboxProvisioningWorkflow(result.session.id).catch((error) => {
+            console.error(
+              `Failed to kick sandbox provisioning for session ${result.session.id}:`,
+              error,
+            );
+          }),
+        );
+      }
 
       if (initialUserMessage) {
         const messageToRun = initialUserMessage;
