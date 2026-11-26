@@ -662,8 +662,12 @@ export class AbortableChatTransport<
   ) {
     const state = this._state;
     const myGeneration = ++state.streamGeneration;
-    // New turn supersedes any previous workflow run ID.
+    // New turn supersedes any previous workflow run ID and chunk timestamps so
+    // an idle timestamp from a prior turn can never trigger a false dead-socket
+    // reconnect while the new POST /api/chat handshake is in flight.
     state.activeWorkflowRunId = null;
+    state.lastChunkAt = 0;
+    state.lastUiChunkAt = 0;
     // Supersede any prior SSE reader so two streams can never ping-pong messages.
     state.readController.abort();
     state.readController = new AbortController();
@@ -741,6 +745,7 @@ export class AbortableChatTransport<
   ) {
     const state = this._state;
     const myGeneration = ++state.streamGeneration;
+    state.lastChunkAt = 0;
     // Supersede any prior SSE reader so two streams can never ping-pong messages.
     state.readController.abort();
     state.readController = new AbortController();

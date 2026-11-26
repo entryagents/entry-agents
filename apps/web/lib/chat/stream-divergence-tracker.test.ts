@@ -187,4 +187,24 @@ describe("StreamDivergenceTracker", () => {
       }),
     ).toEqual({ kind: "reconnect", reason: "dead-socket" });
   });
+
+  test("never triggers dead-socket from a stale prior-turn byte timestamp right after starting a new turn", () => {
+    const tracker = new StreamDivergenceTracker();
+    const priorTurnLastByteAt = 1_000_000;
+    const newTurnStartedAt = 8_000_000; // 2 hours later
+    const pollNow = newTurnStartedAt + 1_500; // 1.5s into new turn
+
+    expect(
+      tracker.evaluate({
+        now: pollNow,
+        serverUpdatedAt: "2026-11-26T21:41:54.362Z",
+        serverActiveStreamId: "wrun_new",
+        clientActiveWorkflowRunId: null,
+        clientLastUiChunkAt: priorTurnLastByteAt,
+        clientLastTransportByteAt: priorTurnLastByteAt,
+        inFlightStartedAt: newTurnStartedAt,
+        isVisibilityRecovery: false,
+      }),
+    ).toEqual({ kind: "none" });
+  });
 });

@@ -62,6 +62,14 @@ export function withSseHeartbeat(
         },
         Math.max(100, Math.floor(intervalMs / 2)),
       );
+      if (
+        typeof heartbeatTimer === "object" &&
+        heartbeatTimer !== null &&
+        "unref" in heartbeatTimer &&
+        typeof heartbeatTimer.unref === "function"
+      ) {
+        heartbeatTimer.unref();
+      }
     },
     async pull(controller) {
       try {

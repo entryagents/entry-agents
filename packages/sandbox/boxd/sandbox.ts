@@ -80,6 +80,7 @@ export class BoxdSandbox implements Sandbox {
     options?: ConnectOptions,
     private readonly baseDomain = "boxd.sh",
     private readonly proxyPorts = new Set<number>(),
+    private readonly isLegacyContainerImage = false,
   ) {
     this.workingDirectory = options?.workingDirectory ?? BOXD_WORKING_DIRECTORY;
     this.hooks = options?.hooks;
@@ -315,14 +316,24 @@ export class BoxdSandbox implements Sandbox {
     cwd: string,
   ): Promise<{ commandId: string }> {
     this.assertRunning();
+    if (this.isLegacyContainerImage) {
+      throw new Error(
+        "This sandbox uses a legacy container image (ubuntu:24.04) that terminates background processes when each command exits. Reprovision this sandbox (or start a new session) to upgrade to a persistent Linux VM where background dev servers stay alive across tool calls.",
+      );
+    }
     const commandId = `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     const script = buildDetachedSpawnScript(command, commandId, cwd);
-    await this.client.machines.exec(this.machineId, {
+    const result = await this.client.machines.exec(this.machineId, {
       command: ["bash", "-c", script],
       cwd,
       timeout: 10000,
       env: this.commandEnv(),
     });
+    if (!result.success) {
+      throw new Error(
+        `Failed to start background process: ${result.stderr.trim() || `exit code ${result.exitCode ?? "unknown"}`}`,
+      );
+    }
     return { commandId };
   }
 

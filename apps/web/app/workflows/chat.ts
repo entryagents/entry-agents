@@ -536,13 +536,19 @@ const convertMessages = async (
     },
   );
 
-  return withoutUndefined(
+  const pruned = withoutUndefined(
     pruneMessages({
       messages: modelMessages,
       reasoning: "before-last-message",
       emptyMessages: "remove",
     }),
   );
+  // `convertToModelMessages({ ignoreIncompleteToolCalls: true })` still leaves
+  // unanswered `approval-requested` parts as dangling `tool-call`s without a
+  // matching `tool-result` or `tool-approval-response`, which causes Step 1 of
+  // every subsequent turn to fail with AI_MissingToolResultsError before retry.
+  stripDanglingToolCalls(pruned);
+  return pruned;
 };
 
 function countToolResultsInModelMessages(messages: ModelMessage[]): number {
@@ -2706,6 +2712,7 @@ export async function runAgentWorkflow(options: Options) {
       return combined;
     }
 
+    stripDanglingToolCalls(converted);
     return converted;
   })();
 
@@ -2996,6 +3003,7 @@ export async function runAgentWorkflow(options: Options) {
     const resolvedContextWindow =
       modelMeta?.contextWindow ?? catalogModelMeta?.context_window;
     let lastKnownInputTokens: number | undefined;
+    let checkedUnmeasuredCompaction = false;
     const turnStartedAt = options.turnStartedAt ?? Date.now();
     const originTurnStartedAt = options.originTurnStartedAt ?? turnStartedAt;
     const autoContinueCount = options.autoContinueCount ?? 0;
@@ -3101,13 +3109,20 @@ export async function runAgentWorkflow(options: Options) {
       const compactionTriggerTokens = Math.floor(
         effectiveContextWindow * effectiveCompactionThreshold,
       );
+      const isUnmeasuredPreStepCheck =
+        lastKnownInputTokens === undefined &&
+        !checkedUnmeasuredCompaction &&
+        modelMessages.length >= 60;
       const shouldCheckPreStepCompaction =
         modelMessages.length > 12 &&
         ((lastKnownInputTokens !== undefined &&
           lastKnownInputTokens >= compactionTriggerTokens) ||
-          (lastKnownInputTokens === undefined && modelMessages.length >= 60));
+          isUnmeasuredPreStepCheck);
 
       if (shouldCheckPreStepCompaction) {
+        if (isUnmeasuredPreStepCheck) {
+          checkedUnmeasuredCompaction = true;
+        }
         const latestUiId = options.messages.at(-1)?.id;
         telemetry.recordStep("compactAndCheckpointStep");
         const compacted = await compactAndCheckpointStep(
@@ -3138,6 +3153,7 @@ export async function runAgentWorkflow(options: Options) {
           modelMessages.splice(0, modelMessages.length, ...compacted.messages);
           if (compacted.didCheckpoint) {
             lastKnownInputTokens = undefined;
+            checkedUnmeasuredCompaction = false;
           }
         }
       }

@@ -234,6 +234,19 @@ export function useStreamRecovery({
           return;
         }
 
+        // Protect the initial POST /api/chat handshake while status is still
+        // "submitted" (before HTTP 200 SSE headers arrive), so we never abort a
+        // freshly submitted request before it receives `x-workflow-run-id`.
+        const nowAfterProbe = Date.now();
+        const withinSubmittedGraceForLive =
+          inFlightStartedAtRef.current !== null
+            ? nowAfterProbe - inFlightStartedAtRef.current <
+              SUBMITTED_PROBE_GRACE_MS
+            : Boolean(hasActiveSendMessages?.());
+        if (live.status === "submitted" && withinSubmittedGraceForLive) {
+          return;
+        }
+
         // Detect ALL three silent live-stream stalls cleanly without false positives:
         // 1. Run handoff mismatch (`serverChat.activeStreamId !== clientActiveWorkflowRunId`)
         // 2. Server-ahead-of-stream: Postgres `updatedAt` keeps advancing with new
@@ -241,29 +254,41 @@ export function useStreamRecovery({
         //    stay frozen (even if 10s `: keepalive\n\n` bytes keep arriving!).
         // 3. Dead TCP socket: even 10s SSE keepalives stop arriving (>25s foreground,
         //    >5s after tab visibility return).
+        const clientActiveWorkflowRunId = getActiveWorkflowRunId?.() ?? null;
+        const clientLastUiChunkAt = getLastUiChunkReceivedAt?.() ?? 0;
+        const clientLastTransportByteAt = getLastChunkReceivedAt?.() ?? 0;
         const divergence = divergenceTrackerRef.current.evaluate({
-          now: Date.now(),
+          now: nowAfterProbe,
           serverUpdatedAt: serverChat.updatedAt,
           serverActiveStreamId: serverChat.activeStreamId,
-          clientActiveWorkflowRunId: getActiveWorkflowRunId?.() ?? null,
-          clientLastUiChunkAt: getLastUiChunkReceivedAt?.() ?? 0,
-          clientLastTransportByteAt: getLastChunkReceivedAt?.() ?? 0,
+          clientActiveWorkflowRunId,
+          clientLastUiChunkAt,
+          clientLastTransportByteAt,
           inFlightStartedAt: inFlightStartedAtRef.current,
           isVisibilityRecovery: Boolean(opts?.isVisibilityRecovery),
         });
 
         if (divergence.kind === "reconnect") {
+          inFlightStartedAtRef.current = nowAfterProbe;
           reportChatDiagnostic({
             sessionId,
             chatId,
             eventType: "stream-divergence",
             workflowRunId:
-              serverChat.activeStreamId ?? getActiveWorkflowRunId?.() ?? null,
+              serverChat.activeStreamId ?? clientActiveWorkflowRunId,
             details: {
               reason: divergence.reason,
               serverUpdatedAt: serverChat.updatedAt,
-              clientRunId: getActiveWorkflowRunId?.() ?? null,
+              clientRunId: clientActiveWorkflowRunId,
               serverRunId: serverChat.activeStreamId ?? null,
+              lastChunkAgeMs:
+                clientLastTransportByteAt > 0
+                  ? Math.max(0, nowAfterProbe - clientLastTransportByteAt)
+                  : null,
+              lastUiChunkAgeMs:
+                clientLastUiChunkAt > 0
+                  ? Math.max(0, nowAfterProbe - clientLastUiChunkAt)
+                  : null,
               isVisibilityRecovery: Boolean(opts?.isVisibilityRecovery),
             },
           });
@@ -315,7 +340,7 @@ export function useStreamRecovery({
     const triggerLongBackgroundRecovery = () => {
       lastStreamRecoveryAtRef.current = 0;
       hasAutoRetriedCurrentErrorRef.current = false;
-      if (isChatInFlight && !isChatStoppedByUser(chatId)) {
+      if (liveStateRef.current.isChatInFlight && !isChatStoppedByUser(chatId)) {
         retryChatStreamRef.current({ auto: true, strategy: "reconnect" });
       } else {
         maybeRecoverStreamOnVisibility();
@@ -380,12 +405,7 @@ export function useStreamRecovery({
       window.removeEventListener("online", onOnline);
       window.clearInterval(recoveryPoll);
     };
-  }, [
-    chatId,
-    isChatInFlight,
-    maybeRecoverStreamOnPoll,
-    maybeRecoverStreamOnVisibility,
-  ]);
+  }, [chatId, maybeRecoverStreamOnPoll, maybeRecoverStreamOnVisibility]);
 
   useEffect(() => {
     const isDocumentVisible =

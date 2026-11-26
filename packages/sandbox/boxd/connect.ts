@@ -20,7 +20,11 @@ function createBoxdMachine(
   const size = resolveBoxdMachineSize(options?.vcpus);
   return client.machines.create({
     name,
-    image: options?.image ?? "ubuntu:24.04",
+    // Omit `image` by default so Boxd boots its full Linux VM with systemd
+    // (/sbin/init as PID 1) and boxd-agentd. Passing a bare OCI image like
+    // "ubuntu:24.04" runs every `exec` as PID 1 in an ephemeral PID namespace,
+    // causing the kernel to SIGKILL all backgrounded dev servers on exec exit.
+    ...(options?.image ? { image: options.image } : {}),
     isolated: true,
     restartPolicy: "never",
     config: {
@@ -344,6 +348,8 @@ export async function connectBoxd(
     command: ["mkdir", "-p", targetWorkDir],
   });
   const baseDomain = machine.access?.domain || "boxd.sh";
+  const isLegacyContainerImage =
+    typeof machine.imageRef === "string" && /^ubuntu:/i.test(machine.imageRef);
   const sandbox = new BoxdSandbox(
     client,
     machine.id,
@@ -351,6 +357,7 @@ export async function connectBoxd(
     options,
     baseDomain,
     proxyPorts,
+    isLegacyContainerImage,
   );
   await sandbox.setGitHubAuthToken(options?.githubToken);
   try {

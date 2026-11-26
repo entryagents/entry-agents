@@ -19,12 +19,12 @@ export type StreamDivergenceCheckInput = {
 };
 
 const RUN_ID_MISMATCH_COOLDOWN_MS = 3_000;
-const SERVER_AHEAD_RECONNECT_COOLDOWN_MS = 8_000;
+const SERVER_AHEAD_RECONNECT_COOLDOWN_MS = 15_000;
 const SERVER_AHEAD_MAX_STALE_MS = 6_000;
 const SERVER_AHEAD_ADVANCE_THRESHOLD = 2;
 const DEAD_SOCKET_FOREGROUND_MS = 25_000;
 const DEAD_SOCKET_VISIBILITY_MS = 5_000;
-const DEAD_SOCKET_COOLDOWN_MS = 5_000;
+const DEAD_SOCKET_COOLDOWN_MS = 15_000;
 
 /**
  * Clock-skew-immune detector for silent live-stream stalls.
@@ -134,13 +134,16 @@ export class StreamDivergenceTracker {
     }
 
     // 3. Transport-level dead-socket watchdog (heartbeat-backed).
+    //    Anchor against `inFlightStartedAt` so a stale byte timestamp from a
+    //    previous completed turn can never trigger a false `dead-socket` right
+    //    after a new turn starts.
     const staleThresholdMs = isVisibilityRecovery
       ? DEAD_SOCKET_VISIBILITY_MS
       : DEAD_SOCKET_FOREGROUND_MS;
-    const referenceByteAt =
-      clientLastTransportByteAt > 0
-        ? clientLastTransportByteAt
-        : (inFlightStartedAt ?? 0);
+    const referenceByteAt = Math.max(
+      clientLastTransportByteAt,
+      inFlightStartedAt ?? 0,
+    );
     const quietMs = referenceByteAt > 0 ? now - referenceByteAt : 0;
 
     if (
