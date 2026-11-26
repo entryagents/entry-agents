@@ -252,10 +252,17 @@ export function deriveContextWindowBreakdown(
     }
 
     // Cumulative session totals across all steps of the conversation.
+    // Prefer aggregated stepBreakdown when it carries more input tokens than
+    // totalMessageUsage (e.g. after a segment handoff overwrote totalMessageUsage
+    // with only the final segment's usage while stepBreakdown + totalMessageCost
+    // retained all steps).
+    const aggregatedStepUsage = aggregateStepsUsage(meta.stepBreakdown);
     const msgUsage =
-      meta.totalMessageUsage ??
-      aggregateStepsUsage(meta.stepBreakdown) ??
-      meta.lastStepUsage;
+      aggregatedStepUsage &&
+      (aggregatedStepUsage.inputTokens ?? 0) >
+        (meta.totalMessageUsage?.inputTokens ?? 0)
+        ? aggregatedStepUsage
+        : (meta.totalMessageUsage ?? aggregatedStepUsage ?? meta.lastStepUsage);
     if (msgUsage) {
       const inp = Math.max(0, msgUsage.inputTokens ?? 0);
       const cacheRead = Math.min(extractCachedInputTokens(msgUsage), inp);

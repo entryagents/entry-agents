@@ -59,7 +59,6 @@ import {
   estimateNextStepInputTokens,
 } from "@/lib/chat/realtime-spend-cap";
 import { createCoalescingStreamWriter } from "@/lib/chat/coalescing-stream-writer";
-import { pruneStaleToolResults } from "@/lib/chat/prune-stale-tool-results";
 import type {
   WebAgentCommitData,
   WebAgentCommitDataPart,
@@ -3385,14 +3384,16 @@ export async function runAgentWorkflow(options: Options) {
         await persistAssistantMessage(options.chatId, pendingAssistantResponse);
       }
 
-      const prunedLoopMessages = pruneStaleToolResults(
-        withoutUndefined(
-          pruneMessages({
-            messages: modelMessages,
-            reasoning: "before-last-message",
-            emptyMessages: "remove",
-          }),
-        ),
+      // Keep the prompt prefix strictly append-only between real compactions.
+      // Mutating earlier tool results mid-turn invalidates DeepSeek/OpenAI/Anthropic
+      // KV prefix caches (turning a $0.002 cached step into a $0.10+ uncached step)
+      // and causes context occupancy to jump backwards without compaction.
+      const prunedLoopMessages = withoutUndefined(
+        pruneMessages({
+          messages: modelMessages,
+          reasoning: "before-last-message",
+          emptyMessages: "remove",
+        }),
       );
       if (
         prunedLoopMessages.length !== modelMessages.length ||
@@ -5822,9 +5823,16 @@ const runAgentStep = async (
 
             if (streamPart.type === "finish-step") {
               stepFinishedThisInvocation = true;
+              const stepFinishNowMs = Date.now();
               const stepDecodeMs =
-                stepFirstTokenMs !== null && stepLastTokenMs !== null
-                  ? Math.max(0, stepLastTokenMs - stepFirstTokenMs)
+                stepFirstTokenMs !== null
+                  ? Math.max(
+                      0,
+                      Math.max(
+                        stepLastTokenMs ?? stepFinishNowMs,
+                        stepFinishNowMs,
+                      ) - stepFirstTokenMs,
+                    )
                   : 0;
               stepFirstTokenMs = null;
               stepLastTokenMs = null;
@@ -5845,18 +5853,18 @@ const runAgentStep = async (
               liveStreamedChars = 0;
 
               const stepTps =
-                stepDecodeMs >= 50 && stepOutputTokens > 1
+                stepDecodeMs >= 500 && stepOutputTokens >= 10
                   ? Number(
                       ((stepOutputTokens - 1) / (stepDecodeMs / 1000)).toFixed(
                         1,
                       ),
                     )
                   : undefined;
-              if (stepDecodeMs >= 50 && stepOutputTokens > 1) {
+              if (stepDecodeMs >= 500 && stepOutputTokens >= 10) {
                 totalDecodeMs += stepDecodeMs;
                 totalDecodeOutputTokens += stepOutputTokens - 1;
               }
-              if (totalDecodeMs >= 50 && totalDecodeOutputTokens > 0) {
+              if (totalDecodeMs >= 500 && totalDecodeOutputTokens >= 10) {
                 liveTps = Number(
                   (totalDecodeOutputTokens / (totalDecodeMs / 1000)).toFixed(1),
                 );
