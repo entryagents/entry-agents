@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 export default async function Home() {
   const session = await getServerSession();
   if (session?.user) {
-    redirect("/sessions");
+    redirect("/chats");
   }
 
   return <HomePage hasSessionCookie={false} lastRepo={null} />;

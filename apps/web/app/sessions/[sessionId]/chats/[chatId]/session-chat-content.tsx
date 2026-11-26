@@ -3548,7 +3548,7 @@ export function SessionChatContent({
           >
             <DialogContent showCloseButton={false}>
               <DialogHeader>
-                <DialogTitle>Archive session?</DialogTitle>
+                <DialogTitle>Archive chat?</DialogTitle>
                 <DialogDescription>
                   This will stop the sandbox and archive the session. You can
                   still view it in the archive tab.

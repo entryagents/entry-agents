@@ -87,7 +87,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            aria-label={`Open sessions${activeSessionCount > 0 ? ` (${activeSessionCount} active)` : ""}`}
+            aria-label={`Open chats${activeSessionCount > 0 ? ` (${activeSessionCount} active)` : ""}`}
             className="flex min-h-9 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             {loading ? (
@@ -100,7 +100,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
               </span>
             ) : null}
             <History className="h-4 w-4" />
-            <span>Sessions</span>
+            <span>Chats</span>
           </button>
           <UserAvatarDropdown />
         </div>

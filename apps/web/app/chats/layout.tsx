@@ -1,0 +1,39 @@
+import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
+import { getLastRepoByUserId } from "@/lib/db/last-repo";
+import {
+  getArchivedSessionCountByUserId,
+  getSessionsWithUnreadByUserId,
+} from "@/lib/db/sessions";
+import { getServerSession } from "@/lib/session/get-server-session";
+import { SessionsRouteShell } from "../sessions/sessions-route-shell";
+
+type ChatsLayoutProps = {
+  children: ReactNode;
+};
+
+export default async function ChatsLayout({ children }: ChatsLayoutProps) {
+  const session = await getServerSession();
+  if (!session?.user) {
+    redirect("/");
+  }
+
+  const [lastRepo, sessions, archivedCount] = await Promise.all([
+    getLastRepoByUserId(session.user.id),
+    getSessionsWithUnreadByUserId(session.user.id, {
+      status: "active",
+      excludeDesktop: true,
+    }),
+    getArchivedSessionCountByUserId(session.user.id),
+  ]);
+
+  return (
+    <SessionsRouteShell
+      currentUser={session.user}
+      initialSessionsData={{ sessions, archivedCount }}
+      lastRepo={lastRepo}
+    >
+      {children}
+    </SessionsRouteShell>
+  );
+}

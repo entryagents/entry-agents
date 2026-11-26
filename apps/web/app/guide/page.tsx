@@ -443,7 +443,7 @@ Reproduce the bug, inspect network and server route responses, apply the smalles
               href="/sessions"
               className="inline-flex h-9 items-center rounded-lg border border-(--l-border) bg-(--l-surface-2) px-4 text-xs font-medium text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
             >
-              Open sessions
+              Open chats
             </Link>
           </div>
         </section>

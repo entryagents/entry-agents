@@ -24,7 +24,7 @@ export function HomeSkeleton({ lastRepo = null }: HomeSkeletonProps) {
             className="flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-muted-foreground opacity-50"
           >
             <History className="h-4 w-4" />
-            <span>Sessions</span>
+            <span>Chats</span>
           </button>
           <div className="flex size-9 items-center justify-center">
             <div className="h-8 w-8 rounded-full bg-accent" />

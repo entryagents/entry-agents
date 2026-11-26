@@ -385,7 +385,7 @@ const SessionRow = memo(function SessionRow({
             <button
               type="button"
               className="rounded p-0.5 text-muted-foreground/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-muted-foreground"
-              aria-label="Rename session"
+              aria-label="Rename chat"
               onClick={(event) => {
                 event.stopPropagation();
                 setRenameValue(session.title);
@@ -396,7 +396,7 @@ const SessionRow = memo(function SessionRow({
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" sideOffset={4}>
-            Rename session
+            Rename chat
           </TooltipContent>
         </Tooltip>
       ) : null}
@@ -456,7 +456,7 @@ const SessionRow = memo(function SessionRow({
             aria-label={
               session.status === "archived"
                 ? "Unarchive session"
-                : "Archive session"
+                : "Archive chat"
             }
             onClick={(event) => {
               event.stopPropagation();
@@ -471,9 +471,7 @@ const SessionRow = memo(function SessionRow({
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" sideOffset={4}>
-          {session.status === "archived"
-            ? "Unarchive session"
-            : "Archive session"}
+          {session.status === "archived" ? "Unarchive session" : "Archive chat"}
         </TooltipContent>
       </Tooltip>
     </>
@@ -1440,7 +1438,7 @@ export function InboxSidebar({
       >
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Archive session?</DialogTitle>
+            <DialogTitle>Archive chat?</DialogTitle>
             <DialogDescription>
               This will stop the sandbox and archive the session. You can still
               view it in the archive tab.

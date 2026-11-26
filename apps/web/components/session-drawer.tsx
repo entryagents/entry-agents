@@ -196,7 +196,7 @@ function SessionDrawerInner({
     <>
       <div className="border-b px-4 py-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Sessions</h2>
+          <h2 className="text-base font-semibold">Chats</h2>
         </div>
         <div className="flex gap-1 pt-1">
           <button
@@ -241,7 +241,7 @@ function SessionDrawerInner({
             <SessionDrawerSkeleton />
           ) : displayedSessions.length === 0 ? (
             <div className="py-12 text-center text-sm text-muted-foreground">
-              {tab === "sessions" ? "No sessions yet" : "No archived sessions"}
+              {tab === "sessions" ? "No chats yet" : "No archived chats"}
             </div>
           ) : (
             <div className="space-y-4">
