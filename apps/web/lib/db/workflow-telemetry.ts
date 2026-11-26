@@ -1,6 +1,7 @@
 import { and, asc, count, desc, eq, gte, ilike, or, sql } from "drizzle-orm";
 import { db } from "./client";
 import {
+  chatDiagnosticEvents,
   chatMessages,
   compactionEvents,
   workflowRuns,
@@ -89,6 +90,12 @@ export interface WorkflowRunLifecycleDetail {
     inputTokens?: number;
     cachedInputTokens?: number;
     outputTokens?: number;
+  }>;
+  diagnosticEvents: Array<{
+    id: string;
+    eventType: string;
+    details: Record<string, unknown>;
+    createdAt: string;
   }>;
 }
 
@@ -248,7 +255,7 @@ export async function getWorkflowRunLifecycle(
 
   const chatId = t?.chatId ?? r?.chatId ?? null;
 
-  const [compactionRows, recentMessages] = chatId
+  const [compactionRows, recentMessages, diagnosticRows] = chatId
     ? await Promise.all([
         db
           .select({
@@ -274,8 +281,24 @@ export async function getWorkflowRunLifecycle(
           )
           .orderBy(desc(chatMessages.createdAt))
           .limit(5),
+        db
+          .select({
+            id: chatDiagnosticEvents.id,
+            eventType: chatDiagnosticEvents.eventType,
+            detailsJson: chatDiagnosticEvents.detailsJson,
+            createdAt: chatDiagnosticEvents.createdAt,
+          })
+          .from(chatDiagnosticEvents)
+          .where(
+            or(
+              eq(chatDiagnosticEvents.workflowRunId, workflowRunId),
+              eq(chatDiagnosticEvents.chatId, chatId),
+            ),
+          )
+          .orderBy(desc(chatDiagnosticEvents.createdAt))
+          .limit(30),
       ])
-    : [[], []];
+    : [[], [], []];
 
   const latestWithBreakdown = recentMessages.find((m) => {
     const meta = m.metadata as { stepBreakdown?: unknown[] } | null;
@@ -363,6 +386,12 @@ export async function getWorkflowRunLifecycle(
         b.usage?.inputTokenDetails?.cacheReadTokens ??
         b.usage?.cachedInputTokens,
       outputTokens: b.usage?.outputTokens,
+    })),
+    diagnosticEvents: diagnosticRows.map((d) => ({
+      id: d.id,
+      eventType: d.eventType,
+      details: d.detailsJson ?? {},
+      createdAt: d.createdAt.toISOString(),
     })),
   };
 }

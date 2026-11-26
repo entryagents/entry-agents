@@ -1259,3 +1259,34 @@ export const workflowRunTelemetry = pgTable(
 export type WorkflowRunTelemetryRow = typeof workflowRunTelemetry.$inferSelect;
 export type NewWorkflowRunTelemetryRow =
   typeof workflowRunTelemetry.$inferInsert;
+
+// Bounded, anomaly-only diagnostic events for chat streaming & UI glitches
+// (e.g. stream-divergence, message-rollback, stream-reconnect, snapshot-reconcile).
+// Server-side rate-capped per chat/run so it never floods the database.
+export const chatDiagnosticEvents = pgTable(
+  "chat_diagnostic_events",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id").notNull(),
+    sessionId: text("session_id").notNull(),
+    workflowRunId: text("workflow_run_id"),
+    userId: text("user_id").notNull(),
+    eventType: text("event_type").notNull(),
+    detailsJson: jsonb("details_json")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("chat_diagnostic_events_chat_created_idx").on(
+      table.chatId,
+      table.createdAt,
+    ),
+    index("chat_diagnostic_events_run_idx").on(table.workflowRunId),
+  ],
+);
+
+export type ChatDiagnosticEventRow = typeof chatDiagnosticEvents.$inferSelect;
+export type NewChatDiagnosticEventRow =
+  typeof chatDiagnosticEvents.$inferInsert;
