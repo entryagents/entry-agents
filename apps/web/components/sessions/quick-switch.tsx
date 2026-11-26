@@ -184,7 +184,7 @@ export function QuickSwitch({
               aria-hidden="true"
             />
             <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-              {s.title || "New session"}
+              {s.title || "New chat"}
             </span>
             {where && (
               <span className="hidden max-w-[140px] shrink-0 truncate font-mono text-[11px] text-muted-foreground/75 sm:inline">

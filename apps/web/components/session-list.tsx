@@ -86,7 +86,7 @@ function PrStatus({ status }: { status: "open" | "merged" | "closed" | null }) {
 export function SessionList({
   sessions,
   onSessionClick,
-  emptyMessage = "No sessions yet. Create one above!",
+  emptyMessage = "No chats yet",
 }: SessionListProps) {
   const groupedSessions = groupSessionsByDate(sessions);
 

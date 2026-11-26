@@ -484,7 +484,7 @@ export function AppMockup() {
         <div className="hidden w-52 shrink-0 border-r border-(--l-panel-border) sm:block lg:w-56">
           <div className="p-3">
             <div className="mb-2 flex items-center justify-between px-2 py-1 text-xs text-(--l-panel-fg-3)">
-              <span className="font-medium">Sessions</span>
+              <span className="font-medium">Chats</span>
               <span className="rounded border border-(--l-panel-border) px-1 py-0.5 font-mono text-[10px] text-(--l-panel-fg-4)">
                 ⌘K
               </span>
