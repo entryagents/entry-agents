@@ -38,8 +38,8 @@ export function getDefaultSessionTitle(
     }
   }
 
-  // 3. Fall back to clean "New Session", "New Session 2", etc.
-  const base = "New Session";
+  // 3. Fall back to clean "New Chat", "New Session 2", etc.
+  const base = "New Chat";
   if (!usedNames.has(base)) {
     return base;
   }
@@ -90,7 +90,7 @@ export function sanitizePromptToTitle(prompt: string): string {
   cleaned = cleaned.replace(/[.?!,:;]+$/, "").trim();
 
   if (cleaned.length === 0) {
-    return "New Session";
+    return "New Chat";
   }
 
   // Capitalize first character

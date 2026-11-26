@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     }
     const fallbackTitle = body?.message
       ? sanitizePromptToTitle(body.message)
-      : "New Session";
+      : "New Chat";
     return Response.json({ title: fallbackTitle });
   }
 

@@ -61,7 +61,7 @@ export function NewSessionDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[calc(100%-2rem)] max-w-none gap-0 overflow-hidden border-none bg-transparent p-0 shadow-none [&>button]:hidden">
         <DialogHeader className="sr-only">
-          <DialogTitle>New Session</DialogTitle>
+          <DialogTitle>New chat</DialogTitle>
           <DialogDescription>
             Choose a repository or start an empty session.
           </DialogDescription>
