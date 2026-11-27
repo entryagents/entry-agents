@@ -1,13 +1,8 @@
-import {
-  APICallError,
-  convertToModelMessages,
-  type FinishReason,
-  generateId as generateIdAi,
-  isToolUIPart,
-  type LanguageModelUsage,
-  type ModelMessage,
-  pruneMessages,
-  type UIMessageChunk,
+import type {
+  FinishReason,
+  LanguageModelUsage,
+  ModelMessage,
+  UIMessageChunk,
 } from "ai";
 import type { SandboxState } from "@entry-agents/sandbox";
 import {
@@ -19,16 +14,22 @@ import {
   TurnLoopGuard,
 } from "@/app/workflows/loop-guard";
 import type { PlanUsageWindows } from "@/lib/billing/plans";
-import {
+import type {
   createMcpToolSet,
-  type GithubApiResult,
-  type GithubRawCliResult,
-  type McpDiscoveredTool,
-  type OpenAgentCallOptions,
-  type SecretRedactor,
-  type VercelApiResult,
-  type VercelCliToolResult,
+  GithubApiResult,
+  GithubRawCliResult,
+  McpDiscoveredTool,
+  OpenAgentCallOptions,
+  SecretRedactor,
+  VercelApiResult,
+  VercelCliToolResult,
 } from "@entry-agents/agent";
+import {
+  generateWorkflowMessageId,
+  isApiCallErrorLike,
+  isToolUIPart,
+  pruneReasoningBeforeLastMessage,
+} from "@/lib/chat/ui-part-guards";
 import { FatalError, getWorkflowMetadata, getWritable, sleep } from "workflow";
 import {
   isRecoverableStepError,
@@ -497,7 +498,8 @@ const convertMessages = async (
   messages: WebAgentUIMessage[],
 ): Promise<ModelMessage[]> => {
   "use step";
-  const { webAgent } = await import("@/app/config");
+  const [{ convertToModelMessages, pruneMessages }, { webAgent }] =
+    await Promise.all([import("ai"), import("@/app/config")]);
   const dedupedMessages = messages
     .map(dedupeMessageReasoning)
     .map(canonicalizeMessageParts)
@@ -2525,7 +2527,7 @@ export async function runAgentWorkflow(options: Options) {
   let assistantId =
     latestMessage.role === "assistant"
       ? latestMessage.id
-      : (options.assistantId ?? generateIdAi());
+      : (options.assistantId ?? generateWorkflowMessageId());
 
   const inputMessagesPersistPromise =
     options.inputMessagesPersisted || options.isContinuationSegment
@@ -3463,11 +3465,7 @@ export async function runAgentWorkflow(options: Options) {
       // KV prefix caches (turning a $0.002 cached step into a $0.10+ uncached step)
       // and causes context occupancy to jump backwards without compaction.
       const prunedLoopMessages = withoutUndefined(
-        pruneMessages({
-          messages: modelMessages,
-          reasoning: "before-last-message",
-          emptyMessages: "remove",
-        }),
+        pruneReasoningBeforeLastMessage(modelMessages),
       );
       if (
         prunedLoopMessages.length !== modelMessages.length ||
@@ -5310,15 +5308,18 @@ const runAgentStep = async (
             );
           }
 
-          mcpToolSet =
-            connectServers.length > 0
-              ? await createMcpToolSet(connectServers, {
-                  ...(stepMcpSandbox ? { sandbox: stepMcpSandbox } : {}),
-                  ...(stepSecretRedactor
-                    ? { secretRedactor: stepSecretRedactor }
-                    : {}),
-                })
-              : undefined;
+          if (connectServers.length > 0) {
+            const { createMcpToolSet: loadMcpToolSet } =
+              await import("@entry-agents/agent");
+            mcpToolSet = await loadMcpToolSet(connectServers, {
+              ...(stepMcpSandbox ? { sandbox: stepMcpSandbox } : {}),
+              ...(stepSecretRedactor
+                ? { secretRedactor: stepSecretRedactor }
+                : {}),
+            });
+          } else {
+            mcpToolSet = undefined;
+          }
           if (mcpToolSet && mcpToolSet.failures.length > 0) {
             console.warn(
               `[workflow] ${mcpToolSet.failures.length} MCP server(s) failed to connect for user ${userId}:`,
@@ -7023,7 +7024,7 @@ const runAgentStep = async (
       didWriteOutputToWritable
     ) {
       const hasStructuredInvalidRequest =
-        errorWithStepTiming instanceof APICallError &&
+        isApiCallErrorLike(errorWithStepTiming) &&
         errorWithStepTiming.statusCode === 400 &&
         isObjectRecord(errorWithStepTiming.data) &&
         isObjectRecord(errorWithStepTiming.data.error) &&
@@ -7355,7 +7356,7 @@ function isAbortError(error: unknown, depth = 0): boolean {
  * happens to set.
  */
 function isNonRetryableApiCallError(error: unknown): boolean {
-  if (!(error instanceof APICallError)) {
+  if (!isApiCallErrorLike(error)) {
     return false;
   }
   if (error.isRetryable === false) {

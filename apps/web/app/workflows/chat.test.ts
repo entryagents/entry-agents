@@ -427,6 +427,12 @@ mock.module("ai", () => ({
     }),
 }));
 
+const realUiPartGuards = await import("@/lib/chat/ui-part-guards");
+mock.module("@/lib/chat/ui-part-guards", () => ({
+  ...realUiPartGuards,
+  generateWorkflowMessageId: () => "gen-id-1",
+}));
+
 mock.module("@entry-agents/agent", () => ({}));
 
 mock.module("@/lib/db/sessions", () => ({
