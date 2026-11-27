@@ -163,7 +163,7 @@ export function ConnectedStackShowcase() {
           <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-12">
             {/* Left column: headline + clean 3x3 real brand icon selector */}
             <div className="min-w-0 lg:col-span-5">
-              <h2 className="font-display text-balance text-4xl font-normal leading-[1.04] tracking-[-0.02em] sm:text-5xl">
+              <h2 className="font-display text-balance text-3xl font-semibold leading-[1.08] tracking-[-0.03em] sm:text-4xl">
                 Connected where the work starts
               </h2>
               <p className="mt-3 text-pretty text-base leading-relaxed text-(--l-fg-2)">
@@ -188,7 +188,7 @@ export function ConnectedStackShowcase() {
                       onClick={() => setSelectedSlug(app.slug)}
                       className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-[border-color,background-color,color] duration-150 ${
                         isSelected
-                          ? "border-(--l-accent)/60 bg-(--l-surface-2) text-(--l-fg)"
+                          ? "border-(--l-fg)/40 bg-(--l-surface-2) text-(--l-fg)"
                           : "border-(--l-border) bg-(--l-surface) text-(--l-fg-2) hover:border-(--l-fg-4) hover:text-(--l-fg)"
                       }`}
                     >

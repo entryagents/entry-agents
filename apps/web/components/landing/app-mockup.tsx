@@ -1,16 +1,18 @@
 "use client";
 
 import {
+  Archive,
   ArrowUp,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   Copy,
   Folder,
   FolderGit2,
   GitFork,
-  PanelLeft,
   Paperclip,
   Plus,
+  Search,
   ShieldCheck,
 } from "lucide-react";
 import { useState } from "react";
@@ -25,12 +27,11 @@ import {
   USAGE_WINDOWS,
 } from "./workspace-preview-data";
 
-const SEGMENT_SLOTS = Array.from({ length: 10 }, (_, idx) => idx);
-
 export function AppMockup() {
   const [scenarioId, setScenarioId] = useState<ScenarioId>("resend");
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("diff");
   const [stepsExpanded, setStepsExpanded] = useState(false);
+  const [usageOpen, setUsageOpen] = useState(false);
   const [mobilePane, setMobilePane] = useState<"chat" | "inspector">("chat");
 
   const scenario = PREVIEW_SCENARIOS[scenarioId];
@@ -54,28 +55,33 @@ export function AppMockup() {
       className="min-w-0 overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-panel) shadow-(--l-window-shadow)"
     >
       <div className="grid min-w-0 lg:grid-cols-[232px_minmax(0,1fr)_356px] md:grid-cols-[minmax(0,1fr)_320px]">
-        {/* Left Sidebar — 1:1 mirror of the redesigned Entry Signature Sidebar */}
+        {/* Left Sidebar — 1:1 mirror of the minimal Entry sidebar with floating Usage Popover */}
         <aside
           aria-label="Workspace sidebar preview"
-          className="hidden min-w-0 flex-col border-r border-(--l-panel-border) bg-(--l-surface) lg:flex"
+          className="relative hidden min-w-0 flex-col border-r border-(--l-panel-border) bg-(--l-surface) lg:flex"
         >
-          {/* Brand header */}
+          {/* Compact Brand + Search & Archive Icons */}
           <div className="flex h-11 shrink-0 items-center justify-between px-3">
             <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-tight text-(--l-panel-fg)">
               <EntryMark className="size-4 shrink-0" />
               <span>Entry</span>
             </span>
-            <span className="inline-flex size-6 items-center justify-center rounded-md text-(--l-panel-fg-3)">
-              <PanelLeft className="size-3.5" strokeWidth={1.5} />
-            </span>
+            <div className="flex items-center gap-0.5 text-(--l-panel-fg-3)">
+              <span className="inline-flex size-6 items-center justify-center rounded-md hover:bg-(--l-panel-surface)">
+                <Search className="size-3.5" strokeWidth={1.6} />
+              </span>
+              <span className="inline-flex size-6 items-center justify-center rounded-md hover:bg-(--l-panel-surface)">
+                <Archive className="size-3.5" strokeWidth={1.6} />
+              </span>
+            </div>
           </div>
 
-          {/* Tactile New chat bar */}
-          <div className="px-2.5 pt-1">
-            <div className="flex h-8 items-center justify-between rounded-lg border border-(--l-panel-border) bg-(--l-panel) px-2.5 text-xs font-medium text-(--l-panel-fg) shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          {/* Monochrome New chat bar */}
+          <div className="px-2.5 pt-0.5 pb-1.5">
+            <div className="flex h-8 items-center justify-between rounded-lg border border-(--l-panel-border) bg-(--l-panel) px-2.5 text-xs font-medium text-(--l-panel-fg)">
               <span className="inline-flex items-center gap-1.5">
                 <Plus
-                  className="size-3.5 text-(--l-accent)"
+                  className="size-3.5 text-(--l-panel-fg-3)"
                   strokeWidth={1.75}
                 />
                 <span>New chat</span>
@@ -87,24 +93,22 @@ export function AppMockup() {
             </div>
           </div>
 
-          {/* Clickable Projects & Chats */}
-          <div className="flex-1 space-y-3 overflow-hidden px-2 py-3">
+          {/* Clickable Projects & Recency-Grouped Chats */}
+          <div className="flex-1 space-y-2.5 overflow-hidden px-2 py-1.5">
             {/* Projects */}
             <div>
-              <div className="mb-1 flex h-6 items-center justify-between px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
+              <div className="mb-0.5 flex h-6 items-center justify-between px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
                 <span>Projects</span>
-                <span className="rounded bg-(--l-panel-surface) px-1.5 py-0.5 font-mono text-[10px] leading-none tabular-nums">
-                  2
-                </span>
+                <Plus className="size-3" strokeWidth={1.6} />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-0.5">
                 {SIDEBAR_PROJECTS.map((project) => {
                   const hasActive = project.chats.some(
                     (c) => c.id === scenarioId,
                   );
                   return (
                     <div key={project.name}>
-                      <div className="flex h-8 items-center gap-2 rounded-lg px-2 text-xs font-medium text-(--l-panel-fg)">
+                      <div className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-(--l-panel-fg)">
                         {project.expanded ? (
                           <ChevronDown
                             className="size-3 shrink-0 text-(--l-panel-fg-3)"
@@ -116,38 +120,54 @@ export function AppMockup() {
                             strokeWidth={1.6}
                           />
                         )}
+                        {project.expanded ? (
+                          <FolderGit2
+                            className={`size-3.5 shrink-0 ${
+                              hasActive
+                                ? "text-(--l-panel-fg)"
+                                : "text-(--l-panel-fg-3)"
+                            }`}
+                            strokeWidth={1.5}
+                          />
+                        ) : (
+                          <Folder
+                            className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
+                            strokeWidth={1.5}
+                          />
+                        )}
                         <span
-                          className={`grid size-5 shrink-0 place-items-center rounded-md border ${
-                            hasActive
-                              ? "border-(--l-accent)/35 bg-(--l-accent)/12 text-(--l-accent)"
-                              : "border-(--l-panel-border) bg-(--l-panel-surface) text-(--l-panel-fg-3)"
+                          className={`min-w-0 flex-1 truncate ${
+                            hasActive || project.expanded
+                              ? "font-medium text-(--l-panel-fg)"
+                              : "text-(--l-panel-fg-2)"
                           }`}
                         >
-                          {project.expanded ? (
-                            <FolderGit2 className="size-3" strokeWidth={1.6} />
-                          ) : (
-                            <Folder className="size-3" strokeWidth={1.6} />
-                          )}
+                          {project.name}
                         </span>
-                        <span className="truncate">{project.name}</span>
+                        <span className="font-mono text-[10.5px] tabular-nums text-(--l-panel-fg-4)">
+                          {project.chats.length}
+                        </span>
                       </div>
 
                       {project.expanded && project.chats.length > 0 && (
-                        <div className="ml-[18px] mt-1 space-y-0.5 border-l border-(--l-panel-border) pl-2.5">
-                          {project.chats.map((chat) => {
+                        <div className="ml-[13px] mt-0.5 space-y-0.5 border-l border-(--l-panel-border) pl-2">
+                          {project.chats.map((chat, idx) => {
                             const active = chat.id === scenarioId;
                             return (
                               <button
                                 key={chat.id}
                                 type="button"
                                 onClick={() => handleSelectScenario(chat.id)}
-                                className={`relative flex h-7 w-full cursor-pointer items-center rounded-md px-2 text-left text-[12px] transition-[background-color,color] duration-150 ${
+                                className={`flex h-7 w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2 text-left text-[12px] transition-colors duration-150 ${
                                   active
-                                    ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg) before:absolute before:top-1.5 before:bottom-1.5 before:left-0 before:w-[2px] before:rounded-full before:bg-(--l-accent)"
+                                    ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
                                     : "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
                                 }`}
                               >
                                 <span className="truncate">{chat.title}</span>
+                                <span className="shrink-0 font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
+                                  {idx === 0 ? "4m" : "3h"}
+                                </span>
                               </button>
                             );
                           })}
@@ -159,18 +179,16 @@ export function AppMockup() {
               </div>
             </div>
 
-            {/* Chats */}
-            <div className="border-t border-(--l-panel-border) pt-2.5">
-              <div className="mb-1 flex h-6 items-center justify-between px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
-                <span>Chats</span>
-                <span className="rounded bg-(--l-panel-surface) px-1.5 py-0.5 font-mono text-[10px] leading-none tabular-nums">
-                  3
-                </span>
+            {/* Today Chats */}
+            <div className="border-t border-(--l-panel-border) pt-2">
+              <div className="mb-0.5 flex h-6 items-center px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
+                <span>Today</span>
               </div>
               <div className="space-y-0.5">
-                {SIDEBAR_CHATS.map((chat) => {
+                {SIDEBAR_CHATS.map((chat, idx) => {
                   const active = chat.id === scenarioId;
                   const interactive = Boolean(chat.id);
+                  const age = idx === 0 ? "18m" : idx === 1 ? "2h" : "5h";
                   return (
                     <button
                       key={chat.title}
@@ -179,20 +197,25 @@ export function AppMockup() {
                       onClick={() => {
                         if (chat.id) handleSelectScenario(chat.id);
                       }}
-                      className={`relative flex h-7.5 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] transition-[background-color,color] duration-150 ${
+                      className={`flex h-7.5 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-[12px] transition-colors duration-150 ${
                         interactive ? "cursor-pointer" : "cursor-default"
                       } ${
                         active
-                          ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg) before:absolute before:top-1.5 before:bottom-1.5 before:left-0 before:w-[2px] before:rounded-full before:bg-(--l-accent)"
+                          ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
                           : interactive
                             ? "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
                             : "text-(--l-panel-fg-3)"
                       }`}
                     >
-                      {chat.unread && !active && (
-                        <span className="size-1.5 shrink-0 rounded-full bg-(--l-accent)" />
-                      )}
-                      <span className="truncate">{chat.title}</span>
+                      <span className="flex min-w-0 flex-1 items-center gap-2">
+                        {chat.unread && !active && (
+                          <span className="size-1.5 shrink-0 rounded-full bg-(--l-panel-fg)" />
+                        )}
+                        <span className="truncate">{chat.title}</span>
+                      </span>
+                      <span className="shrink-0 font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
+                        {age}
+                      </span>
                     </button>
                   );
                 })}
@@ -200,48 +223,83 @@ export function AppMockup() {
             </div>
           </div>
 
-          {/* 10-Segment Precision Usage Telemetry Card */}
-          <div className="border-t border-(--l-panel-border) p-2.5">
-            <div className="rounded-xl border border-(--l-panel-border) bg-(--l-panel) p-2.5">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="inline-flex items-center gap-1.5 font-medium text-(--l-panel-fg)">
-                  <span className="size-1.5 rounded-full bg-(--l-accent)" />
-                  <span>Builder</span>
+          {/* Floating Interactive Usage Telemetry Popover */}
+          {usageOpen && (
+            <div className="absolute right-2 bottom-[84px] left-2 z-20 overflow-hidden rounded-xl border border-(--l-border) bg-(--l-surface) shadow-xl">
+              <div className="flex items-baseline justify-between px-3 py-2.5">
+                <span className="text-[11.5px] font-medium text-(--l-panel-fg)">
+                  Builder usage
                 </span>
-                <span className="font-mono text-[11px] font-semibold tabular-nums text-(--l-panel-fg)">
-                  $21.40{" "}
-                  <span className="font-normal text-(--l-panel-fg-3)">
-                    left
-                  </span>
+                <span className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-2)">
+                  $21.40 / $28
                 </span>
               </div>
-              <div className="mt-2.5 space-y-1.5">
+              <div className="space-y-2 border-t border-(--l-panel-border) px-3 py-2.5">
                 {USAGE_WINDOWS.map((win) => (
-                  <div
-                    key={win.label}
-                    className="grid grid-cols-[22px_1fr_26px] items-center gap-1.5 text-[10px] tabular-nums"
-                  >
-                    <span className="font-mono text-(--l-panel-fg-3)">
-                      {win.label}
-                    </span>
-                    <div className="grid grid-cols-10 gap-[2px]">
-                      {SEGMENT_SLOTS.map((slot) => (
-                        <span
-                          key={slot}
-                          className={`h-[4px] rounded-[1px] ${
-                            slot < win.segments
-                              ? "bg-(--l-accent)"
-                              : "bg-(--l-panel-border)"
-                          }`}
-                        />
-                      ))}
+                  <div key={win.label} className="space-y-1">
+                    <div className="flex items-center justify-between text-[10.5px] tabular-nums">
+                      <span className="text-(--l-panel-fg-2)">
+                        {win.label === "5h"
+                          ? "5-hour window"
+                          : win.label === "7d"
+                            ? "7-day window"
+                            : "Monthly cycle"}
+                      </span>
+                      <span className="font-mono text-(--l-panel-fg-3)">
+                        {win.pct}%
+                      </span>
                     </div>
-                    <span className="text-right font-mono text-(--l-panel-fg-2)">
-                      {win.pct}%
-                    </span>
+                    <div className="h-1 w-full overflow-hidden rounded-full bg-(--l-panel-border)">
+                      <div
+                        className="h-full rounded-full bg-(--l-panel-fg)/80"
+                        style={{ width: `${win.pct}%` }}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Ultra-Compact Bottom Dock: 1-Line Usage Bar + Profile */}
+          <div className="space-y-1 border-t border-(--l-panel-border) px-2 py-2">
+            <button
+              type="button"
+              onClick={() => setUsageOpen((prev) => !prev)}
+              aria-expanded={usageOpen}
+              className={`flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left transition-colors duration-150 ${
+                usageOpen
+                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
+                  : "text-(--l-panel-fg) hover:bg-(--l-panel-surface)"
+              }`}
+            >
+              <span className="shrink-0 text-[11.5px] font-medium text-(--l-panel-fg-2)">
+                Builder
+              </span>
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-(--l-panel-border)">
+                <div
+                  className="h-full rounded-full bg-(--l-panel-fg)/80"
+                  style={{ width: "38%" }}
+                />
+              </div>
+              <span className="shrink-0 font-mono text-[11px] font-medium tabular-nums text-(--l-panel-fg)">
+                $21.40
+              </span>
+              <ChevronUp
+                className={`size-3 shrink-0 text-(--l-panel-fg-3) transition-transform duration-150 ${
+                  usageOpen ? "rotate-180" : ""
+                }`}
+                strokeWidth={1.6}
+              />
+            </button>
+
+            <div className="flex h-8 items-center gap-2 rounded-lg px-2 text-xs text-(--l-panel-fg-2)">
+              <span className="inline-flex size-5 items-center justify-center rounded-full border border-(--l-panel-border) bg-(--l-panel) text-[10px] font-medium text-(--l-panel-fg)">
+                M
+              </span>
+              <span className="truncate font-medium text-(--l-panel-fg)">
+                miracle
+              </span>
             </div>
           </div>
         </aside>
@@ -264,7 +322,6 @@ export function AppMockup() {
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              {/* Mobile switch between Chat and Workspace */}
               <div className="inline-flex rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) p-0.5 text-[11px] md:hidden">
                 <button
                   type="button"
@@ -282,7 +339,6 @@ export function AppMockup() {
                 </button>
               </div>
 
-              {/* Context indicator button */}
               <button
                 type="button"
                 onClick={() => openInspectorTab("context")}
@@ -307,7 +363,7 @@ export function AppMockup() {
                     cy="9"
                     r="6.5"
                     fill="none"
-                    stroke="var(--l-accent)"
+                    stroke="var(--l-panel-fg)"
                     strokeWidth="2.2"
                     strokeDasharray={ringCircumference}
                     strokeDashoffset={ringOffset}
@@ -322,7 +378,6 @@ export function AppMockup() {
           {/* Chat messages */}
           <div className="flex flex-1 flex-col justify-between gap-5 p-4 sm:p-5">
             <div className="space-y-4">
-              {/* Previous turn collapsed banner */}
               <div className="flex items-center justify-between rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-[11px] text-(--l-panel-fg-3)">
                 <span className="tabular-nums">{scenario.prevSteps}</span>
                 <span className="font-medium text-(--l-panel-fg-2)">
@@ -330,14 +385,12 @@ export function AppMockup() {
                 </span>
               </div>
 
-              {/* Right-aligned User Bubble */}
               <div className="flex justify-end">
                 <div className="max-w-[90%] rounded-2xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3.5 py-2.5 text-[13px] leading-relaxed text-(--l-panel-fg) sm:max-w-[82%]">
                   {scenario.prompt}
                 </div>
               </div>
 
-              {/* Assistant Turn */}
               <div className="space-y-3">
                 <div>
                   <button
@@ -383,7 +436,6 @@ export function AppMockup() {
                   {scenario.replyAfterCode}
                 </p>
 
-                {/* Copy | Fork ABOVE file changes */}
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[11px] text-(--l-panel-fg-3)">
                   <div className="flex items-center gap-3">
                     <span className="inline-flex items-center gap-1 text-(--l-panel-fg-2)">
@@ -400,7 +452,6 @@ export function AppMockup() {
                   </div>
                 </div>
 
-                {/* File changes summary BELOW Copy / Fork */}
                 <button
                   type="button"
                   onClick={() => openInspectorTab("diff")}
@@ -428,7 +479,6 @@ export function AppMockup() {
               </div>
             </div>
 
-            {/* Real Entry Composer Bar */}
             <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) px-3.5 py-2.5">
               <div className="text-xs text-(--l-panel-fg-3)">
                 Follow up on {scenario.prTag} or open another branch...
@@ -443,7 +493,7 @@ export function AppMockup() {
                     Claude Opus 4.6
                   </span>
                   <span className="text-(--l-panel-fg-3)">high</span>
-                  <span className="hidden items-center gap-1 text-(--l-accent) sm:inline-flex">
+                  <span className="hidden items-center gap-1 text-(--l-panel-fg-3) sm:inline-flex">
                     <ShieldCheck className="size-3" strokeWidth={1.5} />
                     <span>Full access</span>
                   </span>

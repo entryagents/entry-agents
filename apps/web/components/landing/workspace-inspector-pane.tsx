@@ -268,7 +268,7 @@ function ContextTabContent({
               cy="42"
               r={radius}
               fill="none"
-              stroke="var(--l-accent)"
+              stroke="var(--l-panel-fg)"
               strokeWidth="6.5"
               strokeLinecap="round"
               strokeDasharray={circumference}

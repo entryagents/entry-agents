@@ -321,9 +321,9 @@ export function SidebarProjectsSection({
                 return (
                   <div key={project.key}>
                     <div
-                      className={`group relative flex h-9 items-center rounded-lg transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                      className={`group flex h-8 items-center rounded-lg px-2 transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                         containsActive && !isExpanded
-                          ? "bg-foreground/[0.055]"
+                          ? "bg-foreground/[0.06]"
                           : "hover:bg-foreground/[0.045]"
                       }`}
                     >
@@ -331,7 +331,7 @@ export function SidebarProjectsSection({
                         type="button"
                         onClick={() => toggleProject(project.key)}
                         aria-expanded={isExpanded}
-                        className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left cursor-pointer"
+                        className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left cursor-pointer"
                         title={
                           project.kind === "github"
                             ? `${project.repoOwner}/${project.repoName}`
@@ -339,50 +339,57 @@ export function SidebarProjectsSection({
                         }
                       >
                         <ChevronRight
-                          className={`size-3 shrink-0 text-muted-foreground/60 transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                          className={`size-3 shrink-0 text-muted-foreground/55 transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] ${
                             isExpanded
-                              ? "rotate-90 text-foreground/75"
-                              : "group-hover:text-foreground/70"
+                              ? "rotate-90 text-muted-foreground"
+                              : "group-hover:text-muted-foreground"
                           }`}
                           strokeWidth={1.6}
                         />
                         <span
-                          className={`grid size-5 shrink-0 place-items-center rounded-md border transition-colors duration-120 ${
+                          className={`grid size-4 shrink-0 place-items-center transition-colors duration-120 ${
                             containsActive
-                              ? "border-[#c85c20]/35 bg-[#c85c20]/10 text-[#c85c20] dark:border-[#e07638]/35 dark:bg-[#e07638]/12 dark:text-[#e07638]"
-                              : "border-border/60 bg-foreground/[0.03] text-muted-foreground group-hover:border-border group-hover:text-foreground/85"
+                              ? "text-foreground"
+                              : "text-muted-foreground/75 group-hover:text-foreground/85"
                           }`}
                         >
                           {project.kind === "github" ? (
-                            <FolderGit2 className="size-3" strokeWidth={1.6} />
+                            <FolderGit2
+                              className="size-3.5"
+                              strokeWidth={1.5}
+                            />
                           ) : isExpanded ? (
-                            <FolderOpen className="size-3" strokeWidth={1.6} />
+                            <FolderOpen
+                              className="size-3.5"
+                              strokeWidth={1.5}
+                            />
                           ) : (
-                            <Folder className="size-3" strokeWidth={1.6} />
+                            <Folder className="size-3.5" strokeWidth={1.5} />
                           )}
                         </span>
                         <span
-                          className={`min-w-0 flex-1 truncate text-[13px] leading-[18px] tracking-[-0.01em] transition-colors duration-120 ${
+                          className={`min-w-0 flex-1 truncate text-[13px] leading-[18px] transition-colors duration-120 ${
                             containsActive || isExpanded
                               ? "font-medium text-foreground"
-                              : "font-medium text-foreground/80 group-hover:text-foreground"
+                              : "font-normal text-foreground/80 group-hover:text-foreground"
                           }`}
                         >
                           {project.name}
                         </span>
-                        <span className="shrink-0 rounded-md bg-foreground/[0.045] px-1.5 py-0.5 font-mono text-[10.5px] leading-none tabular-nums text-muted-foreground/75 transition-opacity duration-120 group-hover:opacity-0">
-                          {project.sessions.length}
-                        </span>
                       </button>
 
-                      <span className="pointer-events-none absolute top-1/2 right-1 flex -translate-y-1/2 items-center gap-0.5 rounded-lg border border-border/75 bg-sidebar/95 p-0.5 opacity-0 shadow-xs backdrop-blur-sm transition-opacity duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 dark:bg-[#181715]/95">
+                      <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/60 group-hover:hidden">
+                        {project.sessions.length}
+                      </span>
+
+                      <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex focus-within:flex">
                         {project.kind === "folder" ? (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <button
                                 type="button"
                                 onClick={(event) => event.stopPropagation()}
-                                className="grid size-6 place-items-center rounded-md text-muted-foreground transition-[background-color,color] duration-120 hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer"
+                                className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer"
                                 aria-label={`Folder options for ${project.name}`}
                                 title="Folder options"
                               >
@@ -424,7 +431,7 @@ export function SidebarProjectsSection({
                             handleNewChatInProject(event, project)
                           }
                           disabled={isCreating}
-                          className="grid size-6 place-items-center rounded-md text-muted-foreground transition-[background-color,color] duration-120 hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer"
+                          className="grid size-6 place-items-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer"
                           aria-label={`New chat in ${project.name}`}
                           title={`New chat in ${project.name}`}
                         >
@@ -438,7 +445,7 @@ export function SidebarProjectsSection({
                     </div>
 
                     {isExpanded ? (
-                      <div className="mt-1 mb-2 ml-[19px] space-y-0.5 border-l border-border/75 pl-2.5">
+                      <div className="mt-0.5 mb-1.5 ml-[13px] space-y-0.5 border-l border-border/50 pl-2">
                         {project.sessions.length === 0 &&
                         project.kind === "folder" ? (
                           <button
@@ -446,7 +453,7 @@ export function SidebarProjectsSection({
                             onClick={() =>
                               onStartChatInFolder(project.projectId)
                             }
-                            className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[12px] font-medium text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.05] hover:text-foreground cursor-pointer"
+                            className="flex h-7 w-full items-center gap-2 rounded-lg px-2 text-left text-[12px] text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.05] hover:text-foreground cursor-pointer"
                           >
                             <Plus
                               className="size-3.5 shrink-0"

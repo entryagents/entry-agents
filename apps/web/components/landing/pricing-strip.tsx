@@ -55,7 +55,7 @@ export function LandingPricingStrip() {
         <div className="border-t border-(--l-border) py-16 sm:py-24">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="max-w-xl">
-              <h2 className="font-display text-balance text-4xl font-normal leading-[1.04] tracking-[-0.02em] sm:text-5xl">
+              <h2 className="font-display text-balance text-3xl font-semibold leading-[1.08] tracking-[-0.03em] sm:text-4xl">
                 Straightforward credits, zero markup
               </h2>
               <p className="mt-3 text-pretty text-base leading-relaxed text-(--l-fg-2)">
@@ -88,7 +88,7 @@ export function LandingPricingStrip() {
                 key={plan.id}
                 className={`flex flex-col justify-between rounded-2xl border p-6 sm:p-7 ${
                   plan.featured
-                    ? "border-(--l-accent)/55 bg-(--l-surface)"
+                    ? "border-(--l-fg)/30 bg-(--l-surface)"
                     : "border-(--l-border) bg-(--l-surface)"
                 }`}
               >
@@ -109,7 +109,7 @@ export function LandingPricingStrip() {
                   </div>
 
                   <div className="mt-5 flex items-baseline gap-1.5 tabular-nums">
-                    <span className="font-display text-5xl font-normal leading-none tracking-[-0.02em] text-(--l-fg)">
+                    <span className="font-display text-4xl font-semibold leading-none tracking-[-0.035em] text-(--l-fg)">
                       {plan.price}
                     </span>
                     <span className="text-xs text-(--l-fg-3)">
@@ -128,11 +128,7 @@ export function LandingPricingStrip() {
                         className="flex items-start gap-2.5 text-xs leading-relaxed text-(--l-fg-2)"
                       >
                         <Check
-                          className={`mt-0.5 size-3.5 shrink-0 ${
-                            plan.featured
-                              ? "text-(--l-accent)"
-                              : "text-(--l-fg-3)"
-                          }`}
+                          className="mt-0.5 size-3.5 shrink-0 text-(--l-fg-3)"
                           strokeWidth={1.75}
                         />
                         <span>{point}</span>
