@@ -1,4 +1,9 @@
-export const SUBAGENT_STEP_LIMIT = 100;
+export const SUBAGENT_STEP_LIMIT = 80;
+export const EXPLORER_STEP_LIMIT = 30;
+export const REVIEWER_STEP_LIMIT = 35;
+export const ARCHITECT_STEP_LIMIT = 35;
+export const EXECUTOR_STEP_LIMIT = 80;
+export const DESIGN_STEP_LIMIT = 80;
 /** Maximum delegation depth for subagents (0 = root agent, 1 = direct subagent). Subagents at depth >= 1 cannot delegate further. */
 export const MAX_SUBAGENT_DEPTH = 1;
 /** Maximum length of inline summary text returned to the parent before spilling to disk. */

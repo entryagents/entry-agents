@@ -9,6 +9,7 @@ import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
 import { createReadFileState } from "../tools/read-state";
 import { editFileTool, writeFileTool } from "../tools/write";
+import { sendParentUpdateTool } from "../tools/subagent-control";
 import { teamBoardTool } from "../tools/team";
 import { webFetchTool } from "../tools/fetch";
 import {
@@ -16,12 +17,12 @@ import {
   sharedSubagentCallOptionsFields,
 } from "./call-options";
 import {
+  DESIGN_STEP_LIMIT,
   SUBAGENT_BASH_RULES,
   SUBAGENT_COMPLETE_TASK_RULES,
   SUBAGENT_NO_QUESTIONS_RULES,
   SUBAGENT_REMINDER,
   SUBAGENT_RESPONSE_FORMAT,
-  SUBAGENT_STEP_LIMIT,
   SUBAGENT_VALIDATE_RULES,
   SUBAGENT_WORKING_DIR,
 } from "./constants";
@@ -103,6 +104,7 @@ const designTools = {
   bash: bashTool(),
   web_fetch: webFetchTool,
   team_board: teamBoardTool,
+  send_parent_update: sendParentUpdateTool,
 };
 
 export const designSubagent = new ToolLoopAgent({
@@ -113,7 +115,7 @@ export const designSubagent = new ToolLoopAgent({
   model: createInertPlaceholderModel(defaultModelLabel),
   instructions: DESIGN_SYSTEM_PROMPT,
   tools: designTools,
-  stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
+  stopWhen: stepCountIs(DESIGN_STEP_LIMIT),
   callOptionsSchema,
   prepareStep: ({ steps, stepNumber, messages, model, experimental_context }) =>
     prepareSubagentStep({
@@ -123,6 +125,7 @@ export const designSubagent = new ToolLoopAgent({
       model,
       experimental_context,
       trackReadFileState: true,
+      stepLimit: DESIGN_STEP_LIMIT,
     }),
   prepareCall: ({ options, ...settings }) => {
     if (!options) {
