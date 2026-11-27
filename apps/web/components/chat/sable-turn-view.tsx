@@ -652,6 +652,12 @@ export const SableTurnView = memo(function SableTurnView({
   const pieces: ReactNode[] = [];
   let ord = 0;
 
+  const reportedStepCount = message.metadata?.stepBreakdown?.length;
+  const displayTotalSteps =
+    typeof reportedStepCount === "number" && reportedStepCount > 0
+      ? reportedStepCount
+      : turnFlow.totalSteps;
+
   for (let i = 0; i < flow.length; i++) {
     const chunk = flow[i];
 
@@ -670,7 +676,7 @@ export const SableTurnView = memo(function SableTurnView({
               runSpanMs={null}
               liveStartedAtMs={null}
               thoughtOnly={turnFlow.thoughtOnly}
-              totalSteps={turnFlow.totalSteps}
+              totalSteps={displayTotalSteps}
               durationMs={effectiveDurationMs}
               changes={turnFlow.changes}
               open={open}
@@ -734,7 +740,7 @@ export const SableTurnView = memo(function SableTurnView({
         liveStartedAtMs={isLiveRun ? liveStartMs : null}
         activeApprovalId={activeApprovalId}
         thoughtOnly={turnFlow.thoughtOnly}
-        totalSteps={turnFlow.totalSteps}
+        totalSteps={displayTotalSteps}
         durationMs={effectiveDurationMs}
         changes={turnFlow.changes}
         onToggleTurn={toggleTurn}
@@ -766,7 +772,7 @@ export const SableTurnView = memo(function SableTurnView({
         liveStartedAtMs={effectiveTurnStartMs}
         activeApprovalId={activeApprovalId}
         thoughtOnly={turnFlow.thoughtOnly}
-        totalSteps={turnFlow.totalSteps}
+        totalSteps={displayTotalSteps}
         durationMs={effectiveDurationMs}
         changes={turnFlow.changes}
         onToggleTurn={toggleTurn}
