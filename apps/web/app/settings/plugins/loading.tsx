@@ -1,5 +1,5 @@
-import { PluginsSectionSkeleton } from "./plugins-section";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 
 export default function PluginsLoading() {
-  return <PluginsSectionSkeleton />;
+  return <EntryLoadingScreen fullScreen={false} />;
 }
