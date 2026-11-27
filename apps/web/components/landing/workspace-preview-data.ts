@@ -29,6 +29,8 @@ export interface PreviewScenario {
   readonly replyAfterCode: string;
   readonly timestamp: string;
   readonly model: string;
+  readonly modelFull: string;
+  readonly effort: string;
   readonly cost: string;
   readonly filesChangedCount: number;
   readonly totalAdded: number;
@@ -64,14 +66,15 @@ export const SIDEBAR_PROJECTS: readonly {
   readonly chats: readonly {
     readonly id: ScenarioId;
     readonly title: string;
+    readonly age: string;
   }[];
 }[] = [
   {
     name: "entry-agents",
     expanded: true,
     chats: [
-      { id: "resend", title: "Ship Resend transactional emails" },
-      { id: "oauth", title: "Fix OAuth callback redirect" },
+      { id: "resend", title: "Resend email templates", age: "4m" },
+      { id: "oauth", title: "OAuth callback fix", age: "2h" },
     ],
   },
   {
@@ -84,27 +87,33 @@ export const SIDEBAR_PROJECTS: readonly {
 export const SIDEBAR_CHATS: readonly {
   readonly id?: ScenarioId;
   readonly title: string;
+  readonly age: string;
   readonly unread?: boolean;
 }[] = [
-  { id: "checkout", title: "Audit mobile checkout layout", unread: true },
-  { title: "Migrate Neon branch schema" },
-  { title: "Stream terminal output over SSE" },
+  {
+    id: "checkout",
+    title: "Mobile checkout audit",
+    age: "18m",
+    unread: true,
+  },
+  { title: "Neon schema migration", age: "3h" },
+  { title: "SSE terminal stream", age: "5h" },
 ];
 
 export const USAGE_WINDOWS: readonly {
   readonly label: string;
+  readonly title: string;
   readonly pct: number;
-  readonly segments: number;
 }[] = [
-  { label: "5h", pct: 24, segments: 2 },
-  { label: "7d", pct: 38, segments: 4 },
-  { label: "30d", pct: 24, segments: 2 },
+  { label: "5h", title: "5-hour window", pct: 24 },
+  { label: "7d", title: "7-day window", pct: 38 },
+  { label: "30d", title: "Monthly cycle", pct: 24 },
 ];
 
 export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
   resend: {
     id: "resend",
-    title: "Ship Resend transactional emails",
+    title: "Resend email templates",
     project: "entry-agents",
     branch: "feat/resend-emails",
     prTag: "#324",
@@ -113,26 +122,28 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       "Wire up welcome and billing emails with Resend, preview the template on port 3000, and open a PR once tests pass.",
     workedLabel: "Worked 4m 18s · 14 steps",
     replyBeforeCode: "Added the welcome and renewal templates in ",
-    replyCode: "apps/web/lib/email",
+    replyCode: "lib/email/send.ts",
     replyAfterCode:
       ", wired Resend webhook delivery, verified the live preview on port 3000, and opened PR #324 with all 12 unit tests passing.",
     timestamp: "14:22",
-    model: "Opus 4.6",
+    model: "Opus 5.5",
+    modelFull: "Claude Opus 5.5",
+    effort: "high",
     cost: "$0.184",
     filesChangedCount: 4,
     totalAdded: 248,
     totalRemoved: 19,
-    activeDiffPath: "apps/web/lib/email/send.ts",
+    activeDiffPath: "lib/email/send.ts",
     diffLines: [
       {
         kind: "context",
         lineNo: "14",
-        text: "export async function sendWelcome(u: User) {",
+        text: "export async function sendWelcome(u) {",
       },
       {
         kind: "del",
         lineNo: "15",
-        text: '  return { skipped: true, reason: "off" };',
+        text: "  return { skipped: true };",
       },
       {
         kind: "add",
@@ -142,96 +153,93 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       {
         kind: "add",
         lineNo: "16",
-        text: "  const res = await resend.emails.send({",
+        text: "  const { data, error } = await resend",
       },
       {
         kind: "add",
         lineNo: "17",
-        text: '    from: "Entry <hi@entry-agents.dev>",',
+        text: "    .emails.send({",
       },
       {
         kind: "add",
         lineNo: "18",
-        text: "    to: u.email,",
+        text: '      from: "hi@entryagents.app",',
       },
       {
         kind: "add",
         lineNo: "19",
-        text: '    subject: "Your workspace is ready",',
+        text: "      to: u.email,",
       },
       {
         kind: "add",
         lineNo: "20",
-        text: "    html,",
+        text: '      subject: "Workspace ready",',
       },
       {
         kind: "add",
         lineNo: "21",
-        text: "  });",
+        text: "      html,",
       },
       {
         kind: "add",
         lineNo: "22",
-        text: "  if (res.error) throw res.error;",
+        text: "    });",
       },
       {
         kind: "add",
         lineNo: "23",
-        text: "  return { id: res.data?.id, ok: true };",
+        text: "  if (error) throw error;",
+      },
+      {
+        kind: "add",
+        lineNo: "24",
+        text: "  return { id: data?.id, ok: true };",
       },
       {
         kind: "context",
-        lineNo: "24",
+        lineNo: "25",
         text: "}",
       },
     ],
     diffFiles: [
-      { path: "apps/web/lib/email/send.ts", added: 84, removed: 11 },
-      {
-        path: "apps/web/lib/email/templates/welcome.tsx",
-        added: 92,
-        removed: 0,
-      },
-      {
-        path: "apps/web/app/api/webhooks/billing/route.ts",
-        added: 41,
-        removed: 8,
-      },
-      { path: "apps/web/lib/email/send.test.ts", added: 31, removed: 0 },
+      { path: "lib/email/send.ts", added: 84, removed: 11 },
+      { path: "lib/email/welcome.tsx", added: 92, removed: 0 },
+      { path: "api/webhooks/billing/route.ts", added: 41, removed: 8 },
+      { path: "lib/email/send.test.ts", added: 31, removed: 0 },
     ],
     steps: [
       {
         id: "r-1",
         tool: "edit",
-        detail: "apps/web/lib/email/send.ts",
+        detail: "lib/email/send.ts",
         duration: "1.2s",
       },
       {
         id: "r-2",
         tool: "bash",
-        detail: "bun test apps/web/lib/email",
+        detail: "bun test lib/email",
         duration: "3.4s",
       },
       {
         id: "r-3",
-        tool: "sandbox",
-        detail: "expose_port 3000 -> p3000.entry-vm.boxd.sh",
+        tool: "preview",
+        detail: "expose port 3000 -> preview URL",
         duration: "0.8s",
       },
       {
         id: "r-4",
         tool: "github",
-        detail: "open_pr feat/resend-emails (#324)",
+        detail: "open PR #324 · feat/resend-emails",
         duration: "1.1s",
       },
     ],
-    previewUrl: "https://p3000.entry-vm.boxd.sh/emails/preview",
+    previewUrl: "https://preview-3000.entryagents.app/emails",
     previewTag: "Template · Welcome",
     previewHeading: "Your cloud workspace is ready",
     previewBody:
       "Connect a repository or start in a clean Ubuntu VM. Your sessions keep running on the server after you close the tab.",
     previewCta: "Open workspace",
-    previewMeta: "Rendered inside isolated VM · port 3000",
+    previewMeta: "Live VM preview · port 3000",
     previewLatency: "18ms",
     contextPct: 45,
     contextUsed: "453.2k of 1.0m tokens",
@@ -248,7 +256,7 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
   },
   oauth: {
     id: "oauth",
-    title: "Fix OAuth callback redirect",
+    title: "OAuth callback fix",
     project: "entry-agents",
     branch: "fix/oauth-callback",
     prTag: "#319",
@@ -257,21 +265,23 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       "Vercel and Google sign-in are rejecting the callback URL on preview deploys. Trace the redirect origin and add a regression test.",
     workedLabel: "Worked 2m 42s · 9 steps",
     replyBeforeCode: "Fixed trusted origin resolution in ",
-    replyCode: "apps/web/lib/auth/config.ts",
+    replyCode: "lib/auth/config.ts",
     replyAfterCode:
-      " so OAuth callbacks always normalize to the canonical production host when proxy headers vary, verified all 3 provider callbacks, and merged PR #319.",
+      " so OAuth callbacks normalize to the canonical host when proxy headers vary, verified all 3 provider callbacks, and merged PR #319.",
     timestamp: "11:08",
-    model: "Opus 4.6",
+    model: "GPT-5.6 Sol",
+    modelFull: "GPT-5.6 Sol",
+    effort: "high",
     cost: "$0.112",
     filesChangedCount: 2,
     totalAdded: 46,
     totalRemoved: 12,
-    activeDiffPath: "apps/web/lib/auth/config.ts",
+    activeDiffPath: "lib/auth/config.ts",
     diffLines: [
       {
         kind: "context",
         lineNo: "28",
-        text: "export function resolveAuthBaseUrl(req: Request) {",
+        text: "export function authOrigin(req: Request) {",
       },
       {
         kind: "del",
@@ -281,17 +291,17 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       {
         kind: "add",
         lineNo: "29",
-        text: "  const canonical = process.env.BETTER_AUTH_URL;",
+        text: "  const base = env.BETTER_AUTH_URL;",
       },
       {
         kind: "add",
         lineNo: "30",
-        text: '  if (canonical) return canonical.replace(/\\/$/, "");',
+        text: '  if (base) return base.replace(/\\/$/, "");',
       },
       {
         kind: "add",
         lineNo: "31",
-        text: '  const host = req.headers.get("x-forwarded-host");',
+        text: '  const host = req.headers.get("host");',
       },
       {
         kind: "add",
@@ -310,26 +320,26 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       },
     ],
     diffFiles: [
-      { path: "apps/web/lib/auth/config.ts", added: 18, removed: 6 },
-      { path: "apps/web/lib/auth/config.test.ts", added: 28, removed: 6 },
+      { path: "lib/auth/config.ts", added: 18, removed: 6 },
+      { path: "lib/auth/config.test.ts", added: 28, removed: 6 },
     ],
     steps: [
       {
         id: "o-1",
         tool: "grep",
-        detail: "callbackURL apps/web/lib/auth",
+        detail: "callbackURL lib/auth",
         duration: "0.4s",
       },
       {
         id: "o-2",
         tool: "edit",
-        detail: "apps/web/lib/auth/config.ts",
+        detail: "lib/auth/config.ts",
         duration: "0.9s",
       },
       {
         id: "o-3",
         tool: "bash",
-        detail: "bun test apps/web/lib/auth/config.test.ts",
+        detail: "bun test lib/auth/config.test.ts",
         duration: "1.6s",
       },
       {
@@ -339,11 +349,11 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
         duration: "1.0s",
       },
     ],
-    previewUrl: "https://p3000.entry-vm.boxd.sh/login",
+    previewUrl: "https://preview-3000.entryagents.app/login",
     previewTag: "Auth · Callback Check",
     previewHeading: "Sign in to Entry Agents",
     previewBody:
-      "Vercel, Google, and GitHub OAuth callbacks verified against https://entry-agents.dev/api/auth/callback/* with HTTP 302 state handoff.",
+      "Vercel, Google, and GitHub OAuth callbacks verified against canonical callback routes with HTTP 302 state handoff.",
     previewCta: "Continue with Vercel",
     previewMeta: "Callback probe passed · 3 providers",
     previewLatency: "14ms",
@@ -362,7 +372,7 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
   },
   checkout: {
     id: "checkout",
-    title: "Audit mobile checkout layout",
+    title: "Mobile checkout audit",
     project: null,
     branch: "feat/mobile-pricing",
     prTag: "#322",
@@ -371,16 +381,18 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       "Audit the pricing checkout modal at 375px and 1440px, eliminate horizontal overflow, and verify every interactive state in headless Chrome.",
     workedLabel: "Worked 3m 05s · 11 steps",
     replyBeforeCode: "Tightened card padding and stacked the window toggle in ",
-    replyCode: "apps/web/app/pricing/plans-catalog.tsx",
+    replyCode: "app/pricing/plans-catalog.tsx",
     replyAfterCode:
       ". Verified scrollWidth === 375 on iPhone SE and 1440 on desktop with zero clipped controls.",
     timestamp: "09:47",
-    model: "Opus 4.6",
+    model: "Opus 5.5",
+    modelFull: "Claude Opus 5.5",
+    effort: "max",
     cost: "$0.146",
     filesChangedCount: 3,
     totalAdded: 74,
     totalRemoved: 38,
-    activeDiffPath: "apps/web/app/pricing/plans-catalog.tsx",
+    activeDiffPath: "app/pricing/plans-catalog.tsx",
     diffLines: [
       {
         kind: "context",
@@ -395,7 +407,7 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       {
         kind: "add",
         lineNo: "313",
-        text: '  <button className="min-w-0 w-full p-3.5">',
+        text: '  <button className="min-w-0 w-full p-3">',
       },
       {
         kind: "context",
@@ -415,12 +427,12 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       {
         kind: "add",
         lineNo: "317",
-        text: '    <p className="mt-1 text-xs text-muted-foreground">',
+        text: '    <p className="mt-1 text-xs opacity-70">',
       },
       {
         kind: "add",
         lineNo: "318",
-        text: "      Refills continuously as usage ages out",
+        text: "      Refills as usage ages out",
       },
       {
         kind: "add",
@@ -434,51 +446,43 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       },
     ],
     diffFiles: [
-      {
-        path: "apps/web/app/pricing/plans-catalog.tsx",
-        added: 42,
-        removed: 24,
-      },
-      {
-        path: "apps/web/components/landing/pricing-strip.tsx",
-        added: 22,
-        removed: 10,
-      },
-      { path: "apps/web/app/pricing/pricing.test.ts", added: 10, removed: 4 },
+      { path: "app/pricing/plans-catalog.tsx", added: 42, removed: 24 },
+      { path: "components/landing/pricing-strip.tsx", added: 22, removed: 10 },
+      { path: "app/pricing/pricing.test.ts", added: 10, removed: 4 },
     ],
     steps: [
       {
         id: "c-1",
-        tool: "bash",
-        detail: "playwright screenshot --viewport 375x812",
+        tool: "browser",
+        detail: "screenshot --viewport 375x812",
         duration: "2.8s",
       },
       {
         id: "c-2",
         tool: "edit",
-        detail: "apps/web/app/pricing/plans-catalog.tsx",
+        detail: "app/pricing/plans-catalog.tsx",
         duration: "1.1s",
       },
       {
         id: "c-3",
         tool: "bash",
-        detail: "pnpm check && pnpm --dir apps/web typecheck",
+        detail: "pnpm check && pnpm typecheck",
         duration: "4.2s",
       },
       {
         id: "c-4",
         tool: "github",
-        detail: "open_pr feat/mobile-pricing (#322)",
+        detail: "open PR #322 · feat/mobile-pricing",
         duration: "0.9s",
       },
     ],
-    previewUrl: "https://p3000.entry-vm.boxd.sh/pricing",
+    previewUrl: "https://preview-3000.entryagents.app/pricing",
     previewTag: "Viewport · 375px OK",
     previewHeading: "Builder — $10 / month",
     previewBody:
       "$28 monthly AI credit (2.8x), dedicated 2 vCPU / 8 GiB cloud VMs, and 50 active hours per month. Zero horizontal overflow verified.",
     previewCta: "Choose Builder",
-    previewMeta: "Verified 375px & 1440px · 0 console errors",
+    previewMeta: "Verified 375px & 1440px · 0 errors",
     previewLatency: "21ms",
     contextPct: 34,
     contextUsed: "341.8k of 1.0m tokens",

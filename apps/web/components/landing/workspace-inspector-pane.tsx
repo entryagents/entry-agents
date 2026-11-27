@@ -241,7 +241,9 @@ function ContextTabContent({
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3.5">
       <div className="flex items-center justify-between text-xs">
-        <span className="font-medium text-(--l-panel-fg)">Claude Opus 4.6</span>
+        <span className="font-medium text-(--l-panel-fg)">
+          {scenario.modelFull}
+        </span>
         <RefreshCw
           className="size-3.5 text-(--l-panel-fg-3)"
           strokeWidth={1.5}

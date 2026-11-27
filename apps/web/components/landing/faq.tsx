@@ -3,34 +3,24 @@ import Link from "next/link";
 
 const faqs: readonly { question: string; answer: string }[] = [
   {
-    question: "What is Entry Agents",
+    question: "What happens if I close my browser or lose signal mid-turn",
     answer:
-      "Entry Agents is a cloud coding workspace where every session runs inside an isolated Ubuntu environment with git branches, terminal, live port previews, connected tools, and durable background execution.",
+      "Every turn runs on durable server checkpoints rather than your browser tab. If your laptop sleeps or you switch to your phone, the agent finishes on the server and reconciles every message and file diff when you return.",
   },
   {
-    question: "How is Team Mode different from single-agent mode",
+    question: "How do credits and usage windows work",
     answer:
-      "Routine tasks execute directly in a fast single-agent loop so focused fixes finish immediately. For broad multi-file builds, Team Mode coordinates specialists with non-overlapping file edits visibly inside the same chat.",
-  },
-  {
-    question: "How do credits and plans work",
-    answer:
-      "Plans include monthly AI credits with zero per-token markup, billed at provider model rates. Start free with a $1 trial credit, or move to Plus ($3/mo) or Builder ($10/mo) for higher allowances and dedicated VMs.",
-  },
-  {
-    question: "What happens if I lose internet or close my browser mid-turn",
-    answer:
-      "All work runs on durable server checkpoints. If you drop signal, close your laptop, or open the session on your phone, Entry finishes the turn on the server and reconciles every message and diff when you return.",
-  },
-  {
-    question: "Which tools and workplace apps can the agent use",
-    answer:
-      "Beyond native GitHub repositories and Vercel previews, you can connect Gmail, Slack, Notion, Linear, Google Calendar, Google Drive, Jira, Figma, and custom MCP tools from Settings → Connections.",
+      "Model usage is billed directly against your monthly credit allowance at provider token rates with zero markup. Start free with a $1 trial credit, or move to Plus ($3/mo) or Builder ($10/mo) for higher 5-hour and 7-day windows and dedicated VMs.",
   },
   {
     question: "Do I need a GitHub repository to start",
     answer:
-      "No. You can start with a blank cloud workspace or uploaded files, build and preview an application directly, and optionally connect a repository later to commit and open pull requests.",
+      "No. You can start from a blank Ubuntu workspace or uploaded files, build and preview an application live, and optionally attach a GitHub repository later when you are ready to commit or open a pull request.",
+  },
+  {
+    question: "Which tools and workplace apps can agents connect to",
+    answer:
+      "Alongside native GitHub repositories and Vercel previews, you can authorize Gmail, Slack, Notion, Linear, Google Calendar, Jira, Figma, and custom MCP servers from Settings → Connections.",
   },
 ];
 
@@ -57,26 +47,19 @@ export function LandingFaq() {
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-10">
         <div className="grid gap-10 border-t border-(--l-border) py-16 sm:py-24 lg:grid-cols-[minmax(240px,360px)_1fr]">
           <div className="min-w-0">
-            <h2 className="font-display text-balance text-3xl font-semibold leading-[1.08] tracking-[-0.03em] sm:text-4xl">
-              Frequently asked questions
+            <h2 className="font-display text-balance text-3xl font-semibold leading-[1.06] tracking-[-0.03em] sm:text-4xl">
+              Questions, answered
             </h2>
             <p className="mt-3 max-w-sm text-sm leading-relaxed text-(--l-fg-2)">
-              How workspaces run in the cloud, how credits are billed, and how
-              sessions survive disconnect. See{" "}
+              Practical details on durability, credits, and connections. For
+              hands-on prompt recipes see the{" "}
               <Link
-                href="/pricing"
+                href="/guide"
                 className="underline decoration-(--l-border) underline-offset-4 transition-colors hover:text-(--l-fg)"
               >
-                pricing
-              </Link>{" "}
-              and{" "}
-              <Link
-                href="/model"
-                className="underline decoration-(--l-border) underline-offset-4 transition-colors hover:text-(--l-fg)"
-              >
-                models
-              </Link>{" "}
-              for live rates.
+                builder guide
+              </Link>
+              .
             </p>
           </div>
 

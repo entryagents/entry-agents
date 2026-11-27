@@ -36,11 +36,11 @@ Usage is credit-based for model usage. Entry Agents does not charge a separate W
 ## Public pages
 
 - [Entry Agents](${SITE_URL}/): Product overview and sign-in.
-- [Beginner guide](${SITE_URL}/guide): A complete guide for starting without a project, navigating the UI, prompting, reviewing work, GitHub, and credits.
-- [AI coding agent](${SITE_URL}/ai-coding-agent): How the platform builds software with or without a repository.
+- [Builder guide](${SITE_URL}/guide): Quickstart paths, copy-ready prompt recipes, workspace controls, and turn-saving habits.
+- [Architecture](${SITE_URL}/ai-coding-agent): Cloud workspace vs local IDE copilot comparison, turn execution lifecycle, and isolation boundaries.
 - [Pricing](${SITE_URL}/pricing): Credit-based plans.
 - [Models](${SITE_URL}/model): Supported models, prices and context windows.
-- [About](${SITE_URL}/about): Architecture principles and how sessions work.
+- [About](${SITE_URL}/about): Why Entry Agents exists and engineering commitments.
 - [Privacy Policy](${SITE_URL}/privacy): Data isolation, OAuth permissions, and billing practices.
 - [Terms of Service](${SITE_URL}/terms): Terms governing workspace access, credits, and acceptable use.
 - [Sign in](${SITE_URL}/login): Sign in with Vercel, Google or GitHub.
