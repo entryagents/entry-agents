@@ -23,13 +23,44 @@ export function useProjects(options?: { enabled?: boolean }) {
 
   const projects = data?.projects ?? [];
 
+  const syncAssignedSessionCache = useCallback(
+    async (sessionId: string, projectId: string) => {
+      await globalMutate(
+        "/api/sessions",
+        (
+          current:
+            | { sessions?: Array<{ id: string; projectId?: string | null }> }
+            | undefined,
+        ) => {
+          if (!current?.sessions) return current;
+          return {
+            ...current,
+            sessions: current.sessions.map((s) =>
+              s.id === sessionId ? { ...s, projectId } : s,
+            ),
+          };
+        },
+        { revalidate: false },
+      );
+    },
+    [globalMutate],
+  );
+
   const createProject = useCallback(
-    async (name: string): Promise<Project> => {
+    async (
+      name: string,
+      options?: { assignSessionId?: string | null },
+    ): Promise<Project> => {
       const trimmed = name.trim();
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({
+          name: trimmed,
+          ...(options?.assignSessionId
+            ? { assignSessionId: options.assignSessionId }
+            : {}),
+        }),
       });
 
       const responseData = (await res.json()) as {
@@ -38,7 +69,7 @@ export function useProjects(options?: { enabled?: boolean }) {
       };
 
       if (!res.ok || !responseData.project) {
-        const message = responseData.error ?? "Failed to create folder";
+        const message = responseData.error ?? "Failed to create project";
         toast.error(message);
         throw new Error(message);
       }
@@ -46,14 +77,74 @@ export function useProjects(options?: { enabled?: boolean }) {
       const created = responseData.project;
       await mutate(
         (current) => ({
-          projects: [created, ...(current?.projects ?? [])],
+          projects: [
+            created,
+            ...(current?.projects ?? []).filter((p) => p.id !== created.id),
+          ],
         }),
         { revalidate: false },
       );
 
+      if (options?.assignSessionId) {
+        await syncAssignedSessionCache(options.assignSessionId, created.id);
+      }
+
       return created;
     },
-    [mutate],
+    [mutate, syncAssignedSessionCache],
+  );
+
+  const createRepoProject = useCallback(
+    async (input: {
+      repoOwner: string;
+      repoName: string;
+      defaultBranch?: string | null;
+      assignSessionId?: string | null;
+    }): Promise<Project> => {
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repoOwner: input.repoOwner.trim(),
+          repoName: input.repoName.trim(),
+          ...(input.defaultBranch
+            ? { defaultBranch: input.defaultBranch }
+            : {}),
+          ...(input.assignSessionId
+            ? { assignSessionId: input.assignSessionId }
+            : {}),
+        }),
+      });
+
+      const responseData = (await res.json()) as {
+        project?: Project;
+        error?: string;
+      };
+
+      if (!res.ok || !responseData.project) {
+        const message = responseData.error ?? "Failed to import repository";
+        toast.error(message);
+        throw new Error(message);
+      }
+
+      const created = responseData.project;
+      await mutate(
+        (current) => ({
+          projects: [
+            created,
+            ...(current?.projects ?? []).filter((p) => p.id !== created.id),
+          ],
+        }),
+        { revalidate: false },
+      );
+
+      if (input.assignSessionId) {
+        await syncAssignedSessionCache(input.assignSessionId, created.id);
+      }
+
+      return created;
+    },
+    [mutate, syncAssignedSessionCache],
   );
 
   const renameProject = useCallback(
@@ -71,7 +162,7 @@ export function useProjects(options?: { enabled?: boolean }) {
       };
 
       if (!res.ok || !responseData.project) {
-        const message = responseData.error ?? "Failed to rename folder";
+        const message = responseData.error ?? "Failed to rename project";
         toast.error(message);
         throw new Error(message);
       }
@@ -101,7 +192,7 @@ export function useProjects(options?: { enabled?: boolean }) {
         const responseData = (await res.json().catch(() => ({}))) as {
           error?: string;
         };
-        const message = responseData.error ?? "Failed to delete folder";
+        const message = responseData.error ?? "Failed to delete project";
         toast.error(message);
         throw new Error(message);
       }
@@ -140,6 +231,7 @@ export function useProjects(options?: { enabled?: boolean }) {
     loading: isLoading,
     error,
     createProject,
+    createRepoProject,
     renameProject,
     deleteProject,
     refreshProjects: mutate,

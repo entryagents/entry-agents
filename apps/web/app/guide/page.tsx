@@ -199,28 +199,7 @@ export default function GuidePage() {
         <p className="mt-4 max-w-[62ch] text-pretty text-base leading-relaxed text-(--l-fg-2) sm:text-lg">
           A practical reference for going from first prompt to verified branch —
           copyable prompt recipes, workspace controls, and habits that get more
-          out of every turn. Looking for{" "}
-          <Link
-            href="/ai-coding-agent"
-            className="font-medium text-(--l-fg) underline decoration-(--l-border) underline-offset-4 hover:decoration-(--l-fg)"
-          >
-            system architecture
-          </Link>
-          ,{" "}
-          <Link
-            href="/model"
-            className="font-medium text-(--l-fg) underline decoration-(--l-border) underline-offset-4 hover:decoration-(--l-fg)"
-          >
-            model rates
-          </Link>
-          , or{" "}
-          <Link
-            href="/pricing"
-            className="font-medium text-(--l-fg) underline decoration-(--l-border) underline-offset-4 hover:decoration-(--l-fg)"
-          >
-            plans
-          </Link>
-          ? Jump straight there.
+          out of every turn.
         </p>
 
         <GuideJumpNav sections={GUIDE_SECTIONS} />

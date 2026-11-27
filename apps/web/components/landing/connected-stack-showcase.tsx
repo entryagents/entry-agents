@@ -192,6 +192,7 @@ export function ConnectedStackShowcase() {
   const inView = useInView(sectionRef, { amount: 0.3 });
 
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
   useEffect(() => {
@@ -201,6 +202,20 @@ export function ConnectedStackShowcase() {
     }, CYCLE_MS);
     return () => window.clearInterval(id);
   }, [inView, paused, prefersReduced]);
+
+  useEffect(() => {
+    if (prefersReduced) {
+      setActiveStepIndex(2);
+      return;
+    }
+    setActiveStepIndex(0);
+    const t1 = window.setTimeout(() => setActiveStepIndex(1), 1200);
+    const t2 = window.setTimeout(() => setActiveStepIndex(2), 2500);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [prefersReduced, selectedIndex]);
 
   const activeItem = STACK_INVOCATIONS[selectedIndex] ?? STACK_INVOCATIONS[0];
 
@@ -323,34 +338,56 @@ export function ConnectedStackShowcase() {
                     </div>
 
                     <div className="divide-y divide-(--l-panel-border) overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-code-bg) font-mono text-xs">
-                      {activeItem.steps.map((step, stepIndex) => (
-                        <motion.div
-                          key={step.command}
-                          initial={
-                            prefersReduced
-                              ? false
-                              : { opacity: 0, transform: "translateX(-4px)" }
-                          }
-                          animate={{
-                            opacity: 1,
-                            transform: "translateX(0px)",
-                          }}
-                          transition={{
-                            duration: 0.18,
-                            delay: stepIndex * 0.06,
-                            ease: EASE_OUT,
-                          }}
-                          className="flex flex-col gap-0.5 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-                        >
-                          <span className="inline-flex items-center gap-2.5 text-(--l-panel-fg)">
-                            <span className="size-1.5 shrink-0 rounded-full bg-(--l-accent)/80" />
-                            <span>{step.command}</span>
-                          </span>
-                          <span className="pl-4 text-[11px] text-(--l-panel-fg-3) sm:pl-0">
-                            {step.target}
-                          </span>
-                        </motion.div>
-                      ))}
+                      {activeItem.steps.map((step, stepIndex) => {
+                        const isActiveStep = stepIndex === activeStepIndex;
+                        const isDoneStep = stepIndex < activeStepIndex;
+                        return (
+                          <motion.div
+                            key={step.command}
+                            initial={
+                              prefersReduced
+                                ? false
+                                : { opacity: 0, transform: "translateX(-4px)" }
+                            }
+                            animate={{
+                              opacity: 1,
+                              transform: "translateX(0px)",
+                            }}
+                            transition={{
+                              duration: 0.18,
+                              delay: stepIndex * 0.06,
+                              ease: EASE_OUT,
+                            }}
+                            className={`flex flex-col gap-0.5 px-3.5 py-2.5 transition-colors duration-200 sm:flex-row sm:items-center sm:justify-between sm:gap-4 ${
+                              isActiveStep ? "bg-(--l-panel-surface)" : ""
+                            }`}
+                          >
+                            <span className="inline-flex items-center gap-2.5 text-(--l-panel-fg)">
+                              <span
+                                className={`size-1.5 shrink-0 rounded-full transition-colors duration-200 ${
+                                  isDoneStep
+                                    ? "bg-emerald-500"
+                                    : isActiveStep
+                                      ? "bg-(--l-accent)"
+                                      : "bg-(--l-panel-fg-4)"
+                                }`}
+                              />
+                              <span
+                                className={
+                                  isActiveStep || isDoneStep
+                                    ? "text-(--l-panel-fg)"
+                                    : "text-(--l-panel-fg-3)"
+                                }
+                              >
+                                {step.command}
+                              </span>
+                            </span>
+                            <span className="pl-4 text-[11px] text-(--l-panel-fg-3) sm:pl-0">
+                              {step.target}
+                            </span>
+                          </motion.div>
+                        );
+                      })}
                     </div>
 
                     <p className="text-sm leading-relaxed text-(--l-panel-fg-2)">

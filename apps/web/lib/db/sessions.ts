@@ -10,6 +10,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { parseUtcTimestamp } from "@/lib/sessions/format-compact-age";
 import { db } from "./client";
 import {
   chatMessages,
@@ -342,7 +343,10 @@ export async function getSessionsWithUnreadByUserId(
       ? await withOffset.limit(options.limit)
       : await withOffset;
 
-  return rows;
+  return rows.map((row) => ({
+    ...row,
+    lastActivityAt: parseUtcTimestamp(row.lastActivityAt) ?? row.createdAt,
+  }));
 }
 
 /**
@@ -604,7 +608,7 @@ export async function updateChat(
 ) {
   const [chat] = await db
     .update(chats)
-    .set({ ...data, updatedAt: new Date() })
+    .set(data)
     .where(eq(chats.id, chatId))
     .returning();
   return chat;

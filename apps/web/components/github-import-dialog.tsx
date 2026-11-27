@@ -181,7 +181,7 @@ export function GitHubImportDialog({
             <span>Import from GitHub</span>
           </DialogTitle>
           <DialogDescription className="text-xs text-muted-foreground">
-            Start a workspace from a repository URL or select one below
+            Add a repository project from a URL or select one below
           </DialogDescription>
         </DialogHeader>
 

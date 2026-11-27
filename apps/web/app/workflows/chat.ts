@@ -806,36 +806,10 @@ async function resolveChatModelRuntime(params: {
   let freeAllowedModelIds: string[] | null = null;
   let resolvedPlanId: string | null = null;
   if (!isAdminUser) {
-    const { enforcePlanExpiry, claimUserBillingTurn } =
-      await import("@/lib/billing/credit-ledger");
+    const { enforcePlanExpiry } = await import("@/lib/billing/credit-ledger");
     const { getPlanDefinition } = await import("@/lib/billing/plans");
-
-    // Claim the per-user billing-turn lock BEFORE reading the balance
-    // that this turn will spend against. Without this, two concurrent
-    // turns for the same user (e.g. two open chat tabs) could each read
-    // the same starting balance and each be allowed to spend up to it
-    // before either one's own in-memory counter (see runAgentStep)
-    // notices -- a real double-spend window despite the ledger writes
-    // themselves being atomic. See claimUserBillingTurn's docstring for
-    // the staleness fallback that keeps a crashed workflow from
-    // permanently locking a user out.
-    const claimedTurn = await claimUserBillingTurn(
-      params.userId,
-      params.workflowRunId,
-    );
-    if (!claimedTurn) {
-      // NOT retryable. The lock is held by another run, or by a dead one
-      // still inside BILLING_TURN_LOCK_STALE_MS (15 min). Throwing here
-      // made the workflow retry 4x, go FatalError, and kill the process
-      // with exit status 128 while the user got nothing (runtime logs
-      // 00:13-00:14, dpl_JAKQ3MomQZodMaRWkLzYrdv2Q2RT). Deterministic
-      // gates answer immediately instead -- same treatment as the balance
-      // and usage-window gates below.
-      return {
-        blockedNotice:
-          "You already have another chat generating a response -- wait for it to finish, then try again.",
-      };
-    }
+    const { checkAndAdmitConcurrentTurn } =
+      await import("@/lib/billing/turn-concurrency");
 
     // OWN expiry enforcement (owner 2026-09-15: don't rely on
     // Paystack): if the paid plan's last renewal is older than the
@@ -849,6 +823,26 @@ async function resolveChatModelRuntime(params: {
     const balanceCents = billingState?.creditBalanceCents ?? 0;
     startingBalanceCents = balanceCents;
 
+    // Sandbox-aware concurrent turn admission: chats sharing the same session
+    // (forks/child chats), the same project (repo/folder), or a shared-VM plan
+    // reuse one sandbox and run concurrently. Distinct sandboxes are bounded by
+    // the plan's `maxConcurrentActiveVms`. Live Postgres balance sync inside
+    // `recordDebit` prevents concurrent double-spend without blocking parallel
+    // chats.
+    const concurrency = await checkAndAdmitConcurrentTurn({
+      userId: params.userId,
+      chatId: params.chatId,
+      sessionId: params.sessionId,
+      workflowRunId: params.workflowRunId,
+      planId: plan.id,
+      isAdmin: false,
+    });
+    if (!concurrency.allowed) {
+      return {
+        blockedNotice: concurrency.reason,
+      };
+    }
+
     // Free tier capacity gate: only applies to users on the free plan!
     // Paid subscribers (Plus, Entry, Pro, Max) must NEVER be locked out
     // when an admin toggles off the Free tier.
@@ -857,11 +851,6 @@ async function resolveChatModelRuntime(params: {
         await import("@/lib/db/platform-settings");
       const gate = await getFreeTierGateStatus();
       if (!gate.enabled) {
-        const { releaseUserBillingTurn } =
-          await import("@/lib/billing/credit-ledger");
-        await releaseUserBillingTurn(params.userId, params.workflowRunId).catch(
-          () => {},
-        );
         return {
           blockedNotice:
             gate.reason ||
@@ -876,11 +865,6 @@ async function resolveChatModelRuntime(params: {
       } = await import("@/lib/billing/free-daily-limit");
       const dailyCount = await countUserMessagesLast24Hours(params.userId);
       if (isFreeDailyLimitExceeded(dailyCount)) {
-        const { releaseUserBillingTurn } =
-          await import("@/lib/billing/credit-ledger");
-        await releaseUserBillingTurn(params.userId, params.workflowRunId).catch(
-          () => {},
-        );
         return {
           blockedNotice: `Daily free limit reached (${FREE_DAILY_MESSAGE_LIMIT} messages per day). Upgrade to Plus or Builder to continue chatting.`,
         };
@@ -926,23 +910,27 @@ async function resolveChatModelRuntime(params: {
       };
     }
   } else {
-    const { enforcePlanExpiry, claimUserBillingTurn } =
-      await import("@/lib/billing/credit-ledger");
+    const { enforcePlanExpiry } = await import("@/lib/billing/credit-ledger");
     const { getPlanDefinition } = await import("@/lib/billing/plans");
-    const claimedTurn = await claimUserBillingTurn(
-      params.userId,
-      params.workflowRunId,
-    );
-    if (!claimedTurn) {
-      return {
-        blockedNotice:
-          "You already have another chat generating a response -- wait for it to finish, then try again.",
-      };
-    }
+    const { checkAndAdmitConcurrentTurn } =
+      await import("@/lib/billing/turn-concurrency");
     const billingState = await enforcePlanExpiry(params.userId, {
       isAdmin: true,
     });
     const plan = getPlanDefinition(billingState?.plan);
+    const concurrency = await checkAndAdmitConcurrentTurn({
+      userId: params.userId,
+      chatId: params.chatId,
+      sessionId: params.sessionId,
+      workflowRunId: params.workflowRunId,
+      planId: plan.id,
+      isAdmin: true,
+    });
+    if (!concurrency.allowed) {
+      return {
+        blockedNotice: concurrency.reason,
+      };
+    }
     planUsageWindows = plan.usageWindows ?? null;
     startingBalanceCents = billingState?.creditBalanceCents ?? 0;
   }
@@ -4465,7 +4453,23 @@ const runAgentStep = async (
         };
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
-            await recordBillableUsage(userId, costUsd, entryOpts);
+            const debitResult = await recordBillableUsage(
+              userId,
+              costUsd,
+              entryOpts,
+            );
+            if (
+              typeof debitResult?.balanceCents === "number" &&
+              Number.isFinite(debitResult.balanceCents)
+            ) {
+              remainingBalanceCents = Math.min(
+                remainingBalanceCents,
+                debitResult.balanceCents,
+              );
+              if (enforceCreditBlock && remainingBalanceCents <= 0) {
+                creditExhausted = true;
+              }
+            }
             return;
           } catch (err) {
             if (attempt === 3) {

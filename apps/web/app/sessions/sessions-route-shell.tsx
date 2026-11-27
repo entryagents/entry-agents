@@ -25,7 +25,6 @@ import { useBackgroundChatNotifications } from "@/hooks/use-background-chat-noti
 import { useSessions, type SessionWithUnread } from "@/hooks/use-sessions";
 import { useProjects } from "@/hooks/use-projects";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
-import { DEFAULT_SANDBOX_TYPE } from "@/components/sandbox-selector-compact";
 import type { Session as AuthSession } from "@/lib/session/types";
 import { SessionsShellProvider } from "./sessions-shell-context";
 
@@ -92,6 +91,7 @@ export function SessionsRouteShell({
   const {
     projects: customProjects,
     createProject,
+    createRepoProject,
     renameProject,
     deleteProject,
   } = useProjects({ enabled: true });
@@ -230,46 +230,50 @@ export function SessionsRouteShell({
   const handleCreateSessionForRepo = useCallback(
     async (repoOwner: string, repoName: string) => {
       try {
-        const { chat } = await createSession({
-          repoOwner,
-          repoName,
-          cloneUrl: `https://github.com/${repoOwner}/${repoName}`,
-          isNewBranch: true,
-          sandboxType: preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE,
-          autoCommitPush: preferences?.autoCommitPush ?? false,
-          autoCreatePr: preferences?.autoCreatePr ?? false,
+        const project = await createRepoProject({ repoOwner, repoName });
+        setOptimisticActiveSessionId(null);
+        const query = new URLSearchParams({
+          repoOwner: project.repoOwner ?? repoOwner,
+          repoName: project.repoName ?? repoName,
+          projectId: project.id,
         });
-        router.push(`/chats/${chat.id}`, {
-          scroll: false,
+        startNavigationTransition(() => {
+          router.push(`/chats?${query.toString()}`, {
+            scroll: false,
+          });
         });
       } catch (error) {
-        console.error("Failed to create session for repo:", error);
+        console.error("Failed to create repository project:", error);
       }
     },
-    [createSession, preferences, router],
+    [createRepoProject, router, startNavigationTransition],
   );
 
   const handleCreateSessionFromBranch = useCallback(
     async (repoOwner: string, repoName: string, branch: string) => {
       try {
-        const { chat } = await createSession({
+        const project = await createRepoProject({
           repoOwner,
           repoName,
-          branch,
-          cloneUrl: `https://github.com/${repoOwner}/${repoName}`,
-          isNewBranch: false,
-          sandboxType: preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE,
-          autoCommitPush: preferences?.autoCommitPush ?? false,
-          autoCreatePr: preferences?.autoCreatePr ?? false,
+          defaultBranch: branch,
         });
-        router.push(`/chats/${chat.id}`, {
-          scroll: false,
+        setOptimisticActiveSessionId(null);
+        const query = new URLSearchParams({
+          repoOwner: project.repoOwner ?? repoOwner,
+          repoName: project.repoName ?? repoName,
+          projectId: project.id,
+          branch,
+        });
+        startNavigationTransition(() => {
+          router.push(`/chats?${query.toString()}`, {
+            scroll: false,
+          });
         });
       } catch (error) {
-        console.error("Failed to create session from branch:", error);
+        console.error("Failed to open new chat for branch:", error);
       }
     },
-    [createSession, preferences, router],
+    [createRepoProject, router, startNavigationTransition],
   );
 
   useEffect(() => {
@@ -337,8 +341,11 @@ export function SessionsRouteShell({
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}
               onOpenNewSession={openNewSessionDialog}
-              onCreateFolder={async (name) => {
-                await createProject(name);
+              onCreateFolder={async (name, assignSessionId) => {
+                const created = await createProject(name, {
+                  assignSessionId: assignSessionId ?? null,
+                });
+                handleStartChatInFolder(created.id);
               }}
               onRenameFolder={async (projectId, name) => {
                 await renameProject(projectId, name);

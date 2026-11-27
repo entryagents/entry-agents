@@ -221,27 +221,7 @@ export default function AiCodingAgentPage() {
           </div>
         </section>
 
-        <section className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-(--l-border) pt-10">
-          <div className="flex flex-wrap gap-5 text-sm">
-            <Link
-              href="/guide"
-              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
-            >
-              Builder guide &amp; prompt recipes
-            </Link>
-            <Link
-              href="/model"
-              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
-            >
-              Live model catalog
-            </Link>
-            <Link
-              href="/pricing"
-              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
-            >
-              Plans &amp; credits
-            </Link>
-          </div>
+        <section className="mt-16 flex justify-end border-t border-(--l-border) pt-10">
           <Link
             href="/login"
             className="inline-flex h-10 items-center gap-2 rounded-xl bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.98]"

@@ -92,7 +92,10 @@ type InboxSidebarProps = {
   onArchiveSession: (sessionId: string) => Promise<void>;
   onUnarchiveSession: (sessionId: string) => Promise<void>;
   onOpenNewSession: () => void;
-  onCreateFolder?: (name: string) => Promise<void>;
+  onCreateFolder?: (
+    name: string,
+    assignSessionId?: string | null,
+  ) => Promise<void>;
   onRenameFolder?: (projectId: string, name: string) => Promise<void>;
   onDeleteFolder?: (projectId: string) => Promise<void>;
   onStartChatInFolder?: (projectId: string) => void;
@@ -947,6 +950,7 @@ export function InboxSidebar({
             <>
               <SidebarProjectsSection
                 projects={projectGroups}
+                standaloneSessions={standaloneSessions}
                 activeSessionId={activeSessionId}
                 onOpenImportGithub={() => setImportGithubOpen(true)}
                 onCreateFolder={onCreateFolder ?? (async () => {})}
