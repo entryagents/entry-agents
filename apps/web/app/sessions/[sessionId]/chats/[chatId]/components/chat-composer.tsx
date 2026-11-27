@@ -1140,7 +1140,11 @@ export const ChatComposer = memo(
                                 ? !canRunShell
                                 : !isBusy && !hasComposerContent)
                             }
-                            className="h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30"
+                            className={`h-8 w-8 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-30 ${
+                              composerGate
+                                ? "pointer-events-none select-none blur-[1.5px]"
+                                : ""
+                            }`}
                           >
                             {isShellMode ? (
                               <Terminal className="h-4 w-4" />

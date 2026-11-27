@@ -145,6 +145,11 @@ export function ModelSelectorCompact({
     onChange,
   ]);
 
+  const isSelectedModelLocked =
+    isFreeTierLocked &&
+    Boolean(optimisticModelId) &&
+    !unlockedModelIds.has(optimisticModelId);
+
   const displayText =
     selectedOption?.shortLabel ??
     fallbackOption?.shortLabel ??
@@ -162,11 +167,16 @@ export function ModelSelectorCompact({
             aria-label="Change model"
             aria-keyshortcuts="Meta+Alt+/"
             title={
-              appliesToNextPrompt
-                ? "Change model for next prompt (⌘⌥/)"
-                : "Change model (⌘⌥/)"
+              isSelectedModelLocked
+                ? "This model requires a paid plan — click to switch models"
+                : appliesToNextPrompt
+                  ? "Change model for next prompt (⌘⌥/)"
+                  : "Change model (⌘⌥/)"
             }
-            className="flex h-8 min-w-0 max-w-full shrink items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background/60 hover:text-foreground active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60 sm:text-sm"
+            className={cn(
+              "flex h-8 min-w-0 max-w-full shrink items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-muted-foreground transition-[transform,background-color,color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-background/60 hover:text-foreground active:scale-[0.98] disabled:pointer-events-none disabled:opacity-60 sm:text-sm",
+              isSelectedModelLocked && "text-amber-600 dark:text-amber-400",
+            )}
           >
             {selectedOption && (
               <ProviderIcon
@@ -177,6 +187,9 @@ export function ModelSelectorCompact({
             <span className="max-w-[148px] truncate sm:max-w-[168px]">
               {displayText}
             </span>
+            {isSelectedModelLocked && (
+              <Lock className="size-3 shrink-0" strokeWidth={1.75} />
+            )}
             <ChevronDown className="size-3 shrink-0" strokeWidth={1.5} />
           </button>
         </PopoverTrigger>
