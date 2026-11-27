@@ -1525,6 +1525,72 @@ export function SessionChatContent({
     }
   }, [hadInitialMessages, status, messages, refreshChats]);
 
+  // Auto-retry title generation once when a chat is stuck on a generic title (e.g. "New Session 2")
+  const retriedGenericTitleChatIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const currentTitle = (chatInfo.title ?? "").trim();
+    const isGenericTitle =
+      currentTitle.length === 0 ||
+      /^(new session(\s+\d+)?|new chat(\s+\d+)?|untitled(\s+\d+)?)$/i.test(
+        currentTitle,
+      );
+    if (
+      !isGenericTitle ||
+      retriedGenericTitleChatIdRef.current === chatInfo.id ||
+      pendingOptimisticTitleChatIdRef.current === chatInfo.id
+    ) {
+      return;
+    }
+    const firstUserMsg = messages.find((m) => m.role === "user");
+    const firstUserText = firstUserMsg?.parts
+      ?.filter((p): p is { type: "text"; text: string } => p.type === "text")
+      .map((p) => p.text)
+      .join(" ")
+      .trim();
+    if (!firstUserText) {
+      return;
+    }
+    retriedGenericTitleChatIdRef.current = chatInfo.id;
+    let cancelled = false;
+    void fetch("/api/generate-title", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: firstUserText }),
+    })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        const data = (await res.json().catch(() => null)) as {
+          title?: unknown;
+        } | null;
+        return typeof data?.title === "string" && data.title.trim().length > 0
+          ? data.title.trim()
+          : null;
+      })
+      .catch(() => null)
+      .then((generatedTitle) => {
+        if (cancelled) return;
+        const finalTitle =
+          generatedTitle ||
+          (firstUserText.length > 50
+            ? `${firstUserText.slice(0, 50)}...`
+            : firstUserText);
+        void setChatTitle(chatInfo.id, finalTitle);
+        if (chats[0]?.id === chatInfo.id) {
+          void updateSessionTitle(finalTitle).catch(() => {});
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    chatInfo.id,
+    chatInfo.title,
+    chats,
+    messages,
+    setChatTitle,
+    updateSessionTitle,
+  ]);
+
   useEffect(() => {
     void requestMarkChatReadRef.current("force");
   }, [chatInfo.id]);

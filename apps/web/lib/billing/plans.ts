@@ -365,7 +365,7 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
       weeklyLimitCents: 350, // $3.50 per 7 days
       monthlyLimitCents: 600, // $6.00 per 1-month cycle
     },
-    bachsProductId: "prod_cd1ea1ba5bec473dbb74",
+    bachsProductId: "prod_cf3431b0d90141368721",
   },
   entry: {
     id: "entry",
@@ -378,7 +378,7 @@ export const PLAN_CATALOG: Record<PlanId, PlanDefinition> = {
       weeklyLimitCents: 1400, // $14.00 per 7 days
       monthlyLimitCents: 2800, // $28.00 per 1-month cycle
     },
-    bachsProductId: "prod_d094ae61935349a6b088",
+    bachsProductId: "prod_bf5c08cc52e447ecacdc",
   },
   pro: {
     id: "pro",

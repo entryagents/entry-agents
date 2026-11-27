@@ -163,8 +163,8 @@ export function PlansCatalog() {
                 Pricing
               </h1>
               <p className="mt-4 text-pretty text-base leading-relaxed text-(--l-fg-2) sm:mt-5 sm:text-lg">
-                Credit-based pricing — $1 in credit is $1 of usage, no markup.
-                Subscriptions include a bonus credit top-up every month.
+                Credit-based pricing — $1 in credit is $1 of usage, with zero
+                token markup. Subscriptions include a monthly credit grant.
               </p>
               <div className="mt-4 inline-flex items-start gap-2.5 rounded-xl border border-(--l-border) bg-(--l-surface) px-3.5 py-2.5 text-xs leading-relaxed text-(--l-fg-2) sm:items-center sm:text-sm">
                 <CreditCard
@@ -172,9 +172,8 @@ export function PlansCatalog() {
                   strokeWidth={1.5}
                 />
                 <span>
-                  Nigerian debit &amp; credit cards, bank transfer and mobile
-                  money accepted — you pay in your local currency, we price in
-                  dollars.
+                  Local debit and credit cards, bank transfer, and mobile money
+                  accepted — billed in USD, charged in your local currency.
                 </span>
               </div>
               <div className="mt-3 text-sm text-(--l-fg-2)">
@@ -195,17 +194,16 @@ export function PlansCatalog() {
             {me && (
               <div className="mt-6 flex flex-col justify-between gap-3 rounded-xl border border-(--l-border) bg-(--l-surface) px-5 py-4 sm:flex-row sm:items-center">
                 <p className="text-sm text-(--l-fg-2)">
-                  Current subscription:{" "}
+                  Current plan:{" "}
                   <span className="font-semibold text-(--l-fg)">
                     {me.planName}
-                  </span>{" "}
-                  plan.
+                  </span>
                 </p>
                 <Link
-                  href="/settings/usage"
+                  href="/settings/billing"
                   className="inline-flex items-center text-sm font-medium text-(--l-fg) underline decoration-(--l-fg-3) underline-offset-4 transition-colors hover:decoration-(--l-fg)"
                 >
-                  View balance &amp; usage windows &rarr;
+                  Manage billing &amp; usage limits &rarr;
                 </Link>
               </div>
             )}
@@ -218,9 +216,9 @@ export function PlansCatalog() {
                 return (
                   <div
                     key={plan.id}
-                    className={`flex flex-col justify-between rounded-2xl border bg-(--l-surface) p-5 sm:p-6 ${
+                    className={`flex flex-col justify-between rounded-2xl border bg-(--l-surface) p-5 transition-colors duration-150 sm:p-6 ${
                       isCurrentPlan || isFlagship || isHighlighted
-                        ? "border-(--l-fg) ring-1 ring-(--l-fg)/20"
+                        ? "border-(--l-fg)/70 ring-1 ring-(--l-fg)/15"
                         : "border-(--l-border)"
                     }`}
                   >
@@ -247,7 +245,7 @@ export function PlansCatalog() {
                       </div>
                       {plan.priceUsdCents > 0 && (
                         <div className="mt-1 text-xs text-(--l-fg-3)">
-                          Billed in USD; charged in local currency at checkout.
+                          Billed in USD; charged in local currency at checkout
                         </div>
                       )}
                       <p className="mt-3 text-sm leading-relaxed text-(--l-fg-2)">
