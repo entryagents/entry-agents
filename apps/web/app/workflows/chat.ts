@@ -953,26 +953,14 @@ async function resolveChatModelRuntime(params: {
     const totals = await getUsageWindowTotals(params.userId);
     const exceeded = findExceededUsageWindow(totals, planUsageWindows);
     if (exceeded) {
-      const limitCents =
-        exceeded === "fiveHour"
-          ? planUsageWindows.fiveHourLimitCents
-          : exceeded === "weekly"
-            ? planUsageWindows.weeklyLimitCents
-            : planUsageWindows.monthlyLimitCents;
-      const limitUsd = (limitCents / 100).toFixed(0);
-      const isFixedMode = totals.mode === "fixed";
       // Returned, not thrown -- see UsageBlocked above.
       return {
         blockedNotice:
           exceeded === "fiveHour"
-            ? isFixedMode
-              ? `Your Entry plan's 5-hour fixed usage window is full -- $${limitUsd} of usage per 5-hour block. It resets at ${totals.resetsAt5h ? new Date(totals.resetsAt5h).toUTCString() : "the end of the current 5-hour block"}.`
-              : `Your Entry plan's 5-hour usage window is full -- $${limitUsd} of usage per rolling 5 hours. It refills continuously as your oldest usage slides out; try again at ${totals.resetsAt5h ? new Date(totals.resetsAt5h).toUTCString() : "the end of the 5-hour period"}.`
+            ? "You've hit your 5-hour usage limit."
             : exceeded === "weekly"
-              ? isFixedMode
-                ? `Your Entry plan's weekly fixed usage window is full -- $${limitUsd} of usage per 7-day block. It resets at ${totals.resetsAt7d ? new Date(totals.resetsAt7d).toUTCString() : "the end of the current 7-day block"}.`
-                : `Your Entry plan's weekly usage window is full -- $${limitUsd} of usage per rolling 7 days. It refills continuously as your oldest usage slides out; try again at ${totals.resetsAt7d ? new Date(totals.resetsAt7d).toUTCString() : "the end of the 7-day period"}.`
-              : `You have exhausted your monthly usage of $${limitUsd}. Upgrade your plan or top up credit to continue.`,
+              ? "You've hit your 7-day usage limit."
+              : "You've hit your monthly usage limit.",
       };
     }
 

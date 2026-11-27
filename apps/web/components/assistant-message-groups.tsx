@@ -77,13 +77,13 @@ export function AssistantMessageGroups({
   // multi-tool-call loop protection) -- see MAX_TURN_SPEND_CENTS in
   // app/workflows/chat.ts.
   const stopNotice = message.metadata?.windowExhausted
-    ? "Your Entry plan's usage window reached its limit mid-response, so generation stopped here. Send a follow-up message when your window refills."
+    ? "You've hit your usage limit"
     : message.metadata?.creditExhausted
-      ? "Ran out of credit mid-response, so generation stopped here. Top up or upgrade your plan to continue."
+      ? "You're out of credit"
       : message.metadata?.turnSpendCapped
-        ? "This turn crossed its $5 spend cap"
+        ? "Turn spend cap reached"
         : message.metadata?.turnTimedOut
-          ? "This task reached the maximum turn duration"
+          ? "Turn duration limit reached"
           : !isStreaming && message.metadata?.turnError
             ? message.metadata.turnError
             : null;
