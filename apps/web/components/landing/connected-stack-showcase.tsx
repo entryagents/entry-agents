@@ -287,7 +287,7 @@ export function ConnectedStackShowcase() {
                   ) : null}
                 </div>
 
-                <AnimatePresence mode="wait">
+                <AnimatePresence mode="wait" initial={false}>
                   <motion.div
                     key={activeItem.slug}
                     initial={{ opacity: 0, transform: "translateY(4px)" }}

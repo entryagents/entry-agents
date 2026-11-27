@@ -2,10 +2,10 @@
 
 import {
   Check,
-  ChevronRight,
+  ChevronDown,
+  Cloud,
   Folder,
   FolderGit2,
-  FolderOpen,
   FolderPlus,
   Loader2,
   MoreHorizontal,
@@ -23,6 +23,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { SessionWithUnread } from "@/hooks/use-sessions";
 import type { SidebarProjectGroup } from "@/lib/sessions/group-projects";
+
+const DEFAULT_VISIBLE_PROJECT_CHATS = 7;
 
 export interface SidebarProjectsSectionProps {
   projects: SidebarProjectGroup[];
@@ -51,7 +53,11 @@ export function SidebarProjectsSection({
   renderSessionRow,
 }: SidebarProjectsSectionProps) {
   const [sectionOpen, setSectionOpen] = useState(true);
+  // Every project starts COLLAPSED by default until the user clicks it
   const [expandedProjects, setExpandedProjects] = useState<
+    Record<string, boolean>
+  >({});
+  const [expandedProjectLimits, setExpandedProjectLimits] = useState<
     Record<string, boolean>
   >({});
   const [creatingRepoKey, setCreatingRepoKey] = useState<string | null>(null);
@@ -154,38 +160,32 @@ export function SidebarProjectsSection({
 
   return (
     <div className="mb-3">
-      <div className="group relative mb-0.5 flex h-7 items-center rounded-lg transition-colors duration-120 hover:bg-foreground/[0.035]">
+      {/* Header matching reference: "Projects v" on left, clean FolderPlus action on right */}
+      <div className="group relative mb-1 flex h-7 items-center justify-between px-1.5">
         <button
           type="button"
           onClick={() => setSectionOpen((prev) => !prev)}
           aria-expanded={sectionOpen}
-          className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 text-left cursor-pointer"
+          className="inline-flex h-full items-center gap-1 rounded-md px-1 text-left text-[12px] font-medium text-muted-foreground transition-colors duration-120 hover:text-foreground cursor-pointer"
         >
-          <ChevronRight
+          <span>Projects</span>
+          <ChevronDown
             className={`size-3 shrink-0 text-muted-foreground/70 transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-              sectionOpen ? "rotate-90" : ""
+              sectionOpen ? "" : "-rotate-90"
             }`}
             strokeWidth={1.6}
           />
-          <span className="text-[11.5px] font-medium text-muted-foreground transition-colors duration-120 group-hover:text-foreground/80">
-            Projects
-          </span>
-          {projects.length > 0 ? (
-            <span className="ml-auto pr-5 font-mono text-[11px] tabular-nums text-muted-foreground/65 transition-opacity duration-120 group-hover:opacity-0">
-              {projects.length}
-            </span>
-          ) : null}
         </button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="absolute top-1/2 right-1 grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground opacity-65 transition-[opacity,background-color,color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer"
+              className="grid size-6 place-items-center rounded-md text-muted-foreground/80 transition-[background-color,color] duration-120 hover:bg-foreground/[0.07] hover:text-foreground cursor-pointer"
               aria-label="Add project"
-              title="Add project"
+              title="New folder or import repository"
             >
-              <Plus className="size-3.5" strokeWidth={1.6} />
+              <FolderPlus className="size-3.5" strokeWidth={1.5} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={4} className="w-48">
@@ -204,9 +204,9 @@ export function SidebarProjectsSection({
       {sectionOpen ? (
         <div className="space-y-0.5">
           {isCreatingFolder ? (
-            <div className="mx-1 mb-1 flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-2">
+            <div className="mx-1 mb-1 flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2">
               <Folder
-                className="size-4 shrink-0 text-muted-foreground"
+                className="size-3.5 shrink-0 text-muted-foreground"
                 strokeWidth={1.5}
               />
               <input
@@ -232,7 +232,7 @@ export function SidebarProjectsSection({
                 type="button"
                 onClick={() => void handleSubmitCreateFolder()}
                 disabled={createFolderPending || !newFolderName.trim()}
-                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-muted/60 hover:text-foreground disabled:opacity-40 cursor-pointer"
+                className="flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-muted/60 hover:text-foreground disabled:opacity-40 cursor-pointer"
                 aria-label="Create folder"
               >
                 {createFolderPending ? (
@@ -245,7 +245,7 @@ export function SidebarProjectsSection({
                 type="button"
                 onClick={handleCancelCreateFolder}
                 disabled={createFolderPending}
-                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-muted/60 hover:text-foreground cursor-pointer"
+                className="flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-muted/60 hover:text-foreground cursor-pointer"
                 aria-label="Cancel creating folder"
               >
                 <X className="size-3.5" strokeWidth={1.6} />
@@ -273,17 +273,28 @@ export function SidebarProjectsSection({
               </button>
             </div>
           ) : (
-            <div className="space-y-0.5">
+            <div className="space-y-1">
               {projects.map((project) => {
                 const containsActive = project.sessions.some(
                   (s) => s.id === activeSessionId,
                 );
-                const isExpanded =
-                  expandedProjects[project.key] ?? containsActive;
+                // Collapsed by default unless explicitly expanded by user click
+                const isExpanded = expandedProjects[project.key] ?? false;
                 const isCreating = creatingRepoKey === project.key;
                 const isRenaming =
                   project.kind === "folder" &&
                   renamingProjectId === project.projectId;
+                const projectLabel =
+                  project.kind === "github"
+                    ? `${project.repoOwner}/${project.repoName}`
+                    : project.name;
+                const showAllProjectSessions =
+                  expandedProjectLimits[project.key] ?? false;
+                const visibleSessions = showAllProjectSessions
+                  ? project.sessions
+                  : project.sessions.slice(0, DEFAULT_VISIBLE_PROJECT_CHATS);
+                const hiddenCount =
+                  project.sessions.length - visibleSessions.length;
 
                 if (isRenaming) {
                   return (
@@ -291,7 +302,7 @@ export function SidebarProjectsSection({
                       key={project.key}
                       className="mx-1 flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2"
                     >
-                      <Folder
+                      <Cloud
                         className="size-3.5 shrink-0 text-muted-foreground"
                         strokeWidth={1.5}
                       />
@@ -320,50 +331,30 @@ export function SidebarProjectsSection({
 
                 return (
                   <div key={project.key}>
-                    <div className="group relative flex h-8 items-center rounded-lg transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05]">
+                    <div className="group relative flex h-8 items-center rounded-lg transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.045]">
                       <button
                         type="button"
                         onClick={() => toggleProject(project.key)}
                         aria-expanded={isExpanded}
-                        className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 text-left cursor-pointer"
-                        title={
-                          project.kind === "github"
-                            ? `${project.repoOwner}/${project.repoName}`
-                            : project.name
-                        }
+                        className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2 text-left cursor-pointer"
+                        title={projectLabel}
                       >
-                        <ChevronRight
-                          className={`size-3 shrink-0 text-muted-foreground/60 transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-                            isExpanded ? "rotate-90 text-muted-foreground" : ""
+                        <Cloud
+                          className={`size-4 shrink-0 transition-colors duration-120 ${
+                            containsActive || isExpanded
+                              ? "text-foreground/75"
+                              : "text-muted-foreground/70 group-hover:text-foreground/75"
                           }`}
-                          strokeWidth={1.6}
+                          strokeWidth={1.5}
                         />
-                        <span className="grid size-4 shrink-0 place-items-center text-muted-foreground/75 transition-colors duration-120 group-hover:text-foreground/80">
-                          {project.kind === "github" ? (
-                            <FolderGit2
-                              className="size-3.5"
-                              strokeWidth={1.5}
-                            />
-                          ) : isExpanded ? (
-                            <FolderOpen
-                              className="size-3.5"
-                              strokeWidth={1.5}
-                            />
-                          ) : (
-                            <Folder className="size-3.5" strokeWidth={1.5} />
-                          )}
-                        </span>
                         <span
                           className={`min-w-0 flex-1 truncate text-[13px] leading-[18px] transition-colors duration-120 ${
                             containsActive || isExpanded
-                              ? "font-medium text-foreground"
-                              : "font-medium text-foreground/80 group-hover:text-foreground"
+                              ? "text-foreground/85"
+                              : "text-muted-foreground group-hover:text-foreground/90"
                           }`}
                         >
-                          {project.name}
-                        </span>
-                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/65 transition-opacity duration-120 group-hover:opacity-0">
-                          {project.sessions.length}
+                          {projectLabel}
                         </span>
                       </button>
 
@@ -429,8 +420,9 @@ export function SidebarProjectsSection({
                       </span>
                     </div>
 
+                    {/* Clean indented chat list matching reference — zero vertical tree line */}
                     {isExpanded ? (
-                      <div className="mt-0.5 mb-1.5 ml-[13px] space-y-0.5 border-l border-border/60 pl-2">
+                      <div className="mt-0.5 mb-2 space-y-0.5 pl-4">
                         {project.sessions.length === 0 &&
                         project.kind === "folder" ? (
                           <button
@@ -438,7 +430,7 @@ export function SidebarProjectsSection({
                             onClick={() =>
                               onStartChatInFolder(project.projectId)
                             }
-                            className="flex h-7 w-full items-center gap-2 rounded-lg px-2 text-left text-[12px] font-medium text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.05] hover:text-foreground cursor-pointer"
+                            className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[12px] text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.05] hover:text-foreground cursor-pointer"
                           >
                             <Plus
                               className="size-3.5 shrink-0"
@@ -447,9 +439,40 @@ export function SidebarProjectsSection({
                             <span className="truncate">New chat in folder</span>
                           </button>
                         ) : (
-                          project.sessions.map((sessionItem) =>
-                            renderSessionRow(sessionItem),
-                          )
+                          <>
+                            {visibleSessions.map((sessionItem) =>
+                              renderSessionRow(sessionItem),
+                            )}
+                            {hiddenCount > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedProjectLimits((prev) => ({
+                                    ...prev,
+                                    [project.key]: true,
+                                  }))
+                                }
+                                className="flex h-7 w-full items-center rounded-lg px-2 text-left text-[12px] text-muted-foreground/80 transition-colors duration-120 hover:bg-foreground/[0.04] hover:text-foreground cursor-pointer"
+                              >
+                                See more ({hiddenCount})
+                              </button>
+                            ) : showAllProjectSessions &&
+                              project.sessions.length >
+                                DEFAULT_VISIBLE_PROJECT_CHATS ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setExpandedProjectLimits((prev) => ({
+                                    ...prev,
+                                    [project.key]: false,
+                                  }))
+                                }
+                                className="flex h-7 w-full items-center rounded-lg px-2 text-left text-[12px] text-muted-foreground/80 transition-colors duration-120 hover:bg-foreground/[0.04] hover:text-foreground cursor-pointer"
+                              >
+                                Show less
+                              </button>
+                            ) : null}
+                          </>
                         )}
                       </div>
                     ) : null}

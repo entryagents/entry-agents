@@ -7,7 +7,7 @@ export function LandingFooter() {
     <footer>
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-10">
         <div className="border-t border-(--l-border) py-12 sm:py-16">
-          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-5">
             <div className="sm:col-span-2">
               <Link
                 href="/"
@@ -54,12 +54,6 @@ export function LandingFooter() {
                 >
                   About
                 </Link>
-                <Link
-                  href="/login"
-                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
-                >
-                  Sign in
-                </Link>
               </div>
             </div>
 
@@ -73,16 +67,10 @@ export function LandingFooter() {
                   App connections
                 </Link>
                 <Link
-                  href="/privacy"
+                  href="/login"
                   className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
                 >
-                  Privacy
-                </Link>
-                <Link
-                  href="/terms"
-                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
-                >
-                  Terms
+                  Sign in
                 </Link>
                 <a
                   href="https://ai-sdk.dev/"
@@ -102,10 +90,42 @@ export function LandingFooter() {
                 </a>
               </div>
             </div>
+
+            <div>
+              <div className="text-xs font-medium text-(--l-fg)">Legal</div>
+              <div className="mt-3 flex flex-col gap-2">
+                <Link
+                  href="/privacy"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
+                >
+                  Privacy Policy
+                </Link>
+                <Link
+                  href="/terms"
+                  className="text-sm text-(--l-fg-2) transition-colors duration-150 hover:text-(--l-fg)"
+                >
+                  Terms of Service
+                </Link>
+              </div>
+            </div>
           </div>
 
-          <div className="mt-10 flex items-center justify-between border-t border-(--l-border-subtle) pt-6 text-xs text-(--l-fg-3)">
-            <span>Entry Agents</span>
+          <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t border-(--l-border-subtle) pt-6 text-xs text-(--l-fg-3)">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <span>© 2026 Entry Agents</span>
+              <Link
+                href="/privacy"
+                className="transition-colors duration-150 hover:text-(--l-fg)"
+              >
+                Privacy Policy
+              </Link>
+              <Link
+                href="/terms"
+                className="transition-colors duration-150 hover:text-(--l-fg)"
+              >
+                Terms of Service
+              </Link>
+            </div>
             <ThemeToggle />
           </div>
         </div>

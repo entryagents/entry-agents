@@ -510,25 +510,25 @@
 /* Landing atmospheric cloud motion (GPU transform only) */
 @keyframes entry-cloud-pan {
   0% {
-    transform: translate3d(0%, 0%, 0) scale(1.12);
+    transform: translate3d(1.5%, 0%, 0) scale(1.14);
   }
   50% {
-    transform: translate3d(-3.2%, -1.4%, 0) scale(1.16);
+    transform: translate3d(-4.5%, -2%, 0) scale(1.19);
   }
   100% {
-    transform: translate3d(0%, 0%, 0) scale(1.12);
+    transform: translate3d(1.5%, 0%, 0) scale(1.14);
   }
 }
 
 @keyframes entry-cloud-veil {
   0% {
-    transform: translate3d(-3.5%, 0.6%, 0) scaleX(-1.14) scaleY(1.14);
+    transform: translate3d(-5%, 1%, 0) scaleX(-1.16) scaleY(1.16);
   }
   50% {
-    transform: translate3d(2.8%, -1.2%, 0) scaleX(-1.18) scaleY(1.18);
+    transform: translate3d(4.5%, -1.8%, 0) scaleX(-1.22) scaleY(1.22);
   }
   100% {
-    transform: translate3d(-3.5%, 0.6%, 0) scaleX(-1.14) scaleY(1.14);
+    transform: translate3d(-5%, 1%, 0) scaleX(-1.16) scaleY(1.16);
   }
 }
 
@@ -540,17 +540,17 @@
 
 .entry-cloud-pan {
   will-change: transform;
-  animation: entry-cloud-pan 32s ease-in-out infinite;
+  animation: entry-cloud-pan 18s ease-in-out infinite;
 }
 
 .entry-cloud-veil {
   will-change: transform;
-  animation: entry-cloud-veil 46s ease-in-out infinite;
+  animation: entry-cloud-veil 24s ease-in-out infinite;
 }
 
 .entry-flow-dash {
   stroke-dasharray: 5 9;
-  animation: entry-flow-dash 1.3s linear infinite;
+  animation: entry-flow-dash 1.2s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

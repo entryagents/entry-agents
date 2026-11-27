@@ -62,35 +62,45 @@ export interface PreviewScenario {
 
 export const SIDEBAR_PROJECTS: readonly {
   readonly name: string;
-  readonly expanded: boolean;
+  readonly defaultExpanded: boolean;
   readonly chats: readonly {
-    readonly id: ScenarioId;
+    readonly id?: ScenarioId;
     readonly title: string;
+    readonly age: string;
+    readonly unread?: boolean;
   }[];
 }[] = [
   {
-    name: "entry-agents",
-    expanded: true,
+    name: "entryagents/empress",
+    defaultExpanded: false,
     chats: [
-      { id: "resend", title: "Resend email templates" },
-      { id: "oauth", title: "OAuth callback fix" },
+      {
+        title: "Empress landing refresh",
+        age: "5d",
+      },
     ],
   },
   {
-    name: "billing-api",
-    expanded: false,
-    chats: [],
+    name: "entryagents/entry-agents",
+    defaultExpanded: true,
+    chats: [
+      { id: "resend", title: "Resend email templates", age: "5m" },
+      { id: "oauth", title: "OAuth callback fix", age: "2h", unread: true },
+      { id: "checkout", title: "Mobile checkout audit", age: "4d" },
+      { title: "Workflow background run", age: "8d" },
+      { title: "Automate repo PR checks", age: "10d" },
+    ],
   },
 ];
 
 export const SIDEBAR_CHATS: readonly {
   readonly id?: ScenarioId;
   readonly title: string;
+  readonly age: string;
   readonly unread?: boolean;
 }[] = [
-  { id: "checkout", title: "Mobile checkout audit", unread: true },
-  { title: "Neon schema migration" },
-  { title: "SSE terminal stream" },
+  { title: "Neon schema migration", age: "12d" },
+  { title: "SSE terminal stream", age: "14d" },
 ];
 
 export const USAGE_WINDOWS: readonly {
