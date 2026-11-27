@@ -23,8 +23,10 @@ export function useProjects(options?: { enabled?: boolean }) {
 
   const projects = data?.projects ?? [];
 
-  const syncAssignedSessionCache = useCallback(
-    async (sessionId: string, projectId: string) => {
+  const syncAssignedSessionsCache = useCallback(
+    async (sessionIds: string[], projectId: string) => {
+      if (sessionIds.length === 0) return;
+      const idSet = new Set(sessionIds);
       await globalMutate(
         "/api/sessions",
         (
@@ -36,7 +38,7 @@ export function useProjects(options?: { enabled?: boolean }) {
           return {
             ...current,
             sessions: current.sessions.map((s) =>
-              s.id === sessionId ? { ...s, projectId } : s,
+              idSet.has(s.id) ? { ...s, projectId } : s,
             ),
           };
         },
@@ -49,17 +51,25 @@ export function useProjects(options?: { enabled?: boolean }) {
   const createProject = useCallback(
     async (
       name: string,
-      options?: { assignSessionId?: string | null },
+      options?: {
+        assignSessionId?: string | null;
+        assignSessionIds?: string[];
+      },
     ): Promise<Project> => {
       const trimmed = name.trim();
+      const assignSessionIds = Array.from(
+        new Set([
+          ...(options?.assignSessionIds ?? []),
+          ...(options?.assignSessionId ? [options.assignSessionId] : []),
+        ]),
+      );
+
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: trimmed,
-          ...(options?.assignSessionId
-            ? { assignSessionId: options.assignSessionId }
-            : {}),
+          ...(assignSessionIds.length > 0 ? { assignSessionIds } : {}),
         }),
       });
 
@@ -85,13 +95,11 @@ export function useProjects(options?: { enabled?: boolean }) {
         { revalidate: false },
       );
 
-      if (options?.assignSessionId) {
-        await syncAssignedSessionCache(options.assignSessionId, created.id);
-      }
+      await syncAssignedSessionsCache(assignSessionIds, created.id);
 
       return created;
     },
-    [mutate, syncAssignedSessionCache],
+    [mutate, syncAssignedSessionsCache],
   );
 
   const createRepoProject = useCallback(
@@ -99,8 +107,9 @@ export function useProjects(options?: { enabled?: boolean }) {
       repoOwner: string;
       repoName: string;
       defaultBranch?: string | null;
-      assignSessionId?: string | null;
+      assignSessionIds?: string[];
     }): Promise<Project> => {
+      const assignSessionIds = input.assignSessionIds ?? [];
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -110,9 +119,7 @@ export function useProjects(options?: { enabled?: boolean }) {
           ...(input.defaultBranch
             ? { defaultBranch: input.defaultBranch }
             : {}),
-          ...(input.assignSessionId
-            ? { assignSessionId: input.assignSessionId }
-            : {}),
+          ...(assignSessionIds.length > 0 ? { assignSessionIds } : {}),
         }),
       });
 
@@ -138,13 +145,11 @@ export function useProjects(options?: { enabled?: boolean }) {
         { revalidate: false },
       );
 
-      if (input.assignSessionId) {
-        await syncAssignedSessionCache(input.assignSessionId, created.id);
-      }
+      await syncAssignedSessionsCache(assignSessionIds, created.id);
 
       return created;
     },
-    [mutate, syncAssignedSessionCache],
+    [mutate, syncAssignedSessionsCache],
   );
 
   const renameProject = useCallback(
@@ -204,7 +209,6 @@ export function useProjects(options?: { enabled?: boolean }) {
         { revalidate: false },
       );
 
-      // Clear projectId on cached sessions so they immediately show as standalone chats
       await globalMutate(
         "/api/sessions",
         (

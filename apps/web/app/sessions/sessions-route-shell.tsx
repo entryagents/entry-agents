@@ -341,9 +341,9 @@ export function SessionsRouteShell({
               onArchiveSession={handleArchiveSession}
               onUnarchiveSession={handleUnarchiveSession}
               onOpenNewSession={openNewSessionDialog}
-              onCreateFolder={async (name, assignSessionId) => {
+              onCreateFolder={async (name, assignSessionIds) => {
                 const created = await createProject(name, {
-                  assignSessionId: assignSessionId ?? null,
+                  assignSessionIds: assignSessionIds ?? [],
                 });
                 handleStartChatInFolder(created.id);
               }}

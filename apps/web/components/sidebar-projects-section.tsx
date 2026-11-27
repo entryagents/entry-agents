@@ -1,10 +1,8 @@
 "use client";
 
 import {
-  Check,
   ChevronDown,
   Cloud,
-  Folder,
   FolderGit2,
   FolderPlus,
   Loader2,
@@ -12,9 +10,9 @@ import {
   Pencil,
   Plus,
   Trash2,
-  X,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { CreateProjectDialog } from "@/components/create-project-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,7 +31,7 @@ export interface SidebarProjectsSectionProps {
   onOpenImportGithub: () => void;
   onCreateFolder: (
     name: string,
-    assignSessionId?: string | null,
+    assignSessionIds?: string[],
   ) => Promise<void> | void;
   onRenameFolder: (projectId: string, name: string) => Promise<void> | void;
   onDeleteFolder: (projectId: string) => Promise<void> | void;
@@ -66,12 +64,7 @@ export function SidebarProjectsSection({
     Record<string, boolean>
   >({});
   const [creatingRepoKey, setCreatingRepoKey] = useState<string | null>(null);
-
-  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
-  const [newFolderName, setNewFolderName] = useState("");
-  const [newFolderAssignSessionId, setNewFolderAssignSessionId] = useState("");
-  const [createFolderPending, setCreateFolderPending] = useState(false);
-  const newFolderInputRef = useRef<HTMLInputElement>(null);
+  const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
 
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(
     null,
@@ -79,12 +72,6 @@ export function SidebarProjectsSection({
   const [renameValue, setRenameValue] = useState("");
   const [renamePending, setRenamePending] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isCreatingFolder) {
-      newFolderInputRef.current?.focus();
-    }
-  }, [isCreatingFolder]);
 
   useEffect(() => {
     if (renamingProjectId) {
@@ -100,37 +87,9 @@ export function SidebarProjectsSection({
     }));
   };
 
-  const handleStartCreateFolder = () => {
+  const handleOpenCreateProject = () => {
     setSectionOpen(true);
-    setNewFolderName("");
-    setNewFolderAssignSessionId("");
-    setIsCreatingFolder(true);
-  };
-
-  const handleCancelCreateFolder = () => {
-    if (createFolderPending) return;
-    setIsCreatingFolder(false);
-    setNewFolderName("");
-    setNewFolderAssignSessionId("");
-  };
-
-  const handleSubmitCreateFolder = async () => {
-    const trimmed = newFolderName.trim();
-    if (!trimmed || createFolderPending) {
-      if (!trimmed) {
-        setIsCreatingFolder(false);
-      }
-      return;
-    }
-    setCreateFolderPending(true);
-    try {
-      await onCreateFolder(trimmed, newFolderAssignSessionId || null);
-      setIsCreatingFolder(false);
-      setNewFolderName("");
-      setNewFolderAssignSessionId("");
-    } finally {
-      setCreateFolderPending(false);
-    }
+    setCreateProjectDialogOpen(true);
   };
 
   const handleSubmitRename = async () => {
@@ -198,7 +157,7 @@ export function SidebarProjectsSection({
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={4} className="w-48">
-            <DropdownMenuItem onSelect={handleStartCreateFolder}>
+            <DropdownMenuItem onSelect={handleOpenCreateProject}>
               <FolderPlus className="h-4 w-4" strokeWidth={1.5} />
               <span>New folder</span>
             </DropdownMenuItem>
@@ -212,81 +171,11 @@ export function SidebarProjectsSection({
 
       {sectionOpen ? (
         <div className="space-y-0.5">
-          {isCreatingFolder ? (
-            <div className="mx-1 mb-1.5 space-y-1.5 rounded-lg border border-border bg-background p-2">
-              <div className="flex h-6 items-center gap-2">
-                <Folder
-                  className="size-3.5 shrink-0 text-muted-foreground"
-                  strokeWidth={1.5}
-                />
-                <input
-                  ref={newFolderInputRef}
-                  type="text"
-                  value={newFolderName}
-                  onChange={(event) => setNewFolderName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void handleSubmitCreateFolder();
-                    } else if (event.key === "Escape") {
-                      event.preventDefault();
-                      handleCancelCreateFolder();
-                    }
-                  }}
-                  placeholder="Project name"
-                  maxLength={80}
-                  disabled={createFolderPending}
-                  className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/70 outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleSubmitCreateFolder()}
-                  disabled={createFolderPending || !newFolderName.trim()}
-                  className="flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-muted/60 hover:text-foreground disabled:opacity-40 cursor-pointer"
-                  aria-label="Create project"
-                >
-                  {createFolderPending ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Check className="size-3.5" strokeWidth={1.6} />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCancelCreateFolder}
-                  disabled={createFolderPending}
-                  className="flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-muted/60 hover:text-foreground cursor-pointer"
-                  aria-label="Cancel creating project"
-                >
-                  <X className="size-3.5" strokeWidth={1.6} />
-                </button>
-              </div>
-              {standaloneSessions.length > 0 ? (
-                <select
-                  value={newFolderAssignSessionId}
-                  onChange={(event) =>
-                    setNewFolderAssignSessionId(event.target.value)
-                  }
-                  disabled={createFolderPending}
-                  aria-label="Include existing chat in project"
-                  className="h-7 w-full rounded-md border border-border/70 bg-muted/30 px-2 text-[11.5px] text-muted-foreground outline-none focus:border-border focus:text-foreground"
-                >
-                  <option value="">Start empty (or pick a chat...)</option>
-                  {standaloneSessions.slice(0, 20).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.title}
-                    </option>
-                  ))}
-                </select>
-              ) : null}
-            </div>
-          ) : null}
-
-          {projects.length === 0 && !isCreatingFolder ? (
+          {projects.length === 0 ? (
             <div className="grid grid-cols-2 gap-1.5 px-1 pt-0.5">
               <button
                 type="button"
-                onClick={handleStartCreateFolder}
+                onClick={handleOpenCreateProject}
                 className="flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-border/70 px-2.5 text-left text-[12px] font-medium text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border hover:bg-foreground/[0.04] hover:text-foreground cursor-pointer"
               >
                 <FolderPlus className="size-3.5 shrink-0" strokeWidth={1.5} />
@@ -525,6 +414,15 @@ export function SidebarProjectsSection({
           )}
         </div>
       ) : null}
+
+      <CreateProjectDialog
+        open={createProjectDialogOpen}
+        onOpenChange={setCreateProjectDialogOpen}
+        standaloneSessions={standaloneSessions}
+        onCreateProject={async (name, assignSessionIds) => {
+          await onCreateFolder(name, assignSessionIds);
+        }}
+      />
     </div>
   );
 }

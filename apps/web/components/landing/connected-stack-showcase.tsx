@@ -253,6 +253,9 @@ export function ConnectedStackShowcase() {
                       role="tab"
                       aria-label={app.name}
                       aria-selected={isSelected}
+                      onMouseEnter={() => {
+                        setSelectedIndex(index);
+                      }}
                       onClick={() => {
                         setPaused(true);
                         setSelectedIndex(index);

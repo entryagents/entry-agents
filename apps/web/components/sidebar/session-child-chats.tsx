@@ -2,33 +2,24 @@
 
 import { MessageSquare, Plus } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
 import { useSessionChats } from "@/hooks/use-session-chats";
 import { cn } from "@/lib/utils";
 
 /**
  * Desktop-only child chat list under the active session row in the sidebar,
  * replacing the in-chat ChatTabs strip on desktop.
+ *
+ * Clicking "New chat" routes cleanly to the New Chat composer pre-targeted to
+ * this session (`/chats?sessionId=...`) instead of eagerly creating an empty
+ * chat row in the database.
  */
 export function SessionChildChats({ sessionId }: { sessionId: string }) {
   const router = useRouter();
   const params = useParams<{ chatId?: string }>();
   const activeChatId = params?.chatId ?? "";
-  const { chats, createChat } = useSessionChats(sessionId);
-  const [creating, setCreating] = useState(false);
+  const { chats } = useSessionChats(sessionId);
 
-  const handleNewChat = async () => {
-    if (creating) return;
-    setCreating(true);
-    try {
-      const created = await createChat();
-      if (created?.chat?.id) {
-        router.push(`/chats/${created.chat.id}`);
-      }
-    } finally {
-      setCreating(false);
-    }
-  };
+  const newChatHref = `/chats?sessionId=${encodeURIComponent(sessionId)}`;
 
   if (chats.length === 0) return null;
 
@@ -63,8 +54,9 @@ export function SessionChildChats({ sessionId }: { sessionId: string }) {
       })}
       <button
         type="button"
-        disabled={creating}
-        onClick={() => void handleNewChat()}
+        onClick={() => router.push(newChatHref, { scroll: false })}
+        onMouseEnter={() => router.prefetch(newChatHref)}
+        onFocus={() => router.prefetch(newChatHref)}
         className="sable-child-row sable-child-new"
       >
         <Plus
@@ -73,7 +65,7 @@ export function SessionChildChats({ sessionId }: { sessionId: string }) {
           className="shrink-0"
           aria-hidden="true"
         />
-        <span className="truncate">{creating ? "Creating…" : "New chat"}</span>
+        <span className="truncate">New chat</span>
       </button>
     </div>
   );

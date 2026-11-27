@@ -38,6 +38,7 @@ import { useSessionsShell } from "./sessions-shell-context";
 export function SessionsIndexShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const paramSessionId = searchParams.get("sessionId");
   const paramProjectId = searchParams.get("projectId");
   const paramRepoOwner = searchParams.get("repoOwner");
   const paramRepoName = searchParams.get("repoName");
@@ -64,9 +65,27 @@ export function SessionsIndexShell() {
     [projects, sessions],
   );
 
-  // Derive selected target cleanly from URL params (supports folder projectId,
-  // GitHub repoOwner+repoName, or standalone chat).
+  // Derive selected target cleanly from URL params (supports existing sessionId
+  // for child chats sharing one VM, folder projectId, GitHub repo, or standalone).
   const selectedTarget = useMemo<SelectedNewChatTarget>(() => {
+    if (paramSessionId) {
+      const parentSession = sessions.find((s) => s.id === paramSessionId);
+      if (parentSession) {
+        return {
+          kind: "session",
+          sessionId: parentSession.id,
+          title: parentSession.title,
+          repoOwner: parentSession.repoOwner,
+          repoName: parentSession.repoName,
+        };
+      }
+      return {
+        kind: "session",
+        sessionId: paramSessionId,
+        title: "Shared workspace",
+      };
+    }
+
     if (paramRepoOwner && paramRepoName) {
       const matched = projects.find(
         (p) =>
@@ -103,7 +122,14 @@ export function SessionsIndexShell() {
     }
 
     return { kind: "standalone" };
-  }, [paramProjectId, paramRepoName, paramRepoOwner, projects]);
+  }, [
+    paramProjectId,
+    paramRepoName,
+    paramRepoOwner,
+    paramSessionId,
+    projects,
+    sessions,
+  ]);
 
   const [selectedBranch, setSelectedBranch] = useState<string | null>(
     paramBranch,
@@ -126,6 +152,15 @@ export function SessionsIndexShell() {
     (next: SelectedNewChatTarget) => {
       if (next.kind === "standalone") {
         router.replace("/chats", { scroll: false });
+        return;
+      }
+      if (next.kind === "session") {
+        router.replace(
+          `/chats?sessionId=${encodeURIComponent(next.sessionId)}`,
+          {
+            scroll: false,
+          },
+        );
         return;
       }
       if (next.kind === "folder") {
@@ -176,6 +211,57 @@ export function SessionsIndexShell() {
           trimmedDisplayText.length > 0
             ? sanitizePromptToTitle(trimmedDisplayText)
             : undefined;
+
+        // Child chat under an existing session: create the chat only NOW on
+        // prompt submission (never eagerly on sidebar click) so both chats
+        // share the same sandbox seamlessly.
+        if (selectedTarget.kind === "session") {
+          const res = await fetch(
+            `/api/sessions/${selectedTarget.sessionId}/chats`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...(initialTitle ? { title: initialTitle } : {}),
+                ...(effectiveModelId ? { modelId: effectiveModelId } : {}),
+                ...(reasoningEffort !== null ? { reasoningEffort } : {}),
+              }),
+            },
+          );
+          const data = (await res.json()) as {
+            chat?: { id: string; title: string; modelId?: string | null };
+            error?: string;
+          };
+          if (!res.ok || !data.chat) {
+            throw new Error(data.error ?? "Failed to create chat");
+          }
+
+          const createdChat = data.chat;
+          void globalMutate(`/api/sessions/${selectedTarget.sessionId}/chats`);
+
+          router.push(`/chats/${createdChat.id}`, { scroll: false });
+
+          void startInitialChatOnServer({
+            sessionId: selectedTarget.sessionId,
+            chatId: createdChat.id,
+            built,
+          }).catch((error) => {
+            console.error("Failed to start child chat on server:", error);
+          });
+
+          void generateAndApplyInitialTitle({
+            sessionId: selectedTarget.sessionId,
+            chatId: createdChat.id,
+            displayText: built.displayText,
+            onTitleResolved: () => {
+              void globalMutate(
+                `/api/sessions/${selectedTarget.sessionId}/chats`,
+              );
+            },
+          });
+          return;
+        }
+
         const initialMessage = buildUserMessageFromComposerPayload(
           built.payload,
         );
@@ -373,7 +459,7 @@ export function SessionsIndexShell() {
             </h1>
           </div>
 
-          {/* Clean project picker sitting right above the composer */}
+          {/* Clean project / shared-session picker sitting right above the composer */}
           <div className="flex items-center justify-between px-1">
             <NewChatProjectPicker
               target={selectedTarget}
