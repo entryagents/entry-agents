@@ -16,6 +16,7 @@ import {
   sightlineMapTool,
 } from "../tools/sightline";
 import { editFileTool, writeFileTool } from "../tools/write";
+import { sendParentUpdateTool } from "../tools/subagent-control";
 import { teamBoardTool } from "../tools/team";
 import { webFetchTool } from "../tools/fetch";
 import {
@@ -23,12 +24,12 @@ import {
   sharedSubagentCallOptionsFields,
 } from "./call-options";
 import {
+  EXECUTOR_STEP_LIMIT,
   SUBAGENT_BASH_RULES,
   SUBAGENT_COMPLETE_TASK_RULES,
   SUBAGENT_NO_QUESTIONS_RULES,
   SUBAGENT_REMINDER,
   SUBAGENT_RESPONSE_FORMAT,
-  SUBAGENT_STEP_LIMIT,
   SUBAGENT_VALIDATE_RULES,
   SUBAGENT_WORKING_DIR,
 } from "./constants";
@@ -88,6 +89,7 @@ const executorTools = {
   bash: bashTool(),
   web_fetch: webFetchTool,
   team_board: teamBoardTool,
+  send_parent_update: sendParentUpdateTool,
 };
 
 export const executorSubagent = new ToolLoopAgent({
@@ -98,7 +100,7 @@ export const executorSubagent = new ToolLoopAgent({
   model: createInertPlaceholderModel(defaultModelLabel),
   instructions: EXECUTOR_SYSTEM_PROMPT,
   tools: executorTools,
-  stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
+  stopWhen: stepCountIs(EXECUTOR_STEP_LIMIT),
   callOptionsSchema,
   prepareStep: ({ steps, stepNumber, messages, model, experimental_context }) =>
     prepareSubagentStep({
@@ -108,6 +110,7 @@ export const executorSubagent = new ToolLoopAgent({
       model,
       experimental_context,
       trackReadFileState: true,
+      stepLimit: EXECUTOR_STEP_LIMIT,
     }),
   prepareCall: ({ options, ...settings }) => {
     if (!options) {

@@ -14,15 +14,16 @@ import {
   sightlineListTool,
   sightlineMapTool,
 } from "../tools/sightline";
+import { sendParentUpdateTool } from "../tools/subagent-control";
 import { teamBoardTool } from "../tools/team";
 import {
   buildSubagentExperimentalContext,
   sharedSubagentCallOptionsFields,
 } from "./call-options";
 import {
+  ARCHITECT_STEP_LIMIT,
   SUBAGENT_NO_QUESTIONS_RULES,
   SUBAGENT_RESPONSE_FORMAT,
-  SUBAGENT_STEP_LIMIT,
   SUBAGENT_WORKING_DIR,
 } from "./constants";
 import { prepareSubagentStep } from "./prepare-step";
@@ -79,13 +80,14 @@ const architectTools = {
   glob: globTool(),
   bash: bashTool(),
   team_board: teamBoardTool,
+  send_parent_update: sendParentUpdateTool,
 };
 
 export const architectSubagent = new ToolLoopAgent({
   model: createInertPlaceholderModel(defaultModelLabel),
   instructions: ARCHITECT_SYSTEM_PROMPT,
   tools: architectTools,
-  stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
+  stopWhen: stepCountIs(ARCHITECT_STEP_LIMIT),
   callOptionsSchema,
   prepareStep: ({ steps, stepNumber, messages, model, experimental_context }) =>
     prepareSubagentStep({
@@ -94,6 +96,7 @@ export const architectSubagent = new ToolLoopAgent({
       messages,
       model,
       experimental_context,
+      stepLimit: ARCHITECT_STEP_LIMIT,
     }),
   prepareCall: ({ options, ...settings }) => {
     if (!options) {

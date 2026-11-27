@@ -14,15 +14,16 @@ import {
   sightlineListTool,
   sightlineMapTool,
 } from "../tools/sightline";
+import { sendParentUpdateTool } from "../tools/subagent-control";
 import { teamBoardTool } from "../tools/team";
 import {
   buildSubagentExperimentalContext,
   sharedSubagentCallOptionsFields,
 } from "./call-options";
 import {
+  REVIEWER_STEP_LIMIT,
   SUBAGENT_NO_QUESTIONS_RULES,
   SUBAGENT_RESPONSE_FORMAT,
-  SUBAGENT_STEP_LIMIT,
   SUBAGENT_WORKING_DIR,
 } from "./constants";
 import { prepareSubagentStep } from "./prepare-step";
@@ -110,6 +111,7 @@ const reviewerTools = {
   glob: globTool(),
   bash: bashTool(),
   team_board: teamBoardTool,
+  send_parent_update: sendParentUpdateTool,
 };
 
 export const reviewerSubagent = new ToolLoopAgent({
@@ -120,7 +122,7 @@ export const reviewerSubagent = new ToolLoopAgent({
   model: createInertPlaceholderModel(defaultModelLabel),
   instructions: REVIEWER_SYSTEM_PROMPT,
   tools: reviewerTools,
-  stopWhen: stepCountIs(SUBAGENT_STEP_LIMIT),
+  stopWhen: stepCountIs(REVIEWER_STEP_LIMIT),
   callOptionsSchema,
   prepareStep: ({ steps, stepNumber, messages, model, experimental_context }) =>
     prepareSubagentStep({
@@ -129,6 +131,7 @@ export const reviewerSubagent = new ToolLoopAgent({
       messages,
       model,
       experimental_context,
+      stepLimit: REVIEWER_STEP_LIMIT,
     }),
   prepareCall: ({ options, ...settings }) => {
     if (!options) {

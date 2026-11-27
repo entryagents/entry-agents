@@ -13,7 +13,6 @@ import {
 import {
   MAX_INLINE_SUMMARY_CHARS,
   MAX_SUBAGENT_DEPTH,
-  SUBAGENT_STEP_LIMIT,
 } from "../subagents/constants";
 import {
   registerActiveSubagent,
@@ -77,11 +76,11 @@ const taskInputSchema = z.object({
     .string()
     .describe("Short description of the task (displayed to user)"),
   instructions: z.string().describe(
-    `Detailed instructions for the subagent. Include:
-- Goal and deliverables
-- Step-by-step procedure
-- Constraints and patterns to follow
-- How to verify the work`,
+    `Detailed 4-part delegation brief for the subagent (subagents have zero prior conversation context):
+1. Objective: concrete goal or question to answer
+2. Scope & Boundaries: exact files/modules to own and what NOT to touch (prevent overlap with sibling teammates)
+3. Output Contract: exact format, file:line references, or artifacts to return
+4. Verification: concrete test/typecheck/lint command or check that proves "done"`,
   ),
   sessionId: z
     .string()
@@ -138,25 +137,25 @@ export type TaskToolOutput = z.infer<typeof taskOutputSchema>;
 
 export const taskTool = tool({
   needsApproval: false,
-  description: `Launch a specialized subagent to handle complex tasks autonomously.
+  description: `Launch a specialized subagent to handle complex, self-contained tasks autonomously.
 
 AVAILABLE SUBAGENTS:
 ${subagentSummaryLines}
 
 WHEN TO USE:
-- Clearly-scoped work that can be delegated with explicit instructions
-- Work where focused execution would clutter the main conversation
-- Tasks that match one of the available subagent descriptions above
+- Parallel read-only exploration across independent modules (\`explorer\`) to protect main context window
+- Independent implementation waves (\`executor\` / \`design\`) with non-overlapping file ownership
+- Fresh skeptical verification (\`reviewer\`) so the author is never the sole grader
 
 WHEN NOT TO USE (do it yourself):
 - Simple, single-file or single-change edits
-- Tasks where you already have all the context you need
-- Ambiguous work that requires back-and-forth clarification
+- Tightly coupled sequential work where context cannot be cleanly isolated
+- Ambiguous work that requires user clarification
 
-BEHAVIOR:
-- Subagents work AUTONOMOUSLY without asking follow-up questions
-- They run up to ${SUBAGENT_STEP_LIMIT} tool steps and then return
-- They return ONLY a concise summary - their internal steps are isolated from the parent
+DELEGATION RULES:
+- Subagents cannot see your conversation — always brief Objective, Scope & non-overlapping file boundaries, Output format, and Verification check
+- Keep write paths non-overlapping across parallel teammates (use \`team_board\` \`plan_tasks\` first for multi-agent work)
+- Subagents run autonomously with role-calibrated step budgets and return only a concise **Summary** + **Answer**
 
 HOW TO USE:
 - Choose the appropriate subagentType based on the subagent descriptions above
