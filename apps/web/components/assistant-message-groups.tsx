@@ -88,43 +88,10 @@ export function AssistantMessageGroups({
             ? message.metadata.turnError
             : null;
 
-  const dotIdx = stopNotice ? stopNotice.indexOf(". ") : -1;
-  const stopNoticeTitle = stopNotice
-    ? dotIdx !== -1
-      ? `${stopNotice.slice(0, dotIdx)}.`
-      : stopNotice
-    : null;
-  const stopNoticeBody =
-    stopNotice && dotIdx !== -1 ? stopNotice.slice(dotIdx + 2) : null;
-
   const stopNoticeCard = stopNotice ? (
-    <div
-      role="status"
-      className="flex w-fit max-w-full items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 text-sm text-foreground"
-    >
-      <svg
-        className="mt-0.5 size-4 shrink-0 text-muted-foreground"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 8v4" />
-        <path d="M12 16h.01" />
-      </svg>
-      <div className="min-w-0">
-        <p className="font-medium text-foreground">{stopNoticeTitle}</p>
-        {stopNoticeBody && (
-          <p className="mt-0.5 text-[13px] text-muted-foreground">
-            {stopNoticeBody}
-          </p>
-        )}
-      </div>
-    </div>
+    <p role="status" className="mt-2 text-sm text-muted-foreground">
+      {stopNotice}
+    </p>
   ) : null;
 
   // If no collapsible content, just render children directly

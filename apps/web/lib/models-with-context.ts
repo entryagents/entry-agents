@@ -265,7 +265,9 @@ async function fetchGatewayModelsUncached(): Promise<GatewayModel[]> {
   // workflow context too (it's a no-op wrapper around globalThis.fetch when
   // there's no active workflow run), so this one import works for both the
   // plain /api/models route handler and the workflow call site.
-  const response = await workflowFetch(`${baseURL.replace(/\/$/, "")}/models`, {
+  const fetchImpl =
+    typeof globalThis.fetch === "function" ? globalThis.fetch : workflowFetch;
+  const response = await fetchImpl(`${baseURL.replace(/\/$/, "")}/models`, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
 

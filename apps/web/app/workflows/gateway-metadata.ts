@@ -62,6 +62,11 @@ export interface CatalogCostEntry {
  * /v1/models) plus the step's real token usage. This is what actually
  * prices every real request today.
  */
+const FALLBACK_MODEL_COSTS: Record<string, AvailableModelCost> = {
+  "deepseek-v4.1-flash": { input: 0.15, output: 0.6, cache_read: 0.003 },
+  "glm-5.3-flash": { input: 0.1, output: 0.4, cache_read: 0.02 },
+};
+
 export function estimateStepCost(
   providerMetadata: ProviderMetadata | undefined,
   modelId: string,
@@ -85,12 +90,12 @@ export function estimateStepCost(
   catalog: CatalogCostEntry[],
 ): number | undefined {
   if (usage) {
-    const model = catalog.find((m) => m.id === modelId);
-    if (model?.cost) {
-      // The AI SDK moved cache accounting from the flat, now-deprecated
-      // `cachedInputTokens` field into `inputTokenDetails.cacheReadTokens` /
-      // `cacheWriteTokens`. Prefer the current field, fall back to the
-      // deprecated one for older callers.
+    const bareModelId = modelId.includes("/")
+      ? modelId.slice(modelId.indexOf("/") + 1)
+      : modelId;
+    const model = catalog.find((m) => m.id === modelId || m.id === bareModelId);
+    const resolvedCost = model?.cost ?? FALLBACK_MODEL_COSTS[bareModelId];
+    if (resolvedCost) {
       const cachedInputTokens =
         usage.inputTokenDetails?.cacheReadTokens ??
         usage.cachedInputTokens ??
@@ -105,12 +110,13 @@ export function estimateStepCost(
           cacheWriteInputTokens,
           outputTokens: usage.outputTokens ?? 0,
         },
-        model.cost,
+        resolvedCost,
       );
       if (computed !== undefined) {
         return computed;
       }
     }
+    return undefined;
   }
 
   return extractGatewayCost(providerMetadata);
