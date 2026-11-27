@@ -22,11 +22,11 @@
 }
 
 .dark .sable-side {
-  --side-bg: #121110;
-  --side-line: rgba(243, 237, 228, 0.08);
-  --side-fill-1: rgba(243, 237, 228, 0.035);
-  --side-fill-2: rgba(243, 237, 228, 0.06);
-  --side-fill-3: rgba(243, 237, 228, 0.095);
+  --side-bg: #0c0c0e;
+  --side-line: rgba(255, 255, 255, 0.07);
+  --side-fill-1: rgba(255, 255, 255, 0.035);
+  --side-fill-2: rgba(255, 255, 255, 0.06);
+  --side-fill-3: rgba(255, 255, 255, 0.095);
 }
 
 .sable-side-list {

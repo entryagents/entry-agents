@@ -1,7 +1,13 @@
 "use client";
 
-import { useEffect } from "react";
+import { ArrowUpRight, ChevronUp } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useSidebar } from "@/components/ui/sidebar";
 import useSWR, { mutate } from "swr";
 import { EntryMark } from "@/components/entry-mark";
@@ -272,11 +278,24 @@ function getUsageWindowPercent(usedCents: number, limitCents: number): number {
   return Math.max(1, Math.min(99, Math.floor((usedCents / limitCents) * 100)));
 }
 
-const SEGMENT_COUNT = 10;
-const SEGMENT_INDICES = Array.from({ length: SEGMENT_COUNT }, (_, idx) => idx);
+function formatResetCountdown(isoString?: string | null): string | null {
+  if (!isoString) return null;
+  const target = Date.parse(isoString);
+  if (Number.isNaN(target)) return null;
+  const diffMs = target - Date.now();
+  if (diffMs <= 0) return "Resets soon";
+  const totalMinutes = Math.ceil(diffMs / 60_000);
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `Resets in ${days}d ${hours}h`;
+  if (hours > 0) return `Resets in ${hours}h ${minutes}m`;
+  return `Resets in ${minutes}m`;
+}
 
 export function DesktopCodexBillingStatus() {
   const { data, isLoading } = useBillingMe();
+  const [open, setOpen] = useState(false);
 
   const { isMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
@@ -307,108 +326,168 @@ export function DesktopCodexBillingStatus() {
       ? Math.min(data.creditBalanceCents, monthlyRemainingCents)
       : 0;
 
+  const rows = [
+    { key: "5h", title: "5-hour window", win: windows.fiveHour },
+    { key: "7d", title: "7-day window", win: windows.weekly },
+    { key: "30d", title: "Monthly cycle", win: windows.monthly },
+  ] as const;
+
+  const peakPct = Math.max(
+    ...rows.map((row) =>
+      getUsageWindowPercent(row.win.usedCents, row.win.limitCents),
+    ),
+  );
+  const anyFull = rows.some((row) => row.win.usedCents >= row.win.limitCents);
+  const anyWarn = !anyFull && peakPct >= 80;
+
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (isMobile) setOpenMobile(false);
-        router.push("/settings/usage");
-      }}
-      title="Open usage and billing details"
-      className="group w-full cursor-pointer rounded-xl border border-border/80 bg-background/80 p-3 text-left shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,background-color,transform] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-foreground/20 hover:bg-background active:scale-[0.99] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring dark:bg-white/[0.03] dark:hover:bg-white/[0.05]"
-    >
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span
-            aria-hidden="true"
-            className="size-1.5 shrink-0 rounded-full bg-[#c85c20] dark:bg-[#e07638]"
-          />
-          <span className="truncate text-[12px] font-medium tracking-[-0.01em] text-foreground">
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          onMouseEnter={() => router.prefetch("/settings/usage")}
+          aria-label="Inspect usage windows"
+          className={cn(
+            "group flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            open
+              ? "bg-foreground/[0.08] text-foreground"
+              : "text-foreground hover:bg-foreground/[0.05]",
+          )}
+        >
+          <span className="shrink-0 text-[12px] font-medium text-foreground/85">
             {data.planName || "Usage"}
           </span>
-        </span>
-        <span className="shrink-0 font-mono text-[12px] tabular-nums">
-          <span className="font-semibold text-foreground">
-            {formatUsdCents(effectiveRemainingCents)}
-          </span>
-          <span className="ml-1 text-[10.5px] text-muted-foreground">left</span>
-        </span>
-      </div>
 
-      <div className="mt-2.5 space-y-2">
-        {(
-          [
-            { label: "5h", win: windows.fiveHour },
-            { label: "7d", win: windows.weekly },
-            { label: "30d", win: windows.monthly },
-          ] as const
-        ).map(({ label, win }) => {
-          const pct = getUsageWindowPercent(win.usedCents, win.limitCents);
-          const isFull = win.usedCents >= win.limitCents;
-          const isWarn = !isFull && pct >= 80;
-          const filledSegments =
-            pct <= 0
-              ? 0
-              : isFull
-                ? SEGMENT_COUNT
-                : Math.max(1, Math.round((pct / 100) * SEGMENT_COUNT));
-          const remaining = Math.max(0, win.limitCents - win.usedCents);
-          return (
+          <div
+            aria-hidden="true"
+            className="h-1 flex-1 overflow-hidden rounded-full bg-foreground/[0.1]"
+          >
             <div
-              key={label}
-              title={`${label}: ${formatUsdCents(win.usedCents)} of ${formatUsdCents(win.limitCents)} used (${formatUsdCents(remaining)} left)`}
-              className="grid grid-cols-[24px_1fr_30px] items-center gap-2"
-            >
-              <span className="font-mono text-[10.5px] text-muted-foreground">
-                {label}
-              </span>
-              <div aria-hidden="true" className="grid grid-cols-10 gap-[2.5px]">
-                {SEGMENT_INDICES.map((segmentIdx) => {
-                  const active = segmentIdx < filledSegments;
-                  return (
-                    <span
-                      key={segmentIdx}
-                      className={cn(
-                        "h-[5px] rounded-[1.5px] transition-colors duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
-                        active
-                          ? isFull
-                            ? "bg-red-500"
-                            : isWarn
-                              ? "bg-amber-500"
-                              : "bg-[#c85c20] dark:bg-[#e07638]"
-                          : "bg-foreground/[0.08] dark:bg-white/[0.08]",
-                      )}
-                    />
-                  );
-                })}
-              </div>
-              <span
-                className={cn(
-                  "text-right font-mono text-[10.5px] tabular-nums",
-                  isFull
-                    ? "font-semibold text-red-500 dark:text-red-400"
-                    : isWarn
-                      ? "font-semibold text-amber-600 dark:text-amber-400"
-                      : pct > 0
-                        ? "text-foreground/85"
-                        : "text-muted-foreground/65",
-                )}
-              >
-                {pct}%
-              </span>
-            </div>
-          );
-        })}
-      </div>
+              className={cn(
+                "h-full rounded-full transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                anyFull
+                  ? "bg-red-500"
+                  : anyWarn
+                    ? "bg-amber-500"
+                    : "bg-foreground/75",
+              )}
+              style={{ width: `${Math.max(peakPct, peakPct > 0 ? 4 : 0)}%` }}
+            />
+          </div>
 
-      {data.expiresAt ? (
-        <div className="mt-2.5 flex items-center justify-between border-t border-border/50 pt-2 text-[10.5px] text-muted-foreground">
-          <span>Cycle renews</span>
-          <span className="font-mono tabular-nums text-foreground/80">
-            {formatExpirationDate(data.expiresAt)}
+          <span className="shrink-0 font-mono text-[11.5px] font-medium tabular-nums text-foreground">
+            {formatCompactUsdCents(effectiveRemainingCents)}
           </span>
+
+          <ChevronUp
+            className={cn(
+              "size-3 shrink-0 text-muted-foreground transition-transform duration-150",
+              open
+                ? "rotate-180 text-foreground"
+                : "group-hover:text-foreground",
+            )}
+            strokeWidth={1.6}
+          />
+        </button>
+      </PopoverTrigger>
+
+      <PopoverContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="w-[260px] overflow-hidden rounded-xl border border-border bg-popover p-0 text-popover-foreground shadow-xl"
+      >
+        <div className="flex items-baseline justify-between gap-2 px-3.5 py-3">
+          <div>
+            <div className="text-[12.5px] font-medium text-foreground">
+              {data.planName || "Plan"} usage
+            </div>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
+              {data.usageWindows?.mode === "fixed"
+                ? "Fixed refill windows"
+                : "Rolling usage windows"}
+            </div>
+          </div>
+          <div className="text-right font-mono tabular-nums">
+            <div className="text-[13px] font-semibold text-foreground">
+              {formatUsdCents(effectiveRemainingCents)}
+            </div>
+            <div className="text-[10.5px] text-muted-foreground">
+              of {formatCompactUsdCents(windows.monthly.limitCents)} left
+            </div>
+          </div>
         </div>
-      ) : null}
-    </button>
+
+        <div className="space-y-3 border-t border-border/70 px-3.5 py-3">
+          {rows.map(({ key, title, win }) => {
+            const pct = getUsageWindowPercent(win.usedCents, win.limitCents);
+            const isFull = win.usedCents >= win.limitCents;
+            const isWarn = !isFull && pct >= 80;
+            const resetText = formatResetCountdown(win.resetsAt);
+            return (
+              <div key={key} className="space-y-1">
+                <div className="flex items-baseline justify-between gap-2 text-[11.5px]">
+                  <span className="font-medium text-foreground/85">
+                    {title}
+                  </span>
+                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                    {formatUsdCents(win.usedCents)} /{" "}
+                    {formatCompactUsdCents(win.limitCents)}
+                  </span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-foreground/[0.08]">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]",
+                      isFull
+                        ? "bg-red-500"
+                        : isWarn
+                          ? "bg-amber-500"
+                          : "bg-foreground/80",
+                    )}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[10.5px] text-muted-foreground">
+                  <span>{resetText ?? "Full capacity"}</span>
+                  <span
+                    className={cn(
+                      "font-mono tabular-nums",
+                      isFull
+                        ? "font-medium text-red-500 dark:text-red-400"
+                        : isWarn
+                          ? "font-medium text-amber-600 dark:text-amber-400"
+                          : "text-muted-foreground",
+                    )}
+                  >
+                    {pct}%
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center justify-between border-t border-border/70 px-3.5 py-2.5 text-[11px]">
+          <span className="text-muted-foreground">
+            {data.expiresAt
+              ? `Renews ${formatExpirationDate(data.expiresAt)}`
+              : "Active cycle"}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              if (isMobile) setOpenMobile(false);
+              router.push("/settings/usage");
+            }}
+            className="inline-flex cursor-pointer items-center gap-1 font-medium text-foreground transition-opacity hover:opacity-75"
+          >
+            <span>Details</span>
+            <ArrowUpRight className="size-3" strokeWidth={1.6} />
+          </button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

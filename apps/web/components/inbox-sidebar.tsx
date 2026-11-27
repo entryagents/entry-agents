@@ -75,6 +75,10 @@ import { signOut } from "@/lib/auth/actions";
 import type { Project } from "@/lib/db/schema";
 import type { Session as AuthSession } from "@/lib/session/types";
 import { groupSessionsByProject } from "@/lib/sessions/group-projects";
+import {
+  formatCompactSessionAge,
+  groupSessionsByRecency,
+} from "@/lib/sessions/group-by-time";
 
 type InboxSidebarProps = {
   sessions: SessionWithUnread[];
@@ -136,10 +140,10 @@ function DiffStats({
   return (
     <span className="flex items-center gap-0.5 font-mono text-[10px]">
       {added !== null ? (
-        <span className="text-green-600 dark:text-green-500">+{added}</span>
+        <span className="text-emerald-600 dark:text-emerald-400">+{added}</span>
       ) : null}
       {removed !== null ? (
-        <span className="text-red-600 dark:text-red-400">-{removed}</span>
+        <span className="text-rose-600 dark:text-rose-400">-{removed}</span>
       ) : null}
     </span>
   );
@@ -150,7 +154,7 @@ function getSessionStatusIcon(session: SessionWithUnread) {
   if (session.hasStreaming) {
     return (
       <Loader2
-        className="h-3.5 w-3.5 shrink-0 animate-spin text-[#c85c20] dark:text-[#e07638]"
+        className="h-3.5 w-3.5 shrink-0 animate-spin text-foreground/75"
         strokeWidth={1.6}
       />
     );
@@ -186,12 +190,12 @@ function getSessionStatusIcon(session: SessionWithUnread) {
     );
   }
 
-  // Has a branch with code changes → needs human follow-up
+  // Has a branch with code changes
   const hasDiff = session.linesAdded || session.linesRemoved;
   if (session.branch && hasDiff) {
     return (
       <GitBranch
-        className="h-3.5 w-3.5 shrink-0 text-[#c85c20] dark:text-[#e07638]"
+        className="h-3.5 w-3.5 shrink-0 text-foreground/80"
         strokeWidth={1.5}
       />
     );
@@ -449,93 +453,13 @@ const SessionRow = memo(function SessionRow({
   ) : null;
 
   const statusIcon = getSessionStatusIcon(session);
-
-  const actionButtonsContainer = actionButtons ? (
-    <span className="absolute top-1/2 right-1 flex shrink-0 -translate-y-1/2 items-center justify-end gap-0.5 rounded-lg border border-border/75 bg-sidebar/95 p-0.5 shadow-xs backdrop-blur-sm dark:bg-[#181715]/95">
-      {actionButtons}
-    </span>
-  ) : null;
-
-  const sessionButton = (
-    <button
-      type="button"
-      title={[
-        session.title,
-        hasRepo ? `${repoOwner}/${repoName}` : "",
-        session.branch ?? "",
-      ]
-        .filter(Boolean)
-        .join(" · ")}
-      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left outline-none transition-[background-color,box-shadow,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer focus-visible:ring-1 focus-visible:ring-ring ${
-        isActive
-          ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.05)] ring-1 ring-border/80 before:absolute before:top-1.5 before:bottom-1.5 before:left-0 before:w-[2px] before:rounded-full before:bg-[#c85c20] dark:bg-white/[0.075] dark:ring-white/[0.09] dark:before:bg-[#e07638]"
-          : "hover:bg-foreground/[0.045]"
-      } ${isPending ? "opacity-75" : "opacity-100"}`}
-      onClick={() => {
-        if (isMobile) setOpenMobile(false);
-        onSessionClick(session);
-      }}
-      onFocus={() => onSessionPrefetch(session)}
-      aria-busy={isPending}
-    >
-      {statusIcon ? (
-        <span className="flex size-3.5 shrink-0 items-center justify-center">
-          {statusIcon}
-        </span>
-      ) : session.hasUnread && !isActive ? (
-        <span
-          className="size-1.5 shrink-0 rounded-full bg-[#c85c20] dark:bg-[#e07638]"
-          aria-label="Unread activity"
-        />
-      ) : null}
-      <span className="min-w-0 flex-1 text-left">
-        <p
-          className={`truncate text-[13px] leading-[18px] tracking-[-0.005em] transition-colors duration-120 ${
-            isActive
-              ? "font-medium text-foreground"
-              : session.hasUnread
-                ? "font-medium text-foreground"
-                : "font-normal text-foreground/78 group-hover:text-foreground"
-          }`}
-        >
-          {session.title}
-        </p>
-      </span>
-      {session.hasUnread && !isActive && statusIcon && !actionButtons ? (
-        <span
-          className="size-1.5 shrink-0 rounded-full bg-[#c85c20] dark:bg-[#e07638]"
-          aria-label="Unread activity"
-        />
-      ) : null}
-      {!actionButtons && (session.prNumber || hasDiff) ? (
-        <span className="flex shrink-0 items-center justify-end gap-1.5 pl-1 font-mono text-[10.5px] tabular-nums text-muted-foreground">
-          {session.prNumber ? (
-            <span
-              className={
-                session.prStatus === "merged"
-                  ? "text-indigo-500 dark:text-indigo-400"
-                  : session.prStatus === "open"
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-rose-500 dark:text-rose-400"
-              }
-            >
-              #{session.prNumber}
-            </span>
-          ) : null}
-          {hasDiff ? (
-            <DiffStats
-              added={session.linesAdded}
-              removed={session.linesRemoved}
-            />
-          ) : null}
-        </span>
-      ) : null}
-    </button>
+  const ageLabel = formatCompactSessionAge(
+    session.lastActivityAt ?? session.createdAt,
   );
 
   const rowButton = isRenaming ? (
     <div
-      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg border border-border bg-background px-2.5 text-left outline-none transition-[background-color,opacity] ${
+      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg border border-border bg-background px-2 text-left outline-none transition-[background-color,opacity] ${
         renamePending ? "opacity-80" : "opacity-100"
       }`}
       style={sessionRowPerformanceStyle}
@@ -572,13 +496,90 @@ const SessionRow = memo(function SessionRow({
     </div>
   ) : (
     <div
-      className="relative"
+      className={`group flex h-8 w-full items-center gap-1 rounded-lg px-2 transition-[background-color,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        isActive
+          ? "bg-foreground/[0.08] text-foreground"
+          : "hover:bg-foreground/[0.045]"
+      } ${isPending ? "opacity-75" : "opacity-100"}`}
       style={sessionRowPerformanceStyle}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {sessionButton}
-      {actionButtonsContainer}
+      <button
+        type="button"
+        title={[
+          session.title,
+          hasRepo ? `${repoOwner}/${repoName}` : "",
+          session.branch ?? "",
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+        className="flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none cursor-pointer focus-visible:ring-1 focus-visible:ring-ring rounded-md"
+        onClick={() => {
+          if (isMobile) setOpenMobile(false);
+          onSessionClick(session);
+        }}
+        onFocus={() => onSessionPrefetch(session)}
+        aria-busy={isPending}
+      >
+        {statusIcon ? (
+          <span className="flex size-3.5 shrink-0 items-center justify-center">
+            {statusIcon}
+          </span>
+        ) : session.hasUnread && !isActive ? (
+          <span
+            className="size-1.5 shrink-0 rounded-full bg-foreground"
+            aria-label="Unread activity"
+          />
+        ) : null}
+        <span
+          className={`min-w-0 flex-1 truncate text-[13px] leading-[18px] transition-colors duration-120 ${
+            isActive
+              ? "font-medium text-foreground"
+              : session.hasUnread
+                ? "font-medium text-foreground"
+                : "font-normal text-foreground/75 group-hover:text-foreground"
+          }`}
+        >
+          {session.title}
+        </span>
+      </button>
+
+      {actionButtons ? (
+        <span className="flex shrink-0 items-center gap-0.5 pl-1">
+          {actionButtons}
+        </span>
+      ) : (
+        <span className="flex shrink-0 items-center justify-end gap-1.5 pl-1 font-mono text-[10.5px] tabular-nums text-muted-foreground/65">
+          {session.hasUnread && !isActive && statusIcon ? (
+            <span
+              className="size-1.5 shrink-0 rounded-full bg-foreground"
+              aria-label="Unread activity"
+            />
+          ) : null}
+          {session.prNumber ? (
+            <span
+              className={
+                session.prStatus === "merged"
+                  ? "text-indigo-500 dark:text-indigo-400"
+                  : session.prStatus === "open"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-rose-500 dark:text-rose-400"
+              }
+            >
+              #{session.prNumber}
+            </span>
+          ) : null}
+          {hasDiff ? (
+            <DiffStats
+              added={session.linesAdded}
+              removed={session.linesRemoved}
+            />
+          ) : ageLabel ? (
+            <span>{ageLabel}</span>
+          ) : null}
+        </span>
+      )}
     </div>
   );
 
@@ -727,9 +728,18 @@ export function InboxSidebar({
     void fetchArchivedSessionsPage({ offset: 0, replace: true });
   }, [archivedCount, fetchArchivedSessionsPage, showArchived]);
 
+  const [searchOpen, setSearchOpen] = useState(false);
   const [desktopSearchQuery, setDesktopSearchQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchOpen) {
+      searchInputRef.current?.focus();
+    }
+  }, [searchOpen]);
+
   const { theme, setTheme } = useTheme();
   const { data: billingData } = useBillingMe();
   const creditDisplay = billingData
@@ -765,6 +775,11 @@ export function InboxSidebar({
   const { projects: projectGroups, standaloneSessions } = useMemo(
     () => groupSessionsByProject(filteredDisplayedSessions, customProjects),
     [customProjects, filteredDisplayedSessions],
+  );
+
+  const recencyGroups = useMemo(
+    () => groupSessionsByRecency(standaloneSessions),
+    [standaloneSessions],
   );
 
   const handleImportRepo = useCallback(
@@ -890,15 +905,15 @@ export function InboxSidebar({
   return (
     <>
       <div className="flex h-full min-h-0 flex-col bg-sidebar pr-1 pl-0.5 select-none">
-        {/* Brand */}
-        <div className="flex h-11 shrink-0 items-center px-1.5 pt-px">
+        {/* Compact Brand + On-Demand Utility Triggers (Search, Archive) */}
+        <div className="flex h-11 shrink-0 items-center justify-between gap-1 px-1.5 pt-px">
           <button
             type="button"
             onClick={() => {
               if (isMobile) setOpenMobile(false);
               onOpenNewSession();
             }}
-            className="flex h-8 items-center gap-2 rounded-lg px-2 text-left transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.04] active:bg-foreground/[0.06] cursor-pointer"
+            className="flex h-8 items-center gap-2 rounded-lg px-2 text-left transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.045] active:bg-foreground/[0.07] cursor-pointer"
             title="Entry — New chat"
           >
             <EntryMark className="size-[18px] shrink-0 text-foreground" />
@@ -906,11 +921,71 @@ export function InboxSidebar({
               Entry
             </span>
           </button>
+
+          <div className="flex items-center gap-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchOpen((prev) => {
+                      if (prev) {
+                        setDesktopSearchQuery("");
+                        return false;
+                      }
+                      return true;
+                    });
+                  }}
+                  aria-label={searchOpen ? "Close search" : "Search chats"}
+                  aria-pressed={searchOpen}
+                  className={`grid size-7 place-items-center rounded-md transition-colors duration-120 cursor-pointer ${
+                    searchOpen || desktopSearchQuery
+                      ? "bg-foreground/[0.08] text-foreground"
+                      : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
+                  }`}
+                >
+                  <Search className="size-3.5" strokeWidth={1.6} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}>
+                Filter chats (⌘K for command palette)
+              </TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setShowArchived((prev) => !prev)}
+                  aria-label={
+                    showArchived
+                      ? "Back to active chats"
+                      : `View archived chats (${archivedCount})`
+                  }
+                  aria-pressed={showArchived}
+                  className={`relative grid size-7 place-items-center rounded-md transition-colors duration-120 cursor-pointer ${
+                    showArchived
+                      ? "bg-foreground/[0.08] text-foreground"
+                      : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
+                  }`}
+                >
+                  <Archive className="size-3.5" strokeWidth={1.6} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}>
+                {showArchived
+                  ? "Back to active chats"
+                  : archivedCount > 0
+                    ? `Archive (${archivedCount})`
+                    : "Archive"}
+              </TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
-        {/* New chat tactile split bar */}
-        <div className="mt-1 flex shrink-0 items-center px-1.5">
-          <div className="flex h-8 w-full items-center overflow-hidden rounded-lg border border-border/80 bg-background/90 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-foreground/20 dark:bg-white/[0.045] dark:hover:bg-white/[0.07]">
+        {/* Sleek Monochrome New chat Bar */}
+        <div className="mt-1 mb-1.5 flex shrink-0 items-center px-1.5">
+          <div className="flex h-8 w-full items-center overflow-hidden rounded-lg border border-border/75 bg-background/85 transition-[border-color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-foreground/20 dark:bg-white/[0.04] dark:hover:bg-white/[0.065]">
             <button
               type="button"
               onClick={() => {
@@ -919,20 +994,21 @@ export function InboxSidebar({
               }}
               className="group flex h-full min-w-0 flex-1 items-center gap-2 px-2.5 text-left text-[13px] font-medium text-foreground transition-transform duration-120 active:scale-[0.985] cursor-pointer"
             >
-              <span className="grid size-4 shrink-0 place-items-center text-[#c85c20] dark:text-[#e07638]">
-                <Plus className="size-4" strokeWidth={1.75} />
-              </span>
-              <span className="truncate tracking-[-0.01em]">New chat</span>
+              <Plus
+                className="size-3.5 shrink-0 text-muted-foreground transition-colors duration-120 group-hover:text-foreground"
+                strokeWidth={1.75}
+              />
+              <span className="truncate">New chat</span>
             </button>
             <span
               aria-hidden="true"
-              className="h-4 w-px shrink-0 bg-border/70"
+              className="h-4 w-px shrink-0 bg-border/60"
             />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="grid h-full w-8 shrink-0 place-items-center text-muted-foreground transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05] hover:text-foreground cursor-pointer"
+                  className="grid h-full w-7 shrink-0 place-items-center text-muted-foreground transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05] hover:text-foreground cursor-pointer"
                   aria-label="New chat options"
                 >
                   <ChevronDown className="size-3.5" strokeWidth={1.6} />
@@ -967,85 +1043,63 @@ export function InboxSidebar({
           </div>
         </div>
 
-        {/* Search */}
-        <div className="mt-1.5 px-1.5">
-          <div className="flex h-8 shrink-0 items-center rounded-lg border border-transparent bg-foreground/[0.035] pr-1.5 pl-2.5 transition-[background-color,border-color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05] focus-within:border-border focus-within:bg-background/90">
-            <span className="mr-2 grid size-3.5 shrink-0 place-items-center text-muted-foreground/75">
-              <Search className="size-3.5" strokeWidth={1.6} />
-            </span>
-            <input
-              type="text"
-              value={desktopSearchQuery}
-              onChange={(e) => setDesktopSearchQuery(e.target.value)}
-              placeholder="Search chats"
-              className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/65 focus:outline-none"
-            />
-            {desktopSearchQuery ? (
-              <button
-                type="button"
-                onClick={() => setDesktopSearchQuery("")}
-                className="ml-1 grid size-5 place-items-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.06] hover:text-foreground"
-                aria-label="Clear filter"
-              >
-                <X className="size-3" strokeWidth={1.6} />
-              </button>
-            ) : (
+        {/* On-Demand Inline Search Bar */}
+        {searchOpen || desktopSearchQuery ? (
+          <div className="mb-1.5 px-1.5">
+            <div className="flex h-8 shrink-0 items-center rounded-lg border border-border bg-background/90 pr-1.5 pl-2.5">
+              <Search
+                className="mr-2 size-3.5 shrink-0 text-muted-foreground/75"
+                strokeWidth={1.6}
+              />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={desktopSearchQuery}
+                onChange={(e) => setDesktopSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    setDesktopSearchQuery("");
+                    setSearchOpen(false);
+                  }
+                }}
+                placeholder="Filter chats..."
+                className="w-full bg-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground/65 focus:outline-none"
+              />
               <button
                 type="button"
                 onClick={() => {
-                  window.dispatchEvent(
-                    new CustomEvent("entry:open-command-palette"),
-                  );
+                  setDesktopSearchQuery("");
+                  setSearchOpen(false);
                 }}
-                className="ml-1 shrink-0 rounded border border-border/70 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground transition-colors duration-120 hover:border-border hover:text-foreground cursor-pointer"
-                title="Open command palette (⌘K)"
-                aria-label="Open command palette"
+                className="ml-1 grid size-5 place-items-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.06] hover:text-foreground cursor-pointer"
+                aria-label="Close filter"
               >
-                ⌘K
+                <X className="size-3" strokeWidth={1.6} />
               </button>
-            )}
+            </div>
           </div>
-        </div>
+        ) : null}
 
-        {/* Active / Archive */}
-        <div className="mt-2 mb-2.5 px-1.5">
-          <div className="grid grid-cols-2 gap-0.5 rounded-lg border border-border/50 bg-foreground/[0.035] p-0.5">
+        {/* Contextual Archive Mode Banner (only shown while browsing Archive) */}
+        {showArchived ? (
+          <div className="mb-1.5 flex items-center justify-between px-3 py-1 text-[11.5px]">
+            <span className="font-medium text-foreground">
+              Archived{" "}
+              <span className="font-mono text-[10.5px] tabular-nums text-muted-foreground">
+                {archivedCount}
+              </span>
+            </span>
             <button
               type="button"
               onClick={() => setShowArchived(false)}
-              className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-[background-color,color,box-shadow] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
-                !showArchived
-                  ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:bg-white/[0.08]"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+              className="text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
             >
-              <span>Active</span>
-              {activeSessions.length > 0 ? (
-                <span className="font-mono text-[10.5px] tabular-nums text-muted-foreground/75">
-                  {activeSessions.length}
-                </span>
-              ) : null}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowArchived(true)}
-              className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-[background-color,color,box-shadow] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
-                showArchived
-                  ? "bg-background text-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)] dark:bg-white/[0.08]"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <span>Archive</span>
-              {archivedCount > 0 ? (
-                <span className="font-mono text-[10.5px] tabular-nums text-muted-foreground/75">
-                  {archivedCount}
-                </span>
-              ) : null}
+              Back to active
             </button>
           </div>
-        </div>
+        ) : null}
 
-        {/* Unified Smooth Repository & Session Branch Tree */}
+        {/* Unified Smooth Repository & Recency-Grouped Session List */}
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 sable-side-list">
           {showLoadingSkeleton ? (
             <div className="space-y-1 p-1">
@@ -1094,38 +1148,39 @@ export function InboxSidebar({
                 )}
               />
 
-              {standaloneSessions.length > 0 ? (
-                <div className="mt-2 space-y-0.5 border-t border-border/50 pt-2.5">
-                  <div className="mb-0.5 flex h-7 items-center justify-between px-2">
-                    <span className="text-[11.5px] font-medium text-muted-foreground">
-                      Chats
-                    </span>
-                    <span className="rounded-md bg-foreground/[0.045] px-1.5 py-0.5 font-mono text-[10.5px] leading-none tabular-nums text-muted-foreground/75">
-                      {standaloneSessions.length}
-                    </span>
-                  </div>
-                  <div className="space-y-0.5">
-                    {standaloneSessions.map((sessionItem) => (
-                      <div key={sessionItem.id}>
-                        <SessionRow
-                          session={sessionItem}
-                          isActive={sessionItem.id === activeSessionId}
-                          isPending={sessionItem.id === pendingSessionId}
-                          folders={customProjects}
-                          onSessionClick={handleSessionClick}
-                          onSessionPrefetch={handleSessionPrefetch}
-                          onRenameSession={onRenameSession}
-                          onMoveSessionToFolder={onMoveSessionToFolder}
-                          onArchiveSession={handleArchiveSession}
-                          onUnarchiveSession={handleUnarchiveSession}
-                          onOpenBranchPicker={handleOpenBranchPicker}
-                        />
-                        {sessionItem.id === activeSessionId && (
-                          <SessionChildChats sessionId={sessionItem.id} />
-                        )}
+              {recencyGroups.length > 0 ? (
+                <div className="mt-1 space-y-3 border-t border-border/50 pt-2">
+                  {recencyGroups.map((group) => (
+                    <div key={group.label} className="space-y-0.5">
+                      <div className="flex h-6 items-center justify-between px-2">
+                        <span className="text-[11px] font-medium text-muted-foreground/75">
+                          {group.label}
+                        </span>
                       </div>
-                    ))}
-                  </div>
+                      <div className="space-y-0.5">
+                        {group.sessions.map((sessionItem) => (
+                          <div key={sessionItem.id}>
+                            <SessionRow
+                              session={sessionItem}
+                              isActive={sessionItem.id === activeSessionId}
+                              isPending={sessionItem.id === pendingSessionId}
+                              folders={customProjects}
+                              onSessionClick={handleSessionClick}
+                              onSessionPrefetch={handleSessionPrefetch}
+                              onRenameSession={onRenameSession}
+                              onMoveSessionToFolder={onMoveSessionToFolder}
+                              onArchiveSession={handleArchiveSession}
+                              onUnarchiveSession={handleUnarchiveSession}
+                              onOpenBranchPicker={handleOpenBranchPicker}
+                            />
+                            {sessionItem.id === activeSessionId && (
+                              <SessionChildChats sessionId={sessionItem.id} />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : projectGroups.length === 0 ? (
                 <div className="px-3 py-8 text-center text-xs text-muted-foreground">
@@ -1201,9 +1256,9 @@ export function InboxSidebar({
           )}
         </div>
 
-        {/* Usage Meters + Clickable User Profile Popover & Balance Box */}
+        {/* Ultra-Compact Bottom Dock: Single-Row Usage Bar + User Profile */}
         {sidebarUser ? (
-          <div className="mt-1.5 space-y-2 border-t border-border/60 px-2 pt-2.5 pb-2">
+          <div className="mt-1 space-y-1 border-t border-border/50 px-1.5 py-2">
             <DesktopCodexBillingStatus />
             <div className="flex items-center gap-1.5">
               <Popover open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>
