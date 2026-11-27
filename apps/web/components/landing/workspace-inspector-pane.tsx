@@ -9,18 +9,23 @@ import {
   Globe,
   RefreshCw,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import type { InspectorTab, PreviewScenario } from "./workspace-preview-data";
+
+const EASE_OUT = [0.22, 1, 0.36, 1] as const;
 
 interface WorkspaceInspectorPaneProps {
   readonly activeTab: InspectorTab;
   readonly onSelectTab: (tab: InspectorTab) => void;
   readonly scenario: PreviewScenario;
+  readonly visibleDiffCount?: number;
 }
 
 export function WorkspaceInspectorPane({
   activeTab,
   onSelectTab,
   scenario,
+  visibleDiffCount,
 }: WorkspaceInspectorPaneProps) {
   const tabs: readonly {
     readonly id: InspectorTab;
@@ -50,24 +55,44 @@ export function WorkspaceInspectorPane({
                 role="tab"
                 aria-selected={active}
                 onClick={() => onSelectTab(tab.id)}
-                className={`inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors duration-150 ${
+                className={`relative inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors duration-150 ${
                   active
-                    ? "bg-(--l-panel-active) text-(--l-panel-fg)"
+                    ? "text-(--l-panel-fg)"
                     : "text-(--l-panel-fg-3) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
                 }`}
               >
+                {active && (
+                  <motion.span
+                    layoutId="hero-inspector-tab"
+                    transition={{
+                      type: "spring",
+                      duration: 0.34,
+                      bounce: 0.14,
+                    }}
+                    className="absolute inset-0 rounded-md bg-(--l-panel-active)"
+                  />
+                )}
                 {tab.id === "diff" && (
-                  <FileDiff className="size-3.5 shrink-0" strokeWidth={1.5} />
+                  <FileDiff
+                    className="relative z-10 size-3.5 shrink-0"
+                    strokeWidth={1.5}
+                  />
                 )}
                 {tab.id === "preview" && (
-                  <Globe className="size-3.5 shrink-0" strokeWidth={1.5} />
+                  <Globe
+                    className="relative z-10 size-3.5 shrink-0"
+                    strokeWidth={1.5}
+                  />
                 )}
                 {tab.id === "context" && (
-                  <Gauge className="size-3.5 shrink-0" strokeWidth={1.5} />
+                  <Gauge
+                    className="relative z-10 size-3.5 shrink-0"
+                    strokeWidth={1.5}
+                  />
                 )}
-                <span>{tab.label}</span>
+                <span className="relative z-10">{tab.label}</span>
                 {tab.badge && (
-                  <span className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-3)">
+                  <span className="relative z-10 font-mono text-[11px] tabular-nums text-(--l-panel-fg-3)">
                     {tab.badge}
                   </span>
                 )}
@@ -84,15 +109,47 @@ export function WorkspaceInspectorPane({
 
       {/* Tab Body */}
       <div className="flex flex-1 flex-col overflow-hidden p-3.5">
-        {activeTab === "diff" && <DiffTabContent scenario={scenario} />}
-        {activeTab === "preview" && <PreviewTabContent scenario={scenario} />}
-        {activeTab === "context" && <ContextTabContent scenario={scenario} />}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={`${scenario.id}-${activeTab}`}
+            initial={{ opacity: 0, transform: "translateY(4px)" }}
+            animate={{ opacity: 1, transform: "translateY(0px)" }}
+            exit={{ opacity: 0, transform: "translateY(-4px)" }}
+            transition={{ duration: 0.16, ease: EASE_OUT }}
+            className="flex min-w-0 flex-1 flex-col"
+          >
+            {activeTab === "diff" && (
+              <DiffTabContent
+                scenario={scenario}
+                visibleDiffCount={visibleDiffCount}
+              />
+            )}
+            {activeTab === "preview" && (
+              <PreviewTabContent scenario={scenario} />
+            )}
+            {activeTab === "context" && (
+              <ContextTabContent scenario={scenario} />
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );
 }
 
-function DiffTabContent({ scenario }: { readonly scenario: PreviewScenario }) {
+function DiffTabContent({
+  scenario,
+  visibleDiffCount,
+}: {
+  readonly scenario: PreviewScenario;
+  readonly visibleDiffCount?: number;
+}) {
+  const count =
+    visibleDiffCount === undefined
+      ? scenario.diffLines.length
+      : Math.min(visibleDiffCount, scenario.diffLines.length);
+  const lines = scenario.diffLines.slice(0, count);
+
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-3">
       <div className="flex items-center justify-between gap-2 text-xs">
@@ -110,12 +167,19 @@ function DiffTabContent({ scenario }: { readonly scenario: PreviewScenario }) {
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-(--l-panel-border) bg-(--l-code-bg) py-2 font-mono text-[11px] leading-[1.55] tabular-nums">
-        {scenario.diffLines.map((line, index) => {
+        {lines.map((line, index) => {
           const isAdd = line.kind === "add";
           const isDel = line.kind === "del";
           return (
-            <div
-              key={`${line.lineNo}-${index}`}
+            <motion.div
+              key={`${scenario.id}-${line.lineNo}-${index}`}
+              initial={
+                visibleDiffCount !== undefined && index >= 7
+                  ? { opacity: 0, transform: "translateX(-4px)" }
+                  : false
+              }
+              animate={{ opacity: 1, transform: "translateX(0px)" }}
+              transition={{ duration: 0.16, ease: EASE_OUT }}
               className={`flex items-baseline gap-2.5 px-2.5 ${
                 isAdd
                   ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
@@ -131,7 +195,7 @@ function DiffTabContent({ scenario }: { readonly scenario: PreviewScenario }) {
                 {isAdd ? "+" : isDel ? "-" : " "}
               </span>
               <span className="whitespace-pre">{line.text}</span>
-            </div>
+            </motion.div>
           );
         })}
       </div>

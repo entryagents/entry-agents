@@ -3,50 +3,131 @@
 import {
   ArrowUp,
   Check,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   Copy,
-  Folder,
-  FolderGit2,
   GitFork,
-  PanelLeft,
+  Loader2,
   Paperclip,
-  Plus,
+  Play,
   ShieldCheck,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import {
+  AnimatePresence,
+  motion,
+  useMotionTemplate,
+  useMotionValue,
+  useReducedMotion,
+} from "motion/react";
+import { type MouseEvent, useEffect, useState } from "react";
 import { EntryMark } from "@/components/entry-mark";
 import { WorkspaceInspectorPane } from "./workspace-inspector-pane";
 import {
   type InspectorTab,
   PREVIEW_SCENARIOS,
   type ScenarioId,
-  SIDEBAR_CHATS,
-  SIDEBAR_PROJECTS,
-  USAGE_WINDOWS,
 } from "./workspace-preview-data";
+import { WorkspaceSidebarPreview } from "./workspace-sidebar-preview";
 
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+const DEMO_SCENARIOS: readonly ScenarioId[] = ["resend", "oauth"];
+
+type DemoStage = 0 | 1 | 2;
 
 export function AppMockup() {
+  const prefersReduced = useReducedMotion() ?? false;
   const [scenarioId, setScenarioId] = useState<ScenarioId>("resend");
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("diff");
+  const [demoStage, setDemoStage] = useState<DemoStage>(prefersReduced ? 2 : 0);
+  const [autoPlay, setAutoPlay] = useState(!prefersReduced);
   const [stepsExpanded, setStepsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mobilePane, setMobilePane] = useState<"chat" | "inspector">("chat");
 
+  // Subtle monochrome pointer hairline spotlight on desktop hover (zero React re-renders)
+  const pointerX = useMotionValue(540);
+  const pointerY = useMotionValue(120);
+  const pointerBg = useMotionTemplate`radial-gradient(520px circle at ${pointerX}px ${pointerY}px, rgba(186, 230, 253, 0.14), transparent 65%)`;
+
   const scenario = PREVIEW_SCENARIOS[scenarioId];
 
+  // Self-playing live desktop agent demo:
+  // Stage 0: initial 2 steps done, step 3 running, partial diff visible
+  // Stage 1: step 3 done, step 4 running, full diff streams in
+  // Stage 2: turn complete -> reply + file summary appear -> inspector slides to Preview
+  // Then cycles cleanly between DeepSeek V4.1 Flash 1017 & GLM 5.3 Flash scenarios
+  useEffect(() => {
+    if (prefersReduced) {
+      setDemoStage(2);
+      setAutoPlay(false);
+      return;
+    }
+    if (!autoPlay) return;
+
+    setDemoStage(0);
+    setInspectorTab("diff");
+    setStepsExpanded(false);
+
+    const t1 = window.setTimeout(() => {
+      setDemoStage(1);
+    }, 1400);
+
+    const t2 = window.setTimeout(() => {
+      setDemoStage(2);
+      setInspectorTab("preview");
+    }, 2800);
+
+    const t3 = window.setTimeout(() => {
+      setScenarioId((current) => {
+        const idx = DEMO_SCENARIOS.indexOf(current);
+        return DEMO_SCENARIOS[(idx + 1) % DEMO_SCENARIOS.length] ?? "resend";
+      });
+    }, 6600);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  }, [autoPlay, prefersReduced, scenarioId]);
+
+  const stopAutoPlayAndSettle = () => {
+    if (autoPlay) {
+      setAutoPlay(false);
+    }
+    setDemoStage(2);
+  };
+
   const handleSelectScenario = (nextId: ScenarioId) => {
+    setAutoPlay(false);
     setScenarioId(nextId);
+    setDemoStage(2);
+    setInspectorTab("diff");
     setStepsExpanded(false);
     setCopied(false);
   };
 
+  const handleSelectInspectorTab = (tab: InspectorTab) => {
+    stopAutoPlayAndSettle();
+    setInspectorTab(tab);
+  };
+
   const openInspectorTab = (tab: InspectorTab) => {
+    stopAutoPlayAndSettle();
     setInspectorTab(tab);
     setMobilePane("inspector");
+  };
+
+  const handleToggleAutoPlay = () => {
+    if (autoPlay) {
+      stopAutoPlayAndSettle();
+      return;
+    }
+    setStepsExpanded(false);
+    setDemoStage(0);
+    setInspectorTab("diff");
+    setAutoPlay(true);
   };
 
   const handleCopy = () => {
@@ -54,173 +135,43 @@ export function AppMockup() {
     window.setTimeout(() => setCopied(false), 1500);
   };
 
+  const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    pointerX.set(event.clientX - rect.left);
+    pointerY.set(event.clientY - rect.top);
+  };
+
+  const isRunning = autoPlay && demoStage < 2;
+  const visibleStepCount =
+    demoStage === 0 ? 3 : demoStage === 1 ? 4 : scenario.steps.length;
+  const visibleDiffCount =
+    demoStage === 0
+      ? Math.min(8, scenario.diffLines.length)
+      : scenario.diffLines.length;
+
   const ringCircumference = 40.84;
   const ringOffset = ringCircumference * (1 - scenario.contextPct / 100);
 
   return (
     <div
       aria-label="Interactive Entry workspace preview"
-      className="min-w-0 rounded-[20px] border border-(--l-border) bg-(--l-surface)/55 p-1.5 shadow-(--l-window-shadow) backdrop-blur-md"
+      onMouseMove={handleMouseMove}
+      className="group/bezel relative min-w-0 rounded-[20px] border border-(--l-border) bg-(--l-surface)/55 p-1.5 shadow-(--l-window-shadow) backdrop-blur-md"
     >
-      <div className="min-w-0 overflow-hidden rounded-[14px] border border-(--l-panel-border) bg-(--l-panel)">
+      {/* Subtle desktop cursor hairline illumination */}
+      <motion.div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 hidden rounded-[20px] opacity-0 transition-opacity duration-300 group-hover/bezel:opacity-100 md:block"
+        style={{ background: pointerBg }}
+      />
+
+      <div className="relative min-w-0 overflow-hidden rounded-[14px] border border-(--l-panel-border) bg-(--l-panel)">
         <div className="grid min-w-0 md:grid-cols-[minmax(0,1fr)_336px] lg:grid-cols-[232px_minmax(0,1fr)_364px]">
-          {/* Left Sidebar — 1:1 mirror of the PR #324 Entry sidebar */}
-          <aside
-            aria-label="Workspace sidebar preview"
-            className="hidden min-w-0 flex-col border-r border-(--l-panel-border) bg-(--l-surface) lg:flex"
-          >
-            {/* Header */}
-            <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--l-panel-border) px-3">
-              <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-tight text-(--l-panel-fg)">
-                <EntryMark className="size-4 shrink-0" />
-                <span>Entry</span>
-              </span>
-              <div className="flex items-center gap-1 text-(--l-panel-fg-3)">
-                <span className="inline-flex size-6 items-center justify-center rounded-md">
-                  <Plus className="size-3.5" strokeWidth={1.6} />
-                </span>
-                <span className="inline-flex size-6 items-center justify-center rounded-md">
-                  <PanelLeft className="size-3.5" strokeWidth={1.5} />
-                </span>
-              </div>
-            </div>
-
-            {/* Projects & Chats */}
-            <div className="flex-1 space-y-4 overflow-hidden px-2 py-2.5">
-              {/* Projects */}
-              <div>
-                <div className="flex h-7 items-center justify-between px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
-                  <span>Projects</span>
-                  <span className="font-mono text-[10px] tabular-nums opacity-70">
-                    {SIDEBAR_PROJECTS.length}
-                  </span>
-                </div>
-                <div className="space-y-0.5">
-                  {SIDEBAR_PROJECTS.map((project) => (
-                    <div key={project.name}>
-                      <div className="flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-(--l-panel-fg)">
-                        {project.expanded ? (
-                          <ChevronDown
-                            className="size-3 shrink-0 text-(--l-panel-fg-3)"
-                            strokeWidth={1.75}
-                          />
-                        ) : (
-                          <ChevronRight
-                            className="size-3 shrink-0 text-(--l-panel-fg-3)"
-                            strokeWidth={1.75}
-                          />
-                        )}
-                        {project.expanded ? (
-                          <FolderGit2
-                            className="size-3.5 shrink-0 text-(--l-panel-fg-2)"
-                            strokeWidth={1.5}
-                          />
-                        ) : (
-                          <Folder
-                            className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
-                            strokeWidth={1.5}
-                          />
-                        )}
-                        <span className="truncate">{project.name}</span>
-                      </div>
-
-                      {project.expanded && project.chats.length > 0 && (
-                        <div className="ml-[13px] mt-0.5 space-y-0.5 border-l border-(--l-panel-border) pl-2">
-                          {project.chats.map((chat) => {
-                            const active = chat.id === scenarioId;
-                            return (
-                              <button
-                                key={chat.id}
-                                type="button"
-                                onClick={() => handleSelectScenario(chat.id)}
-                                className={`flex h-7 w-full cursor-pointer items-center rounded-md px-2 text-left text-[12px] transition-colors duration-150 ${
-                                  active
-                                    ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
-                                    : "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
-                                }`}
-                              >
-                                <span className="truncate">{chat.title}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Chats */}
-              <div>
-                <div className="flex h-7 items-center justify-between px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
-                  <span>Chats</span>
-                </div>
-                <div className="space-y-0.5">
-                  {SIDEBAR_CHATS.map((chat) => {
-                    const active = chat.id === scenarioId;
-                    const interactive = Boolean(chat.id);
-                    return (
-                      <button
-                        key={chat.title}
-                        type="button"
-                        disabled={!interactive}
-                        onClick={() => {
-                          if (chat.id) handleSelectScenario(chat.id);
-                        }}
-                        className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] transition-colors duration-150 ${
-                          interactive ? "cursor-pointer" : "cursor-default"
-                        } ${
-                          active
-                            ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
-                            : interactive
-                              ? "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
-                              : "text-(--l-panel-fg-3)"
-                        }`}
-                      >
-                        {chat.unread && !active && (
-                          <span className="size-1.5 shrink-0 rounded-full bg-(--l-accent)" />
-                        )}
-                        <span className="truncate">{chat.title}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* PR #324 Horizontal Usage Card */}
-            <div className="border-t border-(--l-panel-border) p-2.5">
-              <div className="rounded-lg border border-(--l-panel-border) bg-(--l-panel) px-2.5 py-2">
-                <div className="flex items-baseline justify-between text-[11px]">
-                  <span className="font-medium text-(--l-panel-fg)">
-                    Builder
-                  </span>
-                  <span className="font-mono text-[11px] font-medium tabular-nums text-(--l-panel-fg-2)">
-                    $21.40 left
-                  </span>
-                </div>
-                <div className="mt-2 space-y-1.5">
-                  {USAGE_WINDOWS.map((win) => (
-                    <div
-                      key={win.label}
-                      className="grid grid-cols-[24px_1fr_28px] items-center gap-2 text-[10px] tabular-nums"
-                    >
-                      <span className="text-(--l-panel-fg-3)">{win.label}</span>
-                      <div className="h-[3px] w-full overflow-hidden rounded-full bg-(--l-panel-border)">
-                        <div
-                          className="h-full rounded-full bg-(--l-panel-fg)/75"
-                          style={{ width: `${win.pct}%` }}
-                        />
-                      </div>
-                      <span className="text-right font-mono text-(--l-panel-fg-3)">
-                        {win.pct}%
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </aside>
+          <WorkspaceSidebarPreview
+            activeScenarioId={scenarioId}
+            isStreamingActive={isRunning}
+            onSelectScenario={handleSelectScenario}
+          />
 
           {/* Center Pane — Authentic Entry Chat */}
           <div
@@ -240,6 +191,31 @@ export function AppMockup() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
+                {!prefersReduced && (
+                  <button
+                    type="button"
+                    onClick={handleToggleAutoPlay}
+                    className="hidden cursor-pointer items-center gap-1.5 rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) px-2 py-0.5 text-[11px] font-medium text-(--l-panel-fg-2) transition-colors hover:text-(--l-panel-fg) sm:inline-flex"
+                    title={
+                      autoPlay
+                        ? "Pause live workspace playback"
+                        : "Replay live workspace run"
+                    }
+                  >
+                    {autoPlay ? (
+                      <>
+                        <span className="size-1.5 rounded-full bg-emerald-500" />
+                        <span>Live</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="size-2.5" strokeWidth={1.8} />
+                        <span>Replay</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
                 <div className="inline-flex rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) p-0.5 text-[11px] md:hidden">
                   <button
                     type="button"
@@ -250,7 +226,7 @@ export function AppMockup() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setMobilePane("inspector")}
+                    onClick={() => openInspectorTab(inspectorTab)}
                     className="cursor-pointer rounded-xs px-2 py-0.5 text-(--l-panel-fg-3)"
                   >
                     Workspace
@@ -295,13 +271,13 @@ export function AppMockup() {
 
             {/* Chat messages */}
             <div className="flex flex-1 flex-col justify-between gap-5 p-4 sm:p-5">
-              <AnimatePresence mode="wait">
+              <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={scenario.id}
                   initial={{ opacity: 0, transform: "translateY(4px)" }}
                   animate={{ opacity: 1, transform: "translateY(0px)" }}
                   exit={{ opacity: 0, transform: "translateY(-4px)" }}
-                  transition={{ duration: 0.16, ease: EASE_OUT }}
+                  transition={{ duration: 0.18, ease: EASE_OUT }}
                   className="space-y-4"
                 >
                   <div className="flex items-center justify-between rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-[11px] text-(--l-panel-fg-3)">
@@ -321,10 +297,18 @@ export function AppMockup() {
                     <div>
                       <button
                         type="button"
-                        onClick={() => setStepsExpanded((prev) => !prev)}
+                        onClick={() => {
+                          stopAutoPlayAndSettle();
+                          setStepsExpanded((prev) => !prev);
+                        }}
                         className="inline-flex cursor-pointer items-center gap-1.5 text-xs tabular-nums text-(--l-panel-fg-3) transition-colors hover:text-(--l-panel-fg)"
                       >
-                        {stepsExpanded ? (
+                        {isRunning ? (
+                          <Loader2
+                            className="size-3.5 animate-spin text-(--l-accent)"
+                            strokeWidth={1.6}
+                          />
+                        ) : stepsExpanded ? (
                           <ChevronDown className="size-3.5" strokeWidth={1.5} />
                         ) : (
                           <ChevronRight
@@ -332,91 +316,143 @@ export function AppMockup() {
                             strokeWidth={1.5}
                           />
                         )}
-                        <span>{scenario.workedLabel}</span>
+                        <span>
+                          {isRunning
+                            ? `Working · step ${visibleStepCount} of ${scenario.steps.length}`
+                            : scenario.workedLabel}
+                        </span>
                       </button>
 
-                      {stepsExpanded && (
+                      {(isRunning || stepsExpanded) && (
                         <div className="mt-2 space-y-1 border-l border-(--l-panel-border) pl-3 font-mono text-[11px] tabular-nums">
-                          {scenario.steps.map((step) => (
-                            <div
-                              key={step.id}
-                              className="flex items-center justify-between gap-3 py-0.5 text-(--l-panel-fg-2)"
-                            >
-                              <span className="min-w-0 truncate">
-                                <span className="text-(--l-accent)">
-                                  {step.tool}
-                                </span>{" "}
-                                <span>{step.detail}</span>
-                              </span>
-                              <span className="shrink-0 text-(--l-panel-fg-4)">
-                                {step.duration}
-                              </span>
-                            </div>
-                          ))}
+                          {scenario.steps
+                            .slice(0, visibleStepCount)
+                            .map((step, index) => {
+                              const stepActive =
+                                isRunning && index === visibleStepCount - 1;
+                              return (
+                                <motion.div
+                                  key={step.id}
+                                  initial={
+                                    isRunning && index >= 2
+                                      ? {
+                                          opacity: 0,
+                                          transform: "translateY(3px)",
+                                        }
+                                      : false
+                                  }
+                                  animate={{
+                                    opacity: 1,
+                                    transform: "translateY(0px)",
+                                  }}
+                                  transition={{
+                                    duration: 0.16,
+                                    ease: EASE_OUT,
+                                  }}
+                                  className="flex items-center justify-between gap-3 py-0.5 text-(--l-panel-fg-2)"
+                                >
+                                  <span className="inline-flex min-w-0 items-center gap-1.5 truncate">
+                                    {stepActive ? (
+                                      <Loader2
+                                        className="size-3 shrink-0 animate-spin text-(--l-accent)"
+                                        strokeWidth={1.6}
+                                      />
+                                    ) : (
+                                      <CheckCircle2
+                                        className="size-3 shrink-0 text-emerald-500"
+                                        strokeWidth={1.6}
+                                      />
+                                    )}
+                                    <span className="text-(--l-accent)">
+                                      {step.tool}
+                                    </span>
+                                    <span className="truncate">
+                                      {step.detail}
+                                    </span>
+                                  </span>
+                                  <span className="shrink-0 text-(--l-panel-fg-4)">
+                                    {stepActive ? "running" : step.duration}
+                                  </span>
+                                </motion.div>
+                              );
+                            })}
                         </div>
                       )}
                     </div>
 
-                    <p className="text-[13.5px] leading-relaxed text-(--l-panel-fg)">
-                      {scenario.replyBeforeCode}
-                      <code className="rounded bg-(--l-panel-surface) px-1 py-0.5 font-mono text-[12px]">
-                        {scenario.replyCode}
-                      </code>
-                      {scenario.replyAfterCode}
-                    </p>
+                    {!isRunning && (
+                      <motion.div
+                        initial={
+                          prefersReduced
+                            ? false
+                            : { opacity: 0, transform: "translateY(4px)" }
+                        }
+                        animate={{ opacity: 1, transform: "translateY(0px)" }}
+                        transition={{ duration: 0.22, ease: EASE_OUT }}
+                        className="space-y-3"
+                      >
+                        <p className="text-[13.5px] leading-relaxed text-(--l-panel-fg)">
+                          {scenario.replyBeforeCode}
+                          <code className="rounded bg-(--l-panel-surface) px-1 py-0.5 font-mono text-[12px]">
+                            {scenario.replyCode}
+                          </code>
+                          {scenario.replyAfterCode}
+                        </p>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[11px] text-(--l-panel-fg-3)">
-                      <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[11px] text-(--l-panel-fg-3)">
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              onClick={handleCopy}
+                              className="inline-flex cursor-pointer items-center gap-1 text-(--l-panel-fg-2) transition-colors hover:text-(--l-panel-fg)"
+                            >
+                              {copied ? (
+                                <Check
+                                  className="size-3 text-emerald-500"
+                                  strokeWidth={1.75}
+                                />
+                              ) : (
+                                <Copy className="size-3" strokeWidth={1.5} />
+                              )}
+                              <span>{copied ? "Copied" : "Copy"}</span>
+                            </button>
+                            <span className="inline-flex items-center gap-1 text-(--l-panel-fg-2)">
+                              <GitFork className="size-3" strokeWidth={1.5} />
+                              <span>Fork</span>
+                            </span>
+                          </div>
+                          <div className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-3)">
+                            {scenario.timestamp} · {scenario.model} ·{" "}
+                            {scenario.cost}
+                          </div>
+                        </div>
+
                         <button
                           type="button"
-                          onClick={handleCopy}
-                          className="inline-flex cursor-pointer items-center gap-1 text-(--l-panel-fg-2) transition-colors hover:text-(--l-panel-fg)"
+                          onClick={() => openInspectorTab("diff")}
+                          className="flex w-full cursor-pointer items-center justify-between rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-left text-xs transition-colors hover:border-(--l-fg-5)"
                         >
-                          {copied ? (
-                            <Check
-                              className="size-3 text-emerald-500"
-                              strokeWidth={1.75}
+                          <span className="inline-flex items-center gap-2">
+                            <ChevronRight
+                              className="size-3.5 text-(--l-panel-fg-3)"
+                              strokeWidth={1.5}
                             />
-                          ) : (
-                            <Copy className="size-3" strokeWidth={1.5} />
-                          )}
-                          <span>{copied ? "Copied" : "Copy"}</span>
+                            <span className="font-medium text-(--l-panel-fg)">
+                              {scenario.filesChangedCount} files changed
+                            </span>
+                            <span className="font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
+                              +{scenario.totalAdded}
+                            </span>
+                            <span className="font-mono text-[11px] tabular-nums text-rose-600 dark:text-rose-400">
+                              -{scenario.totalRemoved}
+                            </span>
+                          </span>
+                          <span className="text-[11px] text-(--l-panel-fg-3)">
+                            Inspect diff
+                          </span>
                         </button>
-                        <span className="inline-flex items-center gap-1 text-(--l-panel-fg-2)">
-                          <GitFork className="size-3" strokeWidth={1.5} />
-                          <span>Fork</span>
-                        </span>
-                      </div>
-                      <div className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-3)">
-                        {scenario.timestamp} · {scenario.model} ·{" "}
-                        {scenario.cost}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => openInspectorTab("diff")}
-                      className="flex w-full cursor-pointer items-center justify-between rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-left text-xs transition-colors hover:border-(--l-fg-5)"
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <ChevronRight
-                          className="size-3.5 text-(--l-panel-fg-3)"
-                          strokeWidth={1.5}
-                        />
-                        <span className="font-medium text-(--l-panel-fg)">
-                          {scenario.filesChangedCount} files changed
-                        </span>
-                        <span className="font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
-                          +{scenario.totalAdded}
-                        </span>
-                        <span className="font-mono text-[11px] tabular-nums text-rose-600 dark:text-rose-400">
-                          -{scenario.totalRemoved}
-                        </span>
-                      </span>
-                      <span className="text-[11px] text-(--l-panel-fg-3)">
-                        Inspect diff
-                      </span>
-                    </button>
+                      </motion.div>
+                    )}
                   </div>
                 </motion.div>
               </AnimatePresence>
@@ -470,8 +506,9 @@ export function AppMockup() {
             </div>
             <WorkspaceInspectorPane
               activeTab={inspectorTab}
-              onSelectTab={setInspectorTab}
+              onSelectTab={handleSelectInspectorTab}
               scenario={scenario}
+              visibleDiffCount={visibleDiffCount}
             />
           </div>
         </div>

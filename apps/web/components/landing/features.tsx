@@ -82,7 +82,7 @@ function UbuntuMachineShowcase() {
   const [view, setView] = useState<"console" | "preview">("console");
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [visibleLines, setVisibleLines] = useState(
-    prefersReduced ? TERMINAL_LINES.length : 1,
+    prefersReduced ? TERMINAL_LINES.length : 3,
   );
   const [userControlled, setUserControlled] = useState(false);
 
@@ -98,14 +98,12 @@ function UbuntuMachineShowcase() {
     const runCycle = () => {
       setView("console");
       setDevice("desktop");
-      setVisibleLines(1);
-      timers.push(window.setTimeout(() => setVisibleLines(2), 550));
-      timers.push(window.setTimeout(() => setVisibleLines(3), 1150));
-      timers.push(window.setTimeout(() => setVisibleLines(4), 1750));
-      timers.push(window.setTimeout(() => setVisibleLines(5), 2350));
-      timers.push(window.setTimeout(() => setView("preview"), 3800));
-      timers.push(window.setTimeout(() => setDevice("mobile"), 5400));
-      timers.push(window.setTimeout(() => setDevice("desktop"), 7200));
+      setVisibleLines(3);
+      timers.push(window.setTimeout(() => setVisibleLines(4), 900));
+      timers.push(window.setTimeout(() => setVisibleLines(5), 1800));
+      timers.push(window.setTimeout(() => setView("preview"), 3400));
+      timers.push(window.setTimeout(() => setDevice("mobile"), 5200));
+      timers.push(window.setTimeout(() => setDevice("desktop"), 7100));
     };
 
     runCycle();
@@ -237,7 +235,7 @@ function UbuntuMachineShowcase() {
           </div>
 
           <div className="min-h-[268px] p-5 sm:p-6">
-            <AnimatePresence mode="wait">
+            <AnimatePresence mode="wait" initial={false}>
               {view === "console" ? (
                 <motion.div
                   key="console"
@@ -549,7 +547,7 @@ function ExecutionModesShowcase() {
 
       {/* Animated SVG Execution Topology */}
       <div className="mt-8 overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-panel) p-5 sm:p-8">
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" initial={false}>
           {mode === "waves" ? (
             <motion.div
               key="waves"

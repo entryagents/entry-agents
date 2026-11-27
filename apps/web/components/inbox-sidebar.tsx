@@ -3,13 +3,10 @@
 import {
   Archive,
   ChevronDown,
-  CircleDashed,
   Folder,
   FolderGit2,
   FolderInput,
   GitBranch,
-  GitMerge,
-  GitPullRequest,
   Loader2,
   LogOut,
   Monitor,
@@ -75,6 +72,7 @@ import type { SessionWithUnread } from "@/hooks/use-sessions";
 import { signOut } from "@/lib/auth/actions";
 import type { Project } from "@/lib/db/schema";
 import type { Session as AuthSession } from "@/lib/session/types";
+import { formatCompactAge } from "@/lib/sessions/format-compact-age";
 import { groupSessionsByProject } from "@/lib/sessions/group-projects";
 
 type InboxSidebarProps = {
@@ -118,125 +116,12 @@ type ArchivedSessionsResponse = {
 };
 
 const ARCHIVED_SESSIONS_PAGE_SIZE = 50;
+const DEFAULT_VISIBLE_CHATS = 7;
 
 const sessionRowPerformanceStyle: CSSProperties = {
   contentVisibility: "auto",
   containIntrinsicSize: "2.25rem",
 };
-
-function DiffStats({
-  added,
-  removed,
-}: {
-  added: number | null;
-  removed: number | null;
-}) {
-  if (added === null && removed === null) return null;
-  if (added === 0 && removed === 0) return null;
-
-  return (
-    <span className="flex items-center gap-0.5 font-mono text-[10px]">
-      {added !== null ? (
-        <span className="text-green-600 dark:text-green-500">+{added}</span>
-      ) : null}
-      {removed !== null ? (
-        <span className="text-red-600 dark:text-red-400">-{removed}</span>
-      ) : null}
-    </span>
-  );
-}
-
-function getSessionStatusIcon(session: SessionWithUnread) {
-  // Actively streaming / waiting for LLM
-  if (session.hasStreaming) {
-    return (
-      <Loader2
-        className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // PR merged
-  if (session.prNumber && session.prStatus === "merged") {
-    return (
-      <GitMerge
-        className="h-3.5 w-3.5 shrink-0 text-indigo-500"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // PR open
-  if (session.prNumber && session.prStatus === "open") {
-    return (
-      <GitPullRequest
-        className="h-3.5 w-3.5 shrink-0 text-green-500"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // PR closed (not merged)
-  if (session.prNumber && session.prStatus === "closed") {
-    return (
-      <GitPullRequest
-        className="h-3.5 w-3.5 shrink-0 text-red-500"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // Has a branch with code changes → needs human follow-up
-  const hasDiff = session.linesAdded || session.linesRemoved;
-  if (session.branch && hasDiff) {
-    return (
-      <GitBranch
-        className="h-3.5 w-3.5 shrink-0 text-amber-500"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // Has a branch but no changes yet → new session, still getting started
-  if (session.branch) {
-    return (
-      <GitBranch
-        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // No repository — plain chat session
-  const isChat = !session.repoName?.trim();
-  if (isChat) {
-    return (
-      <CircleDashed
-        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // Creating / instantiating sandbox (no branch yet)
-  if (session.status === "running") {
-    return (
-      <Monitor
-        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // Default: sandbox icon
-  return (
-    <Monitor
-      className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50"
-      strokeWidth={1.5}
-    />
-  );
-}
 
 function getRepoGroupLabel(session: SessionWithUnread): string {
   const repoName = session.repoName?.trim();
@@ -303,8 +188,10 @@ const SessionRow = memo(function SessionRow({
     renameInputRef.current.select();
   }, [isRenaming]);
 
-  const hasDiff = session.linesAdded !== null || session.linesRemoved !== null;
   const showActionButtons = isHovered || moveMenuOpen;
+  const ageLabel = formatCompactAge(
+    session.lastActivityAt ?? session.createdAt,
+  );
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true);
@@ -497,10 +384,10 @@ const SessionRow = memo(function SessionRow({
       ]
         .filter(Boolean)
         .join(" · ")}
-      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left outline-none transition-[background-color,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer focus-visible:ring-1 focus-visible:ring-ring ${
+      className={`group relative flex h-8 w-full items-center gap-2 rounded-xl border px-2.5 text-left outline-none transition-[background-color,border-color,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer focus-visible:ring-1 focus-visible:ring-ring ${
         isActive
-          ? "bg-foreground/[0.08] text-foreground"
-          : "hover:bg-foreground/[0.05]"
+          ? "border-border/80 bg-foreground/[0.06] text-foreground"
+          : "border-transparent hover:bg-foreground/[0.045]"
       } ${isPending ? "opacity-75" : "opacity-100"}`}
       onClick={() => {
         if (isMobile) setOpenMobile(false);
@@ -509,9 +396,12 @@ const SessionRow = memo(function SessionRow({
       onFocus={() => onSessionPrefetch(session)}
       aria-busy={isPending}
     >
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        {getSessionStatusIcon(session)}
-      </span>
+      {session.hasStreaming ? (
+        <Loader2
+          className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground"
+          strokeWidth={1.5}
+        />
+      ) : null}
       <span className="min-w-0 flex-1 text-left">
         <p
           className={`truncate text-[13px] leading-[18px] transition-colors duration-120 ${
@@ -519,56 +409,36 @@ const SessionRow = memo(function SessionRow({
               ? "font-medium text-foreground"
               : session.hasUnread
                 ? "font-medium text-foreground"
-                : "font-normal text-foreground/75 group-hover:text-foreground"
+                : "font-normal text-foreground/80 group-hover:text-foreground"
           }`}
         >
           {session.title}
         </p>
       </span>
-      {session.hasUnread && !isActive && !actionButtons ? (
-        <span
-          className="size-1.5 shrink-0 rounded-full bg-foreground/70"
-          aria-label="Unread activity"
-        />
-      ) : null}
-      {!actionButtons && (session.prNumber || hasDiff) ? (
-        <span className="flex shrink-0 items-center justify-end gap-1.5 pl-1 font-mono text-[11px] tabular-nums text-muted-foreground">
-          {session.prNumber ? (
-            <span
-              className={
-                session.prStatus === "merged"
-                  ? "text-indigo-500 dark:text-indigo-400"
-                  : session.prStatus === "open"
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-red-500 dark:text-red-400"
-              }
-            >
-              #{session.prNumber}
-            </span>
-          ) : null}
-          {hasDiff ? (
-            <DiffStats
-              added={session.linesAdded}
-              removed={session.linesRemoved}
-            />
-          ) : null}
-        </span>
+      {!actionButtons ? (
+        session.hasUnread && !isActive ? (
+          <span
+            className="mr-0.5 size-2 shrink-0 rounded-full bg-blue-500 ring-4 ring-blue-500/20"
+            aria-label="Unread activity"
+          />
+        ) : ageLabel ? (
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/70">
+            {ageLabel}
+          </span>
+        ) : null
       ) : null}
     </button>
   );
 
   const rowButton = isRenaming ? (
     <div
-      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left outline-none transition-[background-color,opacity] ${
-        isActive ? "bg-foreground/[0.08]" : "bg-foreground/[0.055]"
-      } ${renamePending ? "opacity-80" : "opacity-100"}`}
+      className={`group relative flex h-8 w-full items-center gap-2 rounded-xl border border-border bg-background px-2.5 text-left outline-none transition-[background-color,opacity] ${
+        renamePending ? "opacity-80" : "opacity-100"
+      }`}
       style={sessionRowPerformanceStyle}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <span className="flex size-4 shrink-0 items-center justify-center">
-        {getSessionStatusIcon(session)}
-      </span>
       <span className="min-w-0 flex-1 text-left">
         <input
           ref={renameInputRef}
@@ -750,6 +620,7 @@ export function InboxSidebar({
   }, [archivedCount, fetchArchivedSessionsPage, showArchived]);
 
   const [desktopSearchQuery, setDesktopSearchQuery] = useState("");
+  const [showAllChats, setShowAllChats] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { theme, setTheme } = useTheme();
@@ -1116,12 +987,12 @@ export function InboxSidebar({
                     <span className="text-[11.5px] font-medium text-muted-foreground">
                       Chats
                     </span>
-                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground/65">
-                      {standaloneSessions.length}
-                    </span>
                   </div>
                   <div className="space-y-0.5">
-                    {standaloneSessions.map((sessionItem) => (
+                    {(showAllChats
+                      ? standaloneSessions
+                      : standaloneSessions.slice(0, DEFAULT_VISIBLE_CHATS)
+                    ).map((sessionItem) => (
                       <div key={sessionItem.id}>
                         <SessionRow
                           session={sessionItem}
@@ -1141,6 +1012,17 @@ export function InboxSidebar({
                         )}
                       </div>
                     ))}
+                    {standaloneSessions.length > DEFAULT_VISIBLE_CHATS ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllChats((prev) => !prev)}
+                        className="flex h-7 w-full items-center rounded-lg px-2.5 text-left text-[12px] text-muted-foreground/80 transition-colors duration-120 hover:bg-foreground/[0.04] hover:text-foreground cursor-pointer"
+                      >
+                        {showAllChats
+                          ? "Show less"
+                          : `See more (${standaloneSessions.length - DEFAULT_VISIBLE_CHATS})`}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ) : projectGroups.length === 0 ? (
