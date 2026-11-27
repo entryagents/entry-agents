@@ -304,25 +304,39 @@ export function CloudSkyBackdrop({ variant = "hero" }: CloudSkyBackdropProps) {
       <div
         ref={containerRef}
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 overflow-hidden"
+        className="pointer-events-none absolute inset-0 overflow-hidden"
       >
         <motion.div
           style={prefersReduced ? undefined : { x: mouseX, y: mouseY }}
-          className="absolute inset-[-6%]"
+          className="absolute inset-[-8%]"
         >
-          <SeamlessCloudTrack
-            trackClassName="entry-cloud-track"
-            objectPosition="62% 36%"
-            priority
-            sizes="100vw"
-          />
+          <div className="entry-cloud-pan relative h-full w-full">
+            <Image
+              src="/images/hero-cloud-dark.jpg"
+              alt=""
+              fill
+              priority
+              sizes="(max-width: 1024px) 100vw, 60vw"
+              className="hidden object-cover dark:block"
+              style={{ objectPosition: "56% 42%" }}
+            />
+            <Image
+              src="/images/hero-cloud-light.jpg"
+              alt=""
+              fill
+              priority
+              sizes="(max-width: 1024px) 100vw, 60vw"
+              className="block object-cover dark:hidden"
+              style={{ objectPosition: "56% 42%" }}
+            />
+          </div>
         </motion.div>
-        <CloudWispCanvas reducedMotion={prefersReduced} density={22} />
+        <CloudWispCanvas reducedMotion={prefersReduced} density={26} />
         <div
           className="absolute inset-0"
           style={{
             background:
-              "radial-gradient(ellipse 70% 65% at 50% 48%, color-mix(in srgb, var(--l-bg) 34%, transparent) 0%, color-mix(in srgb, var(--l-bg) 78%, transparent) 100%)",
+              "linear-gradient(to top, color-mix(in srgb, var(--l-bg) 28%, transparent) 0%, transparent 32%, transparent 78%, color-mix(in srgb, var(--l-bg) 16%, transparent) 100%)",
           }}
         />
       </div>

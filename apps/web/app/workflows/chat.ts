@@ -2550,160 +2550,6 @@ export async function runAgentWorkflow(options: Options) {
       ? { teamRoleModels: initialTeamRoleModels }
       : {}),
   });
-  // AGENT-FIRST (owner 2026-09-19): the model turn must start -- and be
-  // able to finish -- whether or not the workspace came up. This used to be
-  // awaited unconditionally before the first agent step, so any
-  // provisioning failure, timeout, or migration wait killed the turn
-  // outright and the user got no reply at all.
-  //
-  // resolveChatSandboxRuntime still kicks provisioning and reaps its
-  // result, so when it rejects we simply carry on with no sandbox: the
-  // workspace tools then self-heal on their own via
-  // sandboxLifecycleHooks.beforeCommand()'s live-state read the moment
-  // provisioning finishes, and the user keeps getting answers meanwhile.
-  const runtimePromise = resolveChatSandboxRuntime({
-    userId: options.userId,
-    sessionId: options.sessionId,
-  });
-  // Cheap existence check only (no live token refresh -- see
-  // hasVercelAccountLinked's own comment on why) so the workflow can
-  // decide whether to surface the vercel_cli tool at all, mirroring how
-  // `hasRepo` below is derived from plain columns rather than a live
-  // GitHub API call. Best-effort: if this fails, just hide the tool
-  // rather than failing the whole turn.
-  //
-  // Routed through its own tiny step (checkVercelConnectedStep, defined
-  // below) rather than calling hasVercelAccountLinked directly from this
-  // "use workflow" function: that module's static imports (drizzle db
-  // client -> "postgres", better-auth config -> "nanoid") are Node-only
-  // and the workflow bundler pulls in a statically-imported function's
-  // *entire* module graph even when unused by that one function, which
-  // fails the build. Every other DB/Node-module touchpoint in this file
-  // (performAgentCommitAndPush, performAgentGithubApiRequest,
-  // performAgentVercelCli) already avoids this via dynamic import()
-  // inside a "use step" function -- same fix here.
-  // Single composite startup step: fetches Vercel connected, GitHub connected,
-  // compaction checkpoint, and model cost catalog in ONE `"use step"` call
-  // (3 Workflow Events instead of 12).
-  const telemetry = new WorkflowTelemetryTracker({
-    workflowRunId,
-    chatId: options.chatId,
-    sessionId: options.sessionId,
-    userId: options.userId,
-    segmentIndex: options.stepOffset ?? 0,
-    startedAtMs: Date.now(),
-  });
-  telemetry.recordStep("prepareTurnBootstrapStep");
-  const turnBootstrapPromise = prepareTurnBootstrapStep({
-    userId: options.userId,
-    chatId: options.chatId,
-  });
-  const vercelConnectedPromise = turnBootstrapPromise.then(
-    (b) => b.vercelConnected,
-  );
-  const githubConnectedPromise = turnBootstrapPromise.then(
-    (b) => b.githubConnected,
-  );
-  const checkpointPromise = turnBootstrapPromise.then((b) => b.checkpoint);
-  const modelMessagesPromise: Promise<ModelMessage[]> = (async () => {
-    const checkpoint = await checkpointPromise;
-    const effectiveMessages = resolvedMessages.filter(
-      (m) => !m.metadata?.isCompactionNotice,
-    );
-    let uiMessagesForConversion = effectiveMessages;
-    let checkpointPrefix: ModelMessage | undefined;
-    if (checkpoint) {
-      const idIdx = checkpoint.compactedUpToMessageId
-        ? effectiveMessages.findIndex(
-            (m) => m.id === checkpoint.compactedUpToMessageId,
-          )
-        : -1;
-      const isStaleAfterRewind =
-        Boolean(checkpoint.compactedUpToMessageId) && idIdx < 0;
-
-      if (!isStaleAfterRewind && checkpoint.exactBoundary && idIdx >= 0) {
-        const sliceStart = idIdx + 1;
-        if (sliceStart < effectiveMessages.length) {
-          uiMessagesForConversion = effectiveMessages.slice(sliceStart);
-          checkpointPrefix = {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
-              },
-            ],
-          };
-        }
-      } else if (
-        !isStaleAfterRewind &&
-        !checkpoint.exactBoundary &&
-        effectiveMessages.length > checkpoint.compactedUpToMessageCount + 4
-      ) {
-        let baseIdx = checkpoint.compactedUpToMessageCount;
-        if (idIdx >= 0) {
-          baseIdx = idIdx + 1;
-        }
-        const maxStart = Math.max(0, effectiveMessages.length - 4);
-        const sliceStart = Math.min(Math.max(0, baseIdx - 2), maxStart);
-        if (sliceStart > 0) {
-          uiMessagesForConversion = effectiveMessages.slice(sliceStart);
-          checkpointPrefix = {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
-              },
-            ],
-          };
-        }
-      }
-    }
-    const pendingImageAttachments = extractPendingImageAttachments(
-      uiMessagesForConversion,
-    );
-    let converted: ModelMessage[];
-    if (pendingImageAttachments.length === 0) {
-      converted = await convertMessages(uiMessagesForConversion);
-    } else {
-      const runtime = await runtimePromise;
-      if (!runtime?.workingDirectory) {
-        converted = await convertMessages(uiMessagesForConversion);
-      } else {
-        try {
-          const paths = await persistImageAttachmentsToSandbox({
-            sandboxState: runtime.sandboxState,
-            images: pendingImageAttachments,
-          });
-          const messagesWithPaths = replaceImageAttachmentsWithPaths(
-            uiMessagesForConversion,
-            paths,
-          );
-          converted = await convertMessages(messagesWithPaths);
-        } catch (err) {
-          console.warn(
-            "[workflow] Failed to persist image attachments to sandbox; falling back to direct conversion:",
-            err,
-          );
-          converted = await convertMessages(uiMessagesForConversion);
-        }
-      }
-    }
-
-    if (checkpointPrefix) {
-      while (converted.length > 0 && converted[0]?.role === "tool") {
-        converted.shift();
-      }
-      const combined = [checkpointPrefix, ...converted];
-      stripDanglingToolCalls(combined);
-      return combined;
-    }
-
-    stripDanglingToolCalls(converted);
-    return converted;
-  })();
-
   // Self-register this workflow's runId onto the chat as the very first step.
   // The HTTP POST handler also writes this (via compareAndSetChatActiveStreamId
   // after `start()` returns), but that write is best-effort and can be lost
@@ -2724,9 +2570,6 @@ export async function runAgentWorkflow(options: Options) {
     // while this run was queued or starting. Exit before emitting chunks or
     // persisting messages so only the owning workflow can mutate this chat.
     await Promise.allSettled([
-      checkpointPromise,
-      runtimePromise,
-      modelMessagesPromise,
       inputMessagesPersistPromise,
       modelRuntimePromise,
       cancelWorkflowRunStep(workflowRunId).catch(() => {}),
@@ -2757,14 +2600,6 @@ export async function runAgentWorkflow(options: Options) {
   let selectedModelId: string | undefined =
     options.selectedModelId ?? undefined;
   let modelId: string | undefined = options.modelId ?? undefined;
-
-  // Live pricing catalog from entry-gateway (see gateway-metadata.ts) --
-  // used to price every step below since our shared provider doesn't emit
-  // Vercel-Gateway-shaped cost metadata. Best-effort: if the gateway is
-  // briefly unreachable, cost tracking degrades to undefined for this
-  // turn rather than failing the whole chat request.
-  const { modelCostCatalog, compactionThreshold: userCompactionThreshold } =
-    await turnBootstrapPromise;
 
   let pendingAssistantResponse: WebAgentUIMessage =
     latestMessage.role === "assistant"
@@ -2798,40 +2633,33 @@ export async function runAgentWorkflow(options: Options) {
   let finalFinishReason: FinishReason | undefined;
   let streamClosed = false;
   let didPersistFinalCompletion = false;
+  let skipSandboxLifecycle = false;
   let workflowStatus: WorkflowRunStatus = "completed";
   let caughtError: unknown;
   let isRepeatFailure = false;
   let sandboxState: SandboxState | undefined;
   let shouldRefreshCachedDiff = false;
 
-  try {
-    const [
-      ,
-      runtime,
-      modelRuntime,
-      modelMessages,
-      ,
-      vercelConnected,
-      githubConnected,
-    ] = await Promise.all([
-      activeStreamClaimPromise,
-      runtimePromise,
-      modelRuntimePromise,
-      modelMessagesPromise,
-      inputMessagesPersistPromise,
-      vercelConnectedPromise,
-      githubConnectedPromise,
-    ]);
+  const telemetry = new WorkflowTelemetryTracker({
+    workflowRunId,
+    chatId: options.chatId,
+    sessionId: options.sessionId,
+    userId: options.userId,
+    segmentIndex: options.stepOffset ?? 0,
+    startedAtMs: Date.now(),
+  });
 
-    // Out-of-usage / out-of-credit is a terminal, user-actionable state,
-    // not a failure. Send the notice as the assistant's reply and let the
-    // finally-block do its normal cleanup (clear active stream, release
-    // the billing turn, close the stream) so the run COMPLETES instead of
-    // being marked failed and retried. Verified against the catch/finally
-    // below: persisting through the same path keeps the reply on screen
-    // and leaves workflowStatus at "completed".
+  try {
+    // Resolve plan/model/billing eligibility BEFORE provisioning any sandbox VM
+    // or fetching the gateway catalog. If the turn is blocked (e.g. a Free-plan
+    // user sending to a paid model, exhausted credits, or capacity gate), stop
+    // immediately with the notice as the assistant's reply instead of waiting on
+    // sandbox startup.
+    const modelRuntime = await modelRuntimePromise;
     if ("blockedNotice" in modelRuntime) {
       const notice = modelRuntime.blockedNotice;
+      skipSandboxLifecycle = true;
+      await inputMessagesPersistPromise.catch(() => {});
       pendingAssistantResponse = {
         ...pendingAssistantResponse,
         parts: [{ type: "text", text: notice }],
@@ -2842,9 +2670,158 @@ export async function runAgentWorkflow(options: Options) {
         pendingAssistantResponse,
         workflowRunId,
       );
-      await reconcileSessionStatusStep(options.sessionId, "completed");
+      didPersistFinalCompletion = true;
       return;
     }
+
+    // AGENT-FIRST (owner 2026-09-19): the model turn must start -- and be
+    // able to finish -- whether or not the workspace came up. This used to be
+    // awaited unconditionally before the first agent step, so any
+    // provisioning failure, timeout, or migration wait killed the turn
+    // outright and the user got no reply at all.
+    //
+    // resolveChatSandboxRuntime still kicks provisioning and reaps its
+    // result, so when it rejects we simply carry on with no sandbox: the
+    // workspace tools then self-heal on their own via
+    // sandboxLifecycleHooks.beforeCommand()'s live-state read the moment
+    // provisioning finishes, and the user keeps getting answers meanwhile.
+    const runtimePromise = resolveChatSandboxRuntime({
+      userId: options.userId,
+      sessionId: options.sessionId,
+    });
+    // Single composite startup step: fetches Vercel connected, GitHub connected,
+    // compaction checkpoint, and model cost catalog in ONE `"use step"` call
+    // (3 Workflow Events instead of 12).
+    telemetry.recordStep("prepareTurnBootstrapStep");
+    const turnBootstrapPromise = prepareTurnBootstrapStep({
+      userId: options.userId,
+      chatId: options.chatId,
+    });
+    const vercelConnectedPromise = turnBootstrapPromise.then(
+      (b) => b.vercelConnected,
+    );
+    const githubConnectedPromise = turnBootstrapPromise.then(
+      (b) => b.githubConnected,
+    );
+    const checkpointPromise = turnBootstrapPromise.then((b) => b.checkpoint);
+    const modelMessagesPromise: Promise<ModelMessage[]> = (async () => {
+      const checkpoint = await checkpointPromise;
+      const effectiveMessages = resolvedMessages.filter(
+        (m) => !m.metadata?.isCompactionNotice,
+      );
+      let uiMessagesForConversion = effectiveMessages;
+      let checkpointPrefix: ModelMessage | undefined;
+      if (checkpoint) {
+        const idIdx = checkpoint.compactedUpToMessageId
+          ? effectiveMessages.findIndex(
+              (m) => m.id === checkpoint.compactedUpToMessageId,
+            )
+          : -1;
+        const isStaleAfterRewind =
+          Boolean(checkpoint.compactedUpToMessageId) && idIdx < 0;
+
+        if (!isStaleAfterRewind && checkpoint.exactBoundary && idIdx >= 0) {
+          const sliceStart = idIdx + 1;
+          if (sliceStart < effectiveMessages.length) {
+            uiMessagesForConversion = effectiveMessages.slice(sliceStart);
+            checkpointPrefix = {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
+                },
+              ],
+            };
+          }
+        } else if (
+          !isStaleAfterRewind &&
+          !checkpoint.exactBoundary &&
+          effectiveMessages.length > checkpoint.compactedUpToMessageCount + 4
+        ) {
+          let baseIdx = checkpoint.compactedUpToMessageCount;
+          if (idIdx >= 0) {
+            baseIdx = idIdx + 1;
+          }
+          const maxStart = Math.max(0, effectiveMessages.length - 4);
+          const sliceStart = Math.min(Math.max(0, baseIdx - 2), maxStart);
+          if (sliceStart > 0) {
+            uiMessagesForConversion = effectiveMessages.slice(sliceStart);
+            checkpointPrefix = {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `<compaction-checkpoint>\n${checkpoint.summaryText}\n</compaction-checkpoint>`,
+                },
+              ],
+            };
+          }
+        }
+      }
+      const pendingImageAttachments = extractPendingImageAttachments(
+        uiMessagesForConversion,
+      );
+      let converted: ModelMessage[];
+      if (pendingImageAttachments.length === 0) {
+        converted = await convertMessages(uiMessagesForConversion);
+      } else {
+        const runtime = await runtimePromise;
+        if (!runtime?.workingDirectory) {
+          converted = await convertMessages(uiMessagesForConversion);
+        } else {
+          try {
+            const paths = await persistImageAttachmentsToSandbox({
+              sandboxState: runtime.sandboxState,
+              images: pendingImageAttachments,
+            });
+            const messagesWithPaths = replaceImageAttachmentsWithPaths(
+              uiMessagesForConversion,
+              paths,
+            );
+            converted = await convertMessages(messagesWithPaths);
+          } catch (err) {
+            console.warn(
+              "[workflow] Failed to persist image attachments to sandbox; falling back to direct conversion:",
+              err,
+            );
+            converted = await convertMessages(uiMessagesForConversion);
+          }
+        }
+      }
+
+      if (checkpointPrefix) {
+        while (converted.length > 0 && converted[0]?.role === "tool") {
+          converted.shift();
+        }
+        const combined = [checkpointPrefix, ...converted];
+        stripDanglingToolCalls(combined);
+        return combined;
+      }
+
+      stripDanglingToolCalls(converted);
+      return converted;
+    })();
+
+    const [
+      ,
+      turnBootstrap,
+      runtime,
+      modelMessages,
+      ,
+      vercelConnected,
+      githubConnected,
+    ] = await Promise.all([
+      activeStreamClaimPromise,
+      turnBootstrapPromise,
+      runtimePromise,
+      modelMessagesPromise,
+      inputMessagesPersistPromise,
+      vercelConnectedPromise,
+      githubConnectedPromise,
+    ]);
+    const { modelCostCatalog, compactionThreshold: userCompactionThreshold } =
+      turnBootstrap;
 
     selectedModelId = options.selectedModelId ?? modelRuntime.selectedModelId;
     modelId = options.modelId ?? modelRuntime.modelId;
@@ -4279,7 +4256,9 @@ export async function runAgentWorkflow(options: Options) {
             workflowStatus === "failed" || caughtError ? "failed" : "completed";
           await reconcileSessionStatusStep(options.sessionId, terminalState);
         }
-        await kickSandboxLifecycleStep(options.sessionId);
+        if (!skipSandboxLifecycle) {
+          await kickSandboxLifecycleStep(options.sessionId);
+        }
       }
     } finally {
       const runFinishedAt = new Date();

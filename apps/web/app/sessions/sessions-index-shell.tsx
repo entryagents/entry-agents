@@ -17,6 +17,12 @@ import { useModelOptions } from "@/hooks/use-model-options";
 import { useProjects } from "@/hooks/use-projects";
 import { useSessions, type SessionWithUnread } from "@/hooks/use-sessions";
 import { useUserPreferences } from "@/hooks/use-user-preferences";
+import {
+  getUnlockedFreeModelIds,
+  isModelBlockedForFreePlan,
+  PAID_MODEL_UPGRADE_MESSAGE,
+  resolveNewChatModelId,
+} from "@/lib/billing/paid-model-gate";
 import { buildUserMessageFromComposerPayload } from "@/lib/chat/build-user-message";
 import {
   generateAndApplyInitialTitle,
@@ -57,6 +63,7 @@ export function SessionsIndexShell() {
     userPlan,
     freePlanModelId,
     freeTierAllowedModelIds,
+    freeTierGate,
     creditGate,
   } = useModelOptions();
 
@@ -184,26 +191,75 @@ export function SessionsIndexShell() {
     [router],
   );
 
-  const effectiveModelId =
-    selectedModelId ??
-    preferences?.defaultModelId ??
-    modelOptions[0]?.id ??
-    null;
+  const availableModelIds = useMemo(
+    () => modelOptions.map((option) => option.id),
+    [modelOptions],
+  );
 
-  const isFreeTierLocked =
-    userPlan?.id === "free" &&
-    (freeTierAllowedModelIds.length > 0 || Boolean(freePlanModelId));
+  const effectiveModelId = useMemo(
+    () =>
+      resolveNewChatModelId({
+        modelAccess: userPlan?.modelAccess,
+        selectedModelId,
+        defaultModelId: preferences?.defaultModelId,
+        availableModelIds,
+        freePlanModelId,
+        freeTierAllowedModelIds,
+      }),
+    [
+      availableModelIds,
+      freePlanModelId,
+      freeTierAllowedModelIds,
+      preferences?.defaultModelId,
+      selectedModelId,
+      userPlan?.modelAccess,
+    ],
+  );
 
-  const composerGate = creditGate?.blocked
-    ? {
-        title: "Credit limit reached",
-        reason: creditGate.reason ?? "Upgrade your plan to continue.",
-      }
-    : null;
+  const isFreeTierLocked = userPlan?.modelAccess === "starter-only";
+
+  const isPaidModelBlockedForFreeUser = useMemo(
+    () =>
+      isModelBlockedForFreePlan({
+        modelAccess: userPlan?.modelAccess,
+        modelId: effectiveModelId,
+        freePlanModelId,
+        freeTierAllowedModelIds,
+      }),
+    [
+      effectiveModelId,
+      freePlanModelId,
+      freeTierAllowedModelIds,
+      userPlan?.modelAccess,
+    ],
+  );
+
+  const unlockedFreeModelId = useMemo(
+    () =>
+      getUnlockedFreeModelIds(freePlanModelId, freeTierAllowedModelIds)[0] ??
+      null,
+    [freePlanModelId, freeTierAllowedModelIds],
+  );
+
+  const composerGate = useMemo(
+    () =>
+      freeTierGate ??
+      (creditGate?.blocked
+        ? {
+            reason: creditGate.reason ?? "Upgrade your plan to continue.",
+          }
+        : null) ??
+      (isPaidModelBlockedForFreeUser
+        ? {
+            reason: PAID_MODEL_UPGRADE_MESSAGE,
+          }
+        : null),
+    [creditGate, freeTierGate, isPaidModelBlockedForFreeUser],
+  );
 
   const handleSubmitMessage = useCallback(
     async (built: BuiltComposerMessage) => {
-      if (isCreating) return;
+      if (isCreating || composerGate || isPaidModelBlockedForFreeUser) return;
       setIsCreating(true);
       try {
         const trimmedDisplayText = built.displayText.trim();
@@ -393,11 +449,13 @@ export function SessionsIndexShell() {
       }
     },
     [
+      composerGate,
       createSession,
       effectiveModelId,
       globalMutate,
       isCreating,
       isNewBranch,
+      isPaidModelBlockedForFreeUser,
       permissionMode,
       preferences?.autoCommitPush,
       preferences?.autoCreatePr,
@@ -508,7 +566,7 @@ export function SessionsIndexShell() {
             onStopStream={() => {}}
             overlaySlot={
               composerGate ? (
-                <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-background/80 backdrop-blur-md">
+                <div className="absolute inset-0 z-20 flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-background/80 px-4 backdrop-blur-md">
                   <button
                     type="button"
                     onClick={() => router.push("/pricing")}
@@ -520,6 +578,18 @@ export function SessionsIndexShell() {
                         "Free tier ended — upgrade your account to use Entry"}
                     </span>
                   </button>
+                  {!freeTierGate &&
+                    !creditGate?.blocked &&
+                    isPaidModelBlockedForFreeUser &&
+                    unlockedFreeModelId && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedModelId(unlockedFreeModelId)}
+                        className="rounded-full border border-border bg-muted/60 px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted cursor-pointer"
+                      >
+                        Use free model
+                      </button>
+                    )}
                 </div>
               ) : null
             }

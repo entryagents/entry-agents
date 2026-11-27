@@ -468,12 +468,13 @@ mock.module("@/lib/db/platform-settings", () => ({
   setFreeTierModelId: mock(() => Promise.resolve()),
 }));
 
+let testBillingPlan: "free" | "pro" = "pro";
 const realCreditLedger = await import("@/lib/billing/credit-ledger");
 mock.module("@/lib/billing/credit-ledger", () => ({
   ...realCreditLedger,
   getUserBillingState: mock(() =>
     Promise.resolve({
-      plan: "pro",
+      plan: testBillingPlan,
       creditBalanceCents: 100_000,
       billingCycleAnchor: null,
       billingCustomerCode: null,
@@ -482,7 +483,7 @@ mock.module("@/lib/billing/credit-ledger", () => ({
   ),
   enforcePlanExpiry: mock(() =>
     Promise.resolve({
-      plan: "pro",
+      plan: testBillingPlan,
       creditBalanceCents: 100_000,
       billingCycleAnchor: null,
       billingCustomerCode: null,
@@ -494,6 +495,23 @@ mock.module("@/lib/billing/credit-ledger", () => ({
   heartbeatUserBillingTurn: mock(() => Promise.resolve()),
   recordBillableUsage: mock(() => Promise.resolve({ debitedCents: 0 })),
   releaseUserBillingTurn: mock(() => Promise.resolve()),
+}));
+
+mock.module("@/lib/billing/turn-concurrency", () => ({
+  checkAndAdmitConcurrentTurn: mock(() =>
+    Promise.resolve({
+      allowed: true,
+      sharedSandbox: false,
+      activeSandboxes: 0,
+      limit: 1,
+    }),
+  ),
+}));
+
+mock.module("@/lib/billing/free-daily-limit", () => ({
+  FREE_DAILY_MESSAGE_LIMIT: 50,
+  countUserMessagesLast24Hours: mock(() => Promise.resolve(0)),
+  isFreeDailyLimitExceeded: mock(() => false),
 }));
 
 // lib/billing/plans.ts is pure (no DB import) -- no mock needed, the
@@ -2486,6 +2504,59 @@ describe("runAgentWorkflow", () => {
         getChatById: async () => testChatRecord,
         getSessionById: async () => testSessionRecord,
       }));
+    }
+  });
+
+  test("stops instantly with paid-plan error reply without provisioning sandbox when a free user sends to a paid model", async () => {
+    const previousPlan = testBillingPlan;
+    const previousModelId = testChatRecord.modelId;
+    testBillingPlan = "free";
+    testChatRecord = {
+      ...testChatRecord,
+      modelId: "anthropic/claude-opus-4.6",
+    };
+
+    try {
+      await runAgentWorkflow({
+        messages: [
+          {
+            id: "user-paid-block-1",
+            role: "user",
+            parts: [{ type: "text", text: "Build me a landing page" }],
+          },
+        ],
+        chatId: "chat-1",
+        sessionId: "session-1",
+        userId: "user-1",
+        requestUrl: "http://localhost:3000/api/chat",
+        authSession: null,
+        assistantId: "assistant-paid-block-1",
+      });
+
+      expect(spies.resolveChatSandboxRuntime).not.toHaveBeenCalled();
+      expect(spies.kickSandboxLifecycleStep).not.toHaveBeenCalled();
+      expect(spies.persistFinalAssistantMessage).toHaveBeenCalledTimes(1);
+      const persistedMsg = spies.persistFinalAssistantMessage.mock
+        .calls[0]?.[1] as {
+        role: string;
+        parts: Array<{ type: string; text?: string }>;
+      };
+      expect(persistedMsg.role).toBe("assistant");
+      expect(persistedMsg.parts).toEqual([
+        {
+          type: "text",
+          text: "This model requires a paid plan. Upgrade your plan to chat with paid models.",
+        },
+      ]);
+      expect(spies.clearActiveStream).toHaveBeenCalledTimes(1);
+      expect(spies.sendFinish).toHaveBeenCalledTimes(1);
+      expect(spies.closeStream).toHaveBeenCalledTimes(1);
+    } finally {
+      testBillingPlan = previousPlan;
+      testChatRecord = {
+        ...testChatRecord,
+        modelId: previousModelId,
+      };
     }
   });
 });

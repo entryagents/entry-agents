@@ -58,6 +58,11 @@ import { UntilStrip } from "@/components/composer/until-strip";
 import { RaceView, type RaceSessionConfig } from "@/components/race/race-view";
 import { useTriage } from "@/components/triage/triage-context";
 import { formatTokens } from "@entry-agents/shared";
+import {
+  getUnlockedFreeModelIds,
+  isModelBlockedForFreePlan,
+  PAID_MODEL_UPGRADE_MESSAGE,
+} from "@/lib/billing/paid-model-gate";
 import { parseCompactCommand } from "@/lib/compact/parse";
 import { parseRaceCommand, pickRaceModels } from "@/lib/race/parse";
 import { collectAutoApprovableIds } from "@/lib/chat/permission-approval";
@@ -272,6 +277,7 @@ function SandboxInputOverlay({
   snapshotPending,
   freeTierBlocked,
   freeTierBlockedReason,
+  onSwitchToFreeModel,
   router,
 }: {
   isArchived: boolean;
@@ -283,6 +289,7 @@ function SandboxInputOverlay({
    * only, so it never lets a blocked send silently look like it worked. */
   freeTierBlocked: boolean;
   freeTierBlockedReason: string | null;
+  onSwitchToFreeModel?: () => void;
   /** Used to send the user to the plan picker when they click the lock pill. */
   router: ReturnType<typeof useRouter>;
 }) {
@@ -292,15 +299,15 @@ function SandboxInputOverlay({
     // underneath are separately given `disabled` (see session-chat-content
     // render below) so nothing can be typed or sent while this is up --
     // not merely visually implied. The pill itself is clickable and
-    // takes the user straight to the plan picker (/billing/plans) --
+    // takes the user straight to the plan picker (/pricing) --
     // this is the only realistic path off the free tier, so don't make
     // them hunt for it.
     return (
-      <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-background/80 backdrop-blur-md">
+      <div className="absolute inset-0 z-20 flex flex-wrap items-center justify-center gap-2 rounded-2xl bg-background/80 px-4 backdrop-blur-md">
         <button
           type="button"
           onClick={() => router.push("/pricing")}
-          className="flex items-center gap-2 rounded-full bg-background px-4 py-2 text-sm font-medium text-foreground shadow-md ring-1 ring-border transition-colors hover:bg-muted"
+          className="flex cursor-pointer items-center gap-2 rounded-full bg-background px-4 py-2 text-sm font-medium text-foreground shadow-md ring-1 ring-border transition-colors hover:bg-muted"
         >
           <Lock className="h-4 w-4 shrink-0" />
           <span>
@@ -308,6 +315,15 @@ function SandboxInputOverlay({
               "Free tier ended — upgrade your account to use Entry"}
           </span>
         </button>
+        {onSwitchToFreeModel && (
+          <button
+            type="button"
+            onClick={onSwitchToFreeModel}
+            className="cursor-pointer rounded-full border border-border bg-muted/60 px-3.5 py-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            Use free model
+          </button>
+        )}
       </div>
     );
   }
@@ -821,25 +837,32 @@ export function SessionChatContent({
   // it's the more urgent, platform-wide reason. Both share the exact
   // same hard-lock overlay/composer treatment below -- only the message
   // text differs.
-  const isPaidModelBlockedForFreeUser = useMemo(() => {
-    if (userPlan?.modelAccess !== "starter-only") return false;
-    const currentModel = chatInfo.modelId;
-    if (!currentModel) return false;
-    const isUnlockedByAdmin =
-      (freePlanModelId !== null && currentModel === freePlanModelId) ||
-      freeTierAllowedModelIds.includes(currentModel);
-    return !isUnlockedByAdmin;
-  }, [
-    userPlan?.modelAccess,
-    freePlanModelId,
-    freeTierAllowedModelIds,
-    chatInfo.modelId,
-  ]);
+  const isPaidModelBlockedForFreeUser = useMemo(
+    () =>
+      isModelBlockedForFreePlan({
+        modelAccess: userPlan?.modelAccess,
+        modelId: chatInfo.modelId,
+        freePlanModelId,
+        freeTierAllowedModelIds,
+      }),
+    [
+      userPlan?.modelAccess,
+      freePlanModelId,
+      freeTierAllowedModelIds,
+      chatInfo.modelId,
+    ],
+  );
+
+  const unlockedFreeModelId = useMemo(
+    () =>
+      getUnlockedFreeModelIds(freePlanModelId, freeTierAllowedModelIds)[0] ??
+      null,
+    [freePlanModelId, freeTierAllowedModelIds],
+  );
 
   const paidModelGate = isPaidModelBlockedForFreeUser
     ? {
-        reason:
-          "This model requires a paid plan. Upgrade your plan to chat with paid models.",
+        reason: PAID_MODEL_UPGRADE_MESSAGE,
       }
     : null;
 
@@ -1785,6 +1808,9 @@ export function SessionChatContent({
   async function submitBuiltMessage(
     built: BuiltComposerMessage,
   ): Promise<boolean> {
+    if (composerGate) {
+      return false;
+    }
     const { payload: messagePayload, displayText: messageText } = built;
 
     if (tryHandleUntilCommand(messageText)) {
@@ -3804,6 +3830,16 @@ export function SessionChatContent({
                         router={router}
                         freeTierBlocked={Boolean(composerGate)}
                         freeTierBlockedReason={composerGate?.reason ?? null}
+                        onSwitchToFreeModel={
+                          !freeTierGate &&
+                          !creditGate &&
+                          isPaidModelBlockedForFreeUser &&
+                          unlockedFreeModelId
+                            ? () => {
+                                void handleModelChange(unlockedFreeModelId);
+                              }
+                            : undefined
+                        }
                       />
                     }
                     topPanelsSlot={
