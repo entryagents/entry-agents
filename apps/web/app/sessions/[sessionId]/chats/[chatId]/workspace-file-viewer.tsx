@@ -13,6 +13,7 @@ import {
 import { useCallback, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import type { WorkspaceFileContentResponse } from "@/app/api/sessions/[sessionId]/files/content/route";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 import { StreamingMarkdown } from "@/components/streaming-markdown";
 import { Button } from "@/components/ui/button";
 import {
@@ -348,10 +349,11 @@ function ViewerBody({
           />
         )}
         {isLoading ? (
-          <div className="flex h-full min-h-48 items-center justify-center px-4 py-8 text-sm text-muted-foreground">
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Loading file contents…
-          </div>
+          <EntryLoadingScreen
+            fullScreen={false}
+            size="compact"
+            label="Loading file..."
+          />
         ) : errorMessage ? (
           <div className="px-4 py-6 text-sm text-destructive">
             {errorMessage}

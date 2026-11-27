@@ -84,39 +84,34 @@ export function estimateStepCost(
     | undefined,
   catalog: CatalogCostEntry[],
 ): number | undefined {
-  const gatewayCost = extractGatewayCost(providerMetadata);
-  if (gatewayCost !== undefined) {
-    return gatewayCost;
+  if (usage) {
+    const model = catalog.find((m) => m.id === modelId);
+    if (model?.cost) {
+      // The AI SDK moved cache accounting from the flat, now-deprecated
+      // `cachedInputTokens` field into `inputTokenDetails.cacheReadTokens` /
+      // `cacheWriteTokens`. Prefer the current field, fall back to the
+      // deprecated one for older callers.
+      const cachedInputTokens =
+        usage.inputTokenDetails?.cacheReadTokens ??
+        usage.cachedInputTokens ??
+        0;
+      const cacheWriteInputTokens =
+        usage.inputTokenDetails?.cacheWriteTokens ?? 0;
+
+      const computed = estimateModelUsageCost(
+        {
+          inputTokens: usage.inputTokens ?? 0,
+          cachedInputTokens,
+          cacheWriteInputTokens,
+          outputTokens: usage.outputTokens ?? 0,
+        },
+        model.cost,
+      );
+      if (computed !== undefined) {
+        return computed;
+      }
+    }
   }
 
-  if (!usage) {
-    return undefined;
-  }
-
-  const model = catalog.find((m) => m.id === modelId);
-  if (!model?.cost) {
-    return undefined;
-  }
-
-  // The AI SDK moved cache accounting from the flat, now-deprecated
-  // `cachedInputTokens` field into `inputTokenDetails.cacheReadTokens` /
-  // `cacheWriteTokens`. Current provider adapters generally only populate
-  // the new nested fields, so reading the deprecated one exclusively (as
-  // this used to do) silently always came out to 0 -- meaning the cache
-  // discount (and any cache-write surcharge) never applied and every
-  // message was billed as if 100% of its input was uncached. Prefer the
-  // current field, fall back to the deprecated one for older callers.
-  const cachedInputTokens =
-    usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
-  const cacheWriteInputTokens = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
-
-  return estimateModelUsageCost(
-    {
-      inputTokens: usage.inputTokens ?? 0,
-      cachedInputTokens,
-      cacheWriteInputTokens,
-      outputTokens: usage.outputTokens ?? 0,
-    },
-    model.cost,
-  );
+  return extractGatewayCost(providerMetadata);
 }

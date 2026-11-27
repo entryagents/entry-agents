@@ -1,10 +1,5 @@
-import { McpServersSectionSkeleton } from "../mcp-servers-section";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 
-export default function Loading() {
-  return (
-    <>
-      <h1 className="text-2xl font-semibold">MCP Servers</h1>
-      <McpServersSectionSkeleton />
-    </>
-  );
+export default function McpServersLoading() {
+  return <EntryLoadingScreen fullScreen={false} />;
 }

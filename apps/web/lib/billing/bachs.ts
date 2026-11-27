@@ -485,6 +485,32 @@ export function verifyBachsSignature(
   });
 }
 
+export async function findCustomerByEmail(
+  email: string,
+): Promise<{ customerId: string; email: string } | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const data = await bachsRequest<{
+    items?: Array<{
+      customer_id?: string;
+      id?: string;
+      email?: string | null;
+    }>;
+  }>("/v1/customers?limit=50", { method: "GET" });
+
+  const match = (data.items ?? []).find(
+    (item) => item.email?.trim().toLowerCase() === normalized,
+  );
+  const customerId = match?.customer_id ?? match?.id;
+  if (!customerId) return null;
+
+  return {
+    customerId,
+    email: match?.email ?? normalized,
+  };
+}
+
 export async function createCustomerPortalSession(
   customerId: string,
   returnUrl?: string,

@@ -1,9 +1,5 @@
-import { Loader2 } from "lucide-react";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 
-export default function Loading() {
-  return (
-    <div className="flex h-dvh items-center justify-center bg-background">
-      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-    </div>
-  );
+export default function SharedLoading() {
+  return <EntryLoadingScreen label="Loading shared chat..." />;
 }

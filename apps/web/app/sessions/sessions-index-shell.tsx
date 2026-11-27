@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useSWRConfig } from "swr";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 import { DEFAULT_SANDBOX_TYPE } from "@/components/sandbox-selector-compact";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
@@ -612,6 +613,10 @@ export function SessionsIndexShell() {
           )}
         </div>
       </div>
+
+      {isCreating ? (
+        <EntryLoadingScreen overlay label="Starting workspace..." />
+      ) : null}
     </div>
   );
 }

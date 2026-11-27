@@ -1,5 +1,6 @@
 "use client";
 
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 import { useSession } from "@/hooks/use-session";
 import { SignInButton } from "./sign-in-button";
 
@@ -15,7 +16,7 @@ export function AuthGuard({
   const { loading, isAuthenticated } = useSession();
 
   if (loading) {
-    return <>{loadingFallback ?? <div>Loading...</div>}</>;
+    return <>{loadingFallback ?? <EntryLoadingScreen />}</>;
   }
 
   if (!isAuthenticated) {

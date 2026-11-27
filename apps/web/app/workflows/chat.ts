@@ -6435,6 +6435,7 @@ const runAgentStep = async (
     let response: { messages: ModelMessage[] } = { messages: [] };
     let rawSteps: Awaited<typeof result.steps> = [];
 
+    let rawStepUsageIncludesExisting = false;
     try {
       const resolved = await Promise.all([
         result.totalUsage,
@@ -6457,6 +6458,7 @@ const runAgentStep = async (
         metadataError,
       );
       rawStepUsage = totalMessageUsage ?? lastStepUsage;
+      rawStepUsageIncludesExisting = Boolean(totalMessageUsage);
       const reconstructed = reconstructStepModelMessages({
         streamedTextOrder,
         streamedTextById,
@@ -6532,9 +6534,10 @@ const runAgentStep = async (
         ...responseMessage,
         metadata: {
           ...responseMessage.metadata,
-          totalMessageUsage: existingTotalMessageUsage
-            ? addLanguageModelUsage(existingTotalMessageUsage, stepUsage)
-            : stepUsage,
+          totalMessageUsage:
+            existingTotalMessageUsage && !rawStepUsageIncludesExisting
+              ? addLanguageModelUsage(existingTotalMessageUsage, stepUsage)
+              : stepUsage,
         },
       };
     }

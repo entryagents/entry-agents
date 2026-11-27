@@ -1,11 +1,12 @@
 "use client";
 
 import { File as DiffsFile } from "@pierre/diffs/react";
-import { ArrowLeft, AtSign, Check, Copy, Loader2 } from "lucide-react";
+import { ArrowLeft, AtSign, Check, Copy } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import type { WorkspaceFileContentResponse } from "@/app/api/sessions/[sessionId]/files/content/route";
 import { useTheme } from "@/app/providers";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 import { FileTypeIcon } from "@/components/file-type-icons";
 import { MarkdownArtifactPreview } from "@/components/workspace/artifact-preview";
 import { formatBytes } from "@/components/workspace/workspace-file-stats";
@@ -222,15 +223,11 @@ export function WorkspaceFileTab({
             {error.message || "Could not load this file."}
           </p>
         ) : isLoading || !data ? (
-          <div className="rail-loading">
-            <Loader2
-              size={14}
-              strokeWidth={1.6}
-              className="animate-spin"
-              aria-hidden="true"
-            />
-            <span>Opening</span>
-          </div>
+          <EntryLoadingScreen
+            fullScreen={false}
+            size="compact"
+            label="Loading file..."
+          />
         ) : isImage && imageSrc ? (
           imageFailed ? (
             <p className="rail-empty">This image cannot be shown here.</p>

@@ -9,7 +9,6 @@ import {
   Eye,
   FileText,
   GitCompare,
-  Loader2,
   RefreshCw,
   WrapText,
   X,
@@ -18,6 +17,7 @@ import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 import useSWR from "swr";
 import type { WorkspaceFileContentResponse } from "@/app/api/sessions/[sessionId]/files/content/route";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 import { FileTypeIcon } from "@/components/file-type-icons";
 import { Button } from "@/components/ui/button";
 import {
@@ -364,9 +364,11 @@ export function FileTabView() {
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading && (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
+          <EntryLoadingScreen
+            fullScreen={false}
+            size="compact"
+            label="Loading file..."
+          />
         )}
 
         {errorMessage && (
