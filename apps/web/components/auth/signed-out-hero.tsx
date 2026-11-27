@@ -66,7 +66,7 @@ export function SignedOutHero() {
           />
         )}
 
-        <LandingNav showSignIn />
+        <LandingNav showSignIn={false} />
 
         <main>
           {/* Hero Stage: Living Moving Cloud Horizon + Left-Aligned H1 + Scroll-Reactive Live Workspace */}

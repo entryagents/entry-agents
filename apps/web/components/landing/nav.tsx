@@ -121,7 +121,7 @@ export function LandingNav({
                 {link.label}
               </Link>
             ))}
-            {!loading && !isAuthenticated && (
+            {showSignIn && !loading && !isAuthenticated && (
               <Link
                 href={signInHref}
                 onClick={() => setMobileMenuOpen(false)}
