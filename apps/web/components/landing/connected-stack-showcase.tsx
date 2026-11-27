@@ -281,20 +281,18 @@ export function ConnectedStackShowcase() {
                       “{activeItem.prompt}”
                     </div>
 
-                    {/* Clean 3-step vertical trace so no tool name ever truncates */}
+                    {/* Clean 3-step vertical trace without numbering */}
                     <div className="divide-y divide-(--l-panel-border) overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-code-bg) font-mono text-xs">
-                      {activeItem.steps.map((step, index) => (
+                      {activeItem.steps.map((step) => (
                         <div
                           key={step.command}
                           className="flex flex-col gap-0.5 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                         >
                           <span className="inline-flex items-center gap-2.5 text-(--l-panel-fg)">
-                            <span className="text-[10.5px] tabular-nums text-(--l-panel-fg-4)">
-                              0{index + 1}
-                            </span>
+                            <span className="size-1.5 shrink-0 rounded-full bg-(--l-accent)/80" />
                             <span>{step.command}</span>
                           </span>
-                          <span className="pl-6 text-[11px] text-(--l-panel-fg-3) sm:pl-0">
+                          <span className="pl-4 text-[11px] text-(--l-panel-fg-3) sm:pl-0">
                             {step.target}
                           </span>
                         </div>

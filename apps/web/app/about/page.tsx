@@ -36,25 +36,21 @@ const structuredData = {
 
 const COMMITMENTS = [
   {
-    index: "01",
     label: "Proof over prose",
     detail:
       "Agents should verify edits with real compilers, tests, diffs, and browser previews before declaring a task finished.",
   },
   {
-    index: "02",
     label: "No token markup",
     detail:
       "Every credit dollar maps directly to published provider model rates with prompt caching passed through in full.",
   },
   {
-    index: "03",
     label: "Work that outlives your tab",
     detail:
       "Engineering tasks take minutes, not milliseconds. Execution belongs on durable server infrastructure, not a brittle laptop socket.",
   },
   {
-    index: "04",
     label: "You own every commit",
     detail:
       "Your code stays in standard Git branches and pull requests with zero proprietary runtime lock-in.",
@@ -101,14 +97,11 @@ export default function AboutPage() {
           <dl className="mt-6 divide-y divide-(--l-border) border-y border-(--l-border)">
             {COMMITMENTS.map((item) => (
               <div
-                key={item.index}
+                key={item.label}
                 className="grid gap-1.5 py-4 sm:grid-cols-[200px_1fr] sm:gap-6"
               >
-                <dt className="flex items-baseline gap-2.5 text-sm font-semibold text-(--l-fg)">
-                  <span className="font-mono text-xs tabular-nums text-(--l-accent)">
-                    {item.index}
-                  </span>
-                  <span>{item.label}</span>
+                <dt className="text-sm font-semibold text-(--l-fg)">
+                  {item.label}
                 </dt>
                 <dd className="text-sm leading-relaxed text-(--l-fg-2)">
                   {item.detail}

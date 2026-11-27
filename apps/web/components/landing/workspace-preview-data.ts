@@ -60,26 +60,51 @@ export interface PreviewScenario {
   }[];
 }
 
+export interface SidebarPreviewChat {
+  readonly id: ScenarioId;
+  readonly title: string;
+  readonly age: string;
+  readonly branch: string;
+  readonly prTag: string;
+  readonly prStatus: "open" | "merged";
+  readonly added: number;
+  readonly removed: number;
+}
+
 export const SIDEBAR_PROJECTS: readonly {
+  readonly key: string;
   readonly name: string;
-  readonly expanded: boolean;
-  readonly chats: readonly {
-    readonly id: ScenarioId;
-    readonly title: string;
-    readonly age: string;
-  }[];
+  readonly chats: readonly SidebarPreviewChat[];
 }[] = [
   {
+    key: "entry-agents",
     name: "entry-agents",
-    expanded: true,
     chats: [
-      { id: "resend", title: "Resend email templates", age: "4m" },
-      { id: "oauth", title: "OAuth callback fix", age: "2h" },
+      {
+        id: "resend",
+        title: "Resend email templates",
+        age: "4m",
+        branch: "feat/resend-emails",
+        prTag: "#324",
+        prStatus: "open",
+        added: 248,
+        removed: 19,
+      },
+      {
+        id: "oauth",
+        title: "OAuth callback fix",
+        age: "2h",
+        branch: "fix/oauth-callback",
+        prTag: "#319",
+        prStatus: "merged",
+        added: 46,
+        removed: 12,
+      },
     ],
   },
   {
+    key: "billing-api",
     name: "billing-api",
-    expanded: false,
     chats: [],
   },
 ];
@@ -126,10 +151,10 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
     replyAfterCode:
       ", wired Resend webhook delivery, verified the live preview on port 3000, and opened PR #324 with all 12 unit tests passing.",
     timestamp: "14:22",
-    model: "Opus 5.5",
-    modelFull: "Claude Opus 5.5",
+    model: "DeepSeek V4.1 Flash 1017",
+    modelFull: "DeepSeek V4.1 Flash 1017",
     effort: "high",
-    cost: "$0.184",
+    cost: "$0.018",
     filesChangedCount: 4,
     totalAdded: 248,
     totalRemoved: 19,
@@ -251,7 +276,7 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       { value: "14", label: "Steps" },
       { value: "96%", label: "Context reused" },
       { value: "2", label: "Turns" },
-      { value: "$0.18", label: "Session cost" },
+      { value: "$0.02", label: "Session cost" },
     ],
   },
   oauth: {
@@ -269,10 +294,10 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
     replyAfterCode:
       " so OAuth callbacks normalize to the canonical host when proxy headers vary, verified all 3 provider callbacks, and merged PR #319.",
     timestamp: "11:08",
-    model: "GPT-5.6 Sol",
-    modelFull: "GPT-5.6 Sol",
+    model: "GLM 5.3 Flash",
+    modelFull: "GLM 5.3 Flash",
     effort: "high",
-    cost: "$0.112",
+    cost: "$0.011",
     filesChangedCount: 2,
     totalAdded: 46,
     totalRemoved: 12,
@@ -367,7 +392,7 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       { value: "9", label: "Steps" },
       { value: "98%", label: "Context reused" },
       { value: "2", label: "Turns" },
-      { value: "$0.11", label: "Session cost" },
+      { value: "$0.01", label: "Session cost" },
     ],
   },
   checkout: {
@@ -385,10 +410,10 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
     replyAfterCode:
       ". Verified scrollWidth === 375 on iPhone SE and 1440 on desktop with zero clipped controls.",
     timestamp: "09:47",
-    model: "Opus 5.5",
-    modelFull: "Claude Opus 5.5",
+    model: "DeepSeek V4.1 Flash 1017",
+    modelFull: "DeepSeek V4.1 Flash 1017",
     effort: "max",
-    cost: "$0.146",
+    cost: "$0.014",
     filesChangedCount: 3,
     totalAdded: 74,
     totalRemoved: 38,
@@ -494,7 +519,7 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
       { value: "11", label: "Steps" },
       { value: "95%", label: "Context reused" },
       { value: "2", label: "Turns" },
-      { value: "$0.15", label: "Session cost" },
+      { value: "$0.01", label: "Session cost" },
     ],
   },
 };

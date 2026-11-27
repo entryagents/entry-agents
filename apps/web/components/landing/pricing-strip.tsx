@@ -38,7 +38,7 @@ const PLANS = [
     cadence: "/ mo",
     credit: "$28 monthly credit (2.8x)",
     summary:
-      "Full frontier model catalog and dedicated sandboxes for daily shipping.",
+      "DeepSeek V4.1 Flash 1017, GLM 5.3 Flash, and dedicated sandboxes for daily shipping.",
     points: [
       "$6 / 5h and $14 / 7d usage windows",
       "Dedicated 2 vCPU / 8 GiB VMs (up to 3 concurrent)",

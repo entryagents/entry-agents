@@ -506,3 +506,57 @@
     transform: scaleX(1);
   }
 }
+
+/* Landing atmospheric cloud motion (GPU transform only) */
+@keyframes entry-cloud-pan {
+  0% {
+    transform: translate3d(0%, 0%, 0) scale(1.12);
+  }
+  50% {
+    transform: translate3d(-3.2%, -1.4%, 0) scale(1.16);
+  }
+  100% {
+    transform: translate3d(0%, 0%, 0) scale(1.12);
+  }
+}
+
+@keyframes entry-cloud-veil {
+  0% {
+    transform: translate3d(-3.5%, 0.6%, 0) scaleX(-1.14) scaleY(1.14);
+  }
+  50% {
+    transform: translate3d(2.8%, -1.2%, 0) scaleX(-1.18) scaleY(1.18);
+  }
+  100% {
+    transform: translate3d(-3.5%, 0.6%, 0) scaleX(-1.14) scaleY(1.14);
+  }
+}
+
+@keyframes entry-flow-dash {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+.entry-cloud-pan {
+  will-change: transform;
+  animation: entry-cloud-pan 32s ease-in-out infinite;
+}
+
+.entry-cloud-veil {
+  will-change: transform;
+  animation: entry-cloud-veil 46s ease-in-out infinite;
+}
+
+.entry-flow-dash {
+  stroke-dasharray: 5 9;
+  animation: entry-flow-dash 1.3s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .entry-cloud-pan,
+  .entry-cloud-veil,
+  .entry-flow-dash {
+    animation: none;
+  }
+}

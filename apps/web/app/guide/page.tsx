@@ -52,27 +52,24 @@ const structuredData = {
 };
 
 const GUIDE_SECTIONS: readonly GuideJumpSection[] = [
-  { id: "quickstart", index: "01", label: "First 2 minutes" },
-  { id: "recipes", index: "02", label: "Prompt recipes" },
-  { id: "controls", index: "03", label: "Workspace controls" },
-  { id: "habits", index: "04", label: "Turn-saving habits" },
+  { id: "quickstart", label: "First 2 minutes" },
+  { id: "recipes", label: "Prompt recipes" },
+  { id: "controls", label: "Workspace controls" },
+  { id: "habits", label: "Turn-saving habits" },
 ];
 
 const QUICKSTART_MODES = [
   {
-    index: "A",
     title: "Start from zero",
     steps:
       "Open Chats → New chat → Blank workspace. Describe the app you want, let Entry scaffold and run the dev server, and inspect the live preview URL directly.",
   },
   {
-    index: "B",
     title: "Bring a GitHub repo",
     steps:
       "Connect GitHub in Settings → Accounts, pick your repository when starting a session, and Entry checks out an isolated branch ready for verified PRs.",
   },
   {
-    index: "C",
     title: "Upload specs or assets",
     steps:
       "Drop screenshots, CSVs, or zip archives straight into the composer. Entry mounts them in your workspace so the agent can inspect exact pixels or schemas.",
@@ -81,30 +78,26 @@ const QUICKSTART_MODES = [
 
 const PROMPT_RECIPES = [
   {
-    index: "01",
     title: "Build a feature with responsive proof",
     whenToUse: "Starting a new screen, flow, or standalone app",
     prompt: `Build a mobile-first invoice tracker with line-item math, paid/pending filters, and a print view.
 Check 375px and 1440px viewports in headless Chrome with zero horizontal overflow, and run typecheck before finishing.`,
   },
   {
-    index: "02",
     title: "Run a parallel Team Wave refactor",
     whenToUse: "Changes spanning schema, API routes, and UI components",
     prompt: `Use a Team Wave to add webhook signature verification end to end:
-Wave 0: map existing webhook handlers and lock shared payload schema types.
-Wave 1: update route validation and database migration in disjoint files.
-Wave 2: run unit tests and summarize every changed file.`,
+Scout existing webhook handlers and lock shared payload schema types first.
+Update route validation and database migration in disjoint files in parallel.
+Run unit tests and summarize every changed file.`,
   },
   {
-    index: "03",
     title: "Reproduce and fix a bug with regression coverage",
     whenToUse: "Tracking down a broken form, API 500, or flaky state bug",
     prompt: `Submitting the settings form drops custom headers after page refresh.
 Reproduce the bug first, trace the network and server handler, apply the minimal fix, and add a test confirming persistence.`,
   },
   {
-    index: "04",
     title: "Resolve PR review threads",
     whenToUse: "Iterating on an open GitHub pull request",
     prompt: `Read every unresolved review comment on PR #142 and apply the requested fixes without changing unrelated behavior.
@@ -131,7 +124,7 @@ const WORKSPACE_CONTROLS = [
   {
     control: "Model & effort picker",
     purpose:
-      "Switch models mid-chat — use Claude Opus 5.5 or GPT-5.6 for hard refactors and fast models for routine copy or CSS tweaks.",
+      "Switch models and reasoning depth mid-chat — pair DeepSeek V4.1 Flash 1017 and GLM 5.3 Flash to match each task.",
   },
   {
     control: "Secrets ($KEY_NAME)",
@@ -155,8 +148,8 @@ const HABITS = [
     body: "One pasted screenshot communicates layout bugs faster than three paragraphs of CSS description.",
   },
   {
-    title: "Match model weight to task complexity",
-    body: "Use heavy reasoning models for architecture and debugging, then switch to lighter models for quick copy passes. Compare live rates on Models.",
+    title: "Tune reasoning effort per task",
+    body: "Raise reasoning effort for debugging and multi-file edits, then dial it down for quick copy passes. Compare live rates on Models.",
   },
   {
     title: "Close the tab on long runs",
@@ -166,12 +159,10 @@ const HABITS = [
 
 function Section({
   id,
-  index,
   title: heading,
   children,
 }: {
   readonly id: string;
-  readonly index: string;
   readonly title: string;
   readonly children: React.ReactNode;
 }) {
@@ -180,14 +171,9 @@ function Section({
       id={id}
       className="scroll-mt-24 border-t border-(--l-border) pt-12"
     >
-      <div className="flex items-baseline gap-3">
-        <span className="font-mono text-xs tabular-nums text-(--l-accent)">
-          {index}
-        </span>
-        <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
-          {heading}
-        </h2>
-      </div>
+      <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
+        {heading}
+      </h2>
       <div className="mt-6 space-y-5 text-sm leading-relaxed text-(--l-fg-2) sm:text-base">
         {children}
       </div>
@@ -240,7 +226,7 @@ export default function GuidePage() {
         <GuideJumpNav sections={GUIDE_SECTIONS} />
 
         <div className="mt-12 space-y-14">
-          <Section id="quickstart" index="01" title="First two minutes">
+          <Section id="quickstart" title="First two minutes">
             <p>
               Sign in at{" "}
               <Link
@@ -255,15 +241,10 @@ export default function GuidePage() {
             <div className="overflow-hidden rounded-xl border border-(--l-border) bg-(--l-surface)">
               <div className="grid divide-y divide-(--l-border) md:grid-cols-3 md:divide-x md:divide-y-0">
                 {QUICKSTART_MODES.map((mode) => (
-                  <div key={mode.index} className="p-5">
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-mono text-xs text-(--l-accent)">
-                        {mode.index}
-                      </span>
-                      <h3 className="text-sm font-semibold text-(--l-fg)">
-                        {mode.title}
-                      </h3>
-                    </div>
+                  <div key={mode.title} className="p-5">
+                    <h3 className="text-sm font-semibold text-(--l-fg)">
+                      {mode.title}
+                    </h3>
                     <p className="mt-2 text-xs leading-relaxed text-(--l-fg-2) sm:text-[13px]">
                       {mode.steps}
                     </p>
@@ -273,23 +254,19 @@ export default function GuidePage() {
             </div>
           </Section>
 
-          <Section id="recipes" index="02" title="Copy-ready prompt recipes">
+          <Section id="recipes" title="Copy-ready prompt recipes">
             <p>
               Prompts that specify the target outcome, boundaries, and proof
               checks finish in fewer turns. Copy and adapt any pattern below:
             </p>
             <div className="space-y-4">
               {PROMPT_RECIPES.map((recipe) => (
-                <PromptRecipeCard key={recipe.index} {...recipe} />
+                <PromptRecipeCard key={recipe.title} {...recipe} />
               ))}
             </div>
           </Section>
 
-          <Section
-            id="controls"
-            index="03"
-            title="Workspace controls & secrets"
-          >
+          <Section id="controls" title="Workspace controls & secrets">
             <div className="overflow-hidden rounded-xl border border-(--l-border) bg-(--l-surface)">
               <dl className="divide-y divide-(--l-border)">
                 {WORKSPACE_CONTROLS.map((item) => (
@@ -309,7 +286,7 @@ export default function GuidePage() {
             </div>
           </Section>
 
-          <Section id="habits" index="04" title="Habits that save turns">
+          <Section id="habits" title="Habits that save turns">
             <div className="grid gap-4 sm:grid-cols-2">
               {HABITS.map((habit) => (
                 <div

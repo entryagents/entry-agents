@@ -3,7 +3,6 @@
 import {
   Archive,
   ChevronDown,
-  Folder,
   FolderGit2,
   FolderInput,
   GitBranch,
@@ -13,6 +12,7 @@ import {
   LogOut,
   Monitor,
   Moon,
+  MoreHorizontal,
   Pencil,
   Plus,
   PlusCircle,
@@ -26,6 +26,7 @@ import { useTheme } from "@/app/providers";
 import "./sidebar/sable-sidebar.css";
 import { EntryMark } from "@/components/entry-mark";
 import { GitHubImportDialog } from "@/components/github-import-dialog";
+import { SidebarDiffMeter } from "@/components/sidebar/diff-bar";
 import { SessionChildChats } from "@/components/sidebar/session-child-chats";
 import { SidebarProjectsSection } from "@/components/sidebar-projects-section";
 import {
@@ -127,35 +128,13 @@ const sessionRowPerformanceStyle: CSSProperties = {
   containIntrinsicSize: "2.25rem",
 };
 
-function DiffStats({
-  added,
-  removed,
-}: {
-  added: number | null;
-  removed: number | null;
-}) {
-  if (added === null && removed === null) return null;
-  if (added === 0 && removed === 0) return null;
-
-  return (
-    <span className="flex items-center gap-0.5 font-mono text-[10px]">
-      {added !== null ? (
-        <span className="text-emerald-600 dark:text-emerald-400">+{added}</span>
-      ) : null}
-      {removed !== null ? (
-        <span className="text-rose-600 dark:text-rose-400">-{removed}</span>
-      ) : null}
-    </span>
-  );
-}
-
 function getSessionStatusIcon(session: SessionWithUnread) {
   // Actively streaming / waiting for LLM
   if (session.hasStreaming) {
     return (
       <Loader2
-        className="h-3.5 w-3.5 shrink-0 animate-spin text-foreground/75"
-        strokeWidth={1.6}
+        className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-500 dark:text-sky-400"
+        strokeWidth={1.7}
       />
     );
   }
@@ -190,28 +169,6 @@ function getSessionStatusIcon(session: SessionWithUnread) {
     );
   }
 
-  // Has a branch with code changes
-  const hasDiff = session.linesAdded || session.linesRemoved;
-  if (session.branch && hasDiff) {
-    return (
-      <GitBranch
-        className="h-3.5 w-3.5 shrink-0 text-foreground/80"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // Has a branch but no changes yet
-  if (session.branch) {
-    return (
-      <GitBranch
-        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70"
-        strokeWidth={1.5}
-      />
-    );
-  }
-
-  // Plain chat or idle workspace without branch: keep row uncluttered so chat titles breathe
   return null;
 }
 
@@ -280,8 +237,10 @@ const SessionRow = memo(function SessionRow({
     renameInputRef.current.select();
   }, [isRenaming]);
 
-  const hasDiff = session.linesAdded !== null || session.linesRemoved !== null;
-  const showActionButtons = isHovered || moveMenuOpen;
+  const hasDiff =
+    (session.linesAdded ?? 0) > 0 || (session.linesRemoved ?? 0) > 0;
+  const showCodeMeta = hasDiff || Boolean(session.prNumber);
+  const showMenuTrigger = isHovered || moveMenuOpen;
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true);
@@ -334,69 +293,44 @@ const SessionRow = memo(function SessionRow({
   const repoName = session.repoName?.trim() ?? "";
   const hasRepo = Boolean(repoOwner && repoName);
 
-  const actionButtons = showActionButtons ? (
-    <>
-      {!isMobile && hasRepo && onOpenBranchPicker ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-              aria-label={`Create session from branch for ${repoName}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onOpenBranchPicker(repoOwner, repoName);
-              }}
-            >
-              <GitBranch className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top" sideOffset={4}>
-            Create from branch
-          </TooltipContent>
-        </Tooltip>
-      ) : null}
-      {onRenameSession ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              className="rounded p-0.5 text-muted-foreground/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-muted-foreground"
-              aria-label="Rename chat"
-              onClick={(event) => {
-                event.stopPropagation();
-                setRenameValue(session.title);
-                setIsRenaming(true);
-              }}
-            >
-              <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent side="top" sideOffset={4}>
-            Rename chat
-          </TooltipContent>
-        </Tooltip>
-      ) : null}
-      {folders && folders.length > 0 && onMoveSessionToFolder ? (
-        <DropdownMenu open={moveMenuOpen} onOpenChange={setMoveMenuOpen}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="rounded p-0.5 text-muted-foreground/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-muted-foreground"
-                  aria-label="Move to folder"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <FolderInput className="h-3.5 w-3.5" strokeWidth={1.5} />
-                </button>
-              </DropdownMenuTrigger>
-            </TooltipTrigger>
-            <TooltipContent side="top" sideOffset={4}>
-              Move to folder
-            </TooltipContent>
-          </Tooltip>
-          <DropdownMenuContent align="end" sideOffset={4} className="w-44">
+  const actionMenu = (
+    <DropdownMenu open={moveMenuOpen} onOpenChange={setMoveMenuOpen}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={`grid size-5 shrink-0 place-items-center rounded text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer ${
+            showMenuTrigger ? "flex" : "hidden"
+          }`}
+          aria-label={`Thread options for ${session.title}`}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <MoreHorizontal className="size-3.5" strokeWidth={1.6} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={4} className="w-48">
+        {onRenameSession ? (
+          <DropdownMenuItem
+            onSelect={() => {
+              setRenameValue(session.title);
+              setIsRenaming(true);
+            }}
+          >
+            <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <span>Rename chat</span>
+          </DropdownMenuItem>
+        ) : null}
+        {!isMobile && hasRepo && onOpenBranchPicker ? (
+          <DropdownMenuItem
+            onSelect={() => {
+              onOpenBranchPicker(repoOwner, repoName);
+            }}
+          >
+            <GitBranch className="h-3.5 w-3.5" strokeWidth={1.5} />
+            <span>New from branch</span>
+          </DropdownMenuItem>
+        ) : null}
+        {folders && folders.length > 0 && onMoveSessionToFolder ? (
+          <>
             {folders.map((folder) => {
               const isCurrent = session.projectId === folder.id;
               return (
@@ -407,8 +341,8 @@ const SessionRow = memo(function SessionRow({
                     void onMoveSessionToFolder(session.id, folder.id);
                   }}
                 >
-                  <Folder className="h-3.5 w-3.5" strokeWidth={1.5} />
-                  <span className="truncate">{folder.name}</span>
+                  <FolderInput className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  <span className="truncate">Move to {folder.name}</span>
                 </DropdownMenuItem>
               );
             })}
@@ -422,35 +356,25 @@ const SessionRow = memo(function SessionRow({
                 <span>Remove from folder</span>
               </DropdownMenuItem>
             ) : null}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            className="rounded p-0.5 text-muted-foreground/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-muted-foreground"
-            aria-label={
-              session.status === "archived" ? "Unarchive chat" : "Archive chat"
+          </>
+        ) : null}
+        <DropdownMenuItem
+          onSelect={() => {
+            if (session.status === "archived") {
+              onUnarchiveSession(session);
+              return;
             }
-            onClick={(event) => {
-              event.stopPropagation();
-              if (session.status === "archived") {
-                onUnarchiveSession(session);
-                return;
-              }
-              onArchiveSession(session);
-            }}
-          >
-            <Archive className="h-3.5 w-3.5" strokeWidth={1.5} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="top" sideOffset={4}>
-          {session.status === "archived" ? "Unarchive chat" : "Archive chat"}
-        </TooltipContent>
-      </Tooltip>
-    </>
-  ) : null;
+            onArchiveSession(session);
+          }}
+        >
+          <Archive className="h-3.5 w-3.5" strokeWidth={1.5} />
+          <span>
+            {session.status === "archived" ? "Unarchive chat" : "Archive chat"}
+          </span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
   const statusIcon = getSessionStatusIcon(session);
   const ageLabel = formatCompactSessionAge(
@@ -496,7 +420,9 @@ const SessionRow = memo(function SessionRow({
     </div>
   ) : (
     <div
-      className={`group flex h-8 w-full items-center gap-1 rounded-lg px-2 transition-[background-color,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`group flex w-full flex-col rounded-lg px-2 transition-[background-color,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        showCodeMeta ? "py-1.5" : "h-8 justify-center"
+      } ${
         isActive
           ? "bg-foreground/[0.08] text-foreground"
           : "hover:bg-foreground/[0.045]"
@@ -505,81 +431,96 @@ const SessionRow = memo(function SessionRow({
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      <button
-        type="button"
-        title={[
-          session.title,
-          hasRepo ? `${repoOwner}/${repoName}` : "",
-          session.branch ?? "",
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-        className="flex h-full min-w-0 flex-1 items-center gap-2 text-left outline-none cursor-pointer focus-visible:ring-1 focus-visible:ring-ring rounded-md"
-        onClick={() => {
-          if (isMobile) setOpenMobile(false);
-          onSessionClick(session);
-        }}
-        onFocus={() => onSessionPrefetch(session)}
-        aria-busy={isPending}
-      >
-        {statusIcon ? (
-          <span className="flex size-3.5 shrink-0 items-center justify-center">
-            {statusIcon}
-          </span>
-        ) : session.hasUnread && !isActive ? (
-          <span
-            className="size-1.5 shrink-0 rounded-full bg-foreground"
-            aria-label="Unread activity"
-          />
-        ) : null}
-        <span
-          className={`min-w-0 flex-1 truncate text-[13px] leading-[18px] transition-colors duration-120 ${
-            isActive
-              ? "font-medium text-foreground"
-              : session.hasUnread
-                ? "font-medium text-foreground"
-                : "font-normal text-foreground/75 group-hover:text-foreground"
-          }`}
+      {/* Primary line: full-width chat title + quiet age swapping cleanly to ··· menu */}
+      <div className="flex min-w-0 items-center gap-1.5">
+        <button
+          type="button"
+          title={[
+            session.title,
+            hasRepo ? `${repoOwner}/${repoName}` : "",
+            session.branch ?? "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none cursor-pointer focus-visible:ring-1 focus-visible:ring-ring rounded-md"
+          onClick={() => {
+            if (isMobile) setOpenMobile(false);
+            onSessionClick(session);
+          }}
+          onFocus={() => onSessionPrefetch(session)}
+          aria-busy={isPending}
         >
-          {session.title}
-        </span>
-      </button>
-
-      {actionButtons ? (
-        <span className="flex shrink-0 items-center gap-0.5 pl-1">
-          {actionButtons}
-        </span>
-      ) : (
-        <span className="flex shrink-0 items-center justify-end gap-1.5 pl-1 font-mono text-[10.5px] tabular-nums text-muted-foreground/65">
-          {session.hasUnread && !isActive && statusIcon ? (
+          {statusIcon ? (
+            <span className="flex size-3.5 shrink-0 items-center justify-center">
+              {statusIcon}
+            </span>
+          ) : session.hasUnread && !isActive ? (
             <span
-              className="size-1.5 shrink-0 rounded-full bg-foreground"
+              className="size-1.5 shrink-0 rounded-full bg-sky-500 dark:bg-sky-400"
               aria-label="Unread activity"
             />
           ) : null}
-          {session.prNumber ? (
-            <span
-              className={
-                session.prStatus === "merged"
-                  ? "text-indigo-500 dark:text-indigo-400"
-                  : session.prStatus === "open"
-                    ? "text-emerald-600 dark:text-emerald-400"
-                    : "text-rose-500 dark:text-rose-400"
-              }
-            >
-              #{session.prNumber}
-            </span>
-          ) : null}
-          {hasDiff ? (
-            <DiffStats
-              added={session.linesAdded}
-              removed={session.linesRemoved}
-            />
-          ) : ageLabel ? (
-            <span>{ageLabel}</span>
-          ) : null}
-        </span>
-      )}
+          <span
+            className={`min-w-0 flex-1 truncate text-[13px] leading-[18px] transition-colors duration-120 ${
+              isActive
+                ? "font-medium text-foreground"
+                : session.hasUnread
+                  ? "font-medium text-foreground"
+                  : "font-normal text-foreground/80 group-hover:text-foreground"
+            }`}
+          >
+            {session.title}
+          </span>
+        </button>
+
+        {actionMenu}
+        {!showMenuTrigger && ageLabel ? (
+          <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-muted-foreground/60">
+            {ageLabel}
+          </span>
+        ) : null}
+      </div>
+
+      {/* Quiet secondary code telemetry line: branch + PR + proportional diff meter */}
+      {showCodeMeta ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => {
+            if (isMobile) setOpenMobile(false);
+            onSessionClick(session);
+          }}
+          className={`mt-1 flex min-w-0 items-center justify-between gap-2 text-left cursor-pointer ${
+            statusIcon ? "pl-[22px]" : ""
+          }`}
+        >
+          <span className="min-w-0 truncate font-mono text-[10.5px] text-muted-foreground/65">
+            {session.branch ??
+              (session.prNumber ? `PR #${session.prNumber}` : "")}
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {session.prNumber ? (
+              <span
+                className={`font-mono text-[10px] tabular-nums ${
+                  session.prStatus === "merged"
+                    ? "text-indigo-500 dark:text-indigo-400"
+                    : session.prStatus === "open"
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-rose-500 dark:text-rose-400"
+                }`}
+              >
+                #{session.prNumber}
+              </span>
+            ) : null}
+            {hasDiff ? (
+              <SidebarDiffMeter
+                added={session.linesAdded}
+                removed={session.linesRemoved}
+              />
+            ) : null}
+          </span>
+        </button>
+      ) : null}
     </div>
   );
 
@@ -731,6 +672,9 @@ export function InboxSidebar({
   const [searchOpen, setSearchOpen] = useState(false);
   const [desktopSearchQuery, setDesktopSearchQuery] = useState("");
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(
+    null,
+  );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
@@ -1115,6 +1059,8 @@ export function InboxSidebar({
               <SidebarProjectsSection
                 projects={projectGroups}
                 activeSessionId={activeSessionId}
+                selectedProjectKey={selectedProjectKey}
+                onSelectProjectKey={setSelectedProjectKey}
                 onOpenImportGithub={() => setImportGithubOpen(true)}
                 onCreateFolder={onCreateFolder ?? (async () => {})}
                 onRenameFolder={onRenameFolder ?? (async () => {})}
@@ -1148,7 +1094,7 @@ export function InboxSidebar({
                 )}
               />
 
-              {recencyGroups.length > 0 ? (
+              {!selectedProjectKey && recencyGroups.length > 0 ? (
                 <div className="mt-1 space-y-3 border-t border-border/50 pt-2">
                   {recencyGroups.map((group) => (
                     <div key={group.label} className="space-y-0.5">
