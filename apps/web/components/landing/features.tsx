@@ -12,10 +12,26 @@ import {
   Terminal,
   WifiOff,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import {
+  AnimatePresence,
+  motion,
+  useInView,
+  useReducedMotion,
+} from "motion/react";
+import { useEffect, useRef, useState } from "react";
 
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+
+const TERMINAL_LINES = [
+  { kind: "cmd", text: "$ pnpm dev --port 3000 &" },
+  { kind: "ok", text: "Server ready in 1.4s · persisted across turns" },
+  { kind: "cmd", text: "$ bun test lib/email" },
+  { kind: "ok", text: "12 pass · 0 fail in 340ms" },
+  {
+    kind: "url",
+    text: "Exposed port 3000 at https://preview-3000.entryagents.app",
+  },
+] as const;
 
 const CONTINUITY_PHASES = [
   {
@@ -24,6 +40,7 @@ const CONTINUITY_PHASES = [
     title: "Laptop closes mid-turn",
     detail: "Browser disconnects while running integration tests",
     badge: "Offline",
+    progress: 34,
   },
   {
     id: "server",
@@ -31,6 +48,7 @@ const CONTINUITY_PHASES = [
     title: "Cloud workflow keeps executing",
     detail: "Server checkpoints persist every edit, test pass, and commit",
     badge: "18 / 18 green",
+    progress: 72,
   },
   {
     id: "mobile",
@@ -38,6 +56,7 @@ const CONTINUITY_PHASES = [
     title: "Reconciled when you return",
     detail: "Open from desktop or phone to inspect PR #324 (+248 -19)",
     badge: "Synced",
+    progress: 100,
   },
 ] as const;
 
@@ -56,11 +75,58 @@ export function LandingFeatures() {
 }
 
 function UbuntuMachineShowcase() {
+  const prefersReduced = useReducedMotion() ?? false;
+  const ref = useRef<HTMLDivElement | null>(null);
+  const inView = useInView(ref, { amount: 0.35 });
+
   const [view, setView] = useState<"console" | "preview">("console");
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
+  const [visibleLines, setVisibleLines] = useState(
+    prefersReduced ? TERMINAL_LINES.length : 1,
+  );
+  const [userControlled, setUserControlled] = useState(false);
+
+  // Auto-stream terminal output and morph to responsive preview when scrolled into view
+  useEffect(() => {
+    if (prefersReduced) {
+      setVisibleLines(TERMINAL_LINES.length);
+      return;
+    }
+    if (!inView || userControlled) return;
+
+    const timers: number[] = [];
+    const runCycle = () => {
+      setView("console");
+      setDevice("desktop");
+      setVisibleLines(1);
+      timers.push(window.setTimeout(() => setVisibleLines(2), 550));
+      timers.push(window.setTimeout(() => setVisibleLines(3), 1150));
+      timers.push(window.setTimeout(() => setVisibleLines(4), 1750));
+      timers.push(window.setTimeout(() => setVisibleLines(5), 2350));
+      timers.push(window.setTimeout(() => setView("preview"), 3800));
+      timers.push(window.setTimeout(() => setDevice("mobile"), 5400));
+      timers.push(window.setTimeout(() => setDevice("desktop"), 7200));
+    };
+
+    runCycle();
+    const interval = window.setInterval(runCycle, 8800);
+    return () => {
+      for (const id of timers) window.clearTimeout(id);
+      window.clearInterval(interval);
+    };
+  }, [inView, prefersReduced, userControlled]);
+
+  const handleSelectView = (next: "console" | "preview") => {
+    setUserControlled(true);
+    setVisibleLines(TERMINAL_LINES.length);
+    setView(next);
+  };
 
   return (
-    <div className="grid items-center gap-10 py-16 sm:py-24 lg:grid-cols-12 lg:gap-12">
+    <div
+      ref={ref}
+      className="grid items-center gap-10 py-16 sm:py-24 lg:grid-cols-12 lg:gap-12"
+    >
       <div className="min-w-0 lg:col-span-5">
         <h2 className="font-display text-balance text-3xl font-semibold leading-[1.06] tracking-[-0.03em] sm:text-4xl">
           An Ubuntu machine behind every chat
@@ -71,7 +137,6 @@ function UbuntuMachineShowcase() {
           port previews. Idle machines suspend automatically when you step away.
         </p>
 
-        {/* Tactile spring-pill view switcher — zero numbering */}
         <div
           role="tablist"
           aria-label="Workspace view"
@@ -90,7 +155,7 @@ function UbuntuMachineShowcase() {
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setView(tab.id)}
+                onClick={() => handleSelectView(tab.id)}
                 className={`relative inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg px-3.5 text-xs font-medium transition-colors duration-150 ${
                   active
                     ? "text-(--l-fg)"
@@ -135,7 +200,10 @@ function UbuntuMachineShowcase() {
               <div className="inline-flex items-center gap-1 rounded-md border border-(--l-panel-border) bg-(--l-panel) p-0.5 text-[11px]">
                 <button
                   type="button"
-                  onClick={() => setDevice("desktop")}
+                  onClick={() => {
+                    setUserControlled(true);
+                    setDevice("desktop");
+                  }}
                   className={`inline-flex cursor-pointer items-center gap-1 rounded px-2 py-0.5 transition-colors ${
                     device === "desktop"
                       ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
@@ -147,7 +215,10 @@ function UbuntuMachineShowcase() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setDevice("mobile")}
+                  onClick={() => {
+                    setUserControlled(true);
+                    setDevice("mobile");
+                  }}
                   className={`inline-flex cursor-pointer items-center gap-1 rounded px-2 py-0.5 transition-colors ${
                     device === "mobile"
                       ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
@@ -165,7 +236,7 @@ function UbuntuMachineShowcase() {
             )}
           </div>
 
-          <div className="min-h-[264px] p-5 sm:p-6">
+          <div className="min-h-[268px] p-5 sm:p-6">
             <AnimatePresence mode="wait">
               {view === "console" ? (
                 <motion.div
@@ -176,36 +247,43 @@ function UbuntuMachineShowcase() {
                   transition={{ duration: 0.18, ease: EASE_OUT }}
                   className="space-y-4"
                 >
-                  <div className="space-y-2 rounded-xl border border-(--l-panel-border) bg-(--l-code-bg) p-4 font-mono text-xs leading-relaxed">
-                    <div className="text-(--l-panel-fg-3)">
-                      $ pnpm dev --port 3000 &amp;
-                    </div>
-                    <div className="text-(--l-panel-fg)">
-                      <span className="text-emerald-600 dark:text-emerald-400">
-                        ✓
-                      </span>{" "}
-                      Server ready in 1.4s · persisted across turns
-                    </div>
-                    <div className="text-(--l-panel-fg-3)">
-                      $ bun test lib/email
-                    </div>
-                    <div className="text-(--l-panel-fg)">
-                      <span className="text-emerald-600 dark:text-emerald-400">
-                        ✓
-                      </span>{" "}
-                      12 pass · 0 fail in 340ms
-                    </div>
-                    <div className="truncate text-(--l-panel-fg-2)">
-                      <span className="text-(--l-accent)">→</span> Exposed port
-                      3000 at https://preview-3000.entryagents.app
-                    </div>
+                  <div className="min-h-[162px] space-y-2 rounded-xl border border-(--l-panel-border) bg-(--l-code-bg) p-4 font-mono text-xs leading-relaxed">
+                    {TERMINAL_LINES.slice(0, visibleLines).map((line) => (
+                      <motion.div
+                        key={line.text}
+                        initial={
+                          prefersReduced
+                            ? false
+                            : { opacity: 0, transform: "translateY(4px)" }
+                        }
+                        animate={{ opacity: 1, transform: "translateY(0px)" }}
+                        transition={{ duration: 0.2, ease: EASE_OUT }}
+                        className={
+                          line.kind === "cmd"
+                            ? "text-(--l-panel-fg-3)"
+                            : line.kind === "url"
+                              ? "truncate text-(--l-panel-fg-2)"
+                              : "text-(--l-panel-fg)"
+                        }
+                      >
+                        {line.kind === "ok" && (
+                          <span className="mr-1.5 text-emerald-600 dark:text-emerald-400">
+                            ✓
+                          </span>
+                        )}
+                        {line.kind === "url" && (
+                          <span className="mr-1.5 text-(--l-accent)">→</span>
+                        )}
+                        <span>{line.text}</span>
+                      </motion.div>
+                    ))}
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-(--l-panel-fg-3)">
                     <span>Isolated network · auto-suspend on idle</span>
                     <button
                       type="button"
-                      onClick={() => setView("preview")}
+                      onClick={() => handleSelectView("preview")}
                       className="inline-flex cursor-pointer items-center gap-1.5 font-medium text-(--l-panel-fg) transition-opacity hover:opacity-80"
                     >
                       <span>Inspect live preview</span>
@@ -224,9 +302,9 @@ function UbuntuMachineShowcase() {
                 >
                   <motion.div
                     layout
-                    transition={{ duration: 0.28, ease: EASE_OUT }}
+                    transition={{ duration: 0.34, ease: EASE_OUT }}
                     className={`w-full rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4 ${
-                      device === "mobile" ? "max-w-[260px]" : "max-w-full"
+                      device === "mobile" ? "max-w-[264px]" : "max-w-full"
                     }`}
                   >
                     <div className="flex items-center justify-between border-b border-(--l-panel-border) pb-3">
@@ -268,29 +346,38 @@ function UbuntuMachineShowcase() {
 }
 
 function DurableContinuityShowcase() {
-  const [activePhase, setActivePhase] = useState(2);
-  const [replaying, setReplaying] = useState(false);
+  const prefersReduced = useReducedMotion() ?? false;
+  const ref = useRef<HTMLDivElement | null>(null);
+  const inView = useInView(ref, { amount: 0.35 });
+
+  const [activePhase, setActivePhase] = useState(prefersReduced ? 2 : 0);
+  const [autoPlay, setAutoPlay] = useState(true);
 
   useEffect(() => {
-    if (!replaying) return;
-    const t1 = window.setTimeout(() => setActivePhase(1), 900);
-    const t2 = window.setTimeout(() => {
+    if (prefersReduced) {
       setActivePhase(2);
-      setReplaying(false);
-    }, 2000);
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-    };
-  }, [replaying]);
+      return;
+    }
+    if (!inView || !autoPlay) return;
+
+    const timer = window.setInterval(() => {
+      setActivePhase((prev) => (prev + 1) % CONTINUITY_PHASES.length);
+    }, 2200);
+    return () => window.clearInterval(timer);
+  }, [autoPlay, inView, prefersReduced]);
 
   const handleReplay = () => {
     setActivePhase(0);
-    setReplaying(true);
+    setAutoPlay(true);
   };
 
+  const progressPct = CONTINUITY_PHASES[activePhase]?.progress ?? 100;
+
   return (
-    <div className="grid items-center gap-10 py-16 sm:py-24 lg:grid-cols-12 lg:gap-12">
+    <div
+      ref={ref}
+      className="grid items-center gap-10 py-16 sm:py-24 lg:grid-cols-12 lg:gap-12"
+    >
       <div className="order-2 min-w-0 lg:order-1 lg:col-span-7">
         <div className="overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-panel)">
           <div className="flex items-center justify-between gap-2 border-b border-(--l-panel-border) bg-(--l-surface) px-4 py-2.5 text-xs">
@@ -307,8 +394,17 @@ function DurableContinuityShowcase() {
               className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-(--l-panel-border) bg-(--l-panel) px-2.5 py-1 text-[11px] font-medium text-(--l-panel-fg-2) transition-colors hover:text-(--l-panel-fg)"
             >
               <RotateCcw className="size-3" strokeWidth={1.5} />
-              <span>{replaying ? "Running..." : "Simulate disconnect"}</span>
+              <span>Replay handoff</span>
             </button>
+          </div>
+
+          {/* Live animated checkpoint completion bar */}
+          <div className="h-[2px] w-full bg-(--l-panel-border)">
+            <motion.div
+              className="h-full bg-(--l-accent)"
+              animate={{ width: `${progressPct}%` }}
+              transition={{ duration: 0.45, ease: EASE_OUT }}
+            />
           </div>
 
           <div className="divide-y divide-(--l-panel-border) p-2">
@@ -321,7 +417,7 @@ function DurableContinuityShowcase() {
                   key={phase.id}
                   type="button"
                   onClick={() => {
-                    setReplaying(false);
+                    setAutoPlay(false);
                     setActivePhase(idx);
                   }}
                   className={`flex w-full cursor-pointer items-center justify-between gap-4 rounded-xl px-3.5 py-3.5 text-left transition-colors duration-200 ${
@@ -527,7 +623,7 @@ function ExecutionModesShowcase() {
                     </span>
                   </div>
                   <div className="mt-1 text-[11px] text-(--l-panel-fg-3)">
-                    DeepSeek V4.1 Flash 1017 · isolated file claim
+                    Isolated file claim · API validation
                   </div>
                 </div>
 
@@ -545,7 +641,7 @@ function ExecutionModesShowcase() {
                     </span>
                   </div>
                   <div className="mt-1 text-[11px] text-(--l-panel-fg-3)">
-                    GLM 5.3 Flash · isolated file claim
+                    Isolated file claim · UI template
                   </div>
                 </div>
               </div>
@@ -615,7 +711,7 @@ function ExecutionModesShowcase() {
                   Reproduce failing route
                 </div>
                 <p className="mt-1 text-xs text-(--l-panel-fg-3)">
-                  DeepSeek V4.1 Flash 1017 traces auth origin handling.
+                  Traces auth callback origin handling inside the workspace.
                 </p>
               </div>
 
@@ -694,25 +790,6 @@ function ExecutionModesShowcase() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* Quiet model bar — DeepSeek V4.1 Flash 1017 & GLM 5.3 Flash only */}
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-(--l-panel-border) pt-5 text-xs text-(--l-panel-fg-3)">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-            <span className="inline-flex items-center gap-2 font-mono text-(--l-panel-fg)">
-              <span className="size-1.5 rounded-full bg-(--l-accent)" />
-              <span>DeepSeek V4.1 Flash 1017</span>
-              <span className="text-(--l-panel-fg-3)">1M ctx</span>
-            </span>
-            <span className="inline-flex items-center gap-2 font-mono text-(--l-panel-fg)">
-              <span className="size-1.5 rounded-full bg-(--l-panel-fg-3)" />
-              <span>GLM 5.3 Flash</span>
-              <span className="text-(--l-panel-fg-3)">Fast reasoning</span>
-            </span>
-          </div>
-          <span className="font-mono tabular-nums">
-            90%–99% prompt cache reuse · zero markup
-          </span>
-        </div>
       </div>
     </div>
   );

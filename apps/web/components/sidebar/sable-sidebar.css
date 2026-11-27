@@ -23,10 +23,10 @@
 
 .dark .sable-side {
   --side-bg: #0c0c0e;
-  --side-line: rgba(255, 255, 255, 0.07);
+  --side-line: rgba(255, 255, 255, 0.06);
   --side-fill-1: rgba(255, 255, 255, 0.035);
   --side-fill-2: rgba(255, 255, 255, 0.06);
-  --side-fill-3: rgba(255, 255, 255, 0.095);
+  --side-fill-3: rgba(255, 255, 255, 0.09);
 }
 
 .sable-side-list {
@@ -58,20 +58,11 @@
   background: linear-gradient(to top, var(--side-bg), transparent);
 }
 
-.no-scrollbar {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-
 .sable-child-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 2px 0 6px 10px;
+  margin: 2px 0 6px 15px;
   padding-left: 8px;
   border-left: 1px solid var(--side-line);
 }

@@ -1,25 +1,22 @@
 "use client";
 
 import {
-  Archive,
   ArrowUp,
   Check,
   ChevronDown,
   ChevronRight,
-  ChevronUp,
   Copy,
+  Folder,
   FolderGit2,
   GitFork,
-  GitMerge,
-  GitPullRequest,
+  PanelLeft,
   Paperclip,
   Plus,
-  Search,
   ShieldCheck,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { EntryMark } from "@/components/entry-mark";
-import { SidebarDiffMeter } from "@/components/sidebar/diff-bar";
 import { WorkspaceInspectorPane } from "./workspace-inspector-pane";
 import {
   type InspectorTab,
@@ -30,12 +27,12 @@ import {
   USAGE_WINDOWS,
 } from "./workspace-preview-data";
 
+const EASE_OUT = [0.22, 1, 0.36, 1] as const;
+
 export function AppMockup() {
   const [scenarioId, setScenarioId] = useState<ScenarioId>("resend");
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("diff");
-  const [selectedScope, setSelectedScope] = useState<string | null>(null);
   const [stepsExpanded, setStepsExpanded] = useState(false);
-  const [usageOpen, setUsageOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mobilePane, setMobilePane] = useState<"chat" | "inspector">("chat");
 
@@ -57,10 +54,6 @@ export function AppMockup() {
     window.setTimeout(() => setCopied(false), 1500);
   };
 
-  const visibleProjects = selectedScope
-    ? SIDEBAR_PROJECTS.filter((p) => p.key === selectedScope)
-    : SIDEBAR_PROJECTS.filter((p) => p.chats.length > 0);
-
   const ringCircumference = 40.84;
   const ringOffset = ringCircumference * (1 - scenario.contextPct / 100);
 
@@ -70,281 +63,161 @@ export function AppMockup() {
       className="min-w-0 rounded-[20px] border border-(--l-border) bg-(--l-surface)/55 p-1.5 shadow-(--l-window-shadow) backdrop-blur-md"
     >
       <div className="min-w-0 overflow-hidden rounded-[14px] border border-(--l-panel-border) bg-(--l-panel)">
-        <div className="grid min-w-0 md:grid-cols-[minmax(0,1fr)_336px] lg:grid-cols-[248px_minmax(0,1fr)_364px]">
-          {/* Left Sidebar — 1:1 mirror of the redesigned Entry sidebar (Scope Strip + Flush Full-Width Projects + 2-Line Diff Cards) */}
+        <div className="grid min-w-0 md:grid-cols-[minmax(0,1fr)_336px] lg:grid-cols-[232px_minmax(0,1fr)_364px]">
+          {/* Left Sidebar — 1:1 mirror of the PR #324 Entry sidebar */}
           <aside
             aria-label="Workspace sidebar preview"
-            className="relative hidden min-w-0 flex-col border-r border-(--l-panel-border) bg-(--l-surface) lg:flex"
+            className="hidden min-w-0 flex-col border-r border-(--l-panel-border) bg-(--l-surface) lg:flex"
           >
-            {/* Brand + Search & Archive utility triggers */}
-            <div className="flex h-11 shrink-0 items-center justify-between px-3">
+            {/* Header */}
+            <div className="flex h-11 shrink-0 items-center justify-between border-b border-(--l-panel-border) px-3">
               <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-tight text-(--l-panel-fg)">
                 <EntryMark className="size-4 shrink-0" />
                 <span>Entry</span>
               </span>
-              <div className="flex items-center gap-0.5 text-(--l-panel-fg-3)">
+              <div className="flex items-center gap-1 text-(--l-panel-fg-3)">
                 <span className="inline-flex size-6 items-center justify-center rounded-md">
-                  <Search className="size-3.5" strokeWidth={1.6} />
+                  <Plus className="size-3.5" strokeWidth={1.6} />
                 </span>
                 <span className="inline-flex size-6 items-center justify-center rounded-md">
-                  <Archive className="size-3.5" strokeWidth={1.6} />
+                  <PanelLeft className="size-3.5" strokeWidth={1.5} />
                 </span>
               </div>
             </div>
 
-            {/* Monochrome New chat bar */}
-            <div className="px-2.5 pt-0.5 pb-2">
-              <div className="flex h-8 items-center justify-between rounded-lg border border-(--l-panel-border) bg-(--l-panel) px-2.5 text-xs font-medium text-(--l-panel-fg)">
-                <span className="inline-flex items-center gap-1.5">
-                  <Plus
-                    className="size-3.5 text-(--l-panel-fg-3)"
-                    strokeWidth={1.75}
-                  />
-                  <span>New chat</span>
-                </span>
-                <ChevronDown
-                  className="size-3 text-(--l-panel-fg-3)"
-                  strokeWidth={1.5}
-                />
-              </div>
-            </div>
-
-            {/* Interactive Project Scope Strip + Flush Project Groups + Today */}
-            <div className="flex-1 space-y-2.5 overflow-hidden px-2 py-0.5">
-              {/* Project Scope Pills */}
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setSelectedScope(null)}
-                  className={`inline-flex h-6 shrink-0 cursor-pointer items-center rounded-md px-2 text-[11px] font-medium transition-colors duration-150 ${
-                    selectedScope === null
-                      ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                      : "text-(--l-panel-fg-3) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
-                  }`}
-                >
-                  All
-                </button>
-                {SIDEBAR_PROJECTS.map((project) => {
-                  const scoped = selectedScope === project.key;
-                  return (
-                    <button
-                      key={project.key}
-                      type="button"
-                      onClick={() =>
-                        setSelectedScope(scoped ? null : project.key)
-                      }
-                      className={`inline-flex h-6 max-w-[96px] shrink-0 cursor-pointer items-center rounded-md px-2 text-[11px] transition-colors duration-150 ${
-                        scoped
-                          ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
-                          : "text-(--l-panel-fg-3) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
-                      }`}
-                    >
-                      <span className="truncate">{project.name}</span>
-                    </button>
-                  );
-                })}
-                <span className="ml-auto inline-flex size-5 items-center justify-center rounded text-(--l-panel-fg-3)">
-                  <Plus className="size-3" strokeWidth={1.6} />
-                </span>
-              </div>
-
-              {/* Flush Full-Width Project Sections (Zero Vertical Tree Pipes) */}
-              <div className="space-y-2">
-                {visibleProjects.map((project) => (
-                  <div key={project.key} className="space-y-1">
-                    <div className="flex h-6 items-center justify-between px-1.5 text-[11px] font-medium text-(--l-panel-fg-3)">
-                      <span className="inline-flex min-w-0 items-center gap-1.5">
-                        <FolderGit2
-                          className="size-3 shrink-0"
-                          strokeWidth={1.5}
-                        />
+            {/* Projects & Chats */}
+            <div className="flex-1 space-y-4 overflow-hidden px-2 py-2.5">
+              {/* Projects */}
+              <div>
+                <div className="flex h-7 items-center justify-between px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
+                  <span>Projects</span>
+                  <span className="font-mono text-[10px] tabular-nums opacity-70">
+                    {SIDEBAR_PROJECTS.length}
+                  </span>
+                </div>
+                <div className="space-y-0.5">
+                  {SIDEBAR_PROJECTS.map((project) => (
+                    <div key={project.name}>
+                      <div className="flex h-8 items-center gap-1.5 rounded-md px-2 text-xs font-medium text-(--l-panel-fg)">
+                        {project.expanded ? (
+                          <ChevronDown
+                            className="size-3 shrink-0 text-(--l-panel-fg-3)"
+                            strokeWidth={1.75}
+                          />
+                        ) : (
+                          <ChevronRight
+                            className="size-3 shrink-0 text-(--l-panel-fg-3)"
+                            strokeWidth={1.75}
+                          />
+                        )}
+                        {project.expanded ? (
+                          <FolderGit2
+                            className="size-3.5 shrink-0 text-(--l-panel-fg-2)"
+                            strokeWidth={1.5}
+                          />
+                        ) : (
+                          <Folder
+                            className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
+                            strokeWidth={1.5}
+                          />
+                        )}
                         <span className="truncate">{project.name}</span>
-                      </span>
-                      <span className="font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
-                        {project.chats.length}
-                      </span>
-                    </div>
+                      </div>
 
-                    <div className="space-y-0.5">
-                      {project.chats.length === 0 ? (
-                        <div className="px-2 py-1.5 text-[11.5px] text-(--l-panel-fg-4)">
-                          No active threads
+                      {project.expanded && project.chats.length > 0 && (
+                        <div className="ml-[13px] mt-0.5 space-y-0.5 border-l border-(--l-panel-border) pl-2">
+                          {project.chats.map((chat) => {
+                            const active = chat.id === scenarioId;
+                            return (
+                              <button
+                                key={chat.id}
+                                type="button"
+                                onClick={() => handleSelectScenario(chat.id)}
+                                className={`flex h-7 w-full cursor-pointer items-center rounded-md px-2 text-left text-[12px] transition-colors duration-150 ${
+                                  active
+                                    ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
+                                    : "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
+                                }`}
+                              >
+                                <span className="truncate">{chat.title}</span>
+                              </button>
+                            );
+                          })}
                         </div>
-                      ) : (
-                        project.chats.map((chat) => {
-                          const active = chat.id === scenarioId;
-                          return (
-                            <button
-                              key={chat.id}
-                              type="button"
-                              onClick={() => handleSelectScenario(chat.id)}
-                              className={`flex w-full cursor-pointer flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150 ${
-                                active
-                                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                                  : "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
-                              }`}
-                            >
-                              <div className="flex min-w-0 items-center justify-between gap-2">
-                                <span className="flex min-w-0 items-center gap-1.5">
-                                  {chat.prStatus === "merged" ? (
-                                    <GitMerge
-                                      className="size-3 shrink-0 text-indigo-500"
-                                      strokeWidth={1.5}
-                                    />
-                                  ) : (
-                                    <GitPullRequest
-                                      className="size-3 shrink-0 text-emerald-500"
-                                      strokeWidth={1.5}
-                                    />
-                                  )}
-                                  <span
-                                    className={`truncate text-[12px] leading-tight ${
-                                      active ? "font-medium" : ""
-                                    }`}
-                                  >
-                                    {chat.title}
-                                  </span>
-                                </span>
-                                <span className="shrink-0 font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
-                                  {chat.age}
-                                </span>
-                              </div>
-                              <div className="mt-1 flex min-w-0 items-center justify-between gap-2 pl-[18px]">
-                                <span className="min-w-0 truncate font-mono text-[10px] text-(--l-panel-fg-4)">
-                                  {chat.branch}
-                                </span>
-                                <SidebarDiffMeter
-                                  added={chat.added}
-                                  removed={chat.removed}
-                                />
-                              </div>
-                            </button>
-                          );
-                        })
                       )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Standalone Today Chats (only when scope is All) */}
-              {selectedScope === null && (
-                <div className="border-t border-(--l-panel-border) pt-2">
-                  <div className="mb-0.5 flex h-5 items-center px-1.5 text-[11px] font-medium text-(--l-panel-fg-3)">
-                    <span>Today</span>
-                  </div>
-                  <div className="space-y-0.5">
-                    {SIDEBAR_CHATS.map((chat) => {
-                      const active = chat.id === scenarioId;
-                      const interactive = Boolean(chat.id);
-                      return (
-                        <button
-                          key={chat.title}
-                          type="button"
-                          disabled={!interactive}
-                          onClick={() => {
-                            if (chat.id) handleSelectScenario(chat.id);
-                          }}
-                          className={`flex h-7 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-[12px] transition-colors duration-150 ${
-                            interactive ? "cursor-pointer" : "cursor-default"
-                          } ${
-                            active
-                              ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
-                              : interactive
-                                ? "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
-                                : "text-(--l-panel-fg-3)"
-                          }`}
-                        >
-                          <span className="flex min-w-0 flex-1 items-center gap-2">
-                            {chat.unread && !active && (
-                              <span className="size-1.5 shrink-0 rounded-full bg-(--l-accent)" />
-                            )}
-                            <span className="truncate">{chat.title}</span>
-                          </span>
-                          <span className="shrink-0 font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
-                            {chat.age}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Floating Interactive Usage Telemetry Popover */}
-            {usageOpen && (
-              <div className="absolute right-2 bottom-[84px] left-2 z-20 overflow-hidden rounded-xl border border-(--l-border) bg-(--l-surface) shadow-xl">
-                <div className="flex items-baseline justify-between px-3 py-2.5">
-                  <span className="text-[11.5px] font-medium text-(--l-panel-fg)">
-                    Builder usage
-                  </span>
-                  <span className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-2)">
-                    $21.40 / $28
-                  </span>
-                </div>
-                <div className="space-y-2 border-t border-(--l-panel-border) px-3 py-2.5">
-                  {USAGE_WINDOWS.map((win) => (
-                    <div key={win.label} className="space-y-1">
-                      <div className="flex items-center justify-between text-[10.5px] tabular-nums">
-                        <span className="text-(--l-panel-fg-2)">
-                          {win.title}
-                        </span>
-                        <span className="font-mono text-(--l-panel-fg-3)">
-                          {win.pct}%
-                        </span>
-                      </div>
-                      <div className="h-1 w-full overflow-hidden rounded-full bg-(--l-panel-border)">
-                        <div
-                          className="h-full rounded-full bg-(--l-panel-fg)/80"
-                          style={{ width: `${win.pct}%` }}
-                        />
-                      </div>
                     </div>
                   ))}
                 </div>
               </div>
-            )}
 
-            {/* Ultra-Compact Bottom Dock: 1-Line Usage Bar + Profile */}
-            <div className="space-y-1 border-t border-(--l-panel-border) px-2 py-2">
-              <button
-                type="button"
-                onClick={() => setUsageOpen((prev) => !prev)}
-                aria-expanded={usageOpen}
-                className={`flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left transition-colors duration-150 ${
-                  usageOpen
-                    ? "bg-(--l-panel-active) text-(--l-panel-fg)"
-                    : "text-(--l-panel-fg) hover:bg-(--l-panel-surface)"
-                }`}
-              >
-                <span className="shrink-0 text-[11.5px] font-medium text-(--l-panel-fg-2)">
-                  Builder
-                </span>
-                <div className="h-1 flex-1 overflow-hidden rounded-full bg-(--l-panel-border)">
-                  <div
-                    className="h-full rounded-full bg-(--l-panel-fg)/80"
-                    style={{ width: "38%" }}
-                  />
+              {/* Chats */}
+              <div>
+                <div className="flex h-7 items-center justify-between px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
+                  <span>Chats</span>
                 </div>
-                <span className="shrink-0 font-mono text-[11px] font-medium tabular-nums text-(--l-panel-fg)">
-                  $21.40
-                </span>
-                <ChevronUp
-                  className={`size-3 shrink-0 text-(--l-panel-fg-3) transition-transform duration-150 ${
-                    usageOpen ? "rotate-180" : ""
-                  }`}
-                  strokeWidth={1.6}
-                />
-              </button>
+                <div className="space-y-0.5">
+                  {SIDEBAR_CHATS.map((chat) => {
+                    const active = chat.id === scenarioId;
+                    const interactive = Boolean(chat.id);
+                    return (
+                      <button
+                        key={chat.title}
+                        type="button"
+                        disabled={!interactive}
+                        onClick={() => {
+                          if (chat.id) handleSelectScenario(chat.id);
+                        }}
+                        className={`flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-[12px] transition-colors duration-150 ${
+                          interactive ? "cursor-pointer" : "cursor-default"
+                        } ${
+                          active
+                            ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
+                            : interactive
+                              ? "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
+                              : "text-(--l-panel-fg-3)"
+                        }`}
+                      >
+                        {chat.unread && !active && (
+                          <span className="size-1.5 shrink-0 rounded-full bg-(--l-accent)" />
+                        )}
+                        <span className="truncate">{chat.title}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
 
-              <div className="flex h-8 items-center gap-2 rounded-lg px-2 text-xs text-(--l-panel-fg-2)">
-                <span className="inline-flex size-5 items-center justify-center rounded-full border border-(--l-panel-border) bg-(--l-panel) text-[10px] font-medium text-(--l-panel-fg)">
-                  M
-                </span>
-                <span className="truncate font-medium text-(--l-panel-fg)">
-                  miracle
-                </span>
+            {/* PR #324 Horizontal Usage Card */}
+            <div className="border-t border-(--l-panel-border) p-2.5">
+              <div className="rounded-lg border border-(--l-panel-border) bg-(--l-panel) px-2.5 py-2">
+                <div className="flex items-baseline justify-between text-[11px]">
+                  <span className="font-medium text-(--l-panel-fg)">
+                    Builder
+                  </span>
+                  <span className="font-mono text-[11px] font-medium tabular-nums text-(--l-panel-fg-2)">
+                    $21.40 left
+                  </span>
+                </div>
+                <div className="mt-2 space-y-1.5">
+                  {USAGE_WINDOWS.map((win) => (
+                    <div
+                      key={win.label}
+                      className="grid grid-cols-[24px_1fr_28px] items-center gap-2 text-[10px] tabular-nums"
+                    >
+                      <span className="text-(--l-panel-fg-3)">{win.label}</span>
+                      <div className="h-[3px] w-full overflow-hidden rounded-full bg-(--l-panel-border)">
+                        <div
+                          className="h-full rounded-full bg-(--l-panel-fg)/75"
+                          style={{ width: `${win.pct}%` }}
+                        />
+                      </div>
+                      <span className="text-right font-mono text-(--l-panel-fg-3)">
+                        {win.pct}%
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </aside>
@@ -422,118 +295,131 @@ export function AppMockup() {
 
             {/* Chat messages */}
             <div className="flex flex-1 flex-col justify-between gap-5 p-4 sm:p-5">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-[11px] text-(--l-panel-fg-3)">
-                  <span className="tabular-nums">{scenario.prevSteps}</span>
-                  <span className="font-mono text-(--l-panel-fg-2)">
-                    {scenario.branch}
-                  </span>
-                </div>
-
-                <div className="flex justify-end">
-                  <div className="max-w-[90%] rounded-2xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3.5 py-2.5 text-[13px] leading-relaxed text-(--l-panel-fg) sm:max-w-[84%]">
-                    {scenario.prompt}
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setStepsExpanded((prev) => !prev)}
-                      className="inline-flex cursor-pointer items-center gap-1.5 text-xs tabular-nums text-(--l-panel-fg-3) transition-colors hover:text-(--l-panel-fg)"
-                    >
-                      {stepsExpanded ? (
-                        <ChevronDown className="size-3.5" strokeWidth={1.5} />
-                      ) : (
-                        <ChevronRight className="size-3.5" strokeWidth={1.5} />
-                      )}
-                      <span>{scenario.workedLabel}</span>
-                    </button>
-
-                    {stepsExpanded && (
-                      <div className="mt-2 space-y-1 border-l border-(--l-panel-border) pl-3 font-mono text-[11px] tabular-nums">
-                        {scenario.steps.map((step) => (
-                          <div
-                            key={step.id}
-                            className="flex items-center justify-between gap-3 py-0.5 text-(--l-panel-fg-2)"
-                          >
-                            <span className="min-w-0 truncate">
-                              <span className="text-(--l-accent)">
-                                {step.tool}
-                              </span>{" "}
-                              <span>{step.detail}</span>
-                            </span>
-                            <span className="shrink-0 text-(--l-panel-fg-4)">
-                              {step.duration}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={scenario.id}
+                  initial={{ opacity: 0, transform: "translateY(4px)" }}
+                  animate={{ opacity: 1, transform: "translateY(0px)" }}
+                  exit={{ opacity: 0, transform: "translateY(-4px)" }}
+                  transition={{ duration: 0.16, ease: EASE_OUT }}
+                  className="space-y-4"
+                >
+                  <div className="flex items-center justify-between rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-[11px] text-(--l-panel-fg-3)">
+                    <span className="tabular-nums">{scenario.prevSteps}</span>
+                    <span className="font-mono text-(--l-panel-fg-2)">
+                      {scenario.branch}
+                    </span>
                   </div>
 
-                  <p className="text-[13.5px] leading-relaxed text-(--l-panel-fg)">
-                    {scenario.replyBeforeCode}
-                    <code className="rounded bg-(--l-panel-surface) px-1 py-0.5 font-mono text-[12px]">
-                      {scenario.replyCode}
-                    </code>
-                    {scenario.replyAfterCode}
-                  </p>
+                  <div className="flex justify-end">
+                    <div className="max-w-[90%] rounded-2xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3.5 py-2.5 text-[13px] leading-relaxed text-(--l-panel-fg) sm:max-w-[84%]">
+                      {scenario.prompt}
+                    </div>
+                  </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[11px] text-(--l-panel-fg-3)">
-                    <div className="flex items-center gap-3">
+                  <div className="space-y-3">
+                    <div>
                       <button
                         type="button"
-                        onClick={handleCopy}
-                        className="inline-flex cursor-pointer items-center gap-1 text-(--l-panel-fg-2) transition-colors hover:text-(--l-panel-fg)"
+                        onClick={() => setStepsExpanded((prev) => !prev)}
+                        className="inline-flex cursor-pointer items-center gap-1.5 text-xs tabular-nums text-(--l-panel-fg-3) transition-colors hover:text-(--l-panel-fg)"
                       >
-                        {copied ? (
-                          <Check
-                            className="size-3 text-emerald-500"
-                            strokeWidth={1.75}
-                          />
+                        {stepsExpanded ? (
+                          <ChevronDown className="size-3.5" strokeWidth={1.5} />
                         ) : (
-                          <Copy className="size-3" strokeWidth={1.5} />
+                          <ChevronRight
+                            className="size-3.5"
+                            strokeWidth={1.5}
+                          />
                         )}
-                        <span>{copied ? "Copied" : "Copy"}</span>
+                        <span>{scenario.workedLabel}</span>
                       </button>
-                      <span className="inline-flex items-center gap-1 text-(--l-panel-fg-2)">
-                        <GitFork className="size-3" strokeWidth={1.5} />
-                        <span>Fork</span>
-                      </span>
-                    </div>
-                    <div className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-3)">
-                      {scenario.timestamp} · {scenario.model} · {scenario.cost}
-                    </div>
-                  </div>
 
-                  <button
-                    type="button"
-                    onClick={() => openInspectorTab("diff")}
-                    className="flex w-full cursor-pointer items-center justify-between rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-left text-xs transition-colors hover:border-(--l-fg-5)"
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <ChevronRight
-                        className="size-3.5 text-(--l-panel-fg-3)"
-                        strokeWidth={1.5}
-                      />
-                      <span className="font-medium text-(--l-panel-fg)">
-                        {scenario.filesChangedCount} files changed
+                      {stepsExpanded && (
+                        <div className="mt-2 space-y-1 border-l border-(--l-panel-border) pl-3 font-mono text-[11px] tabular-nums">
+                          {scenario.steps.map((step) => (
+                            <div
+                              key={step.id}
+                              className="flex items-center justify-between gap-3 py-0.5 text-(--l-panel-fg-2)"
+                            >
+                              <span className="min-w-0 truncate">
+                                <span className="text-(--l-accent)">
+                                  {step.tool}
+                                </span>{" "}
+                                <span>{step.detail}</span>
+                              </span>
+                              <span className="shrink-0 text-(--l-panel-fg-4)">
+                                {step.duration}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <p className="text-[13.5px] leading-relaxed text-(--l-panel-fg)">
+                      {scenario.replyBeforeCode}
+                      <code className="rounded bg-(--l-panel-surface) px-1 py-0.5 font-mono text-[12px]">
+                        {scenario.replyCode}
+                      </code>
+                      {scenario.replyAfterCode}
+                    </p>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5 text-[11px] text-(--l-panel-fg-3)">
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleCopy}
+                          className="inline-flex cursor-pointer items-center gap-1 text-(--l-panel-fg-2) transition-colors hover:text-(--l-panel-fg)"
+                        >
+                          {copied ? (
+                            <Check
+                              className="size-3 text-emerald-500"
+                              strokeWidth={1.75}
+                            />
+                          ) : (
+                            <Copy className="size-3" strokeWidth={1.5} />
+                          )}
+                          <span>{copied ? "Copied" : "Copy"}</span>
+                        </button>
+                        <span className="inline-flex items-center gap-1 text-(--l-panel-fg-2)">
+                          <GitFork className="size-3" strokeWidth={1.5} />
+                          <span>Fork</span>
+                        </span>
+                      </div>
+                      <div className="font-mono text-[11px] tabular-nums text-(--l-panel-fg-3)">
+                        {scenario.timestamp} · {scenario.model} ·{" "}
+                        {scenario.cost}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => openInspectorTab("diff")}
+                      className="flex w-full cursor-pointer items-center justify-between rounded-xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-left text-xs transition-colors hover:border-(--l-fg-5)"
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <ChevronRight
+                          className="size-3.5 text-(--l-panel-fg-3)"
+                          strokeWidth={1.5}
+                        />
+                        <span className="font-medium text-(--l-panel-fg)">
+                          {scenario.filesChangedCount} files changed
+                        </span>
+                        <span className="font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
+                          +{scenario.totalAdded}
+                        </span>
+                        <span className="font-mono text-[11px] tabular-nums text-rose-600 dark:text-rose-400">
+                          -{scenario.totalRemoved}
+                        </span>
                       </span>
-                      <span className="font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
-                        +{scenario.totalAdded}
+                      <span className="text-[11px] text-(--l-panel-fg-3)">
+                        Inspect diff
                       </span>
-                      <span className="font-mono text-[11px] tabular-nums text-rose-600 dark:text-rose-400">
-                        -{scenario.totalRemoved}
-                      </span>
-                    </span>
-                    <span className="text-[11px] text-(--l-panel-fg-3)">
-                      Inspect diff
-                    </span>
-                  </button>
-                </div>
-              </div>
+                    </button>
+                  </div>
+                </motion.div>
+              </AnimatePresence>
 
               <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) px-3.5 py-2.5">
                 <div className="text-xs text-(--l-panel-fg-3)">
