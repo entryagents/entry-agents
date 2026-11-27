@@ -210,10 +210,6 @@ function SettingsLayout({
   });
 
   const isAdminRoute = pathname.startsWith("/settings/admin");
-  const activeItem = sidebarItems.find((item) =>
-    matchesPrefix(pathname, item.matchPrefixes),
-  );
-  const mobileTitle = resolvePageTitle(pathname, activeItem);
 
   const navItems = (
     <ul className="space-y-0.5">
@@ -319,16 +315,7 @@ function SettingsLayout({
           >
             <Menu className="size-4" strokeWidth={1.5} />
           </button>
-          <span className="flex-1 truncate text-sm font-medium">
-            {mobileTitle}
-          </span>
-          <Link
-            href="/chats"
-            prefetch={true}
-            className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Sessions
-          </Link>
+          <span className="flex-1 truncate text-sm font-medium">Settings</span>
         </div>
         <div
           className={cn(
