@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "./client";
 import { projects, type NewProject, type Project } from "./schema";
 
@@ -18,14 +18,69 @@ export async function getProjectById(
   });
 }
 
+export async function findRepoProjectByUserId(
+  userId: string,
+  repoOwner: string,
+  repoName: string,
+): Promise<Project | undefined> {
+  const [existing] = await db
+    .select()
+    .from(projects)
+    .where(
+      and(
+        eq(projects.userId, userId),
+        sql`lower(${projects.repoOwner}) = ${repoOwner.toLowerCase()}`,
+        sql`lower(${projects.repoName}) = ${repoName.toLowerCase()}`,
+      ),
+    )
+    .limit(1);
+  return existing;
+}
+
 export async function createProject(
-  data: Pick<NewProject, "id" | "userId" | "name">,
+  data: Pick<NewProject, "id" | "userId" | "name"> &
+    Partial<Pick<NewProject, "repoOwner" | "repoName" | "defaultBranch">>,
 ): Promise<Project> {
   const [project] = await db.insert(projects).values(data).returning();
   if (!project) {
     throw new Error("Failed to create project");
   }
   return project;
+}
+
+export async function createOrFindRepoProject(data: {
+  id: string;
+  userId: string;
+  repoOwner: string;
+  repoName: string;
+  defaultBranch?: string | null;
+}): Promise<{ project: Project; created: boolean }> {
+  const existing = await findRepoProjectByUserId(
+    data.userId,
+    data.repoOwner,
+    data.repoName,
+  );
+  if (existing) {
+    const [touched] = await db
+      .update(projects)
+      .set({
+        updatedAt: new Date(),
+        ...(data.defaultBranch ? { defaultBranch: data.defaultBranch } : {}),
+      })
+      .where(eq(projects.id, existing.id))
+      .returning();
+    return { project: touched ?? existing, created: false };
+  }
+
+  const project = await createProject({
+    id: data.id,
+    userId: data.userId,
+    name: `${data.repoOwner}/${data.repoName}`,
+    repoOwner: data.repoOwner,
+    repoName: data.repoName,
+    defaultBranch: data.defaultBranch ?? null,
+  });
+  return { project, created: true };
 }
 
 export async function updateProject(

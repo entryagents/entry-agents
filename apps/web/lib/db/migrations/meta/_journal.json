@@ -582,6 +582,13 @@
       "when": 1795718270509,
       "tag": "0082_cold_oracle",
       "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1795786967259,
+      "tag": "0083_wealthy_the_anarchist",
+      "breakpoints": true
     }
   ]
 }

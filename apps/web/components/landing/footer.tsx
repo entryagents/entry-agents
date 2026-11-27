@@ -110,23 +110,12 @@ export function LandingFooter() {
             </div>
           </div>
 
-          <div className="mt-10 flex flex-wrap items-center justify-between gap-4 border-t border-(--l-border-subtle) pt-6 text-xs text-(--l-fg-3)">
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-              <span>© 2026 Entry Agents</span>
-              <Link
-                href="/privacy"
-                className="transition-colors duration-150 hover:text-(--l-fg)"
-              >
-                Privacy Policy
-              </Link>
-              <Link
-                href="/terms"
-                className="transition-colors duration-150 hover:text-(--l-fg)"
-              >
-                Terms of Service
-              </Link>
+          <div className="mt-10 grid grid-cols-1 items-center gap-4 border-t border-(--l-border-subtle) pt-6 text-xs text-(--l-fg-3) sm:grid-cols-3">
+            <div className="hidden sm:block" aria-hidden="true" />
+            <p className="text-center">© 2026 Entry Agents</p>
+            <div className="flex justify-center sm:justify-end">
+              <ThemeToggle />
             </div>
-            <ThemeToggle />
           </div>
         </div>
       </div>

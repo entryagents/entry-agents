@@ -269,6 +269,20 @@ export function AppMockup() {
               </div>
             </div>
 
+            {/* Live execution progress hairline synced to demoStage */}
+            <div className="h-[1.5px] w-full bg-(--l-panel-border)/60">
+              <motion.div
+                className="h-full bg-(--l-accent)"
+                initial={false}
+                animate={{
+                  width:
+                    demoStage === 0 ? "42%" : demoStage === 1 ? "78%" : "100%",
+                  opacity: autoPlay ? 1 : 0.35,
+                }}
+                transition={{ duration: 0.55, ease: EASE_OUT }}
+              />
+            </div>
+
             {/* Chat messages */}
             <div className="flex flex-1 flex-col justify-between gap-5 p-4 sm:p-5">
               <AnimatePresence mode="wait" initial={false}>

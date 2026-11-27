@@ -275,6 +275,15 @@ function UbuntuMachineShowcase() {
                         <span>{line.text}</span>
                       </motion.div>
                     ))}
+                    {!prefersReduced && (
+                      <div className="flex items-center gap-1.5 pt-0.5 text-(--l-panel-fg-3)">
+                        <span>$</span>
+                        <span
+                          aria-hidden="true"
+                          className="inline-block h-3.5 w-1.5 animate-[pulse_1.1s_steps(2)_infinite] bg-(--l-accent)"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-(--l-panel-fg-3)">
@@ -418,13 +427,20 @@ function DurableContinuityShowcase() {
                     setAutoPlay(false);
                     setActivePhase(idx);
                   }}
-                  className={`flex w-full cursor-pointer items-center justify-between gap-4 rounded-xl px-3.5 py-3.5 text-left transition-colors duration-200 ${
-                    current
-                      ? "bg-(--l-panel-surface)"
-                      : "hover:bg-(--l-panel-surface)/50"
-                  }`}
+                  className="relative flex w-full cursor-pointer items-center justify-between gap-4 rounded-xl px-3.5 py-3.5 text-left transition-colors duration-200 hover:bg-(--l-panel-surface)/50"
                 >
-                  <div className="flex min-w-0 items-start gap-3">
+                  {current && (
+                    <motion.span
+                      layoutId="continuity-active-phase"
+                      transition={{
+                        type: "spring",
+                        duration: 0.4,
+                        bounce: 0.14,
+                      }}
+                      className="absolute inset-0 rounded-xl bg-(--l-panel-surface)"
+                    />
+                  )}
+                  <div className="relative z-10 flex min-w-0 items-start gap-3">
                     <span
                       className={`mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border transition-colors duration-200 ${
                         current
@@ -453,7 +469,7 @@ function DurableContinuityShowcase() {
                   </div>
 
                   <span
-                    className={`shrink-0 font-mono text-[11px] tabular-nums transition-opacity duration-200 ${
+                    className={`relative z-10 shrink-0 font-mono text-[11px] tabular-nums transition-opacity duration-200 ${
                       current
                         ? "text-(--l-accent)"
                         : reached
@@ -486,10 +502,22 @@ function DurableContinuityShowcase() {
 }
 
 function ExecutionModesShowcase() {
+  const prefersReduced = useReducedMotion() ?? false;
+  const ref = useRef<HTMLDivElement | null>(null);
+  const inView = useInView(ref, { amount: 0.35 });
   const [mode, setMode] = useState<"waves" | "direct">("waves");
+  const [userSelected, setUserSelected] = useState(false);
+
+  useEffect(() => {
+    if (prefersReduced || !inView || userSelected) return;
+    const id = window.setInterval(() => {
+      setMode((prev) => (prev === "waves" ? "direct" : "waves"));
+    }, 5200);
+    return () => window.clearInterval(id);
+  }, [inView, prefersReduced, userSelected]);
 
   return (
-    <div className="py-16 sm:py-24">
+    <div ref={ref} className="py-16 sm:py-24">
       <div className="flex flex-col justify-between gap-6 sm:flex-row sm:items-end">
         <div className="max-w-xl">
           <h2 className="font-display text-balance text-3xl font-semibold leading-[1.06] tracking-[-0.03em] sm:text-4xl">
@@ -520,7 +548,10 @@ function ExecutionModesShowcase() {
                 type="button"
                 role="tab"
                 aria-selected={active}
-                onClick={() => setMode(tab.id)}
+                onClick={() => {
+                  setUserSelected(true);
+                  setMode(tab.id);
+                }}
                 className={`relative inline-flex h-8 cursor-pointer items-center rounded-lg px-3.5 text-xs font-medium transition-colors duration-150 ${
                   active
                     ? "text-(--l-fg)"
@@ -546,248 +577,262 @@ function ExecutionModesShowcase() {
       </div>
 
       {/* Animated SVG Execution Topology */}
-      <div className="mt-8 overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-panel) p-5 sm:p-8">
-        <AnimatePresence mode="wait" initial={false}>
-          {mode === "waves" ? (
+      <div className="mt-8 overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-panel)">
+        <div className="h-[1.5px] w-full bg-(--l-panel-border)">
+          {!prefersReduced && inView && !userSelected ? (
             <motion.div
-              key="waves"
-              initial={{ opacity: 0, transform: "translateY(6px)" }}
-              animate={{ opacity: 1, transform: "translateY(0px)" }}
-              exit={{ opacity: 0, transform: "translateY(-6px)" }}
-              transition={{ duration: 0.18, ease: EASE_OUT }}
-              className="grid items-center gap-4 lg:grid-cols-[1fr_44px_1.4fr_44px_1fr]"
-            >
-              {/* Scout Contract Node */}
-              <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4">
-                <div className="font-mono text-[11px] text-(--l-accent)">
-                  Scout &amp; contract
-                </div>
-                <div className="mt-1.5 text-sm font-semibold text-(--l-panel-fg)">
-                  Lock shared types
-                </div>
-                <p className="mt-1 text-xs leading-relaxed text-(--l-panel-fg-3)">
-                  Maps touched files and freezes API schemas before builders
-                  edit.
-                </p>
-              </div>
-
-              {/* Animated Flow Connector */}
-              <svg
-                viewBox="0 0 44 80"
-                className="hidden h-20 w-11 lg:block"
-                aria-hidden="true"
+              key={mode}
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={{ duration: 5.2, ease: "linear" }}
+              style={{ transformOrigin: "left" }}
+              className="h-full bg-(--l-accent)"
+            />
+          ) : null}
+        </div>
+        <div className="p-5 sm:p-8">
+          <AnimatePresence mode="wait" initial={false}>
+            {mode === "waves" ? (
+              <motion.div
+                key="waves"
+                initial={{ opacity: 0, transform: "translateY(6px)" }}
+                animate={{ opacity: 1, transform: "translateY(0px)" }}
+                exit={{ opacity: 0, transform: "translateY(-6px)" }}
+                transition={{ duration: 0.18, ease: EASE_OUT }}
+                className="grid items-center gap-4 lg:grid-cols-[1fr_44px_1.4fr_44px_1fr]"
               >
-                <path
-                  d="M0 40 C20 40, 22 18, 44 18"
-                  fill="none"
-                  stroke="var(--l-panel-border)"
-                  strokeWidth="1.5"
-                />
-                <path
-                  d="M0 40 C20 40, 22 62, 44 62"
-                  fill="none"
-                  stroke="var(--l-panel-border)"
-                  strokeWidth="1.5"
-                />
-                <path
-                  d="M0 40 C20 40, 22 18, 44 18"
-                  fill="none"
-                  stroke="var(--l-accent)"
-                  strokeWidth="1.5"
-                  className="entry-flow-dash"
-                />
-                <path
-                  d="M0 40 C20 40, 22 62, 44 62"
-                  fill="none"
-                  stroke="var(--l-accent)"
-                  strokeWidth="1.5"
-                  className="entry-flow-dash"
-                />
-              </svg>
-
-              {/* Disjoint Parallel Builders */}
-              <div className="space-y-3">
-                <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-3.5">
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="inline-flex items-center gap-1.5 font-medium text-(--l-panel-fg)">
-                      <GitBranch
-                        className="size-3.5 text-(--l-accent)"
-                        strokeWidth={1.5}
-                      />
-                      <span>api/webhooks/billing/route.ts</span>
-                    </span>
-                    <span className="font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
-                      +41 -8
-                    </span>
+                {/* Scout Contract Node */}
+                <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4">
+                  <div className="font-mono text-[11px] text-(--l-accent)">
+                    Scout &amp; contract
                   </div>
-                  <div className="mt-1 text-[11px] text-(--l-panel-fg-3)">
-                    Isolated file claim · API validation
+                  <div className="mt-1.5 text-sm font-semibold text-(--l-panel-fg)">
+                    Lock shared types
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-(--l-panel-fg-3)">
+                    Maps touched files and freezes API schemas before builders
+                    edit.
+                  </p>
+                </div>
+
+                {/* Animated Flow Connector */}
+                <svg
+                  viewBox="0 0 44 80"
+                  className="hidden h-20 w-11 lg:block"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M0 40 C20 40, 22 18, 44 18"
+                    fill="none"
+                    stroke="var(--l-panel-border)"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M0 40 C20 40, 22 62, 44 62"
+                    fill="none"
+                    stroke="var(--l-panel-border)"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M0 40 C20 40, 22 18, 44 18"
+                    fill="none"
+                    stroke="var(--l-accent)"
+                    strokeWidth="1.5"
+                    className="entry-flow-dash"
+                  />
+                  <path
+                    d="M0 40 C20 40, 22 62, 44 62"
+                    fill="none"
+                    stroke="var(--l-accent)"
+                    strokeWidth="1.5"
+                    className="entry-flow-dash"
+                  />
+                </svg>
+
+                {/* Disjoint Parallel Builders */}
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-3.5">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="inline-flex items-center gap-1.5 font-medium text-(--l-panel-fg)">
+                        <GitBranch
+                          className="size-3.5 text-(--l-accent)"
+                          strokeWidth={1.5}
+                        />
+                        <span>api/webhooks/billing/route.ts</span>
+                      </span>
+                      <span className="font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
+                        +41 -8
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-(--l-panel-fg-3)">
+                      Isolated file claim · API validation
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-3.5">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="inline-flex items-center gap-1.5 font-medium text-(--l-panel-fg)">
+                        <GitBranch
+                          className="size-3.5 text-(--l-accent)"
+                          strokeWidth={1.5}
+                        />
+                        <span>lib/email/welcome.tsx</span>
+                      </span>
+                      <span className="font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
+                        +92 -0
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[11px] text-(--l-panel-fg-3)">
+                      Isolated file claim · UI template
+                    </div>
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-3.5">
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="inline-flex items-center gap-1.5 font-medium text-(--l-panel-fg)">
-                      <GitBranch
-                        className="size-3.5 text-(--l-accent)"
-                        strokeWidth={1.5}
-                      />
-                      <span>lib/email/welcome.tsx</span>
-                    </span>
-                    <span className="font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
-                      +92 -0
-                    </span>
-                  </div>
-                  <div className="mt-1 text-[11px] text-(--l-panel-fg-3)">
-                    Isolated file claim · UI template
-                  </div>
-                </div>
-              </div>
+                {/* Animated Flow Connector */}
+                <svg
+                  viewBox="0 0 44 80"
+                  className="hidden h-20 w-11 lg:block"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M0 18 C22 18, 24 40, 44 40"
+                    fill="none"
+                    stroke="var(--l-panel-border)"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M0 62 C22 62, 24 40, 44 40"
+                    fill="none"
+                    stroke="var(--l-panel-border)"
+                    strokeWidth="1.5"
+                  />
+                  <path
+                    d="M0 18 C22 18, 24 40, 44 40"
+                    fill="none"
+                    stroke="var(--l-accent)"
+                    strokeWidth="1.5"
+                    className="entry-flow-dash"
+                  />
+                  <path
+                    d="M0 62 C22 62, 24 40, 44 40"
+                    fill="none"
+                    stroke="var(--l-accent)"
+                    strokeWidth="1.5"
+                    className="entry-flow-dash"
+                  />
+                </svg>
 
-              {/* Animated Flow Connector */}
-              <svg
-                viewBox="0 0 44 80"
-                className="hidden h-20 w-11 lg:block"
-                aria-hidden="true"
+                {/* Verification Gate */}
+                <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4">
+                  <div className="inline-flex items-center gap-1.5 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
+                    <span>Verified build</span>
+                  </div>
+                  <div className="mt-1.5 text-sm font-semibold text-(--l-panel-fg)">
+                    Typecheck &amp; 14 tests green
+                  </div>
+                  <p className="mt-1 text-xs leading-relaxed text-(--l-panel-fg-3)">
+                    Zero merge conflicts across parallel edits before pushing.
+                  </p>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="direct"
+                initial={{ opacity: 0, transform: "translateY(6px)" }}
+                animate={{ opacity: 1, transform: "translateY(0px)" }}
+                exit={{ opacity: 0, transform: "translateY(-6px)" }}
+                transition={{ duration: 0.18, ease: EASE_OUT }}
+                className="grid items-center gap-4 lg:grid-cols-[1fr_56px_1fr_56px_1fr]"
               >
-                <path
-                  d="M0 18 C22 18, 24 40, 44 40"
-                  fill="none"
-                  stroke="var(--l-panel-border)"
-                  strokeWidth="1.5"
-                />
-                <path
-                  d="M0 62 C22 62, 24 40, 44 40"
-                  fill="none"
-                  stroke="var(--l-panel-border)"
-                  strokeWidth="1.5"
-                />
-                <path
-                  d="M0 18 C22 18, 24 40, 44 40"
-                  fill="none"
-                  stroke="var(--l-accent)"
-                  strokeWidth="1.5"
-                  className="entry-flow-dash"
-                />
-                <path
-                  d="M0 62 C22 62, 24 40, 44 40"
-                  fill="none"
-                  stroke="var(--l-accent)"
-                  strokeWidth="1.5"
-                  className="entry-flow-dash"
-                />
-              </svg>
+                <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4">
+                  <div className="font-mono text-[11px] text-(--l-panel-fg-3)">
+                    Inspect
+                  </div>
+                  <div className="mt-1.5 text-sm font-semibold text-(--l-panel-fg)">
+                    Reproduce failing route
+                  </div>
+                  <p className="mt-1 text-xs text-(--l-panel-fg-3)">
+                    Traces auth callback origin handling inside the workspace.
+                  </p>
+                </div>
 
-              {/* Verification Gate */}
-              <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4">
-                <div className="inline-flex items-center gap-1.5 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
-                  <span>Verified build</span>
-                </div>
-                <div className="mt-1.5 text-sm font-semibold text-(--l-panel-fg)">
-                  Typecheck &amp; 14 tests green
-                </div>
-                <p className="mt-1 text-xs leading-relaxed text-(--l-panel-fg-3)">
-                  Zero merge conflicts across parallel edits before pushing.
-                </p>
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="direct"
-              initial={{ opacity: 0, transform: "translateY(6px)" }}
-              animate={{ opacity: 1, transform: "translateY(0px)" }}
-              exit={{ opacity: 0, transform: "translateY(-6px)" }}
-              transition={{ duration: 0.18, ease: EASE_OUT }}
-              className="grid items-center gap-4 lg:grid-cols-[1fr_56px_1fr_56px_1fr]"
-            >
-              <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4">
-                <div className="font-mono text-[11px] text-(--l-panel-fg-3)">
-                  Inspect
-                </div>
-                <div className="mt-1.5 text-sm font-semibold text-(--l-panel-fg)">
-                  Reproduce failing route
-                </div>
-                <p className="mt-1 text-xs text-(--l-panel-fg-3)">
-                  Traces auth callback origin handling inside the workspace.
-                </p>
-              </div>
+                <svg
+                  viewBox="0 0 56 16"
+                  className="hidden h-4 w-14 lg:block"
+                  aria-hidden="true"
+                >
+                  <line
+                    x1="0"
+                    y1="8"
+                    x2="56"
+                    y2="8"
+                    stroke="var(--l-panel-border)"
+                    strokeWidth="1.5"
+                  />
+                  <line
+                    x1="0"
+                    y1="8"
+                    x2="56"
+                    y2="8"
+                    stroke="var(--l-accent)"
+                    strokeWidth="1.5"
+                    className="entry-flow-dash"
+                  />
+                </svg>
 
-              <svg
-                viewBox="0 0 56 16"
-                className="hidden h-4 w-14 lg:block"
-                aria-hidden="true"
-              >
-                <line
-                  x1="0"
-                  y1="8"
-                  x2="56"
-                  y2="8"
-                  stroke="var(--l-panel-border)"
-                  strokeWidth="1.5"
-                />
-                <line
-                  x1="0"
-                  y1="8"
-                  x2="56"
-                  y2="8"
-                  stroke="var(--l-accent)"
-                  strokeWidth="1.5"
-                  className="entry-flow-dash"
-                />
-              </svg>
+                <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4">
+                  <div className="font-mono text-[11px] text-(--l-accent)">
+                    Minimal patch
+                  </div>
+                  <div className="mt-1.5 font-mono text-xs font-medium text-(--l-panel-fg)">
+                    lib/auth/config.ts
+                  </div>
+                  <p className="mt-1 font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
+                    +18 -6 · regression test added
+                  </p>
+                </div>
 
-              <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4">
-                <div className="font-mono text-[11px] text-(--l-accent)">
-                  Minimal patch
-                </div>
-                <div className="mt-1.5 font-mono text-xs font-medium text-(--l-panel-fg)">
-                  lib/auth/config.ts
-                </div>
-                <p className="mt-1 font-mono text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
-                  +18 -6 · regression test added
-                </p>
-              </div>
+                <svg
+                  viewBox="0 0 56 16"
+                  className="hidden h-4 w-14 lg:block"
+                  aria-hidden="true"
+                >
+                  <line
+                    x1="0"
+                    y1="8"
+                    x2="56"
+                    y2="8"
+                    stroke="var(--l-panel-border)"
+                    strokeWidth="1.5"
+                  />
+                  <line
+                    x1="0"
+                    y1="8"
+                    x2="56"
+                    y2="8"
+                    stroke="var(--l-accent)"
+                    strokeWidth="1.5"
+                    className="entry-flow-dash"
+                  />
+                </svg>
 
-              <svg
-                viewBox="0 0 56 16"
-                className="hidden h-4 w-14 lg:block"
-                aria-hidden="true"
-              >
-                <line
-                  x1="0"
-                  y1="8"
-                  x2="56"
-                  y2="8"
-                  stroke="var(--l-panel-border)"
-                  strokeWidth="1.5"
-                />
-                <line
-                  x1="0"
-                  y1="8"
-                  x2="56"
-                  y2="8"
-                  stroke="var(--l-accent)"
-                  strokeWidth="1.5"
-                  className="entry-flow-dash"
-                />
-              </svg>
-
-              <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4">
-                <div className="inline-flex items-center gap-1.5 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
-                  <span>Merged · PR #319</span>
+                <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) p-4">
+                  <div className="inline-flex items-center gap-1.5 font-mono text-[11px] text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="size-3.5" strokeWidth={1.5} />
+                    <span>Merged · PR #319</span>
+                  </div>
+                  <div className="mt-1.5 text-sm font-semibold text-(--l-panel-fg)">
+                    Finished in 2m 42s
+                  </div>
+                  <p className="mt-1 text-xs text-(--l-panel-fg-3)">
+                    Zero extra orchestration overhead on focused fixes.
+                  </p>
                 </div>
-                <div className="mt-1.5 text-sm font-semibold text-(--l-panel-fg)">
-                  Finished in 2m 42s
-                </div>
-                <p className="mt-1 text-xs text-(--l-panel-fg-3)">
-                  Zero extra orchestration overhead on focused fixes.
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </div>
   );

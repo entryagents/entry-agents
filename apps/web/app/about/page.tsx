@@ -111,34 +111,7 @@ export default function AboutPage() {
           </dl>
         </section>
 
-        <section className="mt-12 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap gap-5 text-sm">
-            <Link
-              href="/ai-coding-agent"
-              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
-            >
-              Architecture
-            </Link>
-            <Link
-              href="/guide"
-              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
-            >
-              Builder guide
-            </Link>
-            <Link
-              href="/model"
-              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
-            >
-              Models
-            </Link>
-            <Link
-              href="/pricing"
-              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
-            >
-              Pricing
-            </Link>
-          </div>
-
+        <section className="mt-12 flex justify-end">
           <Link
             href="/login"
             className="inline-flex h-10 items-center gap-2 rounded-xl bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.98]"

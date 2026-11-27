@@ -268,6 +268,9 @@ export async function provisionSessionSandbox(params: {
   const reuseDecision = resolveFreeTierSandboxReuse({
     currentSessionId: session.id,
     currentSandboxState: session.sandboxState,
+    currentProjectId: session.projectId,
+    currentRepoOwner: session.repoOwner,
+    currentRepoName: session.repoName,
     requestedProviderType: provider.id,
     userPlan: plan.id,
     isAdmin,

@@ -74,8 +74,21 @@ export default async function LoginPage({
           </div>
 
           <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
-            By continuing, you agree to use this workspace responsibly and only
-            connect accounts you control.
+            By continuing, you agree to our{" "}
+            <Link
+              href="/terms"
+              className="text-foreground/85 underline underline-offset-4 transition-colors hover:text-foreground"
+            >
+              Terms of Service
+            </Link>{" "}
+            and{" "}
+            <Link
+              href="/privacy"
+              className="text-foreground/85 underline underline-offset-4 transition-colors hover:text-foreground"
+            >
+              Privacy Policy
+            </Link>
+            .
           </p>
         </div>
 

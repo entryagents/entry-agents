@@ -1,13 +1,16 @@
 import type { SessionWithUnread } from "@/hooks/use-sessions";
 import type { Project } from "@/lib/db/schema";
+import { parseUtcTimestamp } from "@/lib/sessions/format-compact-age";
 
 export type SidebarProjectGroup =
   | {
       kind: "github";
       key: string;
+      projectId?: string;
       name: string;
       repoOwner: string;
       repoName: string;
+      defaultBranch?: string | null;
       sessions: SessionWithUnread[];
       hasStreaming: boolean;
       hasUnread: boolean;
@@ -25,31 +28,54 @@ export type SidebarProjectGroup =
     };
 
 function getSessionActivityMs(session: SessionWithUnread): number {
-  return session.lastActivityAt
-    ? new Date(session.lastActivityAt).getTime()
-    : 0;
+  return parseUtcTimestamp(session.lastActivityAt)?.getTime() ?? 0;
+}
+
+function makeGithubProjectKey(owner: string, repo: string): string {
+  return `github:${owner.toLowerCase()}/${repo.toLowerCase()}`;
 }
 
 export function groupSessionsByProject(
   sessions: SessionWithUnread[],
-  customProjects: Pick<
-    Project,
-    "id" | "name" | "createdAt" | "updatedAt"
-  >[] = [],
+  customProjects: (Pick<Project, "id" | "name" | "createdAt" | "updatedAt"> &
+    Partial<Pick<Project, "repoOwner" | "repoName" | "defaultBranch">>)[] = [],
 ): {
   projects: SidebarProjectGroup[];
   standaloneSessions: SessionWithUnread[];
 } {
   const projectMap = new Map<string, SidebarProjectGroup>();
+  const projectIdToKey = new Map<string, string>();
   const standaloneSessions: SessionWithUnread[] = [];
 
   for (const project of customProjects) {
+    const updatedMs =
+      parseUtcTimestamp(project.updatedAt)?.getTime() ??
+      parseUtcTimestamp(project.createdAt)?.getTime() ??
+      0;
+
+    if (project.repoOwner && project.repoName) {
+      const key = makeGithubProjectKey(project.repoOwner, project.repoName);
+      projectIdToKey.set(project.id, key);
+      if (!projectMap.has(key)) {
+        projectMap.set(key, {
+          kind: "github",
+          key,
+          projectId: project.id,
+          name: project.repoName,
+          repoOwner: project.repoOwner,
+          repoName: project.repoName,
+          defaultBranch: project.defaultBranch ?? null,
+          sessions: [],
+          hasStreaming: false,
+          hasUnread: false,
+          latestActivityMs: updatedMs,
+        });
+      }
+      continue;
+    }
+
     const key = `folder:${project.id}`;
-    const updatedMs = project.updatedAt
-      ? new Date(project.updatedAt).getTime()
-      : project.createdAt
-        ? new Date(project.createdAt).getTime()
-        : 0;
+    projectIdToKey.set(project.id, key);
     projectMap.set(key, {
       kind: "folder",
       key,
@@ -66,16 +92,17 @@ export function groupSessionsByProject(
     const activityMs = getSessionActivityMs(session);
 
     if (session.projectId) {
-      const folderKey = `folder:${session.projectId}`;
-      const existingFolder = projectMap.get(folderKey);
-      if (existingFolder) {
-        existingFolder.sessions.push(session);
-        existingFolder.hasStreaming =
-          existingFolder.hasStreaming || Boolean(session.hasStreaming);
-        existingFolder.hasUnread =
-          existingFolder.hasUnread || Boolean(session.hasUnread);
-        if (activityMs > existingFolder.latestActivityMs) {
-          existingFolder.latestActivityMs = activityMs;
+      const mappedKey =
+        projectIdToKey.get(session.projectId) ?? `folder:${session.projectId}`;
+      const existingByProjectId = projectMap.get(mappedKey);
+      if (existingByProjectId) {
+        existingByProjectId.sessions.push(session);
+        existingByProjectId.hasStreaming =
+          existingByProjectId.hasStreaming || Boolean(session.hasStreaming);
+        existingByProjectId.hasUnread =
+          existingByProjectId.hasUnread || Boolean(session.hasUnread);
+        if (activityMs > existingByProjectId.latestActivityMs) {
+          existingByProjectId.latestActivityMs = activityMs;
         }
         continue;
       }
@@ -86,7 +113,7 @@ export function groupSessionsByProject(
       continue;
     }
 
-    const key = `github:${session.repoOwner}/${session.repoName}`;
+    const key = makeGithubProjectKey(session.repoOwner, session.repoName);
     const existing = projectMap.get(key);
     if (existing) {
       existing.sessions.push(session);
@@ -111,9 +138,14 @@ export function groupSessionsByProject(
     }
   }
 
-  const projects = Array.from(projectMap.values()).sort(
-    (a, b) => b.latestActivityMs - a.latestActivityMs,
-  );
+  const projects = Array.from(projectMap.values())
+    .map((group) => ({
+      ...group,
+      sessions: group.sessions.toSorted(
+        (a, b) => getSessionActivityMs(b) - getSessionActivityMs(a),
+      ),
+    }))
+    .sort((a, b) => b.latestActivityMs - a.latestActivityMs);
 
   return { projects, standaloneSessions };
 }

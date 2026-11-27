@@ -177,6 +177,11 @@ export const projects = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    // Optional GitHub repository backing this project. When set, importing a
+    // repo creates a project entry without eagerly creating an empty chat.
+    repoOwner: text("repo_owner"),
+    repoName: text("repo_name"),
+    defaultBranch: text("default_branch"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

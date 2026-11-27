@@ -6,6 +6,7 @@ import {
   MotionConfig,
   useReducedMotion,
   useScroll,
+  useSpring,
   useTransform,
 } from "motion/react";
 import Link from "next/link";
@@ -21,16 +22,50 @@ import { LandingNav } from "@/components/landing/nav";
 export function SignedOutHero() {
   const prefersReduced = useReducedMotion() ?? false;
   const heroRef = useRef<HTMLElement | null>(null);
-  const { scrollYProgress } = useScroll({
+  const { scrollYProgress: pageProgress } = useScroll();
+  const smoothPageProgress = useSpring(pageProgress, {
+    stiffness: 180,
+    damping: 32,
+    restDelta: 0.001,
+  });
+
+  const { scrollYProgress: heroProgress } = useScroll({
     target: heroRef,
     offset: ["start start", "end start"],
   });
-  const workspaceScale = useTransform(scrollYProgress, [0, 0.45], [0.992, 1]);
-  const workspaceY = useTransform(scrollYProgress, [0, 0.45], [0, -14]);
+  const smoothHeroProgress = useSpring(heroProgress, {
+    stiffness: 140,
+    damping: 26,
+    mass: 0.4,
+  });
+
+  // Subtle multi-plane desktop depth: copy glides gently while the workspace
+  // rises cleanly out of a crisp perspective angle on scroll.
+  const copyY = useTransform(smoothHeroProgress, [0, 0.6], [0, -26]);
+  const workspaceScale = useTransform(
+    smoothHeroProgress,
+    [0, 0.35],
+    [0.985, 1],
+  );
+  const workspaceY = useTransform(smoothHeroProgress, [0, 0.55], [0, -20]);
+  const workspaceRotateX = useTransform(
+    smoothHeroProgress,
+    [0, 0.32],
+    [2.5, 0],
+  );
 
   return (
     <MotionConfig reducedMotion="user">
       <div className="landing relative min-h-dvh overflow-x-clip bg-(--l-bg) text-(--l-fg) selection:bg-(--l-fg)/15">
+        {/* Crisp top scroll-progress hairline */}
+        {!prefersReduced && (
+          <motion.div
+            aria-hidden="true"
+            style={{ scaleX: smoothPageProgress, transformOrigin: "left" }}
+            className="pointer-events-none fixed inset-x-0 top-0 z-50 h-[2px] bg-(--l-accent)/80"
+          />
+        )}
+
         <LandingNav showSignIn />
 
         <main>
@@ -42,7 +77,10 @@ export function SignedOutHero() {
             <CloudSkyBackdrop variant="hero" />
 
             <div className="relative mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-10">
-              <div className="max-w-2xl">
+              <motion.div
+                style={prefersReduced ? undefined : { y: copyY }}
+                className="max-w-2xl"
+              >
                 <h1 className="font-display text-balance text-4xl font-semibold leading-[1.03] tracking-[-0.035em] text-(--l-fg) sm:text-5xl lg:text-[3.75rem]">
                   Cloud coding agents that finish the work
                 </h1>
@@ -68,19 +106,26 @@ export function SignedOutHero() {
                     View pricing
                   </Link>
                 </div>
-              </div>
-
-              {/* Interactive 3-pane Entry workspace rising out of the moving clouds */}
-              <motion.div
-                style={
-                  prefersReduced
-                    ? undefined
-                    : { scale: workspaceScale, y: workspaceY }
-                }
-                className="mt-10 min-w-0 sm:mt-14"
-              >
-                <AppMockup />
               </motion.div>
+
+              {/* Interactive 3-pane Entry workspace rising cleanly out of perspective */}
+              <div style={{ perspective: 1400 }} className="mt-10 sm:mt-14">
+                <motion.div
+                  style={
+                    prefersReduced
+                      ? undefined
+                      : {
+                          scale: workspaceScale,
+                          y: workspaceY,
+                          rotateX: workspaceRotateX,
+                          transformOrigin: "center top",
+                        }
+                  }
+                  className="min-w-0 will-change-transform"
+                >
+                  <AppMockup />
+                </motion.div>
+              </div>
             </div>
           </section>
 
