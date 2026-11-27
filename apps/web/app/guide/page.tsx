@@ -1,23 +1,24 @@
 import type { Metadata } from "next";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNav } from "@/components/landing/nav";
 import { SITE_URL } from "@/lib/site";
 import { GuideJumpNav, type GuideJumpSection } from "./guide-jump-nav";
+import { PromptRecipeCard } from "./prompt-recipe-card";
 
-const title = "Entry Agents Complete Builder Guide";
+const title = "Entry Agents Builder Guide";
 const description =
-  "Learn Entry Agents from scratch: signing in, starting with or without GitHub, using Direct or Team Wave mode inside chat, connecting workplace apps, understanding 90% to 99% prompt caching, and reviewing live previews and diffs.";
+  "Hands-on playbook for shipping software in Entry Agents: 2-minute quickstart, copy-ready prompt recipes, workspace controls, secret bindings, and turn-saving habits.";
 
 export const metadata: Metadata = {
   title,
   description,
   keywords: [
     "Entry Agents guide",
-    "AI coding agent tutorial",
-    "multi-agent team workflow",
+    "AI coding agent prompts",
+    "Team Wave workflow",
     "how to use Entry Agents",
-    "cloud coding workspace",
   ],
   alternates: { canonical: "/guide" },
   openGraph: { url: "/guide", title, description },
@@ -26,93 +27,151 @@ export const metadata: Metadata = {
 
 const structuredData = {
   "@context": "https://schema.org",
-  "@graph": [
+  "@type": "HowTo",
+  name: title,
+  description,
+  url: `${SITE_URL}/guide`,
+  totalTime: "PT5M",
+  step: [
     {
-      "@type": "HowTo",
-      name: title,
-      description,
-      url: `${SITE_URL}/guide`,
-      totalTime: "PT15M",
-      step: [
-        {
-          "@type": "HowToStep",
-          name: "Sign in",
-          text: "Open Entry and sign in with your Vercel, GitHub, or Google account.",
-        },
-        {
-          "@type": "HowToStep",
-          name: "Open a session",
-          text: "Start with a blank cloud workspace, upload files, or select a connected GitHub repository.",
-        },
-        {
-          "@type": "HowToStep",
-          name: "Prompt in Direct or Team Wave mode",
-          text: "Describe the goal, target files or screens, constraints, and how Entry should verify checks.",
-        },
-        {
-          "@type": "HowToStep",
-          name: "Review live diffs and preview",
-          text: "Inspect file diffs, open the live desktop or mobile preview, and push commits when ready.",
-        },
-      ],
+      "@type": "HowToStep",
+      name: "Open a workspace",
+      text: "Sign in at /login and start from a blank workspace, uploaded files, or a GitHub repository.",
     },
     {
-      "@type": "FAQPage",
-      mainEntity: [
-        {
-          "@type": "Question",
-          name: "Do I need GitHub to use Entry Agents",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "No. You can build and preview apps inside a blank workspace or upload files, then optionally connect GitHub later.",
-          },
-        },
-        {
-          "@type": "Question",
-          name: "How do Team Waves work inside the main chat",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "For broad features spanning multiple files, Entry can split work into dependency waves directly inside your chat turn: Wave 0 maps files and locks interface contracts, parallel builders modify disjoint files, and a reviewer verifies tests.",
-          },
-        },
-        {
-          "@type": "Question",
-          name: "How does 90% to 99% prompt caching work",
-          acceptedAnswer: {
-            "@type": "Answer",
-            text: "We achieve a 90% to 99% cache hit rate across all models we support with zero per-token markup, reusing repository context and conversation history across turns.",
-          },
-        },
-      ],
+      "@type": "HowToStep",
+      name: "Give a verifiable prompt",
+      text: "State the outcome, target routes or files, boundaries not to break, and the check command Entry should run.",
+    },
+    {
+      "@type": "HowToStep",
+      name: "Inspect diffs and live preview",
+      text: "Review line-by-line changes in the Diff tab, test the live port preview, then commit or open a PR.",
     },
   ],
 };
 
 const GUIDE_SECTIONS: readonly GuideJumpSection[] = [
-  { id: "first-project", index: "01", label: "Start from zero" },
-  { id: "direct-vs-team", index: "02", label: "Direct & Team Waves" },
-  { id: "prompting", index: "03", label: "Prompt patterns" },
-  { id: "navigation", index: "04", label: "Pages & settings" },
-  { id: "session", index: "05", label: "Inside a session" },
-  { id: "connections", index: "06", label: "Connected stack & MCP" },
-  { id: "credits", index: "07", label: "90%–99% caching" },
-  { id: "glossary", index: "08", label: "Glossary" },
+  { id: "quickstart", index: "01", label: "First 2 minutes" },
+  { id: "recipes", index: "02", label: "Prompt recipes" },
+  { id: "controls", index: "03", label: "Workspace controls" },
+  { id: "habits", index: "04", label: "Turn-saving habits" },
 ];
 
-function CodePrompt({ children }: { readonly children: string }) {
-  return (
-    <pre className="max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-xl border border-(--l-border) bg-(--l-code-bg) p-4 font-mono text-xs leading-relaxed text-(--l-panel-fg) sm:p-5 sm:text-sm">
-      <code>{children}</code>
-    </pre>
-  );
-}
+const QUICKSTART_MODES = [
+  {
+    index: "A",
+    title: "Start from zero",
+    steps:
+      "Open Chats → New chat → Blank workspace. Describe the app you want, let Entry scaffold and run the dev server, and inspect the live preview URL directly.",
+  },
+  {
+    index: "B",
+    title: "Bring a GitHub repo",
+    steps:
+      "Connect GitHub in Settings → Accounts, pick your repository when starting a session, and Entry checks out an isolated branch ready for verified PRs.",
+  },
+  {
+    index: "C",
+    title: "Upload specs or assets",
+    steps:
+      "Drop screenshots, CSVs, or zip archives straight into the composer. Entry mounts them in your workspace so the agent can inspect exact pixels or schemas.",
+  },
+] as const;
+
+const PROMPT_RECIPES = [
+  {
+    index: "01",
+    title: "Build a feature with responsive proof",
+    whenToUse: "Starting a new screen, flow, or standalone app",
+    prompt: `Build a mobile-first invoice tracker with line-item math, paid/pending filters, and a print view.
+Check 375px and 1440px viewports in headless Chrome with zero horizontal overflow, and run typecheck before finishing.`,
+  },
+  {
+    index: "02",
+    title: "Run a parallel Team Wave refactor",
+    whenToUse: "Changes spanning schema, API routes, and UI components",
+    prompt: `Use a Team Wave to add webhook signature verification end to end:
+Wave 0: map existing webhook handlers and lock shared payload schema types.
+Wave 1: update route validation and database migration in disjoint files.
+Wave 2: run unit tests and summarize every changed file.`,
+  },
+  {
+    index: "03",
+    title: "Reproduce and fix a bug with regression coverage",
+    whenToUse: "Tracking down a broken form, API 500, or flaky state bug",
+    prompt: `Submitting the settings form drops custom headers after page refresh.
+Reproduce the bug first, trace the network and server handler, apply the minimal fix, and add a test confirming persistence.`,
+  },
+  {
+    index: "04",
+    title: "Resolve PR review threads",
+    whenToUse: "Iterating on an open GitHub pull request",
+    prompt: `Read every unresolved review comment on PR #142 and apply the requested fixes without changing unrelated behavior.
+Run pnpm check and tests in the workspace, then push clean commits to the same branch.`,
+  },
+] as const;
+
+const WORKSPACE_CONTROLS = [
+  {
+    control: "Diff inspector",
+    purpose:
+      "Inspect every added and deleted line per file before committing or pushing.",
+  },
+  {
+    control: "Live port preview",
+    purpose:
+      "Open running dev servers inside the workspace over HTTPS to verify desktop and mobile layouts.",
+  },
+  {
+    control: "Fork turn",
+    purpose:
+      "Branch a conversation at any past assistant reply to try an alternative architecture without losing your current thread.",
+  },
+  {
+    control: "Model & effort picker",
+    purpose:
+      "Switch models mid-chat — use Claude Opus 5.5 or GPT-5.6 for hard refactors and fast models for routine copy or CSS tweaks.",
+  },
+  {
+    control: "Secrets ($KEY_NAME)",
+    purpose:
+      "Store private API keys once under Settings → Secrets and reference them by variable name instead of pasting keys into prompts.",
+  },
+  {
+    control: "Custom MCP servers",
+    purpose:
+      "Attach remote HTTP/SSE or sandbox stdio endpoints in Settings → MCP Servers to expose internal APIs to the agent.",
+  },
+] as const;
+
+const HABITS = [
+  {
+    title: "Name the verification command in your prompt",
+    body: "Telling Entry to run typecheck, bun test, or a headless browser check catches regressions inside the same turn instead of after you open the PR.",
+  },
+  {
+    title: "Attach screenshots for UI tweaks",
+    body: "One pasted screenshot communicates layout bugs faster than three paragraphs of CSS description.",
+  },
+  {
+    title: "Match model weight to task complexity",
+    body: "Use heavy reasoning models for architecture and debugging, then switch to lighter models for quick copy passes. Compare live rates on Models.",
+  },
+  {
+    title: "Close the tab on long runs",
+    body: "Long test suites and migrations keep running on server checkpoints. Check back from desktop or mobile when you are ready to review the diff.",
+  },
+] as const;
 
 function Section({
   id,
+  index,
   title: heading,
   children,
 }: {
   readonly id: string;
+  readonly index: string;
   readonly title: string;
   readonly children: React.ReactNode;
 }) {
@@ -121,30 +180,18 @@ function Section({
       id={id}
       className="scroll-mt-24 border-t border-(--l-border) pt-12"
     >
-      <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">
-        {heading}
-      </h2>
-      <div className="mt-5 space-y-5 text-sm leading-relaxed text-(--l-fg-2) sm:text-base">
+      <div className="flex items-baseline gap-3">
+        <span className="font-mono text-xs tabular-nums text-(--l-accent)">
+          {index}
+        </span>
+        <h2 className="font-display text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
+          {heading}
+        </h2>
+      </div>
+      <div className="mt-6 space-y-5 text-sm leading-relaxed text-(--l-fg-2) sm:text-base">
         {children}
       </div>
     </section>
-  );
-}
-
-function PageLink({
-  href,
-  children,
-}: {
-  readonly href: string;
-  readonly children: React.ReactNode;
-}) {
-  return (
-    <Link
-      className="font-medium text-(--l-fg) underline underline-offset-4 transition-colors duration-150 hover:opacity-80"
-      href={href}
-    >
-      {children}
-    </Link>
   );
 }
 
@@ -159,289 +206,149 @@ export default function GuidePage() {
             __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
           }}
         />
-        <p className="font-mono text-xs text-(--l-fg-3)">Builder guide</p>
-        <h1 className="mt-3 max-w-4xl text-balance text-3xl font-semibold leading-[1.08] tracking-tight sm:text-5xl md:text-6xl">
-          The complete Entry Agents guide
+        <p className="font-mono text-xs text-(--l-fg-3)">Playbook</p>
+        <h1 className="mt-3 max-w-3xl font-display text-balance text-3xl font-semibold leading-[1.04] tracking-[-0.035em] sm:text-5xl">
+          Entry Agents builder guide
         </h1>
-        <p className="mt-5 max-w-[66ch] text-pretty text-base leading-relaxed text-(--l-fg-2) sm:text-lg">
-          Whether you are shipping your first app with zero local setup or
-          orchestrating multi-file refactors across connected tools, this guide
-          covers sessions, Direct vs Team Wave mode, app connections, durable
-          runs, and plan credits.
+        <p className="mt-4 max-w-[62ch] text-pretty text-base leading-relaxed text-(--l-fg-2) sm:text-lg">
+          A practical reference for going from first prompt to verified branch —
+          copyable prompt recipes, workspace controls, and habits that get more
+          out of every turn. Looking for{" "}
+          <Link
+            href="/ai-coding-agent"
+            className="font-medium text-(--l-fg) underline decoration-(--l-border) underline-offset-4 hover:decoration-(--l-fg)"
+          >
+            system architecture
+          </Link>
+          ,{" "}
+          <Link
+            href="/model"
+            className="font-medium text-(--l-fg) underline decoration-(--l-border) underline-offset-4 hover:decoration-(--l-fg)"
+          >
+            model rates
+          </Link>
+          , or{" "}
+          <Link
+            href="/pricing"
+            className="font-medium text-(--l-fg) underline decoration-(--l-border) underline-offset-4 hover:decoration-(--l-fg)"
+          >
+            plans
+          </Link>
+          ? Jump straight there.
         </p>
 
         <GuideJumpNav sections={GUIDE_SECTIONS} />
 
-        <div className="mt-12 space-y-12">
-          <Section id="first-project" title="1. Start from zero in the cloud">
+        <div className="mt-12 space-y-14">
+          <Section id="quickstart" index="01" title="First two minutes">
             <p>
-              You do not need an existing codebase or local toolchain. Each
-              session creates an isolated Linux workspace with its own files,
-              package runtime, terminal, editor, diffs, and live app preview.
+              Sign in at{" "}
+              <Link
+                href="/login"
+                className="font-medium text-(--l-fg) underline decoration-(--l-border) underline-offset-4 hover:decoration-(--l-fg)"
+              >
+                /login
+              </Link>{" "}
+              with Vercel, GitHub, or Google, then pick whichever starting path
+              matches your task:
             </p>
-            <ol className="list-decimal space-y-3 pl-5">
-              <li>
-                Open <PageLink href="/login">Sign in</PageLink> and continue
-                with Vercel, GitHub, or Google.
-              </li>
-              <li>
-                Head to <PageLink href="/chats">Chats</PageLink> and start a
-                blank Workspace for a new idea, upload existing files, or attach
-                a GitHub repository.
-              </li>
-              <li>
-                Give Entry a concrete outcome and how it should check the work.
-                Start with a solid foundation first, inspect the preview and
-                diff, then iterate step by step.
-              </li>
-              <li>
-                Feel free to turn off your device, switch networks, or move
-                between desktop and phone mid-turn — runs continue on cloud
-                checkpoints and sync cleanly when you reconnect.
-              </li>
-            </ol>
-          </Section>
-
-          <Section id="direct-vs-team" title="2. Direct runs vs Team Waves">
-            <p>
-              Entry chooses the simplest execution model that fits the job, or
-              lets you invoke Team coordination directly inside the same chat
-              conversation without opening a separate mode page:
-            </p>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-5">
-                <h3 className="text-base font-semibold text-(--l-fg)">
-                  Direct execution
-                </h3>
-                <p className="mt-2 text-sm text-(--l-fg-2)">
-                  Best for targeted fixes, single-file updates, UI polish, and
-                  questions. One agent executes edits and tests end to end with
-                  minimal overhead.
-                </p>
-              </div>
-              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-5">
-                <h3 className="text-base font-semibold text-(--l-fg)">
-                  Team Wave coordination
-                </h3>
-                <p className="mt-2 text-sm text-(--l-fg-2)">
-                  Best when work spans database, API, and UI. Wave 0 scouts the
-                  codebase and locks shared interface contracts; Wave 1
-                  implements disjoint files in parallel; the verification wave
-                  checks types, tests, and diffs right inside your chat
-                  timeline.
-                </p>
+            <div className="overflow-hidden rounded-xl border border-(--l-border) bg-(--l-surface)">
+              <div className="grid divide-y divide-(--l-border) md:grid-cols-3 md:divide-x md:divide-y-0">
+                {QUICKSTART_MODES.map((mode) => (
+                  <div key={mode.index} className="p-5">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-mono text-xs text-(--l-accent)">
+                        {mode.index}
+                      </span>
+                      <h3 className="text-sm font-semibold text-(--l-fg)">
+                        {mode.title}
+                      </h3>
+                    </div>
+                    <p className="mt-2 text-xs leading-relaxed text-(--l-fg-2) sm:text-[13px]">
+                      {mode.steps}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           </Section>
 
-          <Section id="prompting" title="3. Prompt patterns that ship cleanly">
+          <Section id="recipes" index="02" title="Copy-ready prompt recipes">
             <p>
-              Clear prompts specify context, target files or screens, boundaries
-              not to break, and proof checks.
+              Prompts that specify the target outcome, boundaries, and proof
+              checks finish in fewer turns. Copy and adapt any pattern below:
             </p>
             <div className="space-y-4">
-              <div>
-                <h3 className="mb-2 text-base font-semibold text-(--l-fg)">
-                  Start a focused project
-                </h3>
-                <CodePrompt>{`Build a mobile-first invoice tracker for freelance designers.
-Include invoice creation, line-item math, paid/pending status filters, and print view.
-Check 375px and 1440px viewports in Playwright and run typecheck before finishing.`}</CodePrompt>
-              </div>
-              <div>
-                <h3 className="mb-2 text-base font-semibold text-(--l-fg)">
-                  Trigger a coordinated multi-file Team Wave
-                </h3>
-                <CodePrompt>{`Use a Team Wave to add webhook signature verification end to end:
-Wave 0: map existing webhook routes and lock shared payload schema contracts.
-Wave 1: implement route validation and database migration in disjoint files.
-Wave 2: run unit tests and summarize every touched file.`}</CodePrompt>
-              </div>
-              <div>
-                <h3 className="mb-2 text-base font-semibold text-(--l-fg)">
-                  Debug with proof
-                </h3>
-                <CodePrompt>{`Submitting the settings form drops saved headers after refresh.
-Reproduce the bug, inspect network and server route responses, apply the smallest fix, and verify persistence with a test.`}</CodePrompt>
-              </div>
+              {PROMPT_RECIPES.map((recipe) => (
+                <PromptRecipeCard key={recipe.index} {...recipe} />
+              ))}
             </div>
           </Section>
 
-          <Section id="navigation" title="4. Navigating pages & settings">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4">
-                <h3 className="font-semibold text-(--l-fg)">
-                  <PageLink href="/chats">Chats</PageLink>
-                </h3>
-                <p className="mt-1 text-sm">
-                  Project dashboard to create workspaces, search conversations,
-                  attach repos, or resume active turns from any device.
-                </p>
-              </div>
-              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4">
-                <h3 className="font-semibold text-(--l-fg)">
-                  <PageLink href="/model">Models</PageLink> &amp;{" "}
-                  <PageLink href="/pricing">Pricing</PageLink>
-                </h3>
-                <p className="mt-1 text-sm">
-                  Compare frontier models across Claude, GPT, Gemini, DeepSeek,
-                  and Grok with per-token rates and live plan capacity.
-                </p>
-              </div>
-              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4">
-                <h3 className="font-semibold text-(--l-fg)">
-                  <PageLink href="/settings/connections">
-                    Connections, MCP &amp; API Keys
-                  </PageLink>
-                </h3>
-                <p className="mt-1 text-sm">
-                  Connect GitHub, Vercel, Gmail, Slack, Linear, Notion, and 500+
-                  apps, attach custom MCP tools, or bind private API keys.
-                </p>
-              </div>
-              <div className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4">
-                <h3 className="font-semibold text-(--l-fg)">
-                  <PageLink href="/settings/skills">Skills</PageLink> &amp;{" "}
-                  <PageLink href="/settings/usage">Usage</PageLink>
-                </h3>
-                <p className="mt-1 text-sm">
-                  Configure reusable skills (such as UI polish or workflow
-                  rules) and audit token caching savings and credit consumption.
-                </p>
-              </div>
+          <Section
+            id="controls"
+            index="03"
+            title="Workspace controls & secrets"
+          >
+            <div className="overflow-hidden rounded-xl border border-(--l-border) bg-(--l-surface)">
+              <dl className="divide-y divide-(--l-border)">
+                {WORKSPACE_CONTROLS.map((item) => (
+                  <div
+                    key={item.control}
+                    className="grid gap-1.5 px-4 py-3.5 sm:grid-cols-[200px_1fr] sm:gap-6 sm:px-5"
+                  >
+                    <dt className="text-xs font-semibold text-(--l-fg) sm:text-sm">
+                      {item.control}
+                    </dt>
+                    <dd className="text-xs leading-relaxed text-(--l-fg-2) sm:text-sm">
+                      {item.purpose}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
             </div>
           </Section>
 
-          <Section id="session" title="5. Inside a coding session">
+          <Section id="habits" index="04" title="Habits that save turns">
             <div className="grid gap-4 sm:grid-cols-2">
-              {[
-                {
-                  name: "Main Chat & Inline Waves",
-                  desc: "Watch thinking streams while the agent works, inspect individual specialist outputs inline, and pick up right where you scrolled after viewing any file.",
-                },
-                {
-                  name: "Files & Side-by-Side Diffs",
-                  desc: "Inspect modified files line by line before committing, or open the built-in code editor for quick manual adjustments.",
-                },
-                {
-                  name: "Live App Preview",
-                  desc: "Run the dev server inside the cloud container and test interactive flows at desktop and mobile dimensions.",
-                },
-                {
-                  name: "Git Branches & PRs",
-                  desc: "Review diffs, run CI checks inside the sandbox, commit cleanly, and push branches or pull requests back to GitHub.",
-                },
-              ].map((panel) => (
+              {HABITS.map((habit) => (
                 <div
-                  key={panel.name}
-                  className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4"
+                  key={habit.title}
+                  className="rounded-xl border border-(--l-border) bg-(--l-surface) p-5"
                 >
-                  <h3 className="font-semibold text-(--l-fg)">{panel.name}</h3>
-                  <p className="mt-1.5 text-sm">{panel.desc}</p>
+                  <h3 className="text-sm font-semibold text-(--l-fg)">
+                    {habit.title}
+                  </h3>
+                  <p className="mt-1.5 text-xs leading-relaxed text-(--l-fg-2) sm:text-[13px]">
+                    {habit.body}
+                  </p>
                 </div>
               ))}
             </div>
-          </Section>
-
-          <Section id="connections" title="6. Connected stack, MCP & API keys">
-            <p>
-              Entry brings external context directly into your coding loop via
-              three connected surfaces under Settings:
-            </p>
-            <ul className="list-disc space-y-2.5 pl-5">
-              <li>
-                <strong className="text-(--l-fg)">Connected Apps:</strong>{" "}
-                Authorize Gmail, Slack, Notion, Linear, Google Calendar, GitHub,
-                and Vercel so agents can read tickets, post summaries, and
-                trigger deployments directly from chat.
-              </li>
-              <li>
-                <strong className="text-(--l-fg)">Custom MCP Tools:</strong>{" "}
-                Attach remote HTTP/SSE or sandbox stdio servers via JSON import
-                or quick presets.
-              </li>
-              <li>
-                <strong className="text-(--l-fg)">API Keys:</strong> Bind
-                private provider keys (Stripe, Resend, Supabase, OpenAI) via{" "}
-                <code className="rounded bg-(--l-surface-2) px-1.5 py-0.5 font-mono text-xs">
-                  $KEY_NAME
-                </code>{" "}
-                or header templates without ever pasting credentials into chat.
-              </li>
-            </ul>
-          </Section>
-
-          <Section id="credits" title="7. 90% to 99% prompt caching & usage">
-            <p>
-              Entry charges zero token markup. We achieve a 90% to 99% cache hit
-              rate across all models we support, reusing unchanged repository
-              files, tool schemas, and conversation context on subsequent tool
-              calls so your usage goes much further.
-            </p>
-            <p className="text-sm">
-              We offer affordable plans with generous usage allowances. See live
-              plans and balances on <PageLink href="/pricing">Pricing</PageLink>{" "}
-              and per-model rates on <PageLink href="/model">Models</PageLink>.
-            </p>
-          </Section>
-
-          <Section id="glossary" title="8. Builder glossary">
-            <dl className="grid gap-4 md:grid-cols-2">
-              {[
-                {
-                  term: "Session",
-                  def: "A workspace project container along with its chat threads, files, diffs, and git state.",
-                },
-                {
-                  term: "Team Wave",
-                  def: "A dependency-ordered group of specialist subtasks executing inline with locked contracts and non-overlapping file claims.",
-                },
-                {
-                  term: "Interface Contract",
-                  def: "A schema or API signature published in Wave 0 so parallel Wave 1 builders integrate cleanly without conflicts.",
-                },
-                {
-                  term: "Diff",
-                  def: "Line-by-line summary of additions and deletions across workspace files ready to inspect or commit.",
-                },
-                {
-                  term: "MCP Server",
-                  def: "External tool endpoint connected cleanly into the agent sandbox toolset.",
-                },
-                {
-                  term: "Durable Run",
-                  def: "Server-checkpointed execution that completes even when your browser disconnects or goes offline.",
-                },
-              ].map((item) => (
-                <div
-                  key={item.term}
-                  className="rounded-xl border border-(--l-border) bg-(--l-surface) p-4"
-                >
-                  <dt className="font-semibold text-(--l-fg)">{item.term}</dt>
-                  <dd className="mt-1 text-sm">{item.def}</dd>
-                </div>
-              ))}
-            </dl>
           </Section>
         </div>
 
-        <section className="mt-14 rounded-2xl border border-(--l-border) bg-(--l-surface) p-6">
-          <h2 className="text-xl font-semibold text-(--l-fg)">
-            Ready to build
-          </h2>
-          <p className="mt-2 text-sm text-(--l-fg-2)">
-            Open a blank cloud sandbox or connect your repository in seconds.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-3">
+        <section className="mt-16 flex flex-col items-start justify-between gap-4 rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:flex-row sm:items-center sm:p-8">
+          <div>
+            <h2 className="font-display text-xl font-semibold tracking-tight text-(--l-fg)">
+              Open your first workspace
+            </h2>
+            <p className="mt-1 text-sm text-(--l-fg-2)">
+              Start free with a blank Ubuntu VM or connect an existing GitHub
+              repo.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3">
             <Link
               href="/login"
-              className="inline-flex h-9 items-center rounded-lg bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-opacity duration-150 hover:opacity-90"
+              className="inline-flex h-10 items-center gap-2 rounded-xl bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.98]"
             >
-              Sign in and start
+              <span>Start building</span>
+              <ArrowRight className="size-3.5" strokeWidth={1.5} />
             </Link>
             <Link
               href="/chats"
-              className="inline-flex h-9 items-center rounded-lg border border-(--l-border) bg-(--l-surface-2) px-4 text-xs font-medium text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
+              className="inline-flex h-10 items-center rounded-xl border border-(--l-border) bg-(--l-surface-2) px-4 text-xs font-medium text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
             >
               Open chats
             </Link>

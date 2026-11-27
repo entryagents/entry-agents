@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ArrowRight, Layers, ShieldCheck, Terminal } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNav } from "@/components/landing/nav";
@@ -7,7 +7,7 @@ import { SITE_URL } from "@/lib/site";
 
 const title = "About Entry Agents";
 const description =
-  "Entry Agents builds cloud engineering workspaces with isolated Linux containers, live multi-agent coordination, and durable workflow execution.";
+  "Why Entry Agents exists: moving software engineering agents out of fragile browser tabs and local laptops into dedicated cloud workspaces.";
 
 export const metadata: Metadata = {
   title,
@@ -34,21 +34,30 @@ const structuredData = {
   url: `${SITE_URL}/about`,
 };
 
-const PRINCIPLES = [
+const COMMITMENTS = [
   {
-    icon: Terminal,
-    title: "Real execution over static snippets",
-    body: "Every session gets an isolated Linux container with filesystem access, shell commands, package installs, diffs, and live desktop and mobile app previews.",
+    index: "01",
+    label: "Proof over prose",
+    detail:
+      "Agents should verify edits with real compilers, tests, diffs, and browser previews before declaring a task finished.",
   },
   {
-    icon: ShieldCheck,
-    title: "Durable server-side runs",
-    body: "Agent turns run on server-side workflow checkpoints instead of depending on an open browser tab, so closing your laptop or losing signal does not discard progress.",
+    index: "02",
+    label: "No token markup",
+    detail:
+      "Every credit dollar maps directly to published provider model rates with prompt caching passed through in full.",
   },
   {
-    icon: Layers,
-    title: "Transparent model pricing",
-    body: "Model usage is billed directly against plan credits with published token rates and prompt caching, with no separate container surcharge.",
+    index: "03",
+    label: "Work that outlives your tab",
+    detail:
+      "Engineering tasks take minutes, not milliseconds. Execution belongs on durable server infrastructure, not a brittle laptop socket.",
+  },
+  {
+    index: "04",
+    label: "You own every commit",
+    detail:
+      "Your code stays in standard Git branches and pull requests with zero proprietary runtime lock-in.",
   },
 ] as const;
 
@@ -56,7 +65,7 @@ export default function AboutPage() {
   return (
     <div className="landing min-h-dvh overflow-x-clip bg-(--l-bg) text-(--l-fg)">
       <LandingNav showSignIn />
-      <main className="mx-auto max-w-[1080px] px-4 pb-24 pt-24 sm:px-6 sm:pt-32 md:pt-36">
+      <main className="mx-auto max-w-[820px] px-4 pb-24 pt-24 sm:px-6 sm:pt-32 md:pt-36">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
@@ -65,83 +74,85 @@ export default function AboutPage() {
         />
 
         <p className="font-mono text-xs text-(--l-fg-3)">About</p>
-        <h1 className="mt-3 max-w-3xl text-balance text-3xl font-semibold leading-[1.08] tracking-tight sm:text-5xl">
-          Cloud workspaces built for autonomous engineering
+        <h1 className="mt-3 font-display text-balance text-3xl font-semibold leading-[1.04] tracking-[-0.035em] sm:text-5xl">
+          Software agents deserve real machines
         </h1>
-        <p className="mt-5 max-w-[64ch] text-pretty text-base leading-relaxed text-(--l-fg-2) sm:text-lg">
-          Entry Agents gives developers a private browser workspace where AI
-          coding agents can read repositories, edit files, run tests, preview
-          interfaces, and optionally deliver work through Git branches and pull
-          requests.
-        </p>
 
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <Link
-            href="/login"
-            className="inline-flex h-10 items-center gap-2 rounded-lg bg-(--l-btn-bg) px-4 text-sm font-medium text-(--l-btn-fg) transition-opacity duration-150 hover:opacity-90"
-          >
-            <span>Start a workspace</span>
-            <ArrowRight className="size-4" strokeWidth={1.5} />
-          </Link>
-          <Link
-            href="/pricing"
-            className="inline-flex h-10 items-center rounded-lg border border-(--l-border) bg-(--l-surface) px-4 text-sm font-medium text-(--l-fg-2) transition-[border-color,color] duration-150 hover:border-(--l-fg-4) hover:text-(--l-fg)"
-          >
-            View pricing
-          </Link>
+        <div className="mt-6 space-y-4 text-base leading-relaxed text-(--l-fg-2)">
+          <p>
+            Most AI coding tools still behave like autocomplete trapped inside a
+            single laptop editor or a stateless chat box. The moment a task
+            needs package installs, database migrations, browser checks, or a
+            five-minute test suite, your local environment becomes the
+            bottleneck.
+          </p>
+          <p>
+            We built Entry Agents so anyone — from solo builders starting on a
+            blank idea to teams shipping production pull requests — can hand
+            real engineering tasks to agents running on dedicated cloud Linux
+            machines and return to verified branches from any device.
+          </p>
         </div>
 
-        <section className="mt-16 grid gap-4 border-t border-(--l-border) pt-12 md:grid-cols-3">
-          {PRINCIPLES.map((item) => (
-            <article
-              key={item.title}
-              className="min-w-0 rounded-2xl border border-(--l-border) bg-(--l-surface) p-6"
-            >
-              <item.icon
-                className="size-4 text-(--l-accent)"
-                strokeWidth={1.5}
-              />
-              <h2 className="mt-3 text-lg font-semibold tracking-tight">
-                {item.title}
-              </h2>
-              <p className="mt-2.5 text-sm leading-relaxed text-(--l-fg-2)">
-                {item.body}
-              </p>
-            </article>
-          ))}
+        <section className="mt-14 border-t border-(--l-border) pt-10">
+          <h2 className="font-display text-2xl font-semibold tracking-[-0.025em]">
+            What we optimize for
+          </h2>
+          <dl className="mt-6 divide-y divide-(--l-border) border-y border-(--l-border)">
+            {COMMITMENTS.map((item) => (
+              <div
+                key={item.index}
+                className="grid gap-1.5 py-4 sm:grid-cols-[200px_1fr] sm:gap-6"
+              >
+                <dt className="flex items-baseline gap-2.5 text-sm font-semibold text-(--l-fg)">
+                  <span className="font-mono text-xs tabular-nums text-(--l-accent)">
+                    {item.index}
+                  </span>
+                  <span>{item.label}</span>
+                </dt>
+                <dd className="text-sm leading-relaxed text-(--l-fg-2)">
+                  {item.detail}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </section>
 
-        <section className="mt-12 rounded-2xl border border-(--l-border) bg-(--l-surface) p-6 sm:p-8">
-          <h2 className="text-xl font-semibold tracking-tight">
-            How sessions work
-          </h2>
-          <p className="mt-2.5 max-w-[68ch] text-sm leading-relaxed text-(--l-fg-2)">
-            You can open a blank Linux workspace, upload reference files, or
-            connect an existing GitHub repository. Simple changes run in a
-            single-agent loop, while larger cross-module work can spawn inline
-            agent teams that coordinate file edits and verification inside the
-            same conversation.
-          </p>
-          <div className="mt-6 flex flex-wrap gap-4 border-t border-(--l-border) pt-5 text-sm">
+        <section className="mt-12 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap gap-5 text-sm">
             <Link
               href="/ai-coding-agent"
-              className="text-(--l-fg-2) underline underline-offset-4 transition-colors hover:text-(--l-fg)"
+              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
             >
-              AI coding agent overview
+              Architecture
             </Link>
             <Link
               href="/guide"
-              className="text-(--l-fg-2) underline underline-offset-4 transition-colors hover:text-(--l-fg)"
+              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
             >
-              Beginner guide
+              Builder guide
             </Link>
             <Link
               href="/model"
-              className="text-(--l-fg-2) underline underline-offset-4 transition-colors hover:text-(--l-fg)"
+              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
             >
-              Supported models
+              Models
+            </Link>
+            <Link
+              href="/pricing"
+              className="text-(--l-fg-2) underline decoration-(--l-border) underline-offset-4 hover:text-(--l-fg)"
+            >
+              Pricing
             </Link>
           </div>
+
+          <Link
+            href="/login"
+            className="inline-flex h-10 items-center gap-2 rounded-xl bg-(--l-btn-bg) px-4 text-xs font-medium text-(--l-btn-fg) transition-[opacity,transform] duration-150 hover:opacity-90 active:scale-[0.98]"
+          >
+            <span>Start building</span>
+            <ArrowRight className="size-3.5" strokeWidth={1.5} />
+          </Link>
         </section>
       </main>
       <LandingFooter />

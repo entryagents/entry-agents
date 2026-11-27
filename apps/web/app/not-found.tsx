@@ -26,10 +26,10 @@ export default function NotFound() {
             <span>Back to home</span>
           </Link>
           <Link
-            href="/ai-coding-agent"
+            href="/guide"
             className="inline-flex h-10 items-center rounded-lg border border-(--l-border) bg-(--l-surface) px-4 text-sm font-medium text-(--l-fg-2) transition-[border-color,color] duration-150 hover:border-(--l-fg-4) hover:text-(--l-fg)"
           >
-            Explore Entry Agents
+            Read the builder guide
           </Link>
         </div>
       </main>

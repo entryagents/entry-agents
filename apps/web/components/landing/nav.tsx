@@ -10,10 +10,9 @@ import { useSession } from "@/hooks/use-session";
 import { Logo } from "./logo";
 
 const NAV_LINKS = [
-  { href: "/ai-coding-agent", label: "AI coding agent" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/model", label: "Models" },
   { href: "/guide", label: "Guide" },
+  { href: "/model", label: "Models" },
+  { href: "/pricing", label: "Pricing" },
 ] as const;
 
 export function LandingNav({

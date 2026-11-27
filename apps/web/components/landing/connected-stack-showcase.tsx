@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CheckCircle2, Terminal } from "lucide-react";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useState } from "react";
@@ -14,8 +14,10 @@ type StackInvocation = {
   readonly label: string;
   readonly role: string;
   readonly prompt: string;
-  readonly invocation: string;
-  readonly target: string;
+  readonly steps: readonly {
+    readonly command: string;
+    readonly target: string;
+  }[];
   readonly duration: string;
   readonly resultSummary: string;
   readonly artifactLine: string;
@@ -29,8 +31,11 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
     role: "Branches, diffs, and pull requests",
     prompt:
       "Address the four review comments on PR #109, verify lint and tests inside the sandbox, and push updated commits",
-    invocation: "github.list_review_comments -> file.edit -> github.push",
-    target: "origin/feat/durable-streams",
+    steps: [
+      { command: "github.list_review_comments", target: "PR #109 · 4 threads" },
+      { command: "workspace.edit && bun test", target: "14 tests passing" },
+      { command: "github.push", target: "origin/feat/durable-streams" },
+    ],
     duration: "1.3s",
     resultSummary:
       "Applied every requested edge-case fix, ran checks locally in the Ubuntu VM, and pushed clean commits to the pull request.",
@@ -40,11 +45,14 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
     slug: "vercel",
     name: "Vercel",
     label: "Vercel",
-    role: "Preview builds and production verification",
+    role: "Preview builds and production checks",
     prompt:
-      "Run a full Next.js build check inside the workspace, publish a preview deployment, and confirm all routes return HTTP 200",
-    invocation: "bash.build -> vercel.deploy -> curl.verify",
-    target: "entry-agents-preview.vercel.app",
+      "Run a full Next.js build check inside the workspace, publish a preview deployment, and confirm core routes return HTTP 200",
+    steps: [
+      { command: "workspace.build", target: "next build · 0 errors" },
+      { command: "vercel.deploy_preview", target: "preview.entryagents.app" },
+      { command: "http.verify_routes", target: "200 OK across 4 routes" },
+    ],
     duration: "1.8s",
     resultSummary:
       "Compiled production bundles cleanly, deployed an isolated preview URL, and verified core routes end to end.",
@@ -57,8 +65,11 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
     role: "Turn issues into verified PRs",
     prompt:
       "Pick up ENG-418, implement contract validation across both modules, verify tests pass, and move the ticket to In Review",
-    invocation: "linear.get_issue -> file.edit -> linear.update_issue",
-    target: "ENG-418 · team-board.ts",
+    steps: [
+      { command: "linear.get_issue", target: "ENG-418" },
+      { command: "workspace.edit", target: "team-board.ts + test" },
+      { command: "linear.update_issue", target: "Status -> In Review" },
+    ],
     duration: "1.1s",
     resultSummary:
       "Read acceptance criteria from ENG-418, implemented the fix with regression coverage, and attached commit 8a3f92c back to Linear.",
@@ -71,8 +82,11 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
     role: "Incident traces and release updates",
     prompt:
       "Check #eng-alerts for the latency spike, isolate the slow query in the workspace, and post the patch summary to #deployments",
-    invocation: "slack.read_channel -> bash.run -> slack.post_message",
-    target: "#eng-alerts -> #deployments",
+    steps: [
+      { command: "slack.read_channel", target: "#eng-alerts" },
+      { command: "workspace.migrate", target: "add composite index" },
+      { command: "slack.post_message", target: "#deployments" },
+    ],
     duration: "0.9s",
     resultSummary:
       "Found an unindexed lookup under concurrent reconnects, wrote a Drizzle migration, and posted the verified before/after timings.",
@@ -85,8 +99,11 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
     role: "Bug reports and reply drafts",
     prompt:
       "Read this morning's customer bug threads, reproduce the webhook retry timeout in tests, and draft replies with the PR link",
-    invocation: "gmail.search_threads -> bash.run -> gmail.create_draft",
-    target: "3 threads · webhook-retry.test.ts",
+    steps: [
+      { command: "gmail.search_threads", target: "3 customer reports" },
+      { command: "bun test webhook-retry", target: "reproduced & fixed" },
+      { command: "gmail.create_draft", target: "3 reply drafts saved" },
+    ],
     duration: "1.4s",
     resultSummary:
       "Reproduced the 504 timeout on signature replay, added an idempotency guard, and saved three customer reply drafts for review.",
@@ -99,8 +116,11 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
     role: "Specs and release notes",
     prompt:
       "Read the Auth API spec in Notion, compare route schemas against the codebase, and sync the updated changelog table",
-    invocation: "notion.fetch_page -> grep.search -> notion.append_blocks",
-    target: "Engineering / Auth Spec",
+    steps: [
+      { command: "notion.fetch_page", target: "Engineering / Auth Spec" },
+      { command: "workspace.diff_schemas", target: "1 header mismatch fixed" },
+      { command: "notion.append_blocks", target: "Changelog table synced" },
+    ],
     duration: "1.2s",
     resultSummary:
       "Checked all six route schemas against implementation, fixed one missing header check, and updated the Notion spec table.",
@@ -113,8 +133,11 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
     role: "Spacing and token parity",
     prompt:
       "Inspect spacing, border hairlines, and type tokens from the Pricing frame and verify responsive parity at 375px and 1440px",
-    invocation: "figma.get_styles -> file.edit -> browser.verify",
-    target: "plans-catalog.tsx · 375px / 1440px",
+    steps: [
+      { command: "figma.get_styles", target: "Pricing frame tokens" },
+      { command: "workspace.edit", target: "plans-catalog.tsx" },
+      { command: "browser.verify", target: "375px & 1440px · 0 overflow" },
+    ],
     duration: "1.5s",
     resultSummary:
       "Matched card radii, neutral ramp, and tabular columns from the Figma frame and confirmed zero overflow on mobile.",
@@ -127,8 +150,11 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
     role: "Sprint blockers and QA logs",
     prompt:
       "Pull assigned blockers from the active sprint, run regression suites for each fix, and attach verification output to Jira",
-    invocation: "jira.search_issues -> bash.test -> jira.add_comment",
-    target: "CORE-204 · CORE-209",
+    steps: [
+      { command: "jira.search_issues", target: "CORE-204 · CORE-209" },
+      { command: "workspace.test", target: "38 regression tests green" },
+      { command: "jira.add_comment", target: "Commit SHA + logs attached" },
+    ],
     duration: "1.3s",
     resultSummary:
       "Verified both regression fixes in isolated test runs and attached commit SHAs and pass counts directly to the Jira issues.",
@@ -141,8 +167,11 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
     role: "Release windows and scheduling",
     prompt:
       "Find an open 30-minute launch window tomorrow for everyone on the release thread and attach the preview checklist",
-    invocation: "calendar.freebusy -> calendar.create_event",
-    target: "Release Readiness · 14:00 UTC",
+    steps: [
+      { command: "calendar.freebusy", target: "4 engineers · 3 time zones" },
+      { command: "calendar.create_event", target: "Release Readiness · 14:00" },
+      { command: "calendar.attach_links", target: "PR + preview checklist" },
+    ],
     duration: "0.8s",
     resultSummary:
       "Checked availability across three time zones and booked the walkthrough with links to the verified PR and preview build.",
@@ -163,12 +192,12 @@ export function ConnectedStackShowcase() {
           <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-12">
             {/* Left column: headline + clean 3x3 real brand icon selector */}
             <div className="min-w-0 lg:col-span-5">
-              <h2 className="font-display text-balance text-3xl font-semibold leading-[1.08] tracking-[-0.03em] sm:text-4xl">
+              <h2 className="font-display text-balance text-3xl font-semibold leading-[1.06] tracking-[-0.03em] sm:text-4xl">
                 Connected where the work starts
               </h2>
               <p className="mt-3 text-pretty text-base leading-relaxed text-(--l-fg-2)">
-                Read tickets, inspect threads, edit the codebase in your Linux
-                VM, and write verified updates back without switching windows.
+                Read tickets, inspect threads, edit code in your Ubuntu VM, and
+                write verified updates back without switching windows.
               </p>
 
               <div
@@ -186,9 +215,9 @@ export function ConnectedStackShowcase() {
                       aria-label={app.name}
                       aria-selected={isSelected}
                       onClick={() => setSelectedSlug(app.slug)}
-                      className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-[border-color,background-color,color] duration-150 ${
+                      className={`flex h-10 min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-3 text-left transition-[border-color,background-color,color] duration-150 ${
                         isSelected
-                          ? "border-(--l-fg)/40 bg-(--l-surface-2) text-(--l-fg)"
+                          ? "border-(--l-fg)/45 bg-(--l-surface-2) text-(--l-fg)"
                           : "border-(--l-border) bg-(--l-surface) text-(--l-fg-2) hover:border-(--l-fg-4) hover:text-(--l-fg)"
                       }`}
                     >
@@ -214,7 +243,7 @@ export function ConnectedStackShowcase() {
               </div>
             </div>
 
-            {/* Right column: single quiet trace inspector */}
+            {/* Right column: crisp un-clipped 3-step live execution trace */}
             <div className="min-w-0 lg:col-span-7">
               <div className="overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-panel)">
                 <AnimatePresence mode="wait">
@@ -252,19 +281,24 @@ export function ConnectedStackShowcase() {
                       “{activeItem.prompt}”
                     </div>
 
-                    <div className="flex flex-col gap-1 rounded-lg bg-(--l-code-bg) px-3.5 py-2.5 font-mono text-xs text-(--l-panel-fg-2) sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                      <span className="inline-flex min-w-0 items-center gap-2">
-                        <Terminal
-                          className="size-3.5 shrink-0 text-(--l-accent)"
-                          strokeWidth={1.5}
-                        />
-                        <span className="truncate">
-                          {activeItem.invocation}
-                        </span>
-                      </span>
-                      <span className="shrink-0 pl-5 text-[11px] text-(--l-panel-fg-3) sm:pl-0">
-                        {activeItem.target}
-                      </span>
+                    {/* Clean 3-step vertical trace so no tool name ever truncates */}
+                    <div className="divide-y divide-(--l-panel-border) overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-code-bg) font-mono text-xs">
+                      {activeItem.steps.map((step, index) => (
+                        <div
+                          key={step.command}
+                          className="flex flex-col gap-0.5 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                        >
+                          <span className="inline-flex items-center gap-2.5 text-(--l-panel-fg)">
+                            <span className="text-[10.5px] tabular-nums text-(--l-panel-fg-4)">
+                              0{index + 1}
+                            </span>
+                            <span>{step.command}</span>
+                          </span>
+                          <span className="pl-6 text-[11px] text-(--l-panel-fg-3) sm:pl-0">
+                            {step.target}
+                          </span>
+                        </div>
+                      ))}
                     </div>
 
                     <p className="text-sm leading-relaxed text-(--l-panel-fg-2)">

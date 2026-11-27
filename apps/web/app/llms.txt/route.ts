@@ -19,11 +19,11 @@ The extended version of this file, including the beginner navigation guide and p
 ## Public pages
 
 - [Entry Agents](${SITE_URL}/): Product overview and sign-in.
-- [Beginner guide](${SITE_URL}/guide): A complete beginner guide for starting without a project, navigating the UI, prompting the agent, reviewing work, GitHub, and credits.
-- [AI coding agent](${SITE_URL}/ai-coding-agent): How Entry Agents builds software with or without a repository.
+- [Builder guide](${SITE_URL}/guide): Hands-on playbook with quickstart paths, copy-ready prompt recipes, workspace controls, and turn-saving habits.
+- [Architecture](${SITE_URL}/ai-coding-agent): Cloud workspace vs local IDE copilot comparison, turn execution lifecycle, and VM/credential isolation boundaries.
 - [Pricing](${SITE_URL}/pricing): Credit-based plans for Entry Agents.
 - [Models](${SITE_URL}/model): Supported model prices and context windows.
-- [About](${SITE_URL}/about): Architecture principles and how sessions work.
+- [About](${SITE_URL}/about): Why Entry Agents exists and core engineering commitments.
 - [Privacy Policy](${SITE_URL}/privacy): Account, workspace, integration, and billing data practices.
 - [Terms of Service](${SITE_URL}/terms): Workspace access, credits, code ownership, and acceptable use.
 
