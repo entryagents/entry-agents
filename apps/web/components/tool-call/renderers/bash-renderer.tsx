@@ -25,7 +25,15 @@ function TerminalOutputCard({
       ? stderr.replace(/\n+$/, "")
       : "";
   const hasOutput = Boolean(trimmedStdout || trimmedStderr);
-  const displayCommand = cwd ? `${cwd} $ ${command}` : command;
+  const firstLine = command.split("\n")[0] ?? "";
+  const isMultiline = command.includes("\n");
+  const compactCommand =
+    firstLine.length > 100
+      ? `${firstLine.slice(0, 100)}…`
+      : isMultiline
+        ? `${firstLine} …`
+        : firstLine;
+  const displayCommand = cwd ? `${cwd} $ ${compactCommand}` : compactCommand;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -47,7 +55,9 @@ function TerminalOutputCard({
         <span className="sable-term-ps" aria-hidden="true">
           $
         </span>
-        <code className="sable-term-line">{displayCommand}</code>
+        <code className="sable-term-line truncate" title={command}>
+          {displayCommand}
+        </code>
         <span className="sable-term-side">
           {typeof exitCode === "number" && exitCode !== 0 && (
             <span className="sable-term-exit">exit {exitCode}</span>
@@ -71,9 +81,15 @@ function TerminalOutputCard({
       {hasOutput ? (
         <div className="sable-term-out">
           <div className="sable-term-flow">
-            {trimmedStdout && <pre>{trimmedStdout}</pre>}
+            {trimmedStdout && (
+              <pre className="whitespace-pre-wrap! break-words [overflow-wrap:anywhere]">
+                {trimmedStdout}
+              </pre>
+            )}
             {trimmedStderr && (
-              <pre className="sable-term-err">{trimmedStderr}</pre>
+              <pre className="sable-term-err whitespace-pre-wrap! break-words [overflow-wrap:anywhere]">
+                {trimmedStderr}
+              </pre>
             )}
           </div>
         </div>

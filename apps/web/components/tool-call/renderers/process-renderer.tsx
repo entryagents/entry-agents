@@ -64,27 +64,20 @@ export function ProcessRenderer({
       ? `${aliveCount}/${processes.length} alive`
       : undefined;
 
-  return (
-    <ToolLayout
-      name="Process Status"
-      summary={summary}
-      summaryClassName="font-mono"
-      meta={meta}
-      state={state}
-      onApprove={onApprove}
-      onDeny={onDeny}
-    >
-      {part.state === "output-available" && processes.length > 0 && (
-        <div className="sable-detail-stack">
-          {processes.map((proc) => (
+  const expandedContent =
+    part.state === "output-available" && processes.length > 0 ? (
+      <div className="sable-detail-stack">
+        {processes.map((proc) => {
+          const rawCmd = (proc.command || proc.id).split("\n")[0] ?? "";
+          const shortCmd =
+            rawCmd.length > 100 ? `${rawCmd.slice(0, 100)}…` : rawCmd;
+          return (
             <div key={proc.id} className="sable-term">
               <div className="sable-term-cmd">
                 <span className="sable-term-ps" aria-hidden>
                   $
                 </span>
-                <code className="sable-term-line">
-                  {proc.command || proc.id}
-                </code>
+                <code className="sable-term-line truncate">{shortCmd}</code>
                 <span className="sable-term-side">
                   <span className="sable-term-note">
                     {proc.pid ? `pid ${proc.pid} · ` : ""}
@@ -94,13 +87,27 @@ export function ProcessRenderer({
               </div>
               {proc.recentLogs && (
                 <div className="sable-term-out">
-                  <pre>{proc.recentLogs}</pre>
+                  <pre className="whitespace-pre-wrap! break-words [overflow-wrap:anywhere]">
+                    {proc.recentLogs}
+                  </pre>
                 </div>
               )}
             </div>
-          ))}
-        </div>
-      )}
-    </ToolLayout>
+          );
+        })}
+      </div>
+    ) : undefined;
+
+  return (
+    <ToolLayout
+      name="Process Status"
+      summary={summary}
+      summaryClassName="font-mono"
+      meta={meta}
+      state={state}
+      expandedContent={expandedContent}
+      onApprove={onApprove}
+      onDeny={onDeny}
+    />
   );
 }
