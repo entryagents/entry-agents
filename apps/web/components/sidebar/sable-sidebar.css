@@ -58,11 +58,20 @@
   background: linear-gradient(to top, var(--side-bg), transparent);
 }
 
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 .sable-child-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 2px 0 6px 15px;
+  margin: 2px 0 6px 10px;
   padding-left: 8px;
   border-left: 1px solid var(--side-line);
 }

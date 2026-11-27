@@ -56,7 +56,7 @@ const COMPARISON_ROWS = [
     dimension: "Parallel changes",
     localCopilot: "Sequential edits fighting over one local filesystem",
     entryCloud:
-      "Wave 0 locks interface contracts; parallel builders edit disjoint files without conflicts",
+      "Scout locks interface contracts; parallel builders edit disjoint files without conflicts",
   },
   {
     dimension: "Live previews",
@@ -76,25 +76,21 @@ const COMPARISON_ROWS = [
 
 const EXECUTION_STAGES = [
   {
-    step: "01",
     name: "Provision & checkout",
     detail:
       "Opening a session attaches or boots a private Linux VM, mounts uploaded files or checks out your repository branch via ephemeral credentials, and restores cached dependencies.",
   },
   {
-    step: "02",
     name: "Tool loop or Team Wave",
     detail:
       "The agent reads files, runs shell commands, executes tests, and inspects live port output. Multi-module tasks split into dependency waves with locked contracts and non-overlapping file claims.",
   },
   {
-    step: "03",
     name: "Durable checkpointing",
     detail:
       "Every step persists on the server workflow runtime rather than a fragile browser socket, so page reloads, network drops, and phone handoffs pick up at the exact live step.",
   },
   {
-    step: "04",
     name: "Diff review & delivery",
     detail:
       "Finished turns emit structured file diffs, passing check output, and live preview URLs. Git commits, branch pushes, and pull requests stay explicit and optional.",
@@ -185,26 +181,21 @@ export default function AiCodingAgentPage() {
             Turn execution lifecycle
           </h2>
           <div className="mt-6 overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-surface)">
-            <ol className="divide-y divide-(--l-border)">
+            <dl className="divide-y divide-(--l-border)">
               {EXECUTION_STAGES.map((stage) => (
-                <li
-                  key={stage.step}
+                <div
+                  key={stage.name}
                   className="grid gap-2 px-5 py-5 sm:grid-cols-[220px_1fr] sm:gap-6 sm:px-6"
                 >
-                  <div className="flex items-baseline gap-2.5">
-                    <span className="font-mono text-xs tabular-nums text-(--l-accent)">
-                      {stage.step}
-                    </span>
-                    <span className="text-sm font-semibold text-(--l-fg)">
-                      {stage.name}
-                    </span>
-                  </div>
-                  <p className="text-xs leading-relaxed text-(--l-fg-2) sm:text-sm">
+                  <dt className="text-sm font-semibold text-(--l-fg)">
+                    {stage.name}
+                  </dt>
+                  <dd className="text-xs leading-relaxed text-(--l-fg-2) sm:text-sm">
                     {stage.detail}
-                  </p>
-                </li>
+                  </dd>
+                </div>
               ))}
-            </ol>
+            </dl>
           </div>
         </section>
 

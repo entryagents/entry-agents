@@ -8,9 +8,10 @@ import {
   ChevronRight,
   ChevronUp,
   Copy,
-  Folder,
   FolderGit2,
   GitFork,
+  GitMerge,
+  GitPullRequest,
   Paperclip,
   Plus,
   Search,
@@ -18,6 +19,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { EntryMark } from "@/components/entry-mark";
+import { SidebarDiffMeter } from "@/components/sidebar/diff-bar";
 import { WorkspaceInspectorPane } from "./workspace-inspector-pane";
 import {
   type InspectorTab,
@@ -31,6 +33,7 @@ import {
 export function AppMockup() {
   const [scenarioId, setScenarioId] = useState<ScenarioId>("resend");
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("diff");
+  const [selectedScope, setSelectedScope] = useState<string | null>(null);
   const [stepsExpanded, setStepsExpanded] = useState(false);
   const [usageOpen, setUsageOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -54,22 +57,26 @@ export function AppMockup() {
     window.setTimeout(() => setCopied(false), 1500);
   };
 
+  const visibleProjects = selectedScope
+    ? SIDEBAR_PROJECTS.filter((p) => p.key === selectedScope)
+    : SIDEBAR_PROJECTS.filter((p) => p.chats.length > 0);
+
   const ringCircumference = 40.84;
   const ringOffset = ringCircumference * (1 - scenario.contextPct / 100);
 
   return (
     <div
       aria-label="Interactive Entry workspace preview"
-      className="min-w-0 rounded-[20px] border border-(--l-border) bg-(--l-surface)/50 p-1.5 shadow-(--l-window-shadow) backdrop-blur-md"
+      className="min-w-0 rounded-[20px] border border-(--l-border) bg-(--l-surface)/55 p-1.5 shadow-(--l-window-shadow) backdrop-blur-md"
     >
       <div className="min-w-0 overflow-hidden rounded-[14px] border border-(--l-panel-border) bg-(--l-panel)">
-        <div className="grid min-w-0 md:grid-cols-[minmax(0,1fr)_336px] lg:grid-cols-[224px_minmax(0,1fr)_368px]">
-          {/* Left Sidebar — 1:1 mirror of the minimal Entry sidebar with floating Usage Popover */}
+        <div className="grid min-w-0 md:grid-cols-[minmax(0,1fr)_336px] lg:grid-cols-[248px_minmax(0,1fr)_364px]">
+          {/* Left Sidebar — 1:1 mirror of the redesigned Entry sidebar (Scope Strip + Flush Full-Width Projects + 2-Line Diff Cards) */}
           <aside
             aria-label="Workspace sidebar preview"
             className="relative hidden min-w-0 flex-col border-r border-(--l-panel-border) bg-(--l-surface) lg:flex"
           >
-            {/* Compact Brand + Search & Archive Icons */}
+            {/* Brand + Search & Archive utility triggers */}
             <div className="flex h-11 shrink-0 items-center justify-between px-3">
               <span className="inline-flex items-center gap-2 text-xs font-semibold tracking-tight text-(--l-panel-fg)">
                 <EntryMark className="size-4 shrink-0" />
@@ -86,7 +93,7 @@ export function AppMockup() {
             </div>
 
             {/* Monochrome New chat bar */}
-            <div className="px-2.5 pt-0.5 pb-1.5">
+            <div className="px-2.5 pt-0.5 pb-2">
               <div className="flex h-8 items-center justify-between rounded-lg border border-(--l-panel-border) bg-(--l-panel) px-2.5 text-xs font-medium text-(--l-panel-fg)">
                 <span className="inline-flex items-center gap-1.5">
                   <Plus
@@ -102,133 +109,167 @@ export function AppMockup() {
               </div>
             </div>
 
-            {/* Clickable Projects & Recency-Grouped Chats */}
-            <div className="flex-1 space-y-2.5 overflow-hidden px-2 py-1.5">
-              {/* Projects */}
-              <div>
-                <div className="mb-0.5 flex h-6 items-center justify-between px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
-                  <span>Projects</span>
+            {/* Interactive Project Scope Strip + Flush Project Groups + Today */}
+            <div className="flex-1 space-y-2.5 overflow-hidden px-2 py-0.5">
+              {/* Project Scope Pills */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedScope(null)}
+                  className={`inline-flex h-6 shrink-0 cursor-pointer items-center rounded-md px-2 text-[11px] font-medium transition-colors duration-150 ${
+                    selectedScope === null
+                      ? "bg-(--l-panel-active) text-(--l-panel-fg)"
+                      : "text-(--l-panel-fg-3) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
+                  }`}
+                >
+                  All
+                </button>
+                {SIDEBAR_PROJECTS.map((project) => {
+                  const scoped = selectedScope === project.key;
+                  return (
+                    <button
+                      key={project.key}
+                      type="button"
+                      onClick={() =>
+                        setSelectedScope(scoped ? null : project.key)
+                      }
+                      className={`inline-flex h-6 max-w-[96px] shrink-0 cursor-pointer items-center rounded-md px-2 text-[11px] transition-colors duration-150 ${
+                        scoped
+                          ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
+                          : "text-(--l-panel-fg-3) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
+                      }`}
+                    >
+                      <span className="truncate">{project.name}</span>
+                    </button>
+                  );
+                })}
+                <span className="ml-auto inline-flex size-5 items-center justify-center rounded text-(--l-panel-fg-3)">
                   <Plus className="size-3" strokeWidth={1.6} />
-                </div>
-                <div className="space-y-0.5">
-                  {SIDEBAR_PROJECTS.map((project) => {
-                    const hasActive = project.chats.some(
-                      (c) => c.id === scenarioId,
-                    );
-                    return (
-                      <div key={project.name}>
-                        <div className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs text-(--l-panel-fg)">
-                          {project.expanded ? (
-                            <ChevronDown
-                              className="size-3 shrink-0 text-(--l-panel-fg-3)"
-                              strokeWidth={1.6}
-                            />
-                          ) : (
-                            <ChevronRight
-                              className="size-3 shrink-0 text-(--l-panel-fg-3)"
-                              strokeWidth={1.6}
-                            />
-                          )}
-                          {project.expanded ? (
-                            <FolderGit2
-                              className={`size-3.5 shrink-0 ${
-                                hasActive
-                                  ? "text-(--l-panel-fg)"
-                                  : "text-(--l-panel-fg-3)"
-                              }`}
-                              strokeWidth={1.5}
-                            />
-                          ) : (
-                            <Folder
-                              className="size-3.5 shrink-0 text-(--l-panel-fg-3)"
-                              strokeWidth={1.5}
-                            />
-                          )}
-                          <span
-                            className={`min-w-0 flex-1 truncate ${
-                              hasActive || project.expanded
-                                ? "font-medium text-(--l-panel-fg)"
-                                : "text-(--l-panel-fg-2)"
-                            }`}
-                          >
-                            {project.name}
-                          </span>
-                          <span className="font-mono text-[10.5px] tabular-nums text-(--l-panel-fg-4)">
-                            {project.chats.length}
-                          </span>
+                </span>
+              </div>
+
+              {/* Flush Full-Width Project Sections (Zero Vertical Tree Pipes) */}
+              <div className="space-y-2">
+                {visibleProjects.map((project) => (
+                  <div key={project.key} className="space-y-1">
+                    <div className="flex h-6 items-center justify-between px-1.5 text-[11px] font-medium text-(--l-panel-fg-3)">
+                      <span className="inline-flex min-w-0 items-center gap-1.5">
+                        <FolderGit2
+                          className="size-3 shrink-0"
+                          strokeWidth={1.5}
+                        />
+                        <span className="truncate">{project.name}</span>
+                      </span>
+                      <span className="font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
+                        {project.chats.length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-0.5">
+                      {project.chats.length === 0 ? (
+                        <div className="px-2 py-1.5 text-[11.5px] text-(--l-panel-fg-4)">
+                          No active threads
                         </div>
-
-                        {project.expanded && project.chats.length > 0 && (
-                          <div className="ml-[13px] mt-0.5 space-y-0.5 border-l border-(--l-panel-border) pl-2">
-                            {project.chats.map((chat) => {
-                              const active = chat.id === scenarioId;
-                              return (
-                                <button
-                                  key={chat.id}
-                                  type="button"
-                                  onClick={() => handleSelectScenario(chat.id)}
-                                  className={`flex h-7 w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2 text-left text-[12px] transition-colors duration-150 ${
-                                    active
-                                      ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
-                                      : "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
-                                  }`}
-                                >
-                                  <span className="truncate">{chat.title}</span>
-                                  <span className="shrink-0 font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
-                                    {chat.age}
+                      ) : (
+                        project.chats.map((chat) => {
+                          const active = chat.id === scenarioId;
+                          return (
+                            <button
+                              key={chat.id}
+                              type="button"
+                              onClick={() => handleSelectScenario(chat.id)}
+                              className={`flex w-full cursor-pointer flex-col rounded-lg px-2 py-1.5 text-left transition-colors duration-150 ${
+                                active
+                                  ? "bg-(--l-panel-active) text-(--l-panel-fg)"
+                                  : "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
+                              }`}
+                            >
+                              <div className="flex min-w-0 items-center justify-between gap-2">
+                                <span className="flex min-w-0 items-center gap-1.5">
+                                  {chat.prStatus === "merged" ? (
+                                    <GitMerge
+                                      className="size-3 shrink-0 text-indigo-500"
+                                      strokeWidth={1.5}
+                                    />
+                                  ) : (
+                                    <GitPullRequest
+                                      className="size-3 shrink-0 text-emerald-500"
+                                      strokeWidth={1.5}
+                                    />
+                                  )}
+                                  <span
+                                    className={`truncate text-[12px] leading-tight ${
+                                      active ? "font-medium" : ""
+                                    }`}
+                                  >
+                                    {chat.title}
                                   </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                                </span>
+                                <span className="shrink-0 font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
+                                  {chat.age}
+                                </span>
+                              </div>
+                              <div className="mt-1 flex min-w-0 items-center justify-between gap-2 pl-[18px]">
+                                <span className="min-w-0 truncate font-mono text-[10px] text-(--l-panel-fg-4)">
+                                  {chat.branch}
+                                </span>
+                                <SidebarDiffMeter
+                                  added={chat.added}
+                                  removed={chat.removed}
+                                />
+                              </div>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
 
-              {/* Today Chats */}
-              <div className="border-t border-(--l-panel-border) pt-2">
-                <div className="mb-0.5 flex h-6 items-center px-2 text-[11px] font-medium text-(--l-panel-fg-3)">
-                  <span>Today</span>
+              {/* Standalone Today Chats (only when scope is All) */}
+              {selectedScope === null && (
+                <div className="border-t border-(--l-panel-border) pt-2">
+                  <div className="mb-0.5 flex h-5 items-center px-1.5 text-[11px] font-medium text-(--l-panel-fg-3)">
+                    <span>Today</span>
+                  </div>
+                  <div className="space-y-0.5">
+                    {SIDEBAR_CHATS.map((chat) => {
+                      const active = chat.id === scenarioId;
+                      const interactive = Boolean(chat.id);
+                      return (
+                        <button
+                          key={chat.title}
+                          type="button"
+                          disabled={!interactive}
+                          onClick={() => {
+                            if (chat.id) handleSelectScenario(chat.id);
+                          }}
+                          className={`flex h-7 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-[12px] transition-colors duration-150 ${
+                            interactive ? "cursor-pointer" : "cursor-default"
+                          } ${
+                            active
+                              ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
+                              : interactive
+                                ? "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
+                                : "text-(--l-panel-fg-3)"
+                          }`}
+                        >
+                          <span className="flex min-w-0 flex-1 items-center gap-2">
+                            {chat.unread && !active && (
+                              <span className="size-1.5 shrink-0 rounded-full bg-(--l-accent)" />
+                            )}
+                            <span className="truncate">{chat.title}</span>
+                          </span>
+                          <span className="shrink-0 font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
+                            {chat.age}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="space-y-0.5">
-                  {SIDEBAR_CHATS.map((chat) => {
-                    const active = chat.id === scenarioId;
-                    const interactive = Boolean(chat.id);
-                    return (
-                      <button
-                        key={chat.title}
-                        type="button"
-                        disabled={!interactive}
-                        onClick={() => {
-                          if (chat.id) handleSelectScenario(chat.id);
-                        }}
-                        className={`flex h-7.5 w-full items-center justify-between gap-2 rounded-md px-2 text-left text-[12px] transition-colors duration-150 ${
-                          interactive ? "cursor-pointer" : "cursor-default"
-                        } ${
-                          active
-                            ? "bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
-                            : interactive
-                              ? "text-(--l-panel-fg-2) hover:bg-(--l-panel-surface) hover:text-(--l-panel-fg)"
-                              : "text-(--l-panel-fg-3)"
-                        }`}
-                      >
-                        <span className="flex min-w-0 flex-1 items-center gap-2">
-                          {chat.unread && !active && (
-                            <span className="size-1.5 shrink-0 rounded-full bg-(--l-accent)" />
-                          )}
-                          <span className="truncate">{chat.title}</span>
-                        </span>
-                        <span className="shrink-0 font-mono text-[10px] tabular-nums text-(--l-panel-fg-4)">
-                          {chat.age}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Floating Interactive Usage Telemetry Popover */}
@@ -384,7 +425,7 @@ export function AppMockup() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between rounded-lg border border-(--l-panel-border) bg-(--l-panel-surface) px-3 py-2 text-[11px] text-(--l-panel-fg-3)">
                   <span className="tabular-nums">{scenario.prevSteps}</span>
-                  <span className="font-medium text-(--l-panel-fg-2)">
+                  <span className="font-mono text-(--l-panel-fg-2)">
                     {scenario.branch}
                   </span>
                 </div>

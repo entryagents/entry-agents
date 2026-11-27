@@ -4,14 +4,12 @@ import { Check, Copy } from "lucide-react";
 import { useState } from "react";
 
 interface PromptRecipeCardProps {
-  readonly index: string;
   readonly title: string;
   readonly whenToUse: string;
   readonly prompt: string;
 }
 
 export function PromptRecipeCard({
-  index,
   title,
   whenToUse,
   prompt,
@@ -32,15 +30,10 @@ export function PromptRecipeCard({
     <div className="overflow-hidden rounded-xl border border-(--l-border) bg-(--l-surface)">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-(--l-border) px-4 py-3 sm:px-5">
         <div className="min-w-0">
-          <div className="flex items-baseline gap-2.5">
-            <span className="font-mono text-xs tabular-nums text-(--l-accent)">
-              {index}
-            </span>
-            <h3 className="text-sm font-semibold tracking-tight text-(--l-fg)">
-              {title}
-            </h3>
-          </div>
-          <p className="mt-0.5 pl-6 text-xs text-(--l-fg-3)">{whenToUse}</p>
+          <h3 className="text-sm font-semibold tracking-tight text-(--l-fg)">
+            {title}
+          </h3>
+          <p className="mt-0.5 text-xs text-(--l-fg-3)">{whenToUse}</p>
         </div>
 
         <button
