@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
+import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { GitHubImportDialog } from "@/components/github-import-dialog";
 import {
   Popover,
@@ -28,6 +29,13 @@ import { fetcher } from "@/lib/swr";
 
 export type SelectedNewChatTarget =
   | { kind: "standalone" }
+  | {
+      kind: "session";
+      sessionId: string;
+      title: string;
+      repoOwner?: string | null;
+      repoName?: string | null;
+    }
   | {
       kind: "folder";
       projectId: string;
@@ -48,7 +56,7 @@ interface NewChatProjectPickerProps {
   readonly onSelectTarget: (target: SelectedNewChatTarget) => void;
   readonly onCreateFolder: (
     name: string,
-    options?: { assignSessionId?: string | null },
+    options?: { assignSessionIds?: string[] },
   ) => Promise<Project>;
   readonly onCreateRepoProject: (input: {
     repoOwner: string;
@@ -68,10 +76,7 @@ export function NewChatProjectPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [importOpen, setImportOpen] = useState(false);
-  const [creatingFolder, setCreatingFolder] = useState(false);
-  const [folderName, setFolderName] = useState("");
-  const [assignSessionId, setAssignSessionId] = useState<string>("");
-  const [submittingFolder, setSubmittingFolder] = useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
 
   const filteredGroups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -90,28 +95,22 @@ export function NewChatProjectPicker({
       ? `${target.repoOwner}/${target.repoName}`
       : target.kind === "folder"
         ? target.name
-        : "No project";
+        : target.kind === "session"
+          ? target.repoOwner && target.repoName
+            ? `${target.repoOwner}/${target.repoName} · ${target.title}`
+            : target.title
+          : "No project";
 
-  const handleSubmitNewFolder = async () => {
-    const trimmed = folderName.trim();
-    if (!trimmed || submittingFolder) return;
-    setSubmittingFolder(true);
-    try {
-      const created = await onCreateFolder(trimmed, {
-        assignSessionId: assignSessionId || null,
-      });
-      onSelectTarget({
-        kind: "folder",
-        projectId: created.id,
-        name: created.name,
-      });
-      setFolderName("");
-      setAssignSessionId("");
-      setCreatingFolder(false);
-      setOpen(false);
-    } finally {
-      setSubmittingFolder(false);
-    }
+  const handleCreateProjectFromDialog = async (
+    name: string,
+    assignSessionIds: string[],
+  ) => {
+    const created = await onCreateFolder(name, { assignSessionIds });
+    onSelectTarget({
+      kind: "folder",
+      projectId: created.id,
+      name: created.name,
+    });
   };
 
   const handleImportRepo = async (owner: string, repo: string) => {
@@ -137,7 +136,6 @@ export function NewChatProjectPicker({
           setOpen(next);
           if (!next) {
             setQuery("");
-            setCreatingFolder(false);
           }
         }}
       >
@@ -149,10 +147,17 @@ export function NewChatProjectPicker({
           >
             {target.kind === "folder" ? (
               <Folder className="size-4 shrink-0" strokeWidth={1.5} />
+            ) : target.kind === "session" ? (
+              <MessageSquare className="size-4 shrink-0" strokeWidth={1.5} />
             ) : (
               <Cloud className="size-4 shrink-0" strokeWidth={1.5} />
             )}
             <span className="truncate">{triggerLabel}</span>
+            {target.kind === "session" ? (
+              <span className="hidden shrink-0 rounded-md border border-border/70 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline-block">
+                shared VM
+              </span>
+            ) : null}
             <ChevronDown
               className="size-3.5 shrink-0 opacity-70"
               strokeWidth={1.5}
@@ -165,217 +170,140 @@ export function NewChatProjectPicker({
           sideOffset={6}
           className="w-72 overflow-hidden rounded-xl border border-border/80 bg-popover p-1.5 shadow-lg"
         >
-          {creatingFolder ? (
-            <div className="space-y-2.5 p-2">
-              <div className="text-xs font-medium text-foreground">
-                New project folder
-              </div>
+          {projectGroups.length > 3 && (
+            <div className="mb-1.5 flex items-center gap-2 rounded-lg border border-border/70 bg-background px-2.5 py-1.5">
+              <Search
+                className="size-3.5 shrink-0 text-muted-foreground"
+                strokeWidth={1.5}
+              />
               <input
                 type="text"
-                value={folderName}
-                onChange={(e) => setFolderName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void handleSubmitNewFolder();
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    setCreatingFolder(false);
-                  }
-                }}
-                placeholder="Project name"
-                maxLength={80}
-                autoFocus
-                disabled={submittingFolder}
-                className="h-8 w-full rounded-lg border border-border bg-background px-2.5 text-xs text-foreground placeholder:text-muted-foreground/70 focus:border-foreground/40 focus:outline-none"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Filter projects..."
+                className="min-w-0 flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/70 outline-none"
               />
-
-              {standaloneSessions.length > 0 && (
-                <div className="space-y-1">
-                  <label
-                    htmlFor="new-project-assign-chat"
-                    className="block text-[11px] text-muted-foreground"
-                  >
-                    Include an existing chat (optional)
-                  </label>
-                  <select
-                    id="new-project-assign-chat"
-                    value={assignSessionId}
-                    onChange={(e) => setAssignSessionId(e.target.value)}
-                    disabled={submittingFolder}
-                    className="h-8 w-full rounded-lg border border-border bg-background px-2 text-xs text-foreground focus:border-foreground/40 focus:outline-none"
-                  >
-                    <option value="">Start empty</option>
-                    {standaloneSessions.slice(0, 20).map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.title}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-1.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setCreatingFolder(false)}
-                  disabled={submittingFolder}
-                  className="h-7 cursor-pointer rounded-md px-2.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void handleSubmitNewFolder()}
-                  disabled={submittingFolder || !folderName.trim()}
-                  className="inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-md bg-foreground px-3 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
-                >
-                  {submittingFolder && (
-                    <Loader2 className="size-3 animate-spin" />
-                  )}
-                  <span>Create</span>
-                </button>
-              </div>
             </div>
-          ) : (
-            <>
-              {projectGroups.length > 3 && (
-                <div className="mb-1.5 flex items-center gap-2 rounded-lg border border-border/70 bg-background px-2.5 py-1.5">
-                  <Search
-                    className="size-3.5 shrink-0 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                  <input
-                    type="text"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Filter projects..."
-                    className="min-w-0 flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/70 outline-none"
-                  />
-                </div>
-              )}
-
-              <div className="max-h-60 space-y-0.5 overflow-y-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelectTarget({ kind: "standalone" });
-                    setOpen(false);
-                  }}
-                  className={`flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-xs transition-colors ${
-                    target.kind === "standalone"
-                      ? "bg-foreground/[0.07] font-medium text-foreground"
-                      : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
-                  }`}
-                >
-                  <MessageSquare
-                    className="size-3.5 shrink-0 opacity-80"
-                    strokeWidth={1.5}
-                  />
-                  <span className="min-w-0 flex-1 truncate">
-                    Standalone chat
-                  </span>
-                  {target.kind === "standalone" && (
-                    <Check className="size-3.5 shrink-0" strokeWidth={1.6} />
-                  )}
-                </button>
-
-                {filteredGroups.length > 0 && (
-                  <div className="my-1 border-t border-border/60 pt-1">
-                    {filteredGroups.map((group) => {
-                      const label =
-                        group.kind === "github"
-                          ? `${group.repoOwner}/${group.repoName}`
-                          : group.name;
-                      const isSelected =
-                        (group.kind === "github" &&
-                          target.kind === "github" &&
-                          group.repoOwner.toLowerCase() ===
-                            target.repoOwner.toLowerCase() &&
-                          group.repoName.toLowerCase() ===
-                            target.repoName.toLowerCase()) ||
-                        (group.kind === "folder" &&
-                          target.kind === "folder" &&
-                          group.projectId === target.projectId);
-
-                      return (
-                        <button
-                          key={group.key}
-                          type="button"
-                          onClick={() => {
-                            if (group.kind === "github") {
-                              onSelectTarget({
-                                kind: "github",
-                                projectId: group.projectId,
-                                repoOwner: group.repoOwner,
-                                repoName: group.repoName,
-                                defaultBranch: group.defaultBranch ?? null,
-                              });
-                            } else {
-                              onSelectTarget({
-                                kind: "folder",
-                                projectId: group.projectId,
-                                name: group.name,
-                              });
-                            }
-                            setOpen(false);
-                          }}
-                          className={`flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-xs transition-colors ${
-                            isSelected
-                              ? "bg-foreground/[0.07] font-medium text-foreground"
-                              : "text-foreground/80 hover:bg-foreground/[0.04] hover:text-foreground"
-                          }`}
-                        >
-                          {group.kind === "github" ? (
-                            <Cloud
-                              className="size-3.5 shrink-0 text-muted-foreground"
-                              strokeWidth={1.5}
-                            />
-                          ) : (
-                            <Folder
-                              className="size-3.5 shrink-0 text-muted-foreground"
-                              strokeWidth={1.5}
-                            />
-                          )}
-                          <span className="min-w-0 flex-1 truncate">
-                            {label}
-                          </span>
-                          {isSelected && (
-                            <Check
-                              className="size-3.5 shrink-0"
-                              strokeWidth={1.6}
-                            />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-1.5 space-y-0.5 border-t border-border/60 pt-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    setImportOpen(true);
-                  }}
-                  className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
-                >
-                  <FolderGit2 className="size-3.5 shrink-0" strokeWidth={1.5} />
-                  <span>Import GitHub repository</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreatingFolder(true)}
-                  className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
-                >
-                  <FolderPlus className="size-3.5 shrink-0" strokeWidth={1.5} />
-                  <span>New project folder</span>
-                </button>
-              </div>
-            </>
           )}
+
+          <div className="max-h-60 space-y-0.5 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => {
+                onSelectTarget({ kind: "standalone" });
+                setOpen(false);
+              }}
+              className={`flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-xs transition-colors ${
+                target.kind === "standalone"
+                  ? "bg-foreground/[0.07] font-medium text-foreground"
+                  : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
+              }`}
+            >
+              <MessageSquare
+                className="size-3.5 shrink-0 opacity-80"
+                strokeWidth={1.5}
+              />
+              <span className="min-w-0 flex-1 truncate">Standalone chat</span>
+              {target.kind === "standalone" && (
+                <Check className="size-3.5 shrink-0" strokeWidth={1.6} />
+              )}
+            </button>
+
+            {filteredGroups.length > 0 && (
+              <div className="my-1 border-t border-border/60 pt-1">
+                {filteredGroups.map((group) => {
+                  const label =
+                    group.kind === "github"
+                      ? `${group.repoOwner}/${group.repoName}`
+                      : group.name;
+                  const isSelected =
+                    (group.kind === "github" &&
+                      target.kind === "github" &&
+                      group.repoOwner.toLowerCase() ===
+                        target.repoOwner.toLowerCase() &&
+                      group.repoName.toLowerCase() ===
+                        target.repoName.toLowerCase()) ||
+                    (group.kind === "folder" &&
+                      target.kind === "folder" &&
+                      group.projectId === target.projectId);
+
+                  return (
+                    <button
+                      key={group.key}
+                      type="button"
+                      onClick={() => {
+                        if (group.kind === "github") {
+                          onSelectTarget({
+                            kind: "github",
+                            projectId: group.projectId,
+                            repoOwner: group.repoOwner,
+                            repoName: group.repoName,
+                            defaultBranch: group.defaultBranch ?? null,
+                          });
+                        } else {
+                          onSelectTarget({
+                            kind: "folder",
+                            projectId: group.projectId,
+                            name: group.name,
+                          });
+                        }
+                        setOpen(false);
+                      }}
+                      className={`flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-xs transition-colors ${
+                        isSelected
+                          ? "bg-foreground/[0.07] font-medium text-foreground"
+                          : "text-foreground/80 hover:bg-foreground/[0.04] hover:text-foreground"
+                      }`}
+                    >
+                      {group.kind === "github" ? (
+                        <Cloud
+                          className="size-3.5 shrink-0 text-muted-foreground"
+                          strokeWidth={1.5}
+                        />
+                      ) : (
+                        <Folder
+                          className="size-3.5 shrink-0 text-muted-foreground"
+                          strokeWidth={1.5}
+                        />
+                      )}
+                      <span className="min-w-0 flex-1 truncate">{label}</span>
+                      {isSelected && (
+                        <Check
+                          className="size-3.5 shrink-0"
+                          strokeWidth={1.6}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-1.5 space-y-0.5 border-t border-border/60 pt-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setImportOpen(true);
+              }}
+              className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+            >
+              <FolderGit2 className="size-3.5 shrink-0" strokeWidth={1.5} />
+              <span>Import GitHub repository</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setCreateProjectOpen(true);
+              }}
+              className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2 text-left text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.05] hover:text-foreground"
+            >
+              <FolderPlus className="size-3.5 shrink-0" strokeWidth={1.5} />
+              <span>New project folder</span>
+            </button>
+          </div>
         </PopoverContent>
       </Popover>
 
@@ -383,6 +311,13 @@ export function NewChatProjectPicker({
         open={importOpen}
         onOpenChange={setImportOpen}
         onImportRepo={handleImportRepo}
+      />
+
+      <CreateProjectDialog
+        open={createProjectOpen}
+        onOpenChange={setCreateProjectOpen}
+        standaloneSessions={standaloneSessions}
+        onCreateProject={handleCreateProjectFromDialog}
       />
     </>
   );

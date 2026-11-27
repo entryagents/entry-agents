@@ -20,7 +20,7 @@ import {
   useMotionValue,
   useReducedMotion,
 } from "motion/react";
-import { type MouseEvent, useEffect, useState } from "react";
+import { type FormEvent, type MouseEvent, useEffect, useState } from "react";
 import { EntryMark } from "@/components/entry-mark";
 import { WorkspaceInspectorPane } from "./workspace-inspector-pane";
 import {
@@ -31,16 +31,29 @@ import {
 import { WorkspaceSidebarPreview } from "./workspace-sidebar-preview";
 
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
-const DEMO_SCENARIOS: readonly ScenarioId[] = ["resend", "oauth"];
+const DEMO_SCENARIOS: readonly ScenarioId[] = ["resend", "oauth", "checkout"];
+
+const QUICK_PROMPTS: readonly {
+  readonly id: ScenarioId;
+  readonly label: string;
+}[] = [
+  { id: "resend", label: "Resend emails" },
+  { id: "oauth", label: "OAuth callbacks" },
+  { id: "checkout", label: "375px audit" },
+];
 
 type DemoStage = 0 | 1 | 2;
 
 export function AppMockup() {
   const prefersReduced = useReducedMotion() ?? false;
   const [scenarioId, setScenarioId] = useState<ScenarioId>("resend");
+  const [customPrompt, setCustomPrompt] = useState<string | null>(null);
+  const [composerInput, setComposerInput] = useState("");
+  const [runNonce, setRunNonce] = useState(0);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>("diff");
   const [demoStage, setDemoStage] = useState<DemoStage>(prefersReduced ? 2 : 0);
   const [autoPlay, setAutoPlay] = useState(!prefersReduced);
+  const [elapsedSeconds, setElapsedSeconds] = useState(1);
   const [stepsExpanded, setStepsExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [mobilePane, setMobilePane] = useState<"chat" | "inspector">("chat");
@@ -48,15 +61,21 @@ export function AppMockup() {
   // Subtle monochrome pointer hairline spotlight on desktop hover (zero React re-renders)
   const pointerX = useMotionValue(540);
   const pointerY = useMotionValue(120);
-  const pointerBg = useMotionTemplate`radial-gradient(520px circle at ${pointerX}px ${pointerY}px, rgba(186, 230, 253, 0.14), transparent 65%)`;
+  const pointerBg = useMotionTemplate`radial-gradient(540px circle at ${pointerX}px ${pointerY}px, rgba(186, 230, 253, 0.16), transparent 65%)`;
 
   const scenario = PREVIEW_SCENARIOS[scenarioId];
 
-  // Self-playing live desktop agent demo:
-  // Stage 0: initial 2 steps done, step 3 running, partial diff visible
-  // Stage 1: step 3 done, step 4 running, full diff streams in
-  // Stage 2: turn complete -> reply + file summary appear -> inspector slides to Preview
-  // Then cycles cleanly between DeepSeek V4.1 Flash 1017 & GLM 5.3 Flash scenarios
+  // Live ticking elapsed seconds while a run is actively executing
+  useEffect(() => {
+    if (prefersReduced || demoStage === 2) return;
+    setElapsedSeconds(1);
+    const id = window.setInterval(() => {
+      setElapsedSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [demoStage, prefersReduced, runNonce, scenarioId]);
+
+  // Self-playing live desktop agent choreography
   useEffect(() => {
     if (prefersReduced) {
       setDemoStage(2);
@@ -71,26 +90,27 @@ export function AppMockup() {
 
     const t1 = window.setTimeout(() => {
       setDemoStage(1);
-    }, 1400);
+    }, 1250);
 
     const t2 = window.setTimeout(() => {
       setDemoStage(2);
       setInspectorTab("preview");
-    }, 2800);
+    }, 2500);
 
     const t3 = window.setTimeout(() => {
+      setCustomPrompt(null);
       setScenarioId((current) => {
         const idx = DEMO_SCENARIOS.indexOf(current);
         return DEMO_SCENARIOS[(idx + 1) % DEMO_SCENARIOS.length] ?? "resend";
       });
-    }, 6600);
+    }, 6400);
 
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
       window.clearTimeout(t3);
     };
-  }, [autoPlay, prefersReduced, scenarioId]);
+  }, [autoPlay, prefersReduced, runNonce, scenarioId]);
 
   const stopAutoPlayAndSettle = () => {
     if (autoPlay) {
@@ -99,13 +119,38 @@ export function AppMockup() {
     setDemoStage(2);
   };
 
-  const handleSelectScenario = (nextId: ScenarioId) => {
-    setAutoPlay(false);
+  const triggerLiveRun = (nextId: ScenarioId, overridePrompt?: string) => {
     setScenarioId(nextId);
-    setDemoStage(2);
-    setInspectorTab("diff");
+    setCustomPrompt(overridePrompt ?? null);
     setStepsExpanded(false);
     setCopied(false);
+    setDemoStage(0);
+    setInspectorTab("diff");
+    setRunNonce((n) => n + 1);
+    setAutoPlay(!prefersReduced);
+  };
+
+  const handleSelectScenario = (nextId: ScenarioId) => {
+    triggerLiveRun(nextId);
+  };
+
+  const handleComposerSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    const trimmed = composerInput.trim();
+    if (!trimmed) return;
+    const lower = trimmed.toLowerCase();
+    const matchedId: ScenarioId =
+      lower.includes("auth") ||
+      lower.includes("login") ||
+      lower.includes("oauth")
+        ? "oauth"
+        : lower.includes("mobile") ||
+            lower.includes("375") ||
+            lower.includes("pricing")
+          ? "checkout"
+          : "resend";
+    setComposerInput("");
+    triggerLiveRun(matchedId, trimmed);
   };
 
   const handleSelectInspectorTab = (tab: InspectorTab) => {
@@ -124,10 +169,7 @@ export function AppMockup() {
       stopAutoPlayAndSettle();
       return;
     }
-    setStepsExpanded(false);
-    setDemoStage(0);
-    setInspectorTab("diff");
-    setAutoPlay(true);
+    triggerLiveRun(scenarioId);
   };
 
   const handleCopy = () => {
@@ -151,6 +193,7 @@ export function AppMockup() {
 
   const ringCircumference = 40.84;
   const ringOffset = ringCircumference * (1 - scenario.contextPct / 100);
+  const elapsedFormatted = `00:${String(elapsedSeconds).padStart(2, "0")}`;
 
   return (
     <div
@@ -173,7 +216,7 @@ export function AppMockup() {
             onSelectScenario={handleSelectScenario}
           />
 
-          {/* Center Pane — Authentic Entry Chat */}
+          {/* Center Pane — Authentic Interactive Entry Chat */}
           <div
             className={`min-w-0 flex-col border-(--l-panel-border) bg-(--l-panel) md:flex md:border-r ${
               mobilePane === "chat" ? "flex" : "hidden md:flex"
@@ -195,7 +238,7 @@ export function AppMockup() {
                   <button
                     type="button"
                     onClick={handleToggleAutoPlay}
-                    className="hidden cursor-pointer items-center gap-1.5 rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) px-2 py-0.5 text-[11px] font-medium text-(--l-panel-fg-2) transition-colors hover:text-(--l-panel-fg) sm:inline-flex"
+                    className="hidden cursor-pointer items-center gap-1.5 rounded-md border border-(--l-panel-border) bg-(--l-panel-surface) px-2 py-0.5 font-mono text-[11px] tabular-nums text-(--l-panel-fg-2) transition-colors hover:text-(--l-panel-fg) sm:inline-flex"
                     title={
                       autoPlay
                         ? "Pause live workspace playback"
@@ -205,7 +248,9 @@ export function AppMockup() {
                     {autoPlay ? (
                       <>
                         <span className="size-1.5 rounded-full bg-emerald-500" />
-                        <span>Live</span>
+                        <span>
+                          {isRunning ? `Live · ${elapsedFormatted}` : "Live"}
+                        </span>
                       </>
                     ) : (
                       <>
@@ -284,10 +329,10 @@ export function AppMockup() {
             </div>
 
             {/* Chat messages */}
-            <div className="flex flex-1 flex-col justify-between gap-5 p-4 sm:p-5">
+            <div className="flex flex-1 flex-col justify-between gap-4 p-4 sm:p-5">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
-                  key={scenario.id}
+                  key={`${scenario.id}-${runNonce}`}
                   initial={{ opacity: 0, transform: "translateY(4px)" }}
                   animate={{ opacity: 1, transform: "translateY(0px)" }}
                   exit={{ opacity: 0, transform: "translateY(-4px)" }}
@@ -303,7 +348,7 @@ export function AppMockup() {
 
                   <div className="flex justify-end">
                     <div className="max-w-[90%] rounded-2xl border border-(--l-panel-border) bg-(--l-panel-surface) px-3.5 py-2.5 text-[13px] leading-relaxed text-(--l-panel-fg) sm:max-w-[84%]">
-                      {scenario.prompt}
+                      {customPrompt ?? scenario.prompt}
                     </div>
                   </div>
 
@@ -471,31 +516,66 @@ export function AppMockup() {
                 </motion.div>
               </AnimatePresence>
 
-              <div className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) px-3.5 py-2.5">
-                <div className="text-xs text-(--l-panel-fg-3)">
-                  Follow up on {scenario.prTag} or open another branch...
+              {/* Interactive live prompt playground composer */}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {QUICK_PROMPTS.map((item) => {
+                    const active = item.id === scenarioId;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => triggerLiveRun(item.id)}
+                        className={`cursor-pointer rounded-lg border px-2 py-0.5 text-[11px] transition-colors duration-150 ${
+                          active
+                            ? "border-(--l-fg-4) bg-(--l-panel-active) font-medium text-(--l-panel-fg)"
+                            : "border-(--l-panel-border) bg-(--l-surface) text-(--l-panel-fg-3) hover:border-(--l-fg-5) hover:text-(--l-panel-fg)"
+                        }`}
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="mt-3 flex items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-(--l-panel-fg-2)">
-                    <Paperclip
-                      className="size-3.5 text-(--l-panel-fg-3)"
-                      strokeWidth={1.5}
-                    />
-                    <span className="font-medium text-(--l-panel-fg)">
-                      {scenario.modelFull}
-                    </span>
-                    <span className="text-(--l-panel-fg-3)">
-                      {scenario.effort}
-                    </span>
-                    <span className="hidden items-center gap-1 text-(--l-panel-fg-3) sm:inline-flex">
-                      <ShieldCheck className="size-3" strokeWidth={1.5} />
-                      <span>Full access</span>
-                    </span>
+
+                <form
+                  onSubmit={handleComposerSubmit}
+                  className="rounded-xl border border-(--l-panel-border) bg-(--l-surface) px-3.5 py-2.5 transition-colors focus-within:border-(--l-fg-4)"
+                >
+                  <input
+                    type="text"
+                    value={composerInput}
+                    onChange={(event) => setComposerInput(event.target.value)}
+                    placeholder={`Try a prompt on ${scenario.branch} and press Enter...`}
+                    aria-label="Try an interactive workspace prompt"
+                    className="w-full bg-transparent text-xs text-(--l-panel-fg) placeholder:text-(--l-panel-fg-3) focus:outline-none"
+                  />
+                  <div className="mt-2.5 flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2.5 text-[11px] text-(--l-panel-fg-2)">
+                      <Paperclip
+                        className="size-3.5 text-(--l-panel-fg-3)"
+                        strokeWidth={1.5}
+                      />
+                      <span className="font-medium text-(--l-panel-fg)">
+                        {scenario.modelFull}
+                      </span>
+                      <span className="text-(--l-panel-fg-3)">
+                        {scenario.effort}
+                      </span>
+                      <span className="hidden items-center gap-1 text-(--l-panel-fg-3) sm:inline-flex">
+                        <ShieldCheck className="size-3" strokeWidth={1.5} />
+                        <span>Full access</span>
+                      </span>
+                    </div>
+                    <button
+                      type="submit"
+                      aria-label="Run preview prompt"
+                      className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full bg-(--l-btn-bg) text-(--l-btn-fg) transition-[opacity,transform] hover:opacity-90 active:scale-95"
+                    >
+                      <ArrowUp className="size-3.5" strokeWidth={1.75} />
+                    </button>
                   </div>
-                  <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-(--l-btn-bg) text-(--l-btn-fg)">
-                    <ArrowUp className="size-3.5" strokeWidth={1.75} />
-                  </span>
-                </div>
+                </form>
               </div>
             </div>
           </div>

@@ -13,21 +13,53 @@ import {
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { getServerSession } from "@/lib/session/get-server-session";
 
+const assignFields = {
+  assignSessionId: z.string().trim().min(1).optional().nullable(),
+  assignSessionIds: z.array(z.string().trim().min(1)).max(50).optional(),
+};
+
 const createFolderProjectSchema = z.object({
   name: z
     .string()
     .trim()
     .min(1, "Project name is required")
     .max(80, "Project name must be 80 characters or fewer"),
-  assignSessionId: z.string().trim().min(1).optional().nullable(),
+  ...assignFields,
 });
 
 const createRepoProjectSchema = z.object({
   repoOwner: z.string().trim().min(1),
   repoName: z.string().trim().min(1),
   defaultBranch: z.string().trim().min(1).max(120).optional().nullable(),
-  assignSessionId: z.string().trim().min(1).optional().nullable(),
+  ...assignFields,
 });
+
+async function assignOwnedSessionsToProject(
+  userId: string,
+  projectId: string,
+  input: {
+    assignSessionId?: string | null;
+    assignSessionIds?: string[];
+  },
+): Promise<string[]> {
+  const uniqueIds = Array.from(
+    new Set(
+      [
+        ...(input.assignSessionIds ?? []),
+        ...(input.assignSessionId ? [input.assignSessionId] : []),
+      ].filter(Boolean),
+    ),
+  );
+  const assigned: string[] = [];
+  for (const sessionId of uniqueIds) {
+    const targetSession = await getSessionById(sessionId);
+    if (targetSession && targetSession.userId === userId) {
+      await updateSession(targetSession.id, { projectId });
+      assigned.push(targetSession.id);
+    }
+  }
+  return assigned;
+}
 
 export async function GET() {
   const session = await getServerSession();
@@ -63,8 +95,13 @@ export async function POST(req: Request) {
 
   const repoParsed = createRepoProjectSchema.safeParse(body);
   if (repoParsed.success) {
-    const { repoOwner, repoName, defaultBranch, assignSessionId } =
-      repoParsed.data;
+    const {
+      repoOwner,
+      repoName,
+      defaultBranch,
+      assignSessionId,
+      assignSessionIds,
+    } = repoParsed.data;
     if (
       !isValidGitHubRepoOwner(repoOwner) ||
       !isValidGitHubRepoName(repoName)
@@ -83,14 +120,16 @@ export async function POST(req: Request) {
       defaultBranch: defaultBranch ?? null,
     });
 
-    if (assignSessionId) {
-      const targetSession = await getSessionById(assignSessionId);
-      if (targetSession && targetSession.userId === session.user.id) {
-        await updateSession(targetSession.id, { projectId: project.id });
-      }
-    }
+    const assignedSessionIds = await assignOwnedSessionsToProject(
+      session.user.id,
+      project.id,
+      { assignSessionId, assignSessionIds },
+    );
 
-    return Response.json({ project, created }, { status: created ? 201 : 200 });
+    return Response.json(
+      { project, created, assignedSessionIds },
+      { status: created ? 201 : 200 },
+    );
   }
 
   const folderParsed = createFolderProjectSchema.safeParse(body);
@@ -107,14 +146,17 @@ export async function POST(req: Request) {
     name: folderParsed.data.name,
   });
 
-  if (folderParsed.data.assignSessionId) {
-    const targetSession = await getSessionById(
-      folderParsed.data.assignSessionId,
-    );
-    if (targetSession && targetSession.userId === session.user.id) {
-      await updateSession(targetSession.id, { projectId: project.id });
-    }
-  }
+  const assignedSessionIds = await assignOwnedSessionsToProject(
+    session.user.id,
+    project.id,
+    {
+      assignSessionId: folderParsed.data.assignSessionId,
+      assignSessionIds: folderParsed.data.assignSessionIds,
+    },
+  );
 
-  return Response.json({ project, created: true }, { status: 201 });
+  return Response.json(
+    { project, created: true, assignedSessionIds },
+    { status: 201 },
+  );
 }
