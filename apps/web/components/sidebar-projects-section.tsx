@@ -2,9 +2,10 @@
 
 import {
   Check,
-  ChevronDown,
+  ChevronRight,
   Folder,
   FolderGit2,
+  FolderOpen,
   FolderPlus,
   Loader2,
   MoreHorizontal,
@@ -26,8 +27,6 @@ import type { SidebarProjectGroup } from "@/lib/sessions/group-projects";
 export interface SidebarProjectsSectionProps {
   projects: SidebarProjectGroup[];
   activeSessionId: string;
-  selectedProjectKey?: string | null;
-  onSelectProjectKey?: (key: string | null) => void;
   onOpenImportGithub: () => void;
   onCreateFolder: (name: string) => Promise<void> | void;
   onRenameFolder: (projectId: string, name: string) => Promise<void> | void;
@@ -43,8 +42,6 @@ export interface SidebarProjectsSectionProps {
 export function SidebarProjectsSection({
   projects,
   activeSessionId,
-  selectedProjectKey = null,
-  onSelectProjectKey,
   onOpenImportGithub,
   onCreateFolder,
   onRenameFolder,
@@ -53,7 +50,8 @@ export function SidebarProjectsSection({
   onCreateSessionForRepo,
   renderSessionRow,
 }: SidebarProjectsSectionProps) {
-  const [collapsedProjects, setCollapsedProjects] = useState<
+  const [sectionOpen, setSectionOpen] = useState(true);
+  const [expandedProjects, setExpandedProjects] = useState<
     Record<string, boolean>
   >({});
   const [creatingRepoKey, setCreatingRepoKey] = useState<string | null>(null);
@@ -83,14 +81,15 @@ export function SidebarProjectsSection({
     }
   }, [renamingProjectId]);
 
-  const toggleProjectCollapsed = (key: string) => {
-    setCollapsedProjects((prev) => ({
+  const toggleProject = (key: string) => {
+    setExpandedProjects((prev) => ({
       ...prev,
       [key]: !(prev[key] ?? false),
     }));
   };
 
   const handleStartCreateFolder = () => {
+    setSectionOpen(true);
     setNewFolderName("");
     setIsCreatingFolder(true);
   };
@@ -153,77 +152,38 @@ export function SidebarProjectsSection({
     }
   };
 
-  const activeScopeKey =
-    selectedProjectKey && projects.some((p) => p.key === selectedProjectKey)
-      ? selectedProjectKey
-      : null;
-
-  const visibleProjects = activeScopeKey
-    ? projects.filter((p) => p.key === activeScopeKey)
-    : projects;
-
   return (
-    <div className="mb-3 space-y-2">
-      {/* Compact Workspace Scope Strip — filter to a single repo/folder or browse All */}
-      <div className="flex items-center gap-1 px-0.5">
-        <div
-          role="tablist"
-          aria-label="Filter by project"
-          className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar py-0.5"
+    <div className="mb-3">
+      <div className="group relative mb-0.5 flex h-7 items-center rounded-lg transition-colors duration-120 hover:bg-foreground/[0.035]">
+        <button
+          type="button"
+          onClick={() => setSectionOpen((prev) => !prev)}
+          aria-expanded={sectionOpen}
+          className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 text-left cursor-pointer"
         >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={activeScopeKey === null}
-            onClick={() => onSelectProjectKey?.(null)}
-            className={`inline-flex h-6 shrink-0 items-center rounded-md px-2 text-[11.5px] font-medium transition-colors duration-120 cursor-pointer ${
-              activeScopeKey === null
-                ? "bg-foreground/[0.09] text-foreground"
-                : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground"
+          <ChevronRight
+            className={`size-3 shrink-0 text-muted-foreground/70 transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+              sectionOpen ? "rotate-90" : ""
             }`}
-          >
-            All
-          </button>
-
-          {projects.map((project) => {
-            const isScoped = activeScopeKey === project.key;
-            const hasStreaming = project.sessions.some((s) => s.hasStreaming);
-            return (
-              <button
-                key={project.key}
-                type="button"
-                role="tab"
-                aria-selected={isScoped}
-                onClick={() =>
-                  onSelectProjectKey?.(isScoped ? null : project.key)
-                }
-                title={
-                  project.kind === "github"
-                    ? `${project.repoOwner}/${project.repoName}`
-                    : project.name
-                }
-                className={`inline-flex h-6 max-w-[116px] shrink-0 items-center gap-1.5 rounded-md px-2 text-[11.5px] transition-colors duration-120 cursor-pointer ${
-                  isScoped
-                    ? "bg-foreground/[0.09] font-medium text-foreground"
-                    : "text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground"
-                }`}
-              >
-                {hasStreaming ? (
-                  <span className="size-1.5 shrink-0 rounded-full bg-sky-500 dark:bg-sky-400" />
-                ) : null}
-                <span className="truncate">{project.name}</span>
-              </button>
-            );
-          })}
-        </div>
+            strokeWidth={1.6}
+          />
+          <span className="text-[11.5px] font-medium text-muted-foreground transition-colors duration-120 group-hover:text-foreground/80">
+            Projects
+          </span>
+          {projects.length > 0 ? (
+            <span className="ml-auto pr-5 font-mono text-[11px] tabular-nums text-muted-foreground/65 transition-opacity duration-120 group-hover:opacity-0">
+              {projects.length}
+            </span>
+          ) : null}
+        </button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="grid size-6 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.07] hover:text-foreground cursor-pointer"
+              className="absolute top-1/2 right-1 grid size-6 -translate-y-1/2 place-items-center rounded-md text-muted-foreground opacity-65 transition-[opacity,background-color,color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer"
               aria-label="Add project"
-              title="New folder or import repository"
+              title="Add project"
             >
               <Plus className="size-3.5" strokeWidth={1.6} />
             </button>
@@ -241,262 +201,265 @@ export function SidebarProjectsSection({
         </DropdownMenu>
       </div>
 
-      {/* Inline New Folder Creator */}
-      {isCreatingFolder ? (
-        <div className="mx-0.5 flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2">
-          <Folder
-            className="size-3.5 shrink-0 text-muted-foreground"
-            strokeWidth={1.5}
-          />
-          <input
-            ref={newFolderInputRef}
-            type="text"
-            value={newFolderName}
-            onChange={(event) => setNewFolderName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void handleSubmitCreateFolder();
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                handleCancelCreateFolder();
-              }
-            }}
-            placeholder="Folder name"
-            maxLength={80}
-            disabled={createFolderPending}
-            className="min-w-0 flex-1 bg-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground/70 outline-none"
-          />
-          <button
-            type="button"
-            onClick={() => void handleSubmitCreateFolder()}
-            disabled={createFolderPending || !newFolderName.trim()}
-            className="flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground disabled:opacity-40 cursor-pointer"
-            aria-label="Create folder"
-          >
-            {createFolderPending ? (
-              <Loader2 className="size-3 animate-spin" />
-            ) : (
-              <Check className="size-3.5" strokeWidth={1.6} />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={handleCancelCreateFolder}
-            disabled={createFolderPending}
-            className="flex size-5 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground cursor-pointer"
-            aria-label="Cancel creating folder"
-          >
-            <X className="size-3.5" strokeWidth={1.6} />
-          </button>
-        </div>
-      ) : null}
+      {sectionOpen ? (
+        <div className="space-y-0.5">
+          {isCreatingFolder ? (
+            <div className="mx-1 mb-1 flex h-9 items-center gap-2 rounded-lg border border-border bg-background px-2">
+              <Folder
+                className="size-4 shrink-0 text-muted-foreground"
+                strokeWidth={1.5}
+              />
+              <input
+                ref={newFolderInputRef}
+                type="text"
+                value={newFolderName}
+                onChange={(event) => setNewFolderName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void handleSubmitCreateFolder();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    handleCancelCreateFolder();
+                  }
+                }}
+                placeholder="Folder name"
+                maxLength={80}
+                disabled={createFolderPending}
+                className="min-w-0 flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/70 outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => void handleSubmitCreateFolder()}
+                disabled={createFolderPending || !newFolderName.trim()}
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-muted/60 hover:text-foreground disabled:opacity-40 cursor-pointer"
+                aria-label="Create folder"
+              >
+                {createFolderPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Check className="size-3.5" strokeWidth={1.6} />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={handleCancelCreateFolder}
+                disabled={createFolderPending}
+                className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-muted/60 hover:text-foreground cursor-pointer"
+                aria-label="Cancel creating folder"
+              >
+                <X className="size-3.5" strokeWidth={1.6} />
+              </button>
+            </div>
+          ) : null}
 
-      {/* Empty State Quick Actions */}
-      {projects.length === 0 && !isCreatingFolder ? (
-        <div className="grid grid-cols-2 gap-1.5 px-0.5">
-          <button
-            type="button"
-            onClick={handleStartCreateFolder}
-            className="flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-border/70 px-2.5 text-left text-[12px] font-medium text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-foreground/[0.04] hover:text-foreground cursor-pointer"
-          >
-            <FolderPlus className="size-3.5 shrink-0" strokeWidth={1.5} />
-            <span className="truncate">New folder</span>
-          </button>
-          <button
-            type="button"
-            onClick={onOpenImportGithub}
-            className="flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-border/70 px-2.5 text-left text-[12px] font-medium text-muted-foreground transition-colors duration-150 hover:border-border hover:bg-foreground/[0.04] hover:text-foreground cursor-pointer"
-          >
-            <FolderGit2 className="size-3.5 shrink-0" strokeWidth={1.5} />
-            <span className="truncate">Import repo</span>
-          </button>
-        </div>
-      ) : (
-        /* Flush Full-Width Project Sections — Zero Indented Tree Pipes */
-        <div className="space-y-2.5">
-          {visibleProjects.map((project) => {
-            const containsActive = project.sessions.some(
-              (s) => s.id === activeSessionId,
-            );
-            const isCollapsed =
-              activeScopeKey === project.key
-                ? false
-                : (collapsedProjects[project.key] ?? false);
-            const isCreating = creatingRepoKey === project.key;
-            const isRenaming =
-              project.kind === "folder" &&
-              renamingProjectId === project.projectId;
+          {projects.length === 0 && !isCreatingFolder ? (
+            <div className="grid grid-cols-2 gap-1.5 px-1 pt-0.5">
+              <button
+                type="button"
+                onClick={handleStartCreateFolder}
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-border/70 px-2.5 text-left text-[12px] font-medium text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border hover:bg-foreground/[0.04] hover:text-foreground cursor-pointer"
+              >
+                <FolderPlus className="size-3.5 shrink-0" strokeWidth={1.5} />
+                <span className="truncate">New folder</span>
+              </button>
+              <button
+                type="button"
+                onClick={onOpenImportGithub}
+                className="flex h-8 items-center gap-1.5 rounded-lg border border-dashed border-border/70 px-2.5 text-left text-[12px] font-medium text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border hover:bg-foreground/[0.04] hover:text-foreground cursor-pointer"
+              >
+                <FolderGit2 className="size-3.5 shrink-0" strokeWidth={1.5} />
+                <span className="truncate">Import repo</span>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {projects.map((project) => {
+                const containsActive = project.sessions.some(
+                  (s) => s.id === activeSessionId,
+                );
+                const isExpanded =
+                  expandedProjects[project.key] ?? containsActive;
+                const isCreating = creatingRepoKey === project.key;
+                const isRenaming =
+                  project.kind === "folder" &&
+                  renamingProjectId === project.projectId;
 
-            if (isRenaming) {
-              return (
-                <div
-                  key={project.key}
-                  className="mx-0.5 flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2"
-                >
-                  <Folder
-                    className="size-3.5 shrink-0 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                  <input
-                    ref={renameInputRef}
-                    type="text"
-                    value={renameValue}
-                    onChange={(event) => setRenameValue(event.target.value)}
-                    onBlur={() => void handleSubmitRename()}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        void handleSubmitRename();
-                      } else if (event.key === "Escape") {
-                        event.preventDefault();
-                        setRenamingProjectId(null);
-                      }
-                    }}
-                    maxLength={80}
-                    disabled={renamePending}
-                    className="min-w-0 flex-1 bg-transparent text-[12.5px] font-medium text-foreground outline-none"
-                  />
-                </div>
-              );
-            }
-
-            return (
-              <div key={project.key} className="space-y-0.5">
-                {/* Clean Full-Width Section Header (Linear / Codex Style) */}
-                <div className="group flex h-7 items-center gap-1 rounded-md px-2 transition-colors duration-120 hover:bg-foreground/[0.035]">
-                  <button
-                    type="button"
-                    onClick={() => toggleProjectCollapsed(project.key)}
-                    aria-expanded={!isCollapsed}
-                    className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left cursor-pointer"
-                    title={
-                      project.kind === "github"
-                        ? `${project.repoOwner}/${project.repoName}`
-                        : project.name
-                    }
-                  >
-                    {project.kind === "github" ? (
-                      <FolderGit2
-                        className={`size-3.5 shrink-0 ${
-                          containsActive
-                            ? "text-foreground/85"
-                            : "text-muted-foreground/70"
-                        }`}
-                        strokeWidth={1.5}
-                      />
-                    ) : (
-                      <Folder
-                        className={`size-3.5 shrink-0 ${
-                          containsActive
-                            ? "text-foreground/85"
-                            : "text-muted-foreground/70"
-                        }`}
-                        strokeWidth={1.5}
-                      />
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-muted-foreground transition-colors duration-120 group-hover:text-foreground">
-                      {project.name}
-                    </span>
-                    <ChevronDown
-                      className={`size-3 shrink-0 text-muted-foreground/45 transition-transform duration-150 ${
-                        isCollapsed ? "-rotate-90" : ""
-                      }`}
-                      strokeWidth={1.6}
-                    />
-                  </button>
-
-                  <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-muted-foreground/55 group-hover:hidden">
-                    {project.sessions.length}
-                  </span>
-
-                  <span className="hidden shrink-0 items-center gap-0.5 group-hover:flex focus-within:flex">
-                    {project.kind === "folder" ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            onClick={(event) => event.stopPropagation()}
-                            className="grid size-5 place-items-center rounded text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer"
-                            aria-label={`Folder options for ${project.name}`}
-                            title="Folder options"
-                          >
-                            <MoreHorizontal
-                              className="size-3.5"
-                              strokeWidth={1.6}
-                            />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="end"
-                          sideOffset={4}
-                          className="w-40"
-                        >
-                          <DropdownMenuItem
-                            onSelect={() => {
-                              setRenameValue(project.name);
-                              setRenamingProjectId(project.projectId);
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" strokeWidth={1.5} />
-                            <span>Rename</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            onSelect={() => {
-                              void onDeleteFolder(project.projectId);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" strokeWidth={1.5} />
-                            <span>Delete folder</span>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={(event) =>
-                        handleNewChatInProject(event, project)
-                      }
-                      disabled={isCreating}
-                      className="grid size-5 place-items-center rounded text-muted-foreground transition-colors hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer"
-                      aria-label={`New chat in ${project.name}`}
-                      title={`New chat in ${project.name}`}
+                if (isRenaming) {
+                  return (
+                    <div
+                      key={project.key}
+                      className="mx-1 flex h-8 items-center gap-2 rounded-lg border border-border bg-background px-2"
                     >
-                      {isCreating ? (
-                        <Loader2 className="size-3 animate-spin" />
-                      ) : (
-                        <Plus className="size-3.5" strokeWidth={1.6} />
-                      )}
-                    </button>
-                  </span>
-                </div>
+                      <Folder
+                        className="size-3.5 shrink-0 text-muted-foreground"
+                        strokeWidth={1.5}
+                      />
+                      <input
+                        ref={renameInputRef}
+                        type="text"
+                        value={renameValue}
+                        onChange={(event) => setRenameValue(event.target.value)}
+                        onBlur={() => void handleSubmitRename()}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void handleSubmitRename();
+                          } else if (event.key === "Escape") {
+                            event.preventDefault();
+                            setRenamingProjectId(null);
+                          }
+                        }}
+                        maxLength={80}
+                        disabled={renamePending}
+                        className="min-w-0 flex-1 bg-transparent text-[13px] font-medium text-foreground outline-none"
+                      />
+                    </div>
+                  );
+                }
 
-                {/* Flush Full-Width Session List — ZERO Tree Indentation */}
-                {!isCollapsed ? (
-                  <div className="space-y-0.5">
-                    {project.sessions.length === 0 &&
-                    project.kind === "folder" ? (
+                return (
+                  <div key={project.key}>
+                    <div className="group relative flex h-8 items-center rounded-lg transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05]">
                       <button
                         type="button"
-                        onClick={() => onStartChatInFolder(project.projectId)}
-                        className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[12px] text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.045] hover:text-foreground cursor-pointer"
+                        onClick={() => toggleProject(project.key)}
+                        aria-expanded={isExpanded}
+                        className="flex h-full min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 text-left cursor-pointer"
+                        title={
+                          project.kind === "github"
+                            ? `${project.repoOwner}/${project.repoName}`
+                            : project.name
+                        }
                       >
-                        <Plus className="size-3.5 shrink-0" strokeWidth={1.5} />
-                        <span className="truncate">New thread</span>
+                        <ChevronRight
+                          className={`size-3 shrink-0 text-muted-foreground/60 transition-transform duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+                            isExpanded ? "rotate-90 text-muted-foreground" : ""
+                          }`}
+                          strokeWidth={1.6}
+                        />
+                        <span className="grid size-4 shrink-0 place-items-center text-muted-foreground/75 transition-colors duration-120 group-hover:text-foreground/80">
+                          {project.kind === "github" ? (
+                            <FolderGit2
+                              className="size-3.5"
+                              strokeWidth={1.5}
+                            />
+                          ) : isExpanded ? (
+                            <FolderOpen
+                              className="size-3.5"
+                              strokeWidth={1.5}
+                            />
+                          ) : (
+                            <Folder className="size-3.5" strokeWidth={1.5} />
+                          )}
+                        </span>
+                        <span
+                          className={`min-w-0 flex-1 truncate text-[13px] leading-[18px] transition-colors duration-120 ${
+                            containsActive || isExpanded
+                              ? "font-medium text-foreground"
+                              : "font-medium text-foreground/80 group-hover:text-foreground"
+                          }`}
+                        >
+                          {project.name}
+                        </span>
+                        <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/65 transition-opacity duration-120 group-hover:opacity-0">
+                          {project.sessions.length}
+                        </span>
                       </button>
-                    ) : (
-                      project.sessions.map((sessionItem) =>
-                        renderSessionRow(sessionItem),
-                      )
-                    )}
+
+                      <span className="pointer-events-none absolute top-1/2 right-1 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-gradient-to-l from-sidebar via-sidebar/95 to-transparent pl-4 opacity-0 transition-opacity duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
+                        {project.kind === "folder" ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={(event) => event.stopPropagation()}
+                                className="grid size-6 place-items-center rounded-md text-muted-foreground transition-[background-color,color] duration-120 hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer"
+                                aria-label={`Folder options for ${project.name}`}
+                                title="Folder options"
+                              >
+                                <MoreHorizontal
+                                  className="size-3.5"
+                                  strokeWidth={1.6}
+                                />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                              align="end"
+                              sideOffset={4}
+                              className="w-40"
+                            >
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setRenameValue(project.name);
+                                  setRenamingProjectId(project.projectId);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" strokeWidth={1.5} />
+                                <span>Rename</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() => {
+                                  void onDeleteFolder(project.projectId);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" strokeWidth={1.5} />
+                                <span>Delete folder</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={(event) =>
+                            handleNewChatInProject(event, project)
+                          }
+                          disabled={isCreating}
+                          className="grid size-6 place-items-center rounded-md text-muted-foreground transition-[background-color,color] duration-120 hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer"
+                          aria-label={`New chat in ${project.name}`}
+                          title={`New chat in ${project.name}`}
+                        >
+                          {isCreating ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Plus className="size-3.5" strokeWidth={1.6} />
+                          )}
+                        </button>
+                      </span>
+                    </div>
+
+                    {isExpanded ? (
+                      <div className="mt-0.5 mb-1.5 ml-[13px] space-y-0.5 border-l border-border/60 pl-2">
+                        {project.sessions.length === 0 &&
+                        project.kind === "folder" ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onStartChatInFolder(project.projectId)
+                            }
+                            className="flex h-7 w-full items-center gap-2 rounded-lg px-2 text-left text-[12px] font-medium text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.05] hover:text-foreground cursor-pointer"
+                          >
+                            <Plus
+                              className="size-3.5 shrink-0"
+                              strokeWidth={1.5}
+                            />
+                            <span className="truncate">New chat in folder</span>
+                          </button>
+                        ) : (
+                          project.sessions.map((sessionItem) =>
+                            renderSessionRow(sessionItem),
+                          )
+                        )}
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -124,7 +124,7 @@ const WORKSPACE_CONTROLS = [
   {
     control: "Model & effort picker",
     purpose:
-      "Switch models and reasoning depth mid-chat — pair DeepSeek V4.1 Flash 1017 and GLM 5.3 Flash to match each task.",
+      "Switch models and reasoning depth mid-chat inside any session, or compare live rates on /model.",
   },
   {
     control: "Secrets ($KEY_NAME)",

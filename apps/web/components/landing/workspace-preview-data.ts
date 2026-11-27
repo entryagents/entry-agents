@@ -60,51 +60,25 @@ export interface PreviewScenario {
   }[];
 }
 
-export interface SidebarPreviewChat {
-  readonly id: ScenarioId;
-  readonly title: string;
-  readonly age: string;
-  readonly branch: string;
-  readonly prTag: string;
-  readonly prStatus: "open" | "merged";
-  readonly added: number;
-  readonly removed: number;
-}
-
 export const SIDEBAR_PROJECTS: readonly {
-  readonly key: string;
   readonly name: string;
-  readonly chats: readonly SidebarPreviewChat[];
+  readonly expanded: boolean;
+  readonly chats: readonly {
+    readonly id: ScenarioId;
+    readonly title: string;
+  }[];
 }[] = [
   {
-    key: "entry-agents",
     name: "entry-agents",
+    expanded: true,
     chats: [
-      {
-        id: "resend",
-        title: "Resend email templates",
-        age: "4m",
-        branch: "feat/resend-emails",
-        prTag: "#324",
-        prStatus: "open",
-        added: 248,
-        removed: 19,
-      },
-      {
-        id: "oauth",
-        title: "OAuth callback fix",
-        age: "2h",
-        branch: "fix/oauth-callback",
-        prTag: "#319",
-        prStatus: "merged",
-        added: 46,
-        removed: 12,
-      },
+      { id: "resend", title: "Resend email templates" },
+      { id: "oauth", title: "OAuth callback fix" },
     ],
   },
   {
-    key: "billing-api",
     name: "billing-api",
+    expanded: false,
     chats: [],
   },
 ];
@@ -112,27 +86,20 @@ export const SIDEBAR_PROJECTS: readonly {
 export const SIDEBAR_CHATS: readonly {
   readonly id?: ScenarioId;
   readonly title: string;
-  readonly age: string;
   readonly unread?: boolean;
 }[] = [
-  {
-    id: "checkout",
-    title: "Mobile checkout audit",
-    age: "18m",
-    unread: true,
-  },
-  { title: "Neon schema migration", age: "3h" },
-  { title: "SSE terminal stream", age: "5h" },
+  { id: "checkout", title: "Mobile checkout audit", unread: true },
+  { title: "Neon schema migration" },
+  { title: "SSE terminal stream" },
 ];
 
 export const USAGE_WINDOWS: readonly {
   readonly label: string;
-  readonly title: string;
   readonly pct: number;
 }[] = [
-  { label: "5h", title: "5-hour window", pct: 24 },
-  { label: "7d", title: "7-day window", pct: 38 },
-  { label: "30d", title: "Monthly cycle", pct: 24 },
+  { label: "5h", pct: 24 },
+  { label: "7d", pct: 38 },
+  { label: "30d", pct: 24 },
 ];
 
 export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
@@ -472,7 +439,7 @@ export const PREVIEW_SCENARIOS: Record<ScenarioId, PreviewScenario> = {
     ],
     diffFiles: [
       { path: "app/pricing/plans-catalog.tsx", added: 42, removed: 24 },
-      { path: "components/landing/pricing-strip.tsx", added: 22, removed: 10 },
+      { path: "lib/billing/summary.ts", added: 22, removed: 10 },
       { path: "app/pricing/pricing.test.ts", added: 10, removed: 4 },
     ],
     steps: [

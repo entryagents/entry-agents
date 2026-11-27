@@ -1,9 +1,14 @@
 "use client";
 
 import { ArrowRight, CheckCircle2 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import {
+  AnimatePresence,
+  motion,
+  useInView,
+  useReducedMotion,
+} from "motion/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ToolkitPresetIcon } from "@/components/toolkit-icons";
 
 const EASE_OUT = [0.22, 1, 0.36, 1] as const;
@@ -179,14 +184,33 @@ const STACK_INVOCATIONS: readonly StackInvocation[] = [
   },
 ];
 
+const CYCLE_MS = 4800;
+
 export function ConnectedStackShowcase() {
-  const [selectedSlug, setSelectedSlug] = useState<string>("github");
-  const activeItem =
-    STACK_INVOCATIONS.find((item) => item.slug === selectedSlug) ??
-    STACK_INVOCATIONS[0];
+  const prefersReduced = useReducedMotion() ?? false;
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const inView = useInView(sectionRef, { amount: 0.3 });
+
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (prefersReduced || !inView || paused) return;
+    const id = window.setInterval(() => {
+      setSelectedIndex((prev) => (prev + 1) % STACK_INVOCATIONS.length);
+    }, CYCLE_MS);
+    return () => window.clearInterval(id);
+  }, [inView, paused, prefersReduced]);
+
+  const activeItem = STACK_INVOCATIONS[selectedIndex] ?? STACK_INVOCATIONS[0];
 
   return (
-    <section aria-label="Connected tools and integrations">
+    <section
+      ref={sectionRef}
+      aria-label="Connected tools and integrations"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+    >
       <div className="mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-10">
         <div className="border-t border-(--l-border) py-16 sm:py-24">
           <div className="grid items-start gap-10 lg:grid-cols-12 lg:gap-12">
@@ -205,8 +229,8 @@ export function ConnectedStackShowcase() {
                 aria-label="Connected apps"
                 className="mt-6 grid grid-cols-3 gap-2"
               >
-                {STACK_INVOCATIONS.map((app) => {
-                  const isSelected = app.slug === activeItem.slug;
+                {STACK_INVOCATIONS.map((app, index) => {
+                  const isSelected = index === selectedIndex;
                   return (
                     <button
                       key={app.slug}
@@ -214,7 +238,10 @@ export function ConnectedStackShowcase() {
                       role="tab"
                       aria-label={app.name}
                       aria-selected={isSelected}
-                      onClick={() => setSelectedSlug(app.slug)}
+                      onClick={() => {
+                        setPaused(true);
+                        setSelectedIndex(index);
+                      }}
                       className={`flex h-10 min-w-0 cursor-pointer items-center gap-2 rounded-lg border px-3 text-left transition-[border-color,background-color,color] duration-150 ${
                         isSelected
                           ? "border-(--l-fg)/45 bg-(--l-surface-2) text-(--l-fg)"
@@ -243,9 +270,23 @@ export function ConnectedStackShowcase() {
               </div>
             </div>
 
-            {/* Right column: crisp un-clipped 3-step live execution trace */}
+            {/* Right column: live auto-cycling vertical execution trace */}
             <div className="min-w-0 lg:col-span-7">
               <div className="overflow-hidden rounded-2xl border border-(--l-border) bg-(--l-panel)">
+                {/* Hairline auto-advance progress bar */}
+                <div className="h-[1.5px] w-full bg-(--l-panel-border)">
+                  {!prefersReduced && inView && !paused ? (
+                    <motion.div
+                      key={activeItem.slug}
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: 1 }}
+                      transition={{ duration: CYCLE_MS / 1000, ease: "linear" }}
+                      style={{ transformOrigin: "left" }}
+                      className="h-full bg-(--l-accent)"
+                    />
+                  ) : null}
+                </div>
+
                 <AnimatePresence mode="wait">
                   <motion.div
                     key={activeItem.slug}
@@ -281,11 +322,24 @@ export function ConnectedStackShowcase() {
                       “{activeItem.prompt}”
                     </div>
 
-                    {/* Clean 3-step vertical trace without numbering */}
                     <div className="divide-y divide-(--l-panel-border) overflow-hidden rounded-xl border border-(--l-panel-border) bg-(--l-code-bg) font-mono text-xs">
-                      {activeItem.steps.map((step) => (
-                        <div
+                      {activeItem.steps.map((step, stepIndex) => (
+                        <motion.div
                           key={step.command}
+                          initial={
+                            prefersReduced
+                              ? false
+                              : { opacity: 0, transform: "translateX(-4px)" }
+                          }
+                          animate={{
+                            opacity: 1,
+                            transform: "translateX(0px)",
+                          }}
+                          transition={{
+                            duration: 0.18,
+                            delay: stepIndex * 0.06,
+                            ease: EASE_OUT,
+                          }}
                           className="flex flex-col gap-0.5 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
                         >
                           <span className="inline-flex items-center gap-2.5 text-(--l-panel-fg)">
@@ -295,7 +349,7 @@ export function ConnectedStackShowcase() {
                           <span className="pl-4 text-[11px] text-(--l-panel-fg-3) sm:pl-0">
                             {step.target}
                           </span>
-                        </div>
+                        </motion.div>
                       ))}
                     </div>
 

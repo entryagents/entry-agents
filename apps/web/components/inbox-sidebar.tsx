@@ -3,6 +3,8 @@
 import {
   Archive,
   ChevronDown,
+  CircleDashed,
+  Folder,
   FolderGit2,
   FolderInput,
   GitBranch,
@@ -12,7 +14,6 @@ import {
   LogOut,
   Monitor,
   Moon,
-  MoreHorizontal,
   Pencil,
   Plus,
   PlusCircle,
@@ -26,7 +27,6 @@ import { useTheme } from "@/app/providers";
 import "./sidebar/sable-sidebar.css";
 import { EntryMark } from "@/components/entry-mark";
 import { GitHubImportDialog } from "@/components/github-import-dialog";
-import { SidebarDiffMeter } from "@/components/sidebar/diff-bar";
 import { SessionChildChats } from "@/components/sidebar/session-child-chats";
 import { SidebarProjectsSection } from "@/components/sidebar-projects-section";
 import {
@@ -76,10 +76,6 @@ import { signOut } from "@/lib/auth/actions";
 import type { Project } from "@/lib/db/schema";
 import type { Session as AuthSession } from "@/lib/session/types";
 import { groupSessionsByProject } from "@/lib/sessions/group-projects";
-import {
-  formatCompactSessionAge,
-  groupSessionsByRecency,
-} from "@/lib/sessions/group-by-time";
 
 type InboxSidebarProps = {
   sessions: SessionWithUnread[];
@@ -128,13 +124,35 @@ const sessionRowPerformanceStyle: CSSProperties = {
   containIntrinsicSize: "2.25rem",
 };
 
+function DiffStats({
+  added,
+  removed,
+}: {
+  added: number | null;
+  removed: number | null;
+}) {
+  if (added === null && removed === null) return null;
+  if (added === 0 && removed === 0) return null;
+
+  return (
+    <span className="flex items-center gap-0.5 font-mono text-[10px]">
+      {added !== null ? (
+        <span className="text-green-600 dark:text-green-500">+{added}</span>
+      ) : null}
+      {removed !== null ? (
+        <span className="text-red-600 dark:text-red-400">-{removed}</span>
+      ) : null}
+    </span>
+  );
+}
+
 function getSessionStatusIcon(session: SessionWithUnread) {
   // Actively streaming / waiting for LLM
   if (session.hasStreaming) {
     return (
       <Loader2
-        className="h-3.5 w-3.5 shrink-0 animate-spin text-sky-500 dark:text-sky-400"
-        strokeWidth={1.7}
+        className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground"
+        strokeWidth={1.5}
       />
     );
   }
@@ -153,7 +171,7 @@ function getSessionStatusIcon(session: SessionWithUnread) {
   if (session.prNumber && session.prStatus === "open") {
     return (
       <GitPullRequest
-        className="h-3.5 w-3.5 shrink-0 text-emerald-500"
+        className="h-3.5 w-3.5 shrink-0 text-green-500"
         strokeWidth={1.5}
       />
     );
@@ -163,13 +181,61 @@ function getSessionStatusIcon(session: SessionWithUnread) {
   if (session.prNumber && session.prStatus === "closed") {
     return (
       <GitPullRequest
-        className="h-3.5 w-3.5 shrink-0 text-rose-500"
+        className="h-3.5 w-3.5 shrink-0 text-red-500"
         strokeWidth={1.5}
       />
     );
   }
 
-  return null;
+  // Has a branch with code changes → needs human follow-up
+  const hasDiff = session.linesAdded || session.linesRemoved;
+  if (session.branch && hasDiff) {
+    return (
+      <GitBranch
+        className="h-3.5 w-3.5 shrink-0 text-amber-500"
+        strokeWidth={1.5}
+      />
+    );
+  }
+
+  // Has a branch but no changes yet → new session, still getting started
+  if (session.branch) {
+    return (
+      <GitBranch
+        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70"
+        strokeWidth={1.5}
+      />
+    );
+  }
+
+  // No repository — plain chat session
+  const isChat = !session.repoName?.trim();
+  if (isChat) {
+    return (
+      <CircleDashed
+        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60"
+        strokeWidth={1.5}
+      />
+    );
+  }
+
+  // Creating / instantiating sandbox (no branch yet)
+  if (session.status === "running") {
+    return (
+      <Monitor
+        className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70"
+        strokeWidth={1.5}
+      />
+    );
+  }
+
+  // Default: sandbox icon
+  return (
+    <Monitor
+      className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50"
+      strokeWidth={1.5}
+    />
+  );
 }
 
 function getRepoGroupLabel(session: SessionWithUnread): string {
@@ -237,10 +303,8 @@ const SessionRow = memo(function SessionRow({
     renameInputRef.current.select();
   }, [isRenaming]);
 
-  const hasDiff =
-    (session.linesAdded ?? 0) > 0 || (session.linesRemoved ?? 0) > 0;
-  const showCodeMeta = hasDiff || Boolean(session.prNumber);
-  const showMenuTrigger = isHovered || moveMenuOpen;
+  const hasDiff = session.linesAdded !== null || session.linesRemoved !== null;
+  const showActionButtons = isHovered || moveMenuOpen;
 
   const handleMouseEnter = useCallback(() => {
     setIsHovered(true);
@@ -293,44 +357,69 @@ const SessionRow = memo(function SessionRow({
   const repoName = session.repoName?.trim() ?? "";
   const hasRepo = Boolean(repoOwner && repoName);
 
-  const actionMenu = (
-    <DropdownMenu open={moveMenuOpen} onOpenChange={setMoveMenuOpen}>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className={`grid size-5 shrink-0 place-items-center rounded text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.08] hover:text-foreground cursor-pointer ${
-            showMenuTrigger ? "flex" : "hidden"
-          }`}
-          aria-label={`Thread options for ${session.title}`}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <MoreHorizontal className="size-3.5" strokeWidth={1.6} />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={4} className="w-48">
-        {onRenameSession ? (
-          <DropdownMenuItem
-            onSelect={() => {
-              setRenameValue(session.title);
-              setIsRenaming(true);
-            }}
-          >
-            <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} />
-            <span>Rename chat</span>
-          </DropdownMenuItem>
-        ) : null}
-        {!isMobile && hasRepo && onOpenBranchPicker ? (
-          <DropdownMenuItem
-            onSelect={() => {
-              onOpenBranchPicker(repoOwner, repoName);
-            }}
-          >
-            <GitBranch className="h-3.5 w-3.5" strokeWidth={1.5} />
-            <span>New from branch</span>
-          </DropdownMenuItem>
-        ) : null}
-        {folders && folders.length > 0 && onMoveSessionToFolder ? (
-          <>
+  const actionButtons = showActionButtons ? (
+    <>
+      {!isMobile && hasRepo && onOpenBranchPicker ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="rounded p-0.5 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+              aria-label={`Create session from branch for ${repoName}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpenBranchPicker(repoOwner, repoName);
+              }}
+            >
+              <GitBranch className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={4}>
+            Create from branch
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+      {onRenameSession ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="rounded p-0.5 text-muted-foreground/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-muted-foreground"
+              aria-label="Rename chat"
+              onClick={(event) => {
+                event.stopPropagation();
+                setRenameValue(session.title);
+                setIsRenaming(true);
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5" strokeWidth={1.5} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top" sideOffset={4}>
+            Rename chat
+          </TooltipContent>
+        </Tooltip>
+      ) : null}
+      {folders && folders.length > 0 && onMoveSessionToFolder ? (
+        <DropdownMenu open={moveMenuOpen} onOpenChange={setMoveMenuOpen}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="rounded p-0.5 text-muted-foreground/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-muted-foreground"
+                  aria-label="Move to folder"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <FolderInput className="h-3.5 w-3.5" strokeWidth={1.5} />
+                </button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={4}>
+              Move to folder
+            </TooltipContent>
+          </Tooltip>
+          <DropdownMenuContent align="end" sideOffset={4} className="w-44">
             {folders.map((folder) => {
               const isCurrent = session.projectId === folder.id;
               return (
@@ -341,8 +430,8 @@ const SessionRow = memo(function SessionRow({
                     void onMoveSessionToFolder(session.id, folder.id);
                   }}
                 >
-                  <FolderInput className="h-3.5 w-3.5" strokeWidth={1.5} />
-                  <span className="truncate">Move to {folder.name}</span>
+                  <Folder className="h-3.5 w-3.5" strokeWidth={1.5} />
+                  <span className="truncate">{folder.name}</span>
                 </DropdownMenuItem>
               );
             })}
@@ -356,45 +445,130 @@ const SessionRow = memo(function SessionRow({
                 <span>Remove from folder</span>
               </DropdownMenuItem>
             ) : null}
-          </>
-        ) : null}
-        <DropdownMenuItem
-          onSelect={() => {
-            if (session.status === "archived") {
-              onUnarchiveSession(session);
-              return;
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            className="rounded p-0.5 text-muted-foreground/60 transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:text-muted-foreground"
+            aria-label={
+              session.status === "archived" ? "Unarchive chat" : "Archive chat"
             }
-            onArchiveSession(session);
-          }}
-        >
-          <Archive className="h-3.5 w-3.5" strokeWidth={1.5} />
-          <span>
-            {session.status === "archived" ? "Unarchive chat" : "Archive chat"}
-          </span>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+            onClick={(event) => {
+              event.stopPropagation();
+              if (session.status === "archived") {
+                onUnarchiveSession(session);
+                return;
+              }
+              onArchiveSession(session);
+            }}
+          >
+            <Archive className="h-3.5 w-3.5" strokeWidth={1.5} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={4}>
+          {session.status === "archived" ? "Unarchive chat" : "Archive chat"}
+        </TooltipContent>
+      </Tooltip>
+    </>
+  ) : null;
 
-  const statusIcon = getSessionStatusIcon(session);
-  const ageLabel = formatCompactSessionAge(
-    session.lastActivityAt ?? session.createdAt,
+  const actionButtonsContainer = actionButtons ? (
+    <span
+      className={`absolute top-1/2 right-1 flex shrink-0 -translate-y-1/2 items-center justify-end gap-0.5 rounded-md pl-5 pr-0.5 ${
+        isActive
+          ? "bg-gradient-to-l from-sidebar via-sidebar/95 to-transparent"
+          : "bg-gradient-to-l from-sidebar via-sidebar/95 to-transparent"
+      }`}
+    >
+      {actionButtons}
+    </span>
+  ) : null;
+
+  const sessionButton = (
+    <button
+      type="button"
+      title={[
+        session.title,
+        hasRepo ? `${repoOwner}/${repoName}` : "",
+        session.branch ?? "",
+      ]
+        .filter(Boolean)
+        .join(" · ")}
+      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left outline-none transition-[background-color,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer focus-visible:ring-1 focus-visible:ring-ring ${
+        isActive
+          ? "bg-foreground/[0.08] text-foreground"
+          : "hover:bg-foreground/[0.05]"
+      } ${isPending ? "opacity-75" : "opacity-100"}`}
+      onClick={() => {
+        if (isMobile) setOpenMobile(false);
+        onSessionClick(session);
+      }}
+      onFocus={() => onSessionPrefetch(session)}
+      aria-busy={isPending}
+    >
+      <span className="flex size-4 shrink-0 items-center justify-center">
+        {getSessionStatusIcon(session)}
+      </span>
+      <span className="min-w-0 flex-1 text-left">
+        <p
+          className={`truncate text-[13px] leading-[18px] transition-colors duration-120 ${
+            isActive
+              ? "font-medium text-foreground"
+              : session.hasUnread
+                ? "font-medium text-foreground"
+                : "font-normal text-foreground/75 group-hover:text-foreground"
+          }`}
+        >
+          {session.title}
+        </p>
+      </span>
+      {session.hasUnread && !isActive && !actionButtons ? (
+        <span
+          className="size-1.5 shrink-0 rounded-full bg-foreground/70"
+          aria-label="Unread activity"
+        />
+      ) : null}
+      {!actionButtons && (session.prNumber || hasDiff) ? (
+        <span className="flex shrink-0 items-center justify-end gap-1.5 pl-1 font-mono text-[11px] tabular-nums text-muted-foreground">
+          {session.prNumber ? (
+            <span
+              className={
+                session.prStatus === "merged"
+                  ? "text-indigo-500 dark:text-indigo-400"
+                  : session.prStatus === "open"
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-red-500 dark:text-red-400"
+              }
+            >
+              #{session.prNumber}
+            </span>
+          ) : null}
+          {hasDiff ? (
+            <DiffStats
+              added={session.linesAdded}
+              removed={session.linesRemoved}
+            />
+          ) : null}
+        </span>
+      ) : null}
+    </button>
   );
 
   const rowButton = isRenaming ? (
     <div
-      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg border border-border bg-background px-2 text-left outline-none transition-[background-color,opacity] ${
-        renamePending ? "opacity-80" : "opacity-100"
-      }`}
+      className={`group relative flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left outline-none transition-[background-color,opacity] ${
+        isActive ? "bg-foreground/[0.08]" : "bg-foreground/[0.055]"
+      } ${renamePending ? "opacity-80" : "opacity-100"}`}
       style={sessionRowPerformanceStyle}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {statusIcon ? (
-        <span className="flex size-3.5 shrink-0 items-center justify-center">
-          {statusIcon}
-        </span>
-      ) : null}
+      <span className="flex size-4 shrink-0 items-center justify-center">
+        {getSessionStatusIcon(session)}
+      </span>
       <span className="min-w-0 flex-1 text-left">
         <input
           ref={renameInputRef}
@@ -420,107 +594,13 @@ const SessionRow = memo(function SessionRow({
     </div>
   ) : (
     <div
-      className={`group flex w-full flex-col rounded-lg px-2 transition-[background-color,opacity] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-        showCodeMeta ? "py-1.5" : "h-8 justify-center"
-      } ${
-        isActive
-          ? "bg-foreground/[0.08] text-foreground"
-          : "hover:bg-foreground/[0.045]"
-      } ${isPending ? "opacity-75" : "opacity-100"}`}
+      className="relative"
       style={sessionRowPerformanceStyle}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Primary line: full-width chat title + quiet age swapping cleanly to ··· menu */}
-      <div className="flex min-w-0 items-center gap-1.5">
-        <button
-          type="button"
-          title={[
-            session.title,
-            hasRepo ? `${repoOwner}/${repoName}` : "",
-            session.branch ?? "",
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none cursor-pointer focus-visible:ring-1 focus-visible:ring-ring rounded-md"
-          onClick={() => {
-            if (isMobile) setOpenMobile(false);
-            onSessionClick(session);
-          }}
-          onFocus={() => onSessionPrefetch(session)}
-          aria-busy={isPending}
-        >
-          {statusIcon ? (
-            <span className="flex size-3.5 shrink-0 items-center justify-center">
-              {statusIcon}
-            </span>
-          ) : session.hasUnread && !isActive ? (
-            <span
-              className="size-1.5 shrink-0 rounded-full bg-sky-500 dark:bg-sky-400"
-              aria-label="Unread activity"
-            />
-          ) : null}
-          <span
-            className={`min-w-0 flex-1 truncate text-[13px] leading-[18px] transition-colors duration-120 ${
-              isActive
-                ? "font-medium text-foreground"
-                : session.hasUnread
-                  ? "font-medium text-foreground"
-                  : "font-normal text-foreground/80 group-hover:text-foreground"
-            }`}
-          >
-            {session.title}
-          </span>
-        </button>
-
-        {actionMenu}
-        {!showMenuTrigger && ageLabel ? (
-          <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-muted-foreground/60">
-            {ageLabel}
-          </span>
-        ) : null}
-      </div>
-
-      {/* Quiet secondary code telemetry line: branch + PR + proportional diff meter */}
-      {showCodeMeta ? (
-        <button
-          type="button"
-          tabIndex={-1}
-          onClick={() => {
-            if (isMobile) setOpenMobile(false);
-            onSessionClick(session);
-          }}
-          className={`mt-1 flex min-w-0 items-center justify-between gap-2 text-left cursor-pointer ${
-            statusIcon ? "pl-[22px]" : ""
-          }`}
-        >
-          <span className="min-w-0 truncate font-mono text-[10.5px] text-muted-foreground/65">
-            {session.branch ??
-              (session.prNumber ? `PR #${session.prNumber}` : "")}
-          </span>
-          <span className="flex shrink-0 items-center gap-2">
-            {session.prNumber ? (
-              <span
-                className={`font-mono text-[10px] tabular-nums ${
-                  session.prStatus === "merged"
-                    ? "text-indigo-500 dark:text-indigo-400"
-                    : session.prStatus === "open"
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-rose-500 dark:text-rose-400"
-                }`}
-              >
-                #{session.prNumber}
-              </span>
-            ) : null}
-            {hasDiff ? (
-              <SidebarDiffMeter
-                added={session.linesAdded}
-                removed={session.linesRemoved}
-              />
-            ) : null}
-          </span>
-        </button>
-      ) : null}
+      {sessionButton}
+      {actionButtonsContainer}
     </div>
   );
 
@@ -669,21 +749,9 @@ export function InboxSidebar({
     void fetchArchivedSessionsPage({ offset: 0, replace: true });
   }, [archivedCount, fetchArchivedSessionsPage, showArchived]);
 
-  const [searchOpen, setSearchOpen] = useState(false);
   const [desktopSearchQuery, setDesktopSearchQuery] = useState("");
-  const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const [selectedProjectKey, setSelectedProjectKey] = useState<string | null>(
-    null,
-  );
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-
-  useEffect(() => {
-    if (searchOpen) {
-      searchInputRef.current?.focus();
-    }
-  }, [searchOpen]);
-
   const { theme, setTheme } = useTheme();
   const { data: billingData } = useBillingMe();
   const creditDisplay = billingData
@@ -719,11 +787,6 @@ export function InboxSidebar({
   const { projects: projectGroups, standaloneSessions } = useMemo(
     () => groupSessionsByProject(filteredDisplayedSessions, customProjects),
     [customProjects, filteredDisplayedSessions],
-  );
-
-  const recencyGroups = useMemo(
-    () => groupSessionsByRecency(standaloneSessions),
-    [standaloneSessions],
   );
 
   const handleImportRepo = useCallback(
@@ -849,15 +912,15 @@ export function InboxSidebar({
   return (
     <>
       <div className="flex h-full min-h-0 flex-col bg-sidebar pr-1 pl-0.5 select-none">
-        {/* Compact Brand + On-Demand Utility Triggers (Search, Archive) */}
-        <div className="flex h-11 shrink-0 items-center justify-between gap-1 px-1.5 pt-px">
+        {/* Brand */}
+        <div className="flex h-11 shrink-0 items-center px-1.5 pt-px">
           <button
             type="button"
             onClick={() => {
               if (isMobile) setOpenMobile(false);
               onOpenNewSession();
             }}
-            className="flex h-8 items-center gap-2 rounded-lg px-2 text-left transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.045] active:bg-foreground/[0.07] cursor-pointer"
+            className="flex h-8 items-center gap-2 rounded-lg px-2 text-left transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.04] active:bg-foreground/[0.06] cursor-pointer"
             title="Entry — New chat"
           >
             <EntryMark className="size-[18px] shrink-0 text-foreground" />
@@ -865,185 +928,140 @@ export function InboxSidebar({
               Entry
             </span>
           </button>
-
-          <div className="flex items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearchOpen((prev) => {
-                      if (prev) {
-                        setDesktopSearchQuery("");
-                        return false;
-                      }
-                      return true;
-                    });
-                  }}
-                  aria-label={searchOpen ? "Close search" : "Search chats"}
-                  aria-pressed={searchOpen}
-                  className={`grid size-7 place-items-center rounded-md transition-colors duration-120 cursor-pointer ${
-                    searchOpen || desktopSearchQuery
-                      ? "bg-foreground/[0.08] text-foreground"
-                      : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
-                  }`}
-                >
-                  <Search className="size-3.5" strokeWidth={1.6} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={4}>
-                Filter chats (⌘K for command palette)
-              </TooltipContent>
-            </Tooltip>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={() => setShowArchived((prev) => !prev)}
-                  aria-label={
-                    showArchived
-                      ? "Back to active chats"
-                      : `View archived chats (${archivedCount})`
-                  }
-                  aria-pressed={showArchived}
-                  className={`relative grid size-7 place-items-center rounded-md transition-colors duration-120 cursor-pointer ${
-                    showArchived
-                      ? "bg-foreground/[0.08] text-foreground"
-                      : "text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
-                  }`}
-                >
-                  <Archive className="size-3.5" strokeWidth={1.6} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" sideOffset={4}>
-                {showArchived
-                  ? "Back to active chats"
-                  : archivedCount > 0
-                    ? `Archive (${archivedCount})`
-                    : "Archive"}
-              </TooltipContent>
-            </Tooltip>
-          </div>
         </div>
 
-        {/* Sleek Monochrome New chat Bar */}
-        <div className="mt-1 mb-1.5 flex shrink-0 items-center px-1.5">
-          <div className="flex h-8 w-full items-center overflow-hidden rounded-lg border border-border/75 bg-background/85 transition-[border-color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-foreground/20 dark:bg-white/[0.04] dark:hover:bg-white/[0.065]">
-            <button
-              type="button"
-              onClick={() => {
-                if (isMobile) setOpenMobile(false);
-                onOpenNewSession();
-              }}
-              className="group flex h-full min-w-0 flex-1 items-center gap-2 px-2.5 text-left text-[13px] font-medium text-foreground transition-transform duration-120 active:scale-[0.985] cursor-pointer"
-            >
-              <Plus
-                className="size-3.5 shrink-0 text-muted-foreground transition-colors duration-120 group-hover:text-foreground"
-                strokeWidth={1.75}
-              />
-              <span className="truncate">New chat</span>
-            </button>
-            <span
-              aria-hidden="true"
-              className="h-4 w-px shrink-0 bg-border/60"
-            />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="grid h-full w-7 shrink-0 place-items-center text-muted-foreground transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05] hover:text-foreground cursor-pointer"
-                  aria-label="New chat options"
-                >
-                  <ChevronDown className="size-3.5" strokeWidth={1.6} />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem
-                  onClick={() => {
-                    if (isMobile) setOpenMobile(false);
-                    onOpenNewSession();
-                  }}
-                  className="gap-2 text-xs"
-                >
-                  <PlusCircle
-                    className="h-4 w-4 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                  <span>Blank chat</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setImportGithubOpen(true)}
-                  className="gap-2 text-xs"
-                >
-                  <FolderGit2
-                    className="h-4 w-4 text-muted-foreground"
-                    strokeWidth={1.5}
-                  />
-                  <span>Import from GitHub</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
-        {/* On-Demand Inline Search Bar */}
-        {searchOpen || desktopSearchQuery ? (
-          <div className="mb-1.5 px-1.5">
-            <div className="flex h-8 shrink-0 items-center rounded-lg border border-border bg-background/90 pr-1.5 pl-2.5">
-              <Search
-                className="mr-2 size-3.5 shrink-0 text-muted-foreground/75"
-                strokeWidth={1.6}
-              />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={desktopSearchQuery}
-                onChange={(e) => setDesktopSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") {
-                    setDesktopSearchQuery("");
-                    setSearchOpen(false);
-                  }
-                }}
-                placeholder="Filter chats..."
-                className="w-full bg-transparent text-[12.5px] text-foreground placeholder:text-muted-foreground/65 focus:outline-none"
-              />
+        {/* New chat row + options */}
+        <div className="mt-1 flex shrink-0 items-center gap-1 px-1.5">
+          <button
+            type="button"
+            onClick={() => {
+              if (isMobile) setOpenMobile(false);
+              onOpenNewSession();
+            }}
+            className="group flex h-8 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left text-[13px] font-medium text-foreground/85 transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.06] hover:text-foreground active:bg-foreground/[0.09] cursor-pointer"
+          >
+            <span className="grid size-4 shrink-0 place-items-center text-muted-foreground transition-colors duration-120 group-hover:text-foreground">
+              <Plus className="size-4" strokeWidth={1.6} />
+            </span>
+            <span className="truncate">New chat</span>
+          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <button
                 type="button"
+                className="grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.06] hover:text-foreground cursor-pointer"
+                aria-label="New chat options"
+              >
+                <ChevronDown className="size-3.5" strokeWidth={1.6} />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem
                 onClick={() => {
-                  setDesktopSearchQuery("");
-                  setSearchOpen(false);
+                  if (isMobile) setOpenMobile(false);
+                  onOpenNewSession();
                 }}
-                className="ml-1 grid size-5 place-items-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.06] hover:text-foreground cursor-pointer"
-                aria-label="Close filter"
+                className="gap-2 text-xs"
+              >
+                <PlusCircle
+                  className="h-4 w-4 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
+                <span>Blank chat</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setImportGithubOpen(true)}
+                className="gap-2 text-xs"
+              >
+                <FolderGit2
+                  className="h-4 w-4 text-muted-foreground"
+                  strokeWidth={1.5}
+                />
+                <span>Import from GitHub</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        {/* Search */}
+        <div className="mt-1 px-1.5">
+          <div className="flex h-8 shrink-0 items-center rounded-lg border border-transparent bg-foreground/[0.035] pr-1.5 pl-2 transition-[background-color,border-color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] hover:bg-foreground/[0.05] focus-within:border-border focus-within:bg-background/80">
+            <span className="mr-2 grid size-4 shrink-0 place-items-center text-muted-foreground/80">
+              <Search className="size-3.5" strokeWidth={1.6} />
+            </span>
+            <input
+              type="text"
+              value={desktopSearchQuery}
+              onChange={(e) => setDesktopSearchQuery(e.target.value)}
+              placeholder="Search chats"
+              className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
+            />
+            {desktopSearchQuery ? (
+              <button
+                type="button"
+                onClick={() => setDesktopSearchQuery("")}
+                className="ml-1 grid size-5 place-items-center rounded-md text-muted-foreground transition-colors duration-120 hover:bg-foreground/[0.06] hover:text-foreground"
+                aria-label="Clear filter"
               >
                 <X className="size-3" strokeWidth={1.6} />
               </button>
-            </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  window.dispatchEvent(
+                    new CustomEvent("entry:open-command-palette"),
+                  );
+                }}
+                className="ml-1 shrink-0 rounded border border-border/60 bg-background/60 px-1.5 py-0.5 font-mono text-[10.5px] leading-none text-muted-foreground transition-colors duration-120 hover:border-border hover:text-foreground cursor-pointer"
+                title="Open command palette (⌘K)"
+                aria-label="Open command palette"
+              >
+                ⌘K
+              </button>
+            )}
           </div>
-        ) : null}
+        </div>
 
-        {/* Contextual Archive Mode Banner (only shown while browsing Archive) */}
-        {showArchived ? (
-          <div className="mb-1.5 flex items-center justify-between px-3 py-1 text-[11.5px]">
-            <span className="font-medium text-foreground">
-              Archived{" "}
-              <span className="font-mono text-[10.5px] tabular-nums text-muted-foreground">
-                {archivedCount}
-              </span>
-            </span>
+        {/* Active / Archive */}
+        <div className="mt-2 mb-2 px-1.5">
+          <div className="grid grid-cols-2 gap-0.5 rounded-lg bg-foreground/[0.04] p-0.5">
             <button
               type="button"
               onClick={() => setShowArchived(false)}
-              className="text-muted-foreground transition-colors hover:text-foreground cursor-pointer"
+              className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-[background-color,color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
+                !showArchived
+                  ? "bg-background text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
-              Back to active
+              <span>Active</span>
+              {activeSessions.length > 0 ? (
+                <span className="font-mono text-[11px] tabular-nums text-muted-foreground/75">
+                  {activeSessions.length}
+                </span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowArchived(true)}
+              className={`flex h-7 items-center justify-center gap-1.5 rounded-md px-2 text-[12px] font-medium transition-[background-color,color] duration-120 ease-[cubic-bezier(0.22,1,0.36,1)] cursor-pointer ${
+                showArchived
+                  ? "bg-background text-foreground shadow-2xs"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <span>Archive</span>
+              {archivedCount > 0 ? (
+                <span className="font-mono text-[11px] tabular-nums text-muted-foreground/75">
+                  {archivedCount}
+                </span>
+              ) : null}
             </button>
           </div>
-        ) : null}
+        </div>
 
-        {/* Unified Smooth Repository & Recency-Grouped Session List */}
+        {/* Unified Smooth Repository & Session Branch Tree */}
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 sable-side-list">
           {showLoadingSkeleton ? (
             <div className="space-y-1 p-1">
@@ -1059,8 +1077,6 @@ export function InboxSidebar({
               <SidebarProjectsSection
                 projects={projectGroups}
                 activeSessionId={activeSessionId}
-                selectedProjectKey={selectedProjectKey}
-                onSelectProjectKey={setSelectedProjectKey}
                 onOpenImportGithub={() => setImportGithubOpen(true)}
                 onCreateFolder={onCreateFolder ?? (async () => {})}
                 onRenameFolder={onRenameFolder ?? (async () => {})}
@@ -1094,39 +1110,38 @@ export function InboxSidebar({
                 )}
               />
 
-              {!selectedProjectKey && recencyGroups.length > 0 ? (
-                <div className="mt-1 space-y-3 border-t border-border/50 pt-2">
-                  {recencyGroups.map((group) => (
-                    <div key={group.label} className="space-y-0.5">
-                      <div className="flex h-6 items-center justify-between px-2">
-                        <span className="text-[11px] font-medium text-muted-foreground/75">
-                          {group.label}
-                        </span>
+              {standaloneSessions.length > 0 ? (
+                <div className="space-y-0.5">
+                  <div className="flex h-7 items-center justify-between px-2">
+                    <span className="text-[11.5px] font-medium text-muted-foreground">
+                      Chats
+                    </span>
+                    <span className="font-mono text-[11px] tabular-nums text-muted-foreground/65">
+                      {standaloneSessions.length}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5">
+                    {standaloneSessions.map((sessionItem) => (
+                      <div key={sessionItem.id}>
+                        <SessionRow
+                          session={sessionItem}
+                          isActive={sessionItem.id === activeSessionId}
+                          isPending={sessionItem.id === pendingSessionId}
+                          folders={customProjects}
+                          onSessionClick={handleSessionClick}
+                          onSessionPrefetch={handleSessionPrefetch}
+                          onRenameSession={onRenameSession}
+                          onMoveSessionToFolder={onMoveSessionToFolder}
+                          onArchiveSession={handleArchiveSession}
+                          onUnarchiveSession={handleUnarchiveSession}
+                          onOpenBranchPicker={handleOpenBranchPicker}
+                        />
+                        {sessionItem.id === activeSessionId && (
+                          <SessionChildChats sessionId={sessionItem.id} />
+                        )}
                       </div>
-                      <div className="space-y-0.5">
-                        {group.sessions.map((sessionItem) => (
-                          <div key={sessionItem.id}>
-                            <SessionRow
-                              session={sessionItem}
-                              isActive={sessionItem.id === activeSessionId}
-                              isPending={sessionItem.id === pendingSessionId}
-                              folders={customProjects}
-                              onSessionClick={handleSessionClick}
-                              onSessionPrefetch={handleSessionPrefetch}
-                              onRenameSession={onRenameSession}
-                              onMoveSessionToFolder={onMoveSessionToFolder}
-                              onArchiveSession={handleArchiveSession}
-                              onUnarchiveSession={handleUnarchiveSession}
-                              onOpenBranchPicker={handleOpenBranchPicker}
-                            />
-                            {sessionItem.id === activeSessionId && (
-                              <SessionChildChats sessionId={sessionItem.id} />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               ) : projectGroups.length === 0 ? (
                 <div className="px-3 py-8 text-center text-xs text-muted-foreground">
@@ -1202,9 +1217,9 @@ export function InboxSidebar({
           )}
         </div>
 
-        {/* Ultra-Compact Bottom Dock: Single-Row Usage Bar + User Profile */}
+        {/* Usage Meters + Clickable User Profile Popover & Balance Box */}
         {sidebarUser ? (
-          <div className="mt-1 space-y-1 border-t border-border/50 px-1.5 py-2">
+          <div className="mt-1.5 space-y-2 border-t border-border/60 px-2 pt-2.5 pb-2">
             <DesktopCodexBillingStatus />
             <div className="flex items-center gap-1.5">
               <Popover open={profileMenuOpen} onOpenChange={setProfileMenuOpen}>

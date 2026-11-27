@@ -1,8 +1,15 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
-import { MotionConfig } from "motion/react";
+import {
+  motion,
+  MotionConfig,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+} from "motion/react";
 import Link from "next/link";
+import { useRef } from "react";
 import { AppMockup } from "@/components/landing/app-mockup";
 import { CloudSkyBackdrop } from "@/components/landing/cloud-sky-backdrop";
 import { ConnectedStackShowcase } from "@/components/landing/connected-stack-showcase";
@@ -10,21 +17,31 @@ import { LandingFaq } from "@/components/landing/faq";
 import { LandingFeatures } from "@/components/landing/features";
 import { LandingFooter } from "@/components/landing/footer";
 import { LandingNav } from "@/components/landing/nav";
-import { LandingPricingStrip } from "@/components/landing/pricing-strip";
 
 export function SignedOutHero() {
+  const prefersReduced = useReducedMotion() ?? false;
+  const heroRef = useRef<HTMLElement | null>(null);
+  const { scrollYProgress } = useScroll({
+    target: heroRef,
+    offset: ["start start", "end start"],
+  });
+  const workspaceScale = useTransform(scrollYProgress, [0, 0.45], [0.992, 1]);
+  const workspaceY = useTransform(scrollYProgress, [0, 0.45], [0, -14]);
+
   return (
     <MotionConfig reducedMotion="user">
       <div className="landing relative min-h-dvh overflow-x-clip bg-(--l-bg) text-(--l-fg) selection:bg-(--l-fg)/15">
         <LandingNav showSignIn />
 
         <main>
-          {/* Hero Stage: Living Moving Cloud Horizon + Left-Aligned Headline + Interactive Workspace */}
-          <section className="relative overflow-hidden pt-24 pb-16 sm:pt-28 sm:pb-24 lg:pt-32">
+          {/* Hero Stage: Living Moving Cloud Horizon + Left-Aligned H1 + Scroll-Reactive Live Workspace */}
+          <section
+            ref={heroRef}
+            className="relative overflow-hidden pt-24 pb-16 sm:pt-28 sm:pb-24 lg:pt-32"
+          >
             <CloudSkyBackdrop variant="hero" />
 
             <div className="relative mx-auto max-w-[1280px] px-4 sm:px-6 lg:px-10">
-              {/* Reverted clean single-column left-aligned H1 leaving the right cloud sea open */}
               <div className="max-w-2xl">
                 <h1 className="font-display text-balance text-4xl font-semibold leading-[1.03] tracking-[-0.035em] text-(--l-fg) sm:text-5xl lg:text-[3.75rem]">
                   Cloud coding agents that finish the work
@@ -51,26 +68,24 @@ export function SignedOutHero() {
                     View pricing
                   </Link>
                 </div>
-
-                <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11px] tabular-nums text-(--l-fg-3)">
-                  <span>DeepSeek V4.1 Flash 1017</span>
-                  <span aria-hidden="true">·</span>
-                  <span>GLM 5.3 Flash</span>
-                  <span aria-hidden="true">·</span>
-                  <span>Zero token markup</span>
-                </div>
               </div>
 
               {/* Interactive 3-pane Entry workspace rising out of the moving clouds */}
-              <div className="mt-10 min-w-0 sm:mt-14">
+              <motion.div
+                style={
+                  prefersReduced
+                    ? undefined
+                    : { scale: workspaceScale, y: workspaceY }
+                }
+                className="mt-10 min-w-0 sm:mt-14"
+              >
                 <AppMockup />
-              </div>
+              </motion.div>
             </div>
           </section>
 
           <LandingFeatures />
           <ConnectedStackShowcase />
-          <LandingPricingStrip />
           <LandingFaq />
 
           {/* Moving Cloud Horizon Closing CTA */}

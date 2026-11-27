@@ -10,7 +10,7 @@ const faqs: readonly { question: string; answer: string }[] = [
   {
     question: "How do credits and usage windows work",
     answer:
-      "Model usage is billed directly against your monthly credit allowance at provider token rates with zero markup. Start free with a $1 trial credit, or move to Plus ($3/mo) or Builder ($10/mo) for higher 5-hour and 7-day windows and dedicated VMs.",
+      "Model usage is billed directly against your monthly credit allowance at published provider token rates with zero markup. See live plans, credits, and usage windows on Pricing.",
   },
   {
     question: "Do I need a GitHub repository to start",
