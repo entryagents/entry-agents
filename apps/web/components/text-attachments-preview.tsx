@@ -55,10 +55,10 @@ function TextAttachmentChip({
           e.stopPropagation();
           onRemove();
         }}
-        className="absolute -right-1 -top-1 flex size-4 items-center justify-center rounded-full bg-foreground/85 text-background opacity-0 transition-opacity hover:bg-foreground focus-visible:opacity-100 group-hover:opacity-100"
+        className="absolute -right-1.5 -top-1.5 flex size-5 cursor-pointer items-center justify-center rounded-full border border-background bg-foreground text-background shadow-xs transition-opacity hover:opacity-90"
         aria-label={`Remove ${attachment.filename}`}
       >
-        <X className="size-2.5" strokeWidth={2} />
+        <X className="size-3" strokeWidth={2} />
       </button>
     </div>
   );

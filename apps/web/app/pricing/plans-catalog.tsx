@@ -304,82 +304,80 @@ export function PlansCatalog() {
       </div>
 
       {entryModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-xs">
-          <div className="w-full max-w-md rounded-2xl border border-(--l-border) bg-(--l-bg) p-6 text-(--l-fg) shadow-2xl">
-            <h2 className="text-lg font-semibold">
-              Choose your Builder window method
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl border border-(--l-border) bg-(--l-bg) p-6 text-(--l-fg) shadow-xl">
+            <h2 className="text-base font-semibold tracking-tight">
+              Choose your usage window
             </h2>
-            <p className="mt-1.5 text-xs leading-relaxed text-(--l-fg-2)">
-              Select how your 5-hour ($6), 7-day ($14), and 30-day ($28) usage
-              windows replenish during your subscription:
+            <p className="mt-1 text-sm leading-relaxed text-(--l-fg-2)">
+              Pick how your 5-hour ($6), 7-day ($14), and 30-day ($28) limits
+              reset.
             </p>
 
-            <div className="mt-4 space-y-2.5">
+            <div className="mt-5 space-y-2.5">
               <button
                 type="button"
                 onClick={() => setSelectedEntryMode("rolling")}
-                className={`w-full rounded-xl border p-3.5 text-left transition ${
+                className={`w-full cursor-pointer rounded-xl border p-4 text-left transition-colors duration-150 ${
                   selectedEntryMode === "rolling"
-                    ? "border-(--l-fg) bg-(--l-fg)/[0.06]"
+                    ? "border-(--l-fg) bg-(--l-surface)"
                     : "border-(--l-border) hover:border-(--l-fg-3)"
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold">
-                    1. Sliding Window (Continuous)
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-(--l-fg)">
+                    Sliding window
                   </span>
-                  <span className="rounded-md border border-(--l-border) px-2 py-0.5 text-[11px] font-medium">
+                  <span className="rounded-md border border-(--l-border) bg-(--l-surface-2) px-2 py-0.5 text-[11px] font-medium text-(--l-fg-2)">
                     Default
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-(--l-fg-2)">
-                  Capacity returns continuously as older usage ages past 5 hours
-                  / 7 days / 30 days. You never wait for a fixed reset day.
+                <p className="mt-1.5 text-xs leading-relaxed text-(--l-fg-2)">
+                  Capacity returns continuously as older usage ages past each
+                  window.
                 </p>
               </button>
 
               <button
                 type="button"
                 onClick={() => setSelectedEntryMode("fixed")}
-                className={`w-full rounded-xl border p-3.5 text-left transition ${
+                className={`w-full cursor-pointer rounded-xl border p-4 text-left transition-colors duration-150 ${
                   selectedEntryMode === "fixed"
-                    ? "border-(--l-fg) bg-(--l-fg)/[0.06]"
+                    ? "border-(--l-fg) bg-(--l-surface)"
                     : "border-(--l-border) hover:border-(--l-fg-3)"
                 }`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold">
-                    2. Fixed Window Refill (Full Reset)
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-(--l-fg)">
+                    Fixed window
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-(--l-fg-2)">
-                  Waits until the end of each fixed 5-hour / 7-day / 30-day
-                  cycle boundary and refills 100% of the window capacity all at
-                  once.
+                <p className="mt-1.5 text-xs leading-relaxed text-(--l-fg-2)">
+                  Resets 100% at the end of each fixed 5-hour, 7-day, and 30-day
+                  cycle.
                 </p>
               </button>
             </div>
 
-            <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3.5 py-2.5 text-xs text-amber-300">
-              <strong>Permanent for this billing cycle:</strong> Once you
-              subscribe, this window method is locked and can only be changed
-              when you renew your subscription again.
-            </div>
+            <p className="mt-4 text-xs leading-relaxed text-(--l-fg-3)">
+              Locked for this billing cycle. You can change it when your plan
+              renews.
+            </p>
 
-            <div className="mt-5 flex items-center justify-end gap-2">
+            <div className="mt-6 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setEntryModalOpen(false)}
-                className="rounded-lg border border-(--l-border) px-4 py-2 text-xs font-medium text-(--l-fg-2) hover:text-(--l-fg)"
+                className="cursor-pointer rounded-lg border border-(--l-border) px-4 py-2 text-xs font-medium text-(--l-fg-2) transition-colors hover:text-(--l-fg)"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => handleSubscribe("entry", selectedEntryMode)}
-                className="rounded-lg bg-(--l-btn-bg) px-5 py-2 text-xs font-semibold text-(--l-btn-fg)"
+                className="cursor-pointer rounded-lg bg-(--l-btn-bg) px-4 py-2 text-xs font-medium text-(--l-btn-fg) transition-opacity hover:opacity-90"
               >
-                Confirm &amp; Continue
+                Continue
               </button>
             </div>
           </div>

@@ -636,9 +636,24 @@ const ChatMessageRow = memo(function ChatMessageRow({
     );
   }
 
+  const orderedUserGroups = [
+    ...groups.filter(
+      (g) =>
+        g.type === "part" &&
+        (g.part.type === "file" || g.part.type === "data-snippet"),
+    ),
+    ...groups.filter(
+      (g) =>
+        !(
+          g.type === "part" &&
+          (g.part.type === "file" || g.part.type === "data-snippet")
+        ),
+    ),
+  ];
+
   return (
     <div className="flex flex-col gap-1">
-      {groups.map((group) => {
+      {orderedUserGroups.map((group) => {
         if (group.type !== "part") return null;
         const p = group.part;
         if (p.type === "text") {
