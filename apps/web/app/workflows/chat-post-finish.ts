@@ -1,4 +1,5 @@
-import { isToolUIPart, type LanguageModelUsage, type UIMessageChunk } from "ai";
+import type { LanguageModelUsage, UIMessageChunk } from "ai";
+import { isToolUIPart } from "@/lib/chat/ui-part-guards";
 import type { SandboxState, Sandbox } from "@entry-agents/sandbox";
 import { withoutUndefined } from "@/app/workflows/serialization";
 import type { WebAgentUIMessage } from "@/app/types";

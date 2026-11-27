@@ -1,6 +1,6 @@
-import { isToolUIPart } from "ai";
 import type { WebAgentUIMessage, WebAgentUIToolPart } from "@/app/types";
 import { isFriendlyChatErrorText } from "./friendly-error";
+import { isToolUIPart } from "./ui-part-guards";
 
 /**
  * Returns a reasoning item ID from a part's provider metadata, if present.
