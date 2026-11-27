@@ -164,6 +164,7 @@ function PlanManagementCard({
   const [selectedPlan, setSelectedPlan] = useState<PlanId>(
     (profile.plan as PlanId) ?? "free",
   );
+  const [durationDaysInput, setDurationDaysInput] = useState("30");
   const [grantCredit, setGrantCredit] = useState(true);
   const [decreaseBalance, setDecreaseBalance] = useState(false);
   const [decreaseAmountInput, setDecreaseAmountInput] = useState("");
@@ -183,6 +184,14 @@ function PlanManagementCard({
   const isDowngradeInPrice =
     targetPlanDef.priceUsdCents < currentPlanDef.priceUsdCents;
   const isChanged = selectedPlan !== profile.plan;
+  const isPaidSelection = selectedPlan !== "free";
+
+  const parsedDurationDays = Number.parseInt(durationDaysInput, 10);
+  const isDurationValid =
+    !isPaidSelection ||
+    (Number.isFinite(parsedDurationDays) &&
+      parsedDurationDays >= 1 &&
+      parsedDurationDays <= 31);
 
   const parsedDecreaseAmountCents = Math.round(
     (Number.parseFloat(decreaseAmountInput) || 0) * 100,
@@ -211,11 +220,18 @@ function PlanManagementCard({
         return;
       }
 
+      if (!isDurationValid) {
+        setSaveError("Enter an expiration between 1 and 31 days.");
+        setSaving(false);
+        return;
+      }
+
       const result = await setAdminUserPlan(
         userId,
         selectedPlan,
         grantCents,
         debitCents,
+        isPaidSelection ? parsedDurationDays : null,
       );
       onChanged(result);
       setDecreaseBalance(false);
@@ -234,14 +250,14 @@ function PlanManagementCard({
       <CardHeader>
         <CardTitle>Plan &amp; credit</CardTitle>
         <CardDescription>
-          Override this user&apos;s subscription tier. Takes effect immediately,
-          no redeploy.
+          Override this user&apos;s subscription tier and expiration window.
+          Takes effect immediately, no redeploy.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <span className="text-muted-foreground">Current balance</span>
-          <span className="font-medium">
+          <span className="font-medium font-mono tabular-nums">
             {formatUsdCents(profile.creditBalanceCents)}
           </span>
         </div>
@@ -269,9 +285,32 @@ function PlanManagementCard({
             </Select>
           </div>
 
+          {isPaidSelection && (
+            <div className="w-32">
+              <p className="mb-1.5 text-xs text-muted-foreground">
+                Expires in (1–31d)
+              </p>
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={31}
+                step={1}
+                value={durationDaysInput}
+                onChange={(e) => setDurationDaysInput(e.target.value)}
+                className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm font-mono tabular-nums"
+              />
+            </div>
+          )}
+
           <Button
             onClick={handleSave}
-            disabled={!isChanged || saving || !isDecreaseAmountValid}
+            disabled={
+              (!isChanged && !isPaidSelection) ||
+              saving ||
+              !isDecreaseAmountValid ||
+              !isDurationValid
+            }
           >
             {saving ? (
               <Loader2 className="mr-1.5 size-3.5 animate-spin" />

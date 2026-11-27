@@ -579,6 +579,7 @@ export async function setAdminUserPlan(
   planId: string,
   grantCreditCents: number,
   debitCentsOnDowngrade = 0,
+  durationDays?: number | null,
 ): Promise<{ plan: PlanId; creditBalanceCents: number }> {
   const adminUserId = await requireAdmin();
 
@@ -607,7 +608,30 @@ export async function setAdminUserPlan(
     );
   }
 
-  await db.update(users).set({ plan: planId }).where(eq(users.id, userId));
+  let nextAnchor: Date | null | undefined;
+  if (planId === "free") {
+    nextAnchor = null;
+  } else if (
+    typeof durationDays === "number" &&
+    Number.isFinite(durationDays)
+  ) {
+    const clampedDays = Math.max(1, Math.min(31, Math.round(durationDays)));
+    const targetExpiry = new Date(
+      Date.now() + clampedDays * 24 * 60 * 60 * 1000,
+    );
+    const anchor = new Date(targetExpiry);
+    anchor.setUTCMonth(anchor.getUTCMonth() - 1);
+    nextAnchor = anchor;
+  }
+
+  await db
+    .update(users)
+    .set({
+      plan: planId,
+      ...(nextAnchor !== undefined ? { billingCycleAnchor: nextAnchor } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
 
   let creditBalanceCents = before.creditBalanceCents;
   if (grantCreditCents > 0) {

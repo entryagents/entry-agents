@@ -34,7 +34,7 @@ export function EntryLoadingScreen({
             ? "min-h-dvh w-full"
             : isCompact
               ? "min-h-[180px] w-full py-10"
-              : "min-h-[320px] w-full py-16",
+              : "min-h-[calc(100dvh-7rem)] w-full",
         className,
       )}
     >

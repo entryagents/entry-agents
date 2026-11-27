@@ -184,33 +184,16 @@ export default function SettingsBillingPage() {
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {isPaidPlan ? (
-            <>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => setShowTopupPicker((prev) => !prev)}
-                className="cursor-pointer rounded-lg"
-              >
-                <Plus className="mr-1.5 size-3.5" strokeWidth={1.5} />
-                Add Credit
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={isOpeningPortal}
-                onClick={() => void handleOpenPortal()}
-                className="cursor-pointer rounded-lg"
-              >
-                {isOpeningPortal ? (
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                ) : (
-                  <ExternalLink className="mr-1.5 size-3.5" strokeWidth={1.5} />
-                )}
-                Manage Billing
-              </Button>
-            </>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setShowTopupPicker((prev) => !prev)}
+              className="cursor-pointer rounded-lg"
+            >
+              <Plus className="mr-1.5 size-3.5" strokeWidth={1.5} />
+              Add Credit
+            </Button>
           ) : (
             <Button asChild size="sm" variant="outline" className="rounded-lg">
               <Link href="/pricing">Upgrade</Link>
