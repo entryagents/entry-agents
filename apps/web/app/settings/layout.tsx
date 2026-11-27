@@ -87,18 +87,18 @@ const baseSidebarItems: readonly SidebarNavItem[] = [
     icon: User,
   },
   {
+    id: "billing",
+    label: "Billing",
+    href: "/settings/billing",
+    matchPrefixes: ["/settings/billing"],
+    icon: CreditCard,
+  },
+  {
     id: "usage",
-    label: "Usage & balance",
+    label: "Usage",
     href: "/settings/usage",
     matchPrefixes: ["/settings/usage"],
     icon: Activity,
-  },
-  {
-    id: "pricing",
-    label: "Pricing & plans",
-    href: "/pricing",
-    matchPrefixes: ["/pricing"],
-    icon: CreditCard,
   },
   {
     id: "preferences",

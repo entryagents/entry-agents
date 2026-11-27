@@ -223,9 +223,9 @@ export function DesktopBalanceBox() {
       type="button"
       onClick={() => {
         if (isMobile) setOpenMobile(false);
-        router.push("/pricing");
+        router.push("/settings/billing");
       }}
-      title={`Credit balance: ${formatUsdCents(data.creditBalanceCents)} (View plans & top up)`}
+      title={`Credit balance: ${formatUsdCents(data.creditBalanceCents)} (Open billing)`}
       className="flex h-8 min-w-[44px] shrink-0 items-center justify-center rounded-lg border border-border/70 bg-background/60 px-2.5 font-mono text-xs font-medium tabular-nums text-foreground transition-colors duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border hover:bg-muted/70 cursor-pointer"
     >
       {formatCompactUsdCents(data.creditBalanceCents)}
@@ -309,9 +309,9 @@ export function DesktopCodexBillingStatus() {
       type="button"
       onClick={() => {
         if (isMobile) setOpenMobile(false);
-        router.push("/settings/usage");
+        router.push("/settings/billing");
       }}
-      title="Open usage and billing details"
+      title="Open billing and usage limits"
       className="group w-full cursor-pointer rounded-xl border border-border/70 bg-background/50 p-2.5 text-left transition-[border-color,background-color] duration-150 ease-[cubic-bezier(0.22,1,0.36,1)] hover:border-border hover:bg-background/85 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       <div className="flex items-baseline justify-between gap-2">
@@ -379,7 +379,7 @@ export function DesktopCodexBillingStatus() {
         })}
       </div>
 
-      {data.expiresAt ? (
+      {data.expiresAt && new Date(data.expiresAt).getTime() > Date.now() ? (
         <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-1.5 text-[11px] text-muted-foreground">
           <span>Renews</span>
           <span className="font-mono tabular-nums text-foreground/80">

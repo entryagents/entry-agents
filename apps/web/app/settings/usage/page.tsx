@@ -1,27 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { formatTokens } from "@entry-agents/shared";
+import { useMemo, useState } from "react";
 import useSWR from "swr";
-import Link from "next/link";
-import { toast } from "sonner";
-import {
-  CreditCard,
-  Clock,
-  CheckCircle2,
-  ArrowUpRight,
-  Calendar,
-} from "lucide-react";
-import {
-  useBillingMe,
-  formatExpirationDate,
-  PLAN_STYLES,
-} from "@/components/sidebar-billing-widget";
-import { formatUsdCents } from "@/lib/format-usd";
+import type { DateRange } from "react-day-picker";
+import { ContributionChart } from "@/components/contribution-chart";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { estimateModelUsageCost, type AvailableModel } from "@/lib/models";
 import { fetcher } from "@/lib/swr";
+import { formatDateOnly } from "@/lib/usage/date-range";
+import type { UsageInsights, UsageRepositoryInsight } from "@/lib/usage/types";
 import { UsageInsightsSection } from "./usage-insights-section";
-import type { UsageInsights } from "@/lib/usage/types";
 
 interface DailyUsageRow {
   date: string;
@@ -37,311 +27,469 @@ interface DailyUsageRow {
   costUsd: number | null;
 }
 
-interface UsageApiResponse {
+interface MergedDay {
+  date: string;
+  inputTokens: number;
+  outputTokens: number;
+  messageCount: number;
+  toolCallCount: number;
+}
+
+interface ModelUsage {
+  modelId: string;
+  provider: string;
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  messageCount: number;
+  toolCallCount: number;
+}
+
+interface UsageResponse {
   usage: DailyUsageRow[];
   insights: UsageInsights;
 }
 
-function getUsageWindowPercent(usedCents: number, limitCents: number): number {
-  if (limitCents <= 0) return 0;
-  if (usedCents >= limitCents) return 100;
-  if (usedCents <= 0) return 0;
-  return Math.max(1, Math.min(99, Math.floor((usedCents / limitCents) * 100)));
+interface ModelsResponse {
+  models: AvailableModel[];
 }
 
-export default function SettingsUsagePage() {
-  const { data: billing, isLoading: isBillingLoading } = useBillingMe();
-  const { data: usageData } = useSWR<UsageApiResponse>("/api/usage", fetcher);
-  const [isCheckingOut, setIsCheckingOut] = useState<number | null>(null);
+interface CostEstimateSummary {
+  amount: number;
+  pricedTokens: number;
+  totalTokens: number;
+}
 
-  const handleTopup = async (amountCents: number) => {
-    setIsCheckingOut(amountCents);
-    try {
-      const res = await fetch("/api/billing/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topupAmountCents: amountCents }),
+function sumRows(rows: DailyUsageRow[]) {
+  return rows.reduce(
+    (acc, d) => ({
+      inputTokens: acc.inputTokens + d.inputTokens,
+      cachedInputTokens: acc.cachedInputTokens + d.cachedInputTokens,
+      outputTokens: acc.outputTokens + d.outputTokens,
+      messageCount: acc.messageCount + d.messageCount,
+      toolCallCount: acc.toolCallCount + d.toolCallCount,
+    }),
+    {
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      messageCount: 0,
+      toolCallCount: 0,
+    },
+  );
+}
+
+function mergeDays(rows: DailyUsageRow[]): MergedDay[] {
+  const map = new Map<string, MergedDay>();
+  for (const r of rows) {
+    const existing = map.get(r.date);
+    if (existing) {
+      existing.inputTokens += r.inputTokens;
+      existing.outputTokens += r.outputTokens;
+      existing.messageCount += r.messageCount;
+      existing.toolCallCount += r.toolCallCount;
+    } else {
+      map.set(r.date, {
+        date: r.date,
+        inputTokens: r.inputTokens,
+        outputTokens: r.outputTokens,
+        messageCount: r.messageCount,
+        toolCallCount: r.toolCallCount,
       });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error ?? "Failed to create top-up checkout");
-        return;
-      }
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl;
-      }
-    } catch {
-      toast.error("An unexpected error occurred starting checkout");
-    } finally {
-      setIsCheckingOut(null);
     }
-  };
+  }
+  return [...map.values()];
+}
 
-  if (isBillingLoading || !billing) {
+function aggregateByModel(rows: DailyUsageRow[]): ModelUsage[] {
+  const map = new Map<string, ModelUsage>();
+  for (const r of rows) {
+    if (!r.modelId) continue;
+    const existing = map.get(r.modelId);
+    if (existing) {
+      existing.inputTokens += r.inputTokens;
+      existing.cachedInputTokens += r.cachedInputTokens;
+      existing.outputTokens += r.outputTokens;
+      existing.messageCount += r.messageCount;
+      existing.toolCallCount += r.toolCallCount;
+    } else {
+      map.set(r.modelId, {
+        modelId: r.modelId,
+        provider: r.provider ?? "unknown",
+        inputTokens: r.inputTokens,
+        cachedInputTokens: r.cachedInputTokens,
+        outputTokens: r.outputTokens,
+        messageCount: r.messageCount,
+        toolCallCount: r.toolCallCount,
+      });
+    }
+  }
+  return [...map.values()].toSorted(
+    (a, b) => b.inputTokens + b.outputTokens - (a.inputTokens + a.outputTokens),
+  );
+}
+
+function displayModelId(modelId: string): string {
+  const slashIndex = modelId.indexOf("/");
+  return slashIndex >= 0 ? modelId.slice(slashIndex + 1) : modelId;
+}
+
+function formatUsd(amount: number): string {
+  if (amount >= 100) {
+    return "$" + amount.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+  if (amount >= 0.01) {
     return (
-      <div className="space-y-6">
-        <Skeleton className="h-44 w-full rounded-2xl" />
-        <Skeleton className="h-64 w-full rounded-2xl" />
-      </div>
+      "$" +
+      amount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
     );
   }
+  return (
+    "$" +
+    amount.toLocaleString("en-US", {
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 4,
+    })
+  );
+}
 
-  const planStyle = PLAN_STYLES[billing.plan] ?? PLAN_STYLES.free;
-  const windows = billing.usageWindows;
-  const isFixed = windows?.mode === "fixed";
-  const topUpBalance = billing.topUpBalanceCents ?? 0;
+function estimateUsageCost(
+  dailyRows: DailyUsageRow[],
+  models: AvailableModel[],
+): CostEstimateSummary | undefined {
+  let amount = 0;
+  let pricedTokens = 0;
+  let totalTokens = 0;
+  const modelsById = new Map(models.map((model) => [model.id, model]));
+
+  for (const row of dailyRows) {
+    if (!row.modelId) continue;
+    const rowTotalTokens = row.inputTokens + row.outputTokens;
+    totalTokens += rowTotalTokens;
+
+    const cost =
+      typeof row.costUsd === "number"
+        ? row.costUsd
+        : estimateModelUsageCost(row, modelsById.get(row.modelId)?.cost);
+    if (cost === undefined) {
+      continue;
+    }
+
+    amount += cost;
+    pricedTokens += rowTotalTokens;
+  }
+
+  if (totalTokens <= 0) {
+    return undefined;
+  }
+
+  return {
+    amount,
+    pricedTokens,
+    totalTokens,
+  };
+}
+
+const RANK_DOT_CLASSES = [
+  "bg-neutral-300 dark:bg-neutral-200",
+  "bg-neutral-400 dark:bg-neutral-400",
+  "bg-neutral-500 dark:bg-neutral-500",
+  "bg-neutral-600 dark:bg-neutral-600",
+  "bg-neutral-700 dark:bg-neutral-700",
+];
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border/70 bg-card/60 px-4 py-3">
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 font-mono text-lg font-semibold tabular-nums text-foreground">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function RankedList({
+  title,
+  items,
+}: {
+  title: string;
+  items: { label: string; value: string }[];
+}) {
+  if (items.length === 0) return null;
+
+  return (
+    <div className="space-y-2.5 rounded-xl border border-border/70 bg-card/50 p-4">
+      <h2 className="text-sm font-medium text-muted-foreground">{title}</h2>
+      <div className="space-y-2">
+        {items.map((item, i) => (
+          <div key={item.label} className="flex items-center gap-2.5 text-sm">
+            <span
+              className={`h-2 w-2 shrink-0 rounded-full ${RANK_DOT_CLASSES[i % RANK_DOT_CLASSES.length]}`}
+            />
+            <span className="min-w-0 truncate text-foreground">
+              {item.label}
+            </span>
+            <span className="ml-auto shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+              {item.value}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TopRepositoriesSection({
+  repos,
+}: {
+  repos: UsageRepositoryInsight[];
+}) {
+  const top = repos.slice(0, 6);
+  if (top.length === 0) return null;
+
+  return (
+    <section className="space-y-3">
+      <h2 className="text-sm font-medium text-muted-foreground">
+        Top repositories
+      </h2>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {top.map((repo) => (
+          <div
+            key={`${repo.repoOwner}/${repo.repoName}`}
+            className="rounded-xl border border-border/70 bg-card/50 px-4 py-3"
+          >
+            <p className="truncate text-sm font-medium text-foreground">
+              {repo.repoOwner}/{repo.repoName}
+            </p>
+            <div className="mt-1.5 flex items-center gap-3 text-xs text-muted-foreground">
+              <span className="font-mono tabular-nums">
+                {repo.sessionCount.toLocaleString()} sessions
+              </span>
+              <span className="font-mono tabular-nums">
+                {repo.totalLinesChanged.toLocaleString()} lines
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export default function UsagePage() {
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+
+  const filteredUsagePath = useMemo(() => {
+    if (!dateRange?.from) return null;
+    const from = formatDateOnly(dateRange.from);
+    const to = formatDateOnly(dateRange.to ?? dateRange.from);
+    const query = new URLSearchParams({ from, to });
+    return `/api/usage?${query.toString()}`;
+  }, [dateRange]);
+
+  const {
+    data: fullData,
+    isLoading: isFullDataLoading,
+    error: fullDataError,
+  } = useSWR<UsageResponse>("/api/usage", fetcher);
+  const {
+    data: filteredData,
+    isLoading: isFilteredDataLoading,
+    error: filteredDataError,
+  } = useSWR<UsageResponse>(filteredUsagePath, fetcher);
+  const { data: modelsData } = useSWR<ModelsResponse>(
+    "/api/models/costs",
+    fetcher,
+  );
+
+  const data = filteredUsagePath ? filteredData : fullData;
+  const isLoading =
+    isFullDataLoading || (filteredUsagePath !== null && isFilteredDataLoading);
+  const error = fullDataError ?? filteredDataError;
+
+  const {
+    totals,
+    chartData,
+    modelUsage,
+    mainTotals,
+    subagentTotals,
+    costEstimate,
+  } = useMemo(() => {
+    const selectedUsage = data?.usage ?? [];
+    const chartUsage = fullData?.usage ?? selectedUsage;
+    const aggregatedModelUsage = aggregateByModel(selectedUsage);
+    const main = selectedUsage.filter((r) => r.agentType === "main");
+    const subagent = selectedUsage.filter((r) => r.agentType === "subagent");
+    return {
+      totals: sumRows(selectedUsage),
+      chartData: mergeDays(chartUsage),
+      modelUsage: aggregatedModelUsage,
+      mainTotals: sumRows(main),
+      subagentTotals: sumRows(subagent),
+      costEstimate: estimateUsageCost(selectedUsage, modelsData?.models ?? []),
+    };
+  }, [data, fullData, modelsData]);
+
+  const totalTokens = totals.inputTokens + totals.outputTokens;
+  const mainTokens = mainTotals.inputTokens + mainTotals.outputTokens;
+  const subagentTokens =
+    subagentTotals.inputTokens + subagentTotals.outputTokens;
+  const hasUsage = totals.messageCount > 0;
+  const estimatedCostValue =
+    costEstimate && costEstimate.pricedTokens > 0
+      ? formatUsd(costEstimate.amount)
+      : "—";
+
+  const agentItems = [
+    { label: "Main agent", value: formatTokens(mainTokens) },
+    { label: "Subagents", value: formatTokens(subagentTokens) },
+  ].filter((i) => i.value !== "0");
+
+  const modelItems = modelUsage.slice(0, 5).map((m) => ({
+    label: displayModelId(m.modelId),
+    value: formatTokens(m.inputTokens + m.outputTokens),
+  }));
+
+  const codeChurnItems = data?.insights
+    ? [
+        {
+          label: "Lines added",
+          value: data.insights.code.linesAdded.toLocaleString(),
+        },
+        {
+          label: "Lines removed",
+          value: data.insights.code.linesRemoved.toLocaleString(),
+        },
+        {
+          label: "Total changed",
+          value: data.insights.code.totalLinesChanged.toLocaleString(),
+        },
+      ]
+    : [];
+
+  const dateRangeLabel = dateRange?.from
+    ? (() => {
+        const fromLabel = dateRange.from.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+        const toDate = dateRange.to ?? dateRange.from;
+        const toLabel = toDate.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+        return fromLabel === toLabel
+          ? `Activity for ${fromLabel}`
+          : `${fromLabel} – ${toLabel}`;
+      })()
+    : null;
 
   return (
     <div className="space-y-8">
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/60 pb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-foreground">
-            Usage &amp; Credit Telemetry
-          </h1>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Real-time balance, active billing windows, and compute utilization.
+          <h1 className="text-2xl font-semibold tracking-tight">Usage</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Token volume, cache efficiency, models, and repository activity
           </p>
         </div>
-        <Button asChild size="sm" variant="outline" className="rounded-xl">
-          <Link href="/pricing">
-            <CreditCard className="mr-1.5 h-3.5 w-3.5" />
-            Pricing &amp; Plans
-            <ArrowUpRight className="ml-1 h-3.5 w-3.5" />
-          </Link>
-        </Button>
+        {dateRangeLabel ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setDateRange(undefined)}
+          >
+            {dateRangeLabel} · Clear
+          </Button>
+        ) : null}
       </div>
 
-      {/* Primary Account Balances Grid */}
-      <div className="grid gap-5 md:grid-cols-2">
-        {/* Subscription Balance Card */}
-        <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-5">
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                Plan allowance
-              </span>
-              <span
-                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${planStyle.badge}`}
-              >
-                {billing.planName}
-              </span>
-            </div>
-
-            <div className="mt-3">
-              <p className="text-xs text-muted-foreground">Spendable balance</p>
-              <p className="mt-0.5 font-mono text-3xl font-medium tracking-tight tabular-nums text-foreground">
-                {formatUsdCents(billing.creditBalanceCents)}
-              </p>
-            </div>
-
-            <div className="mt-4 space-y-1.5 border-t border-border/60 pt-3 text-xs text-muted-foreground">
-              <div className="flex justify-between">
-                <span>Monthly grant</span>
-                <span className="font-mono font-medium tabular-nums text-foreground">
-                  {billing.creditGrantCents
-                    ? formatUsdCents(billing.creditGrantCents)
-                    : "$0"}
-                </span>
-              </div>
-              {billing.expiresAt ? (
-                <div className="flex justify-between">
-                  <span>Cycle renewal</span>
-                  <span className="font-mono font-medium tabular-nums text-foreground">
-                    {formatExpirationDate(billing.expiresAt)}
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          <div className="mt-4 border-t border-border/60 pt-3">
-            <Button
-              asChild
-              size="sm"
-              variant="outline"
-              className="w-full rounded-xl"
-            >
-              <Link href="/pricing">
-                Manage subscription
-                <ArrowUpRight className="ml-1 size-3.5" strokeWidth={1.5} />
-              </Link>
-            </Button>
-          </div>
+      {isLoading ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Skeleton key={i} className="h-[74px] rounded-xl" />
+          ))}
         </div>
-
-        {/* Top-up Balance & Quick Top-Up Card */}
-        <div className="flex flex-col justify-between rounded-xl border border-border bg-card p-5">
-          <div>
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                Top-up credit
-              </span>
-              <span className="inline-flex items-center gap-1 font-mono text-[11px] text-muted-foreground">
-                <Calendar className="size-3.5" strokeWidth={1.5} />
-                {billing.topUpExpiresAt
-                  ? `Valid until ${formatExpirationDate(billing.topUpExpiresAt)}`
-                  : "90-day expiry"}
-              </span>
-            </div>
-
-            <div className="mt-3">
-              <p className="text-xs text-muted-foreground">
-                Active top-up balance
-              </p>
-              <p className="mt-0.5 font-mono text-3xl font-medium tracking-tight tabular-nums text-foreground">
-                {formatUsdCents(topUpBalance)}
-              </p>
-            </div>
-
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-              Top-up credits stay valid for 90 days from purchase and carry
-              across billing cycles.
-            </p>
-          </div>
-
-          {/* Quick Top-Up Package Buttons */}
-          <div className="mt-4 border-t border-border/60 pt-3">
-            <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-              <span className="font-medium text-foreground">
-                Quick add credit
-              </span>
-              <span className="tabular-nums">1 USD = $1 compute</span>
-            </div>
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { label: "+$5", cents: 500 },
-                { label: "+$10", cents: 1000 },
-                { label: "+$25", cents: 2500 },
-                { label: "+$50", cents: 5000 },
-              ].map(({ label, cents }) => (
-                <Button
-                  key={cents}
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleTopup(cents)}
-                  disabled={isCheckingOut !== null}
-                  className="rounded-lg font-mono text-xs tabular-nums"
-                >
-                  {isCheckingOut === cents ? "..." : label}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Windows Telemetry Card (For Entry tier) */}
-      {windows && (
-        <div className="rounded-xl border border-border bg-card p-6">
-          <div className="flex items-center justify-between gap-2 border-b border-border/60 pb-4">
-            <div>
-              <h2 className="text-sm font-medium text-foreground">
-                Usage windows
-              </h2>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Pacing limits for predictable compute throughput.
-              </p>
-            </div>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-2.5 py-1 font-mono text-xs text-muted-foreground">
-              <Clock className="size-3.5" strokeWidth={1.5} />
-              {isFixed ? "Fixed refill cycles" : "Rolling sliding windows"}
-            </span>
-          </div>
-
-          <div className="mt-6 space-y-4">
-            {[
-              {
-                label: "5 Hours",
-                win: windows.fiveHour,
-                desc: isFixed
-                  ? windows.fiveHour.resetsAt
-                    ? `Fixed 5h block · resets ${new Date(windows.fiveHour.resetsAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
-                    : "Fixed 5h refill period"
-                  : "Trailing 5-hour rolling window",
-              },
-              {
-                label: "7 Days",
-                win: windows.weekly,
-                desc: isFixed
-                  ? windows.weekly.resetsAt
-                    ? `Fixed 7-day block · resets ${formatExpirationDate(windows.weekly.resetsAt)}`
-                    : "Fixed 7-day refill period"
-                  : "Trailing 7-day rolling window",
-              },
-              {
-                label: "Monthly Cycle",
-                win: windows.monthly,
-                desc: isFixed
-                  ? windows.monthly.resetsAt
-                    ? `Cycle renewal on ${formatExpirationDate(windows.monthly.resetsAt)}`
-                    : "Monthly subscription allowance"
-                  : "Trailing 1-month rolling window",
-              },
-            ].map(({ label, win, desc }) => {
-              const pct = getUsageWindowPercent(win.usedCents, win.limitCents);
-              const isFull = win.usedCents >= win.limitCents;
-              const isWarn = !isFull && pct >= 75;
-
-              return (
-                <div key={label} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-foreground">
-                        {label}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground">
-                        ({desc})
-                      </span>
-                    </div>
-                    <span
-                      className={`font-mono tabular-nums ${
-                        isFull
-                          ? "font-medium text-red-500"
-                          : isWarn
-                            ? "text-amber-500"
-                            : "text-muted-foreground"
-                      }`}
-                    >
-                      {formatUsdCents(win.usedCents)} /{" "}
-                      {formatUsdCents(win.limitCents)} ({pct}%)
-                    </span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                    <div
-                      className={`h-full rounded-full transition-[width] duration-300 ${
-                        isFull
-                          ? "bg-red-500"
-                          : isWarn
-                            ? "bg-amber-400"
-                            : "bg-emerald-500"
-                      }`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-5 flex items-center justify-between border-t border-border/60 pt-3 text-xs text-muted-foreground">
-            <span className="inline-flex items-center gap-1.5">
-              <CheckCircle2
-                className="size-3.5 text-muted-foreground"
-                strokeWidth={1.5}
-              />
-              Real-time ledger sync active
-            </span>
-            <span className="font-mono text-[11px]">Next sync in ~2s</span>
-          </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <StatCard label="Total tokens" value={formatTokens(totalTokens)} />
+          <StatCard
+            label="Cache read"
+            value={formatTokens(totals.cachedInputTokens)}
+          />
+          <StatCard label="Estimated cost" value={estimatedCostValue} />
+          <StatCard
+            label="Messages"
+            value={totals.messageCount.toLocaleString()}
+          />
+          <StatCard
+            label="Tool calls"
+            value={totals.toolCallCount.toLocaleString()}
+          />
         </div>
       )}
 
-      {/* Model Consumption & Insights */}
-      {usageData?.insights && (
-        <div className="rounded-2xl border border-border bg-card p-6 shadow-xs">
-          <UsageInsightsSection insights={usageData.insights} />
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Daily activity
+          </h2>
+          <span className="text-xs text-muted-foreground">
+            Click a day to filter
+          </span>
         </div>
+        {isLoading ? (
+          <Skeleton className="h-[96px] w-full rounded-md" />
+        ) : (
+          <ContributionChart
+            data={chartData}
+            selectedRange={dateRange}
+            onSelectRange={setDateRange}
+          />
+        )}
+      </section>
+
+      {isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Skeleton className="h-32 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
+        </div>
+      ) : error ? (
+        <p className="text-sm text-muted-foreground">
+          Failed to load usage data.
+        </p>
+      ) : (
+        <>
+          {(hasUsage || modelItems.length > 0 || codeChurnItems.length > 0) && (
+            <div className="grid gap-4 sm:grid-cols-3">
+              {hasUsage && (
+                <RankedList title="Agent split" items={agentItems} />
+              )}
+              {modelItems.length > 0 && (
+                <RankedList title="Top models" items={modelItems} />
+              )}
+              {codeChurnItems.length > 0 && (
+                <RankedList title="Code churn" items={codeChurnItems} />
+              )}
+            </div>
+          )}
+
+          {data?.insights?.topRepositories ? (
+            <TopRepositoriesSection repos={data.insights.topRepositories} />
+          ) : null}
+
+          {data?.insights ? (
+            <UsageInsightsSection insights={data.insights} />
+          ) : null}
+        </>
       )}
     </div>
   );

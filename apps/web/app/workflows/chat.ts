@@ -5543,7 +5543,9 @@ const runAgentStep = async (
         const cachedRatioForEst =
           lastInputTokensForEst > 0
             ? Math.min(1, lastCachedForEst / lastInputTokensForEst)
-            : 0;
+            : estimatedInputTokens > 8_000
+              ? 0.75
+              : 0;
         const estCachedTokens = Math.floor(
           Math.max(0, estimatedInputTokens) * cachedRatioForEst,
         );
