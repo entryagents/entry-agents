@@ -101,7 +101,7 @@ export default async function AdminSubscriptionsPage() {
           value={overview.freeCount.toLocaleString()}
         />
         <AdminStatCard
-          label="Active sessions"
+          label="Active chats"
           value={`${overview.totalActiveSessions.toLocaleString()} (${overview.twoVcpuUsers} · 2 vCPU)`}
         />
       </div>

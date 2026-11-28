@@ -148,14 +148,14 @@ export function checkReadGate(
     return {
       ok: false,
       reason: "unread",
-      message: `File has not been read yet (${displayPath}). Use the read tool on it first — the ${action} was refused so you don't change content you haven't seen.`,
+      message: `Read ${displayPath} before ${action}ing.`,
     };
   }
   if (seenHash !== currentHash) {
     return {
       ok: false,
       reason: "stale",
-      message: `File ${displayPath} has changed since it was last read (external edit via bash, git, or another agent?). Read it again with the read tool before ${action}ing — the ${action} would otherwise target content you haven't seen.`,
+      message: `${displayPath} changed since last read. Read it again before ${action}ing.`,
     };
   }
   return { ok: true };

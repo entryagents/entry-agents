@@ -89,7 +89,7 @@ export function AdminUserLookupSection() {
       <CardHeader>
         <CardTitle>User lookup</CardTitle>
         <CardDescription>
-          Search by name, username, or email to see connections, sessions, and
+          Search by name, username, or email to see connections, chats, and
           all-time estimated spend.
         </CardDescription>
       </CardHeader>
@@ -139,7 +139,7 @@ export function AdminUserLookupSection() {
                 <TableHead>User</TableHead>
                 <TableHead>Plan</TableHead>
                 <TableHead>Connections</TableHead>
-                <TableHead className="text-right">Sessions</TableHead>
+                <TableHead className="text-right">Chats</TableHead>
                 <TableHead className="text-right">Tokens</TableHead>
                 <TableHead className="text-right">Est. spend</TableHead>
               </TableRow>

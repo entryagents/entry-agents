@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatUsd, formatUsdCents } from "@/lib/format-usd";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -565,12 +566,7 @@ export function AdminUserDetailView({ userId }: { userId: string }) {
         </div>
       )}
 
-      {!error && !data && (
-        <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading user…
-        </div>
-      )}
+      {!error && !data && <EntryLoadingScreen fullScreen={false} />}
 
       {!error && data && !data.profile && (
         <p className="py-8 text-sm text-muted-foreground">
@@ -631,7 +627,7 @@ export function AdminUserDetailView({ userId }: { userId: string }) {
                   </p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Sessions</p>
+                  <p className="text-muted-foreground">Chats</p>
                   <p className="font-medium">{data.profile.sessionCount}</p>
                 </div>
                 <div>
@@ -746,19 +742,19 @@ export function AdminUserDetailView({ userId }: { userId: string }) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Recent sessions</CardTitle>
-                <CardDescription>Last 10 sessions.</CardDescription>
+                <CardTitle>Recent chats</CardTitle>
+                <CardDescription>Last 10 chats</CardDescription>
               </CardHeader>
               <CardContent>
                 {data.sessions.length === 0 ? (
                   <p className="py-4 text-sm text-muted-foreground">
-                    No sessions yet.
+                    No chats yet.
                   </p>
                 ) : (
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Session</TableHead>
+                        <TableHead>Chat</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead className="text-right">Updated</TableHead>
                       </TableRow>

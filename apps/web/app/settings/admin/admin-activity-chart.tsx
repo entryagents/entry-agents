@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
+import { AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   Card,
@@ -130,10 +131,7 @@ export function AdminActivityChart() {
             })}
           </div>
         ) : (
-          <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading activity…
-          </div>
+          <EntryLoadingScreen fullScreen={false} />
         )}
       </CardContent>
     </Card>
