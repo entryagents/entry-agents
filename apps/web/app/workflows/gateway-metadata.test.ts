@@ -71,8 +71,22 @@ describe("estimateStepCost cache accounting", () => {
     expect(cost).toBeCloseTo(0.207, 6);
   });
 
-  test("returns undefined when there's no usage and no gateway-reported cost", () => {
+  test("returns undefined when there's no usage", () => {
     const cost = estimateStepCost(undefined, "test-model", undefined, catalog);
+    expect(cost).toBeUndefined();
+  });
+
+  test("returns undefined with no fallback pricing when model is absent from live catalog", () => {
+    const cost = estimateStepCost(
+      { gateway: { cost: "2.92" } },
+      "deepseek-v4.1-flash",
+      {
+        inputTokens: 145_665,
+        outputTokens: 7_314,
+        inputTokenDetails: { cacheReadTokens: 145_024 },
+      },
+      [],
+    );
     expect(cost).toBeUndefined();
   });
 });

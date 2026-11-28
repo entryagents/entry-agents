@@ -56,19 +56,12 @@ export interface CatalogCostEntry {
 }
 
 /**
- * Combined cost estimate for a single step: prefers the legacy
- * gateway-reported cost when present, otherwise computes cost from the
- * static per-model pricing table (fetched live from entry-gateway's
- * /v1/models) plus the step's real token usage. This is what actually
- * prices every real request today.
+ * Cost estimate for a single step computed strictly from the live
+ * per-model pricing table fetched from entry-gateway's /v1/models plus
+ * the step's real token usage. No hardcoded fallback pricing is used.
  */
-const FALLBACK_MODEL_COSTS: Record<string, AvailableModelCost> = {
-  "deepseek-v4.1-flash": { input: 0.15, output: 0.6, cache_read: 0.003 },
-  "glm-5.3-flash": { input: 0.1, output: 0.4, cache_read: 0.02 },
-};
-
 export function estimateStepCost(
-  providerMetadata: ProviderMetadata | undefined,
+  _providerMetadata: ProviderMetadata | undefined,
   modelId: string,
   usage:
     | {
@@ -89,35 +82,29 @@ export function estimateStepCost(
     | undefined,
   catalog: CatalogCostEntry[],
 ): number | undefined {
-  if (usage) {
-    const bareModelId = modelId.includes("/")
-      ? modelId.slice(modelId.indexOf("/") + 1)
-      : modelId;
-    const model = catalog.find((m) => m.id === modelId || m.id === bareModelId);
-    const resolvedCost = model?.cost ?? FALLBACK_MODEL_COSTS[bareModelId];
-    if (resolvedCost) {
-      const cachedInputTokens =
-        usage.inputTokenDetails?.cacheReadTokens ??
-        usage.cachedInputTokens ??
-        0;
-      const cacheWriteInputTokens =
-        usage.inputTokenDetails?.cacheWriteTokens ?? 0;
-
-      const computed = estimateModelUsageCost(
-        {
-          inputTokens: usage.inputTokens ?? 0,
-          cachedInputTokens,
-          cacheWriteInputTokens,
-          outputTokens: usage.outputTokens ?? 0,
-        },
-        resolvedCost,
-      );
-      if (computed !== undefined) {
-        return computed;
-      }
-    }
+  if (!usage) {
     return undefined;
   }
 
-  return extractGatewayCost(providerMetadata);
+  const bareModelId = modelId.includes("/")
+    ? modelId.slice(modelId.indexOf("/") + 1)
+    : modelId;
+  const model = catalog.find((m) => m.id === modelId || m.id === bareModelId);
+  if (!model?.cost) {
+    return undefined;
+  }
+
+  const cachedInputTokens =
+    usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
+  const cacheWriteInputTokens = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
+
+  return estimateModelUsageCost(
+    {
+      inputTokens: usage.inputTokens ?? 0,
+      cachedInputTokens,
+      cacheWriteInputTokens,
+      outputTokens: usage.outputTokens ?? 0,
+    },
+    model.cost,
+  );
 }

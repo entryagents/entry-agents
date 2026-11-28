@@ -16,59 +16,6 @@ export function __resetModelsDevCacheForTests(): void {
   // No-op: models.dev lookup removed; live gateway is the sole source of truth.
 }
 
-/**
- * Mirrors the CACHE_RATE_MULTIPLIERS_BY_PREFIX fallback in the gateway's
- * server.js (added 2026-08-17, see that file for the full rationale and
- * pricing-ratio sourcing) -- purely so the UI's cost pill/estimate
- * matches what the gateway will actually bill. gpt-5.6-sol/terra/luna's
- * routes don't have cost.cache_read/cache_write set in the gateway's own
- * config, so without this the picker/composer would display an inflated
- * estimate (full input rate on cached tokens) even though the gateway
- * itself already applies the discount when computing the real charge.
- * Only fills in the two fields when they're genuinely absent -- any
- * route with real configured rates (e.g. Claude's) passes through
- * unchanged.
- *
- * Ratios sourced from OpenAI's own published gpt-5.6-sol pricing ($5.00
- * input / $0.50 cached input / $6.25 cache write / $30.00 output --
- * 0.50/5.00 = 0.1x, 6.25/5.00 = 1.25x), independently corroborated on
- * the OpenAI community forum for gpt-5.6-luna post price-cut ("1.25x for
- * write cache and 0.1x for read cache"). See gateway server.js for the
- * matching fallback used for real billing.
- */
-const CACHE_RATE_MULTIPLIERS_BY_PREFIX: Array<
-  [string, { cacheRead: number; cacheWrite: number }]
-> = [["gpt-5.6-", { cacheRead: 0.1, cacheWrite: 1.25 }]];
-
-function applyFallbackCachePricing(model: AvailableModel): AvailableModel {
-  const cost = model.cost;
-  if (!cost || typeof cost.input !== "number") {
-    return model;
-  }
-  if (
-    typeof cost.cache_read === "number" &&
-    typeof cost.cache_write === "number"
-  ) {
-    return model;
-  }
-
-  const multipliers = CACHE_RATE_MULTIPLIERS_BY_PREFIX.find(([prefix]) =>
-    model.id.startsWith(prefix),
-  )?.[1];
-  if (!multipliers) {
-    return model;
-  }
-
-  return {
-    ...model,
-    cost: {
-      ...cost,
-      cache_read: cost.cache_read ?? cost.input * multipliers.cacheRead,
-      cache_write: cost.cache_write ?? cost.input * multipliers.cacheWrite,
-    },
-  };
-}
-
 const gatewayReasoningEffortItemSchema = z.union([
   z.string(),
   z.object({
@@ -416,29 +363,25 @@ export async function fetchAvailableLanguageModelsWithContext(): Promise<
 
 /**
  * Navigation-path variant for SSR chat pages & /api/models: serves live
- * gateway models immediately without blocking on a cold/slow models.dev HTTP
- * fetch (up to 750ms). Uses the resolved in-memory models.dev map synchronously
- * only as a fallback when a gateway model omits context_window or cost.
+ * gateway models directly from entry-gateway with no synthetic fallback pricing.
  */
 export async function fetchAvailableLanguageModelsWithCachedContext(): Promise<
   AvailableModel[]
 > {
-  const models = await fetchAvailableLanguageModels();
-  return models.map((model) => applyFallbackCachePricing(model));
+  return fetchAvailableLanguageModels();
 }
 
 /**
  * Every language model the gateway knows about (unfiltered by disabled status)
  * for the ADMIN models page and public /model pricing page. Uses live gateway
- * context_window and cost directly — no external models.dev lookup.
+ * context_window and cost directly — no fallback pricing overrides.
  */
 export async function fetchAllLanguageModelsWithContext(): Promise<
   AvailableModel[]
 > {
-  const models = (await fetchGatewayModels()).filter(
+  return (await fetchGatewayModels()).filter(
     (model) => model.modelType === "language",
   );
-  return models.map((model) => applyFallbackCachePricing(model));
 }
 
 /** Backwards-compatible alias -- the admin models page's original name
