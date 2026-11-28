@@ -2513,7 +2513,8 @@ export async function runAgentWorkflow(options: Options) {
   }
 
   let assistantId =
-    latestMessage.role === "assistant"
+    latestMessage.role === "assistant" &&
+    !latestMessage.metadata?.isCompactionNotice
       ? latestMessage.id
       : (options.assistantId ?? generateWorkflowMessageId());
 
