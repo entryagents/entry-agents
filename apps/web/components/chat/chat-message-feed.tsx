@@ -424,7 +424,15 @@ const ChatMessageRow = memo(function ChatMessageRow({
     return null;
   };
 
-  if (m.role === "assistant" && m.metadata?.isCompactionNotice) {
+  const isPureCompactionNotice =
+    m.role === "assistant" &&
+    Boolean(m.metadata?.isCompactionNotice) &&
+    !(m.metadata?.stepBreakdown && m.metadata.stepBreakdown.length > 0) &&
+    !m.parts.some(
+      (part) => part.type.startsWith("tool-") || part.type === "reasoning",
+    );
+
+  if (isPureCompactionNotice) {
     const summaryLabel =
       m.parts
         .filter(

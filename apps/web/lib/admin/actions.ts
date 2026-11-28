@@ -638,9 +638,9 @@ export async function setAdminUserPlan(
     creditBalanceCents = await creditAccount(
       userId,
       grantCreditCents,
-      "admin_adjustment",
+      "subscription_grant",
       {
-        description: `Admin ${adminUserId} moved user to ${newPlanDef.name} plan and granted $${(grantCreditCents / 100).toFixed(2)} credit`,
+        description: `Admin ${adminUserId} moved user to ${newPlanDef.name} plan and granted $${(grantCreditCents / 100).toFixed(2)} plan credit`,
       },
     );
   } else if (debitCentsOnDowngrade > 0) {
