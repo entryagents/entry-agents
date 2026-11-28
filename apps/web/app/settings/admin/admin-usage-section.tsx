@@ -1,7 +1,8 @@
 "use client";
 
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 import { formatTokens } from "@entry-agents/shared";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   Card,
@@ -73,12 +74,7 @@ export function AdminUsageSection() {
         </div>
       </div>
 
-      {isLoading && (
-        <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading usage…
-        </div>
-      )}
+      {isLoading && <EntryLoadingScreen fullScreen={false} />}
 
       {error && (
         <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-400">

@@ -1,5 +1,6 @@
 "use client";
 
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 import { AlertTriangle, Loader2, Lock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -392,10 +393,7 @@ export function AdminModelsSection() {
             ))
           )
         ) : (
-          <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading model catalog…
-          </div>
+          <EntryLoadingScreen fullScreen={false} />
         )}
       </CardContent>
     </Card>

@@ -109,7 +109,7 @@ describe("read-before-edit gate", () => {
     });
     expect(
       (result as unknown as { error?: string } | undefined)?.error,
-    ).toContain("File has not been read yet");
+    ).toContain("before editing.");
   });
 
   test("read then edit succeeds", async () => {
@@ -158,7 +158,7 @@ describe("read-before-edit gate", () => {
     });
     expect(
       (result as unknown as { error?: string } | undefined)?.error,
-    ).toContain("changed since it was last read");
+    ).toContain("changed since last read");
   });
 
   test("consecutive edits without a re-read are refused", async () => {

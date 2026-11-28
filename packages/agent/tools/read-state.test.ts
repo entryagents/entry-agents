@@ -166,8 +166,8 @@ describe("checkReadGate", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.reason).toBe("unread");
-      expect(result.message).toContain("File has not been read yet");
-      expect(result.message).toContain("read tool");
+      expect(result.message).toContain("Read");
+      expect(result.message).toContain("before editing.");
     }
   });
 
@@ -178,7 +178,7 @@ describe("checkReadGate", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.reason).toBe("stale");
-      expect(result.message).toContain("changed since it was last read");
+      expect(result.message).toContain("changed since last read");
     }
   });
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
+import { AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Link from "next/link";
@@ -166,10 +167,7 @@ export function AdminSignupsSection() {
             </TableBody>
           </Table>
         ) : (
-          <div className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading signups…
-          </div>
+          <EntryLoadingScreen fullScreen={false} />
         )}
       </CardContent>
     </Card>
