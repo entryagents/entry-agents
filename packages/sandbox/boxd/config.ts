@@ -26,10 +26,13 @@ export function resolveBoxdMachineSize(vcpus?: number): BoxdMachineSize {
   return { vcpu: BOXD_VCPU, memory: BOXD_MEMORY };
 }
 
-// boxd machines run as an unprivileged user. `/` is root-owned, so a
-// top-level `/workspace` cannot be created reliably across base images.
-// `/tmp` is writable by the runtime user and lives on the machine disk.
-export const BOXD_WORKING_DIRECTORY = "/tmp/entry-workspace";
+// Persistent 100 GB ext4 disk root (`/var/tmp` is world-writable across base
+// images and lives on the 100 GB `/` persistent filesystem, unlike `/tmp`
+// which is a 2 GB RAM-backed tmpfs).
+export const BOXD_DISK_ROOT = "/var/tmp/entry";
+export const BOXD_WORKING_DIRECTORY = `${BOXD_DISK_ROOT}/workspace`;
+export const BOXD_TMP_DIR = `${BOXD_DISK_ROOT}/tmp`;
+export const BOXD_CACHE_DIR = `${BOXD_DISK_ROOT}/caches`;
 
 export function isBoxdConfigured(): boolean {
   return Boolean(process.env.BOXD_API_KEY || process.env.BOXD_TOKEN);
