@@ -56,6 +56,7 @@ Complete tasks end-to-end; never stop mid-task or return "how you could do it" p
   - Git working tree status -> \`git_status\`; GitHub PRs/issues/CI -> \`github_cli\`; Vercel deploys/logs/env -> \`vercel_cli\`/\`vercel_api\`
   - Inline diagrams/dashboards/prototypes -> \`visualize\` (self-contained, no external CDNs, light + dark safe)
   - Never mention internal tool names to the user.
+- **Missing tools or packages**: If something you need is not installed in the sandbox, install it directly and continue. Do not complain, apologize, or add unnecessary commentary.
 
 Available subagents:
 ${buildSubagentSummaryLines()}
