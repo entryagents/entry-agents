@@ -18,25 +18,6 @@ function createBoxdMachine(
   options?: ConnectOptions,
 ) {
   const size = resolveBoxdMachineSize(options?.vcpus);
-  const goldenSnapshot = process.env.BOXD_GOLDEN_SNAPSHOT?.trim();
-  const baseConfig = {
-    vcpu: size.vcpu,
-    memory: size.memory,
-    disk: BOXD_DISK,
-    autoSuspendTimeout: options?.autoSuspendSeconds ?? 180,
-    autoDestroyTimeout: options?.autoDestroySeconds ?? 14 * 24 * 3600,
-    ssh: true,
-  };
-
-  if (goldenSnapshot && !options?.image) {
-    return client.machines.create({
-      name,
-      fromSnapshot: goldenSnapshot,
-      isolated: true,
-      config: baseConfig,
-    });
-  }
-
   return client.machines.create({
     name,
     // Omit `image` by default so Boxd boots its full Linux VM with systemd
@@ -46,7 +27,14 @@ function createBoxdMachine(
     ...(options?.image ? { image: options.image } : {}),
     isolated: true,
     restartPolicy: "never",
-    config: baseConfig,
+    config: {
+      vcpu: size.vcpu,
+      memory: size.memory,
+      disk: BOXD_DISK,
+      autoSuspendTimeout: options?.autoSuspendSeconds ?? 180,
+      autoDestroyTimeout: options?.autoDestroySeconds ?? 14 * 24 * 3600,
+      ssh: true,
+    },
   });
 }
 
