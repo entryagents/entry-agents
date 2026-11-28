@@ -42,6 +42,7 @@ import type {
   VercelToolContext,
 } from "./types";
 import { buildSystemPrompt, buildSystemPromptParts } from "./system-prompt";
+import { renderPdfTool } from "./tools/render-pdf";
 import {
   askUserQuestionTool,
   bashTool,
@@ -283,6 +284,7 @@ const tools = {
   kill_process: killProcessTool,
   inbox: inboxTool,
   visualize: visualizeTool,
+  render_pdf: renderPdfTool(),
   pgx: createPgxTool(),
   stop_subagent: stopSubagentTool,
 } satisfies ToolSet;
