@@ -1,11 +1,11 @@
 ---
 name: entry-platform
-description: Reference guide to every user-facing Entry interface, workspace feature, and settings page (Chat, Workspace, Preview, Git/PR, Billing, Usage, Profile, Preferences, Models, Skills, Plugins, Integrations, Secrets). Use whenever a user asks how to find, configure, or use any Entry UI feature or setting. Strictly excludes admin surfaces.
+description: Reference guide to every user-facing Entry interface, workspace feature, and settings page (Chat, Workspace, Preview, Git/PR, Billing, Usage, Profile, Preferences, Models, Skills, Plugins, Integrations, Secrets). Use whenever a user asks how to find, configure, or use any Entry UI feature or setting.
 ---
 
 # Entry Platform Interface & Settings Guide
 
-Use this reference when answering user questions about where to find features, how to configure settings, or how Entry's workspace works. Never mention or reference internal admin pages or admin-only features.
+Use this reference when answering user questions about where to find features, how to configure settings, or how Entry's workspace works.
 
 ## Main Workspace & Navigation
 - **Sidebar**: Lists your chats, pinned/active workspaces, quick `+ New Chat`, live **5-hour / 7-day usage windows** (for metered plans), and a quick link to **Settings**.
