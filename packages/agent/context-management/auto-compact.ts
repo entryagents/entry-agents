@@ -1,9 +1,7 @@
 import type { LanguageModel, ModelMessage } from "ai";
 import {
   compactToolData,
-  estimateCompactionSavings,
   findPendingCompactionCandidates,
-  findSupersededReadToolCallKeys,
   indexToolCalls,
   type ToolCallIndex,
 } from "./aggressive-compaction-helpers";
@@ -194,81 +192,20 @@ export function compactMessagesWithStats({
     messages.length,
   );
 
-  // Phase A (below hard threshold): collapse superseded read/dir_list/git_status
-  // results only when doing so reclaims significant duplicate bloat (>= 24K tokens).
+  // Strictly honor the configured compaction threshold: never mutate earlier
+  // messages below `thresholdTokens`, which both respects the user's setting
+  // and keeps the prompt-cache prefix intact across steps.
   if (estimatedTokens < thresholdTokens) {
-    const supersededKeys = findSupersededReadToolCallKeys({
-      messages,
-      toolCallIndex,
-      recentToolCallKeys,
-      compactedToolNotice: COMPACTED_TOOL_NOTICE,
-    });
-    if (supersededKeys.size === 0) {
-      return {
-        messages,
-        didCompact: false,
-        tier: "none",
-        preTokens: estimatedTokens,
-        postTokens: estimatedTokens,
-        effectiveThresholdTokens: thresholdTokens,
-        contextWindow,
-        protectedTailStart: recentStart,
-        needsCheckpointSummary:
-          estimatedTokens >= thresholdTokens && recentStart > 2,
-      };
-    }
-
-    const supersededCandidates = {
-      pendingToolCallKeys: supersededKeys,
-      pendingAnonymousToolResults: 0,
-    };
-    const savingsTokens = estimateCompactionSavings({
-      messages,
-      toolCallIndex,
-      pendingCandidates: supersededCandidates,
-      compactedToolNotice: COMPACTED_TOOL_NOTICE,
-    });
-    if (savingsTokens < SUPERSEDED_PRUNE_MIN_SAVINGS_TOKENS) {
-      return {
-        messages,
-        didCompact: false,
-        tier: "none",
-        preTokens: estimatedTokens,
-        postTokens: estimatedTokens,
-        effectiveThresholdTokens: thresholdTokens,
-        contextWindow,
-        protectedTailStart: recentStart,
-        needsCheckpointSummary: false,
-      };
-    }
-
-    const compacted = compactToolData({
-      messages,
-      toolCallIndex,
-      pendingCandidates: supersededCandidates,
-      compactedToolNotice: COMPACTED_TOOL_NOTICE,
-    });
-    const compactedTokens = estimateMessagesTokens(compacted) + overheadTokens;
-    emitCompactionEvent({
-      preCompactTokens: estimatedTokens,
-      postCompactTokens: compactedTokens,
-      contextWindowTokens: contextWindow,
-      threshold: thresholdRatio,
-      compactedToolCalls: supersededKeys.size,
-      compactedAnonymousToolResults: 0,
-      modelId,
-    });
     return {
-      messages: compacted,
-      didCompact: true,
-      tier: "superseded",
+      messages,
+      didCompact: false,
+      tier: "none",
       preTokens: estimatedTokens,
-      postTokens: compactedTokens,
+      postTokens: estimatedTokens,
       effectiveThresholdTokens: thresholdTokens,
       contextWindow,
       protectedTailStart: recentStart,
-      needsCheckpointSummary:
-        compactedTokens >= checkpointTriggerTokens && recentStart > 2,
+      needsCheckpointSummary: false,
     };
   }
 
