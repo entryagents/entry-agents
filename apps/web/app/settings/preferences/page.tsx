@@ -8,9 +8,16 @@ export const metadata: Metadata = {
 
 export default function PreferencesPage() {
   return (
-    <>
-      <h1 className="text-2xl font-semibold">Preferences</h1>
+    <div className="space-y-8">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          Preferences
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Control workspace defaults, tool approvals, and notifications
+        </p>
+      </div>
       <PreferencesSection />
-    </>
+    </div>
   );
 }

@@ -1160,3 +1160,125 @@ export async function getUserTopUpBalance(userId: string): Promise<{
     expiresAt,
   };
 }
+
+export interface UserCreditBreakdown {
+  totalBalanceCents: number;
+  planCreditCents: number;
+  freeCreditCents: number;
+  giftedCreditCents: number;
+  purchasedCreditCents: number;
+  purchasedExpiresAt: string | null;
+}
+
+/**
+ * Separates a user's total available credit balance into four distinct buckets
+ * that always sum strictly to `totalBalanceCents`:
+ *   1. Purchased credit (active 90-day wallet top-ups)
+ *   2. Gifted credit (net positive admin top-ups / `admin_adjustment`)
+ *   3. Free credit (`signup_trial` and any non-plan rollover)
+ *   4. Monthly plan credit (capped at the active paid plan's monthly grant)
+ *
+ * Spend consumes Monthly plan credit first, then Free, then Gifted, then
+ * Purchased, so non-expiring/purchased pools stay intact and Monthly plan
+ * credit never displays above the current plan's grant (e.g. after upgrading).
+ */
+export async function getUserCreditBreakdown(
+  userId: string,
+  opts: { isAdmin?: boolean } = {},
+): Promise<UserCreditBreakdown> {
+  await expireStaleTopUps(userId);
+
+  const cutoff = new Date(Date.now() - NINETY_DAYS_MS);
+
+  const [state, groupedRows, activeTopUpRows] = await Promise.all([
+    getUserBillingState(userId, { isAdmin: opts.isAdmin }),
+    db
+      .select({
+        type: creditTransactions.type,
+        totalCents: sql<number>`coalesce(sum(${creditTransactions.amountCents}), 0)::int`,
+      })
+      .from(creditTransactions)
+      .where(eq(creditTransactions.userId, userId))
+      .groupBy(creditTransactions.type),
+    db
+      .select({
+        amountCents: creditTransactions.amountCents,
+        createdAt: creditTransactions.createdAt,
+      })
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.userId, userId),
+          eq(creditTransactions.type, "topup"),
+          gte(creditTransactions.createdAt, cutoff),
+        ),
+      )
+      .orderBy(desc(creditTransactions.createdAt)),
+  ]);
+
+  if (!state) {
+    return {
+      totalBalanceCents: 0,
+      planCreditCents: 0,
+      freeCreditCents: 0,
+      giftedCreditCents: 0,
+      purchasedCreditCents: 0,
+      purchasedExpiresAt: null,
+    };
+  }
+
+  const totalBalanceCents = Math.max(0, state.creditBalanceCents);
+  const planDef = getPlanDefinition(state.plan);
+  const isPaidPlan = state.plan !== "free";
+  const planAllowanceCents = isPaidPlan ? planDef.creditGrantCents : 0;
+
+  const totalsByType = new Map<string, number>();
+  for (const row of groupedRows) {
+    totalsByType.set(row.type, Number(row.totalCents) || 0);
+  }
+
+  const activeTopUpSum = activeTopUpRows.reduce(
+    (sum, r) => sum + Math.max(0, r.amountCents),
+    0,
+  );
+  const netGiftedSum = Math.max(0, totalsByType.get("admin_adjustment") ?? 0);
+  const trialSum = Math.max(0, totalsByType.get("signup_trial") ?? 0);
+
+  let remaining = totalBalanceCents;
+
+  const purchasedCreditCents = Math.min(remaining, activeTopUpSum);
+  remaining -= purchasedCreditCents;
+
+  const giftedCreditCents = Math.min(remaining, netGiftedSum);
+  remaining -= giftedCreditCents;
+
+  let freeCreditCents = Math.min(remaining, trialSum);
+  remaining -= freeCreditCents;
+
+  const planCreditCents = isPaidPlan
+    ? Math.min(remaining, planAllowanceCents)
+    : 0;
+  remaining -= planCreditCents;
+
+  // Any leftover balance above the active plan allowance (for example,
+  // carried-over balance from a previous tier or free plan) goes into
+  // freeCreditCents so Monthly plan credit never exceeds the plan's grant.
+  if (remaining > 0) {
+    freeCreditCents += remaining;
+  }
+
+  const latestTopUpAt = activeTopUpRows[0]?.createdAt ?? null;
+  const purchasedExpiresAt =
+    purchasedCreditCents > 0 && latestTopUpAt
+      ? new Date(latestTopUpAt.getTime() + NINETY_DAYS_MS).toISOString()
+      : null;
+
+  return {
+    totalBalanceCents,
+    planCreditCents,
+    freeCreditCents,
+    giftedCreditCents,
+    purchasedCreditCents,
+    purchasedExpiresAt,
+  };
+}
