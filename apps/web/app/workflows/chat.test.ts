@@ -534,6 +534,13 @@ mock.module("@/lib/vercel/token", () => ({
 // a live HTTP call to entry-gateway (GATEWAY_BASE_URL/GATEWAY_API_KEY),
 // which isn't configured in tests. Already caught/defaulted to [] on
 // failure so this was harmless, just noisy; mocked cleanly instead.
+let mockModelCostCatalog: Array<{
+  id: string;
+  name: string;
+  modelType: string;
+  cost?: { input: number; output: number; cache_read?: number };
+}> = [];
+
 mock.module("@/lib/models-with-context", () => ({
   fetchAvailableLanguageModels: mock(() =>
     Promise.resolve([
@@ -550,7 +557,7 @@ mock.module("@/lib/models-with-context", () => ({
   ),
   // fetchModelCostCatalogStep switched to the unfiltered pricing catalog
   // on 2026-09-15 (PERF + 2026-08-17 pricing lesson).
-  fetchModelCostCatalog: mock(() => Promise.resolve([])),
+  fetchModelCostCatalog: mock(() => Promise.resolve(mockModelCostCatalog)),
 }));
 
 mock.module("@/lib/model-availability", () => ({
@@ -654,6 +661,7 @@ beforeEach(() => {
   agentFinishReason = "stop";
   agentRawFinishReason = "provider_stop";
   agentTotalUsage = { inputTokens: 10, outputTokens: 5, totalTokens: 15 };
+  mockModelCostCatalog = [];
   agentResponseMessages = [];
   agentResponse = { messages: agentResponseMessages };
   agentWarnings = undefined;
@@ -1310,7 +1318,16 @@ describe("runAgentWorkflow", () => {
     });
   });
 
-  test("streams and persists cumulative gateway cost", async () => {
+  test("streams and persists cumulative catalog cost", async () => {
+    // (10 * 100 + 5 * 300) / 1e6 = 0.0025 per step
+    mockModelCostCatalog = [
+      {
+        id: "gpt-4",
+        name: "Latest Gateway Model",
+        modelType: "language",
+        cost: { input: 100, output: 300 },
+      },
+    ];
     agentFinishReason = "tool-calls";
     agentStreamParts = [
       {
@@ -1318,14 +1335,8 @@ describe("runAgentWorkflow", () => {
         finishReason: "tool-calls",
         rawFinishReason: "provider_tool_use",
         usage: agentTotalUsage,
-        providerMetadata: {
-          gateway: { cost: "0.0025" },
-        },
       },
     ];
-    agentProviderMetadata = {
-      gateway: { cost: "0.0025" },
-    };
 
     await runAgentWorkflow(
       makeOptions({
@@ -1368,10 +1379,20 @@ describe("runAgentWorkflow", () => {
     expect(persistedMessage.metadata?.totalMessageCost).toBeCloseTo(0.005, 10);
   });
 
-  test("preserves previously accumulated gateway cost when resuming an assistant message", async () => {
+  test("preserves previously accumulated catalog cost when resuming an assistant message", async () => {
     const existingTotalMessageCost = 0.0025;
     const resumedStepCost = 0.001;
     const expectedTotalMessageCost = existingTotalMessageCost + resumedStepCost;
+
+    // (10 * 50 + 5 * 100) / 1e6 = 0.001
+    mockModelCostCatalog = [
+      {
+        id: "gpt-4",
+        name: "Latest Gateway Model",
+        modelType: "language",
+        cost: { input: 50, output: 100 },
+      },
+    ];
 
     agentStreamParts = [
       {
@@ -1379,14 +1400,8 @@ describe("runAgentWorkflow", () => {
         finishReason: "stop",
         rawFinishReason: "provider_stop",
         usage: agentTotalUsage,
-        providerMetadata: {
-          gateway: { cost: String(resumedStepCost) },
-        },
       },
     ];
-    agentProviderMetadata = {
-      gateway: { cost: String(resumedStepCost) },
-    };
 
     await runAgentWorkflow(
       makeOptions({

@@ -3165,7 +3165,7 @@ export async function runAgentWorkflow(options: Options) {
           modelId,
           stepAgentOptions,
           step + 1,
-          modelCostCatalog,
+          [],
           remainingBalanceCents,
           modelRuntime.enforceCreditBlock,
           remainingWindowBudgetCents,
@@ -3180,6 +3180,14 @@ export async function runAgentWorkflow(options: Options) {
           isLlmStep: true,
           inputBytes: estimatedInputBytes,
         });
+        // CRITICAL: Never pass `modelCostCatalog` across the Vercel Workflow
+        // step-argument serialization boundary! `@workflow/core@5.8.0`'s
+        // serializer corrupted floating-point prices inside `modelCostCatalog`
+        // when dehydrated alongside large message histories (overwriting
+        // `cost.input`/`cost.output` with unrelated floats like `metadata.tps`,
+        // causing 1000x+ billing overcharges). `runAgentStep` fetches the live
+        // catalog directly inside the `"use step"` function (60s in-process
+        // TTL cache in `fetchModelCostCatalog`).
         result = await runAgentStep(
           stepModelMessages,
           originalMessagesForStep,
@@ -3194,7 +3202,7 @@ export async function runAgentWorkflow(options: Options) {
           modelId,
           stepAgentOptions,
           step + 1,
-          modelCostCatalog,
+          [],
           remainingBalanceCents,
           modelRuntime.enforceCreditBlock,
           remainingWindowBudgetCents,
@@ -4351,7 +4359,7 @@ const runAgentStep = async (
   modelId: string,
   agentOptions: WorkflowAgentOptions,
   stepNumber: number,
-  modelCostCatalog: AvailableModel[],
+  serializedModelCostCatalog: AvailableModel[],
   startingBalanceCents: number,
   enforceCreditBlock: boolean,
   windowBudgetCents: number | null,
@@ -4360,6 +4368,40 @@ const runAgentStep = async (
 
   const stepStartedAt = new Date();
   const { webAgent } = await import("@/app/config");
+
+  // Always resolve pricing directly inside the step from the live gateway
+  // catalog (60s in-process TTL cache) rather than reading a catalog passed
+  // through the workflow step-argument serializer, which can corrupt floats.
+  let modelCostCatalog: AvailableModel[] = [];
+  try {
+    const { fetchModelCostCatalog } = await import("@/lib/models-with-context");
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const liveCatalog = await fetchModelCostCatalog();
+        if (liveCatalog.length > 0 || attempt === 3) {
+          modelCostCatalog = liveCatalog;
+          break;
+        }
+      } catch (error) {
+        if (attempt === 3) {
+          console.error(
+            "[workflow] Failed to fetch live model pricing catalog inside runAgentStep:",
+            error,
+          );
+        } else {
+          await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+        }
+      }
+    }
+  } catch (error) {
+    console.error(
+      "[workflow] Failed to load live model pricing catalog inside runAgentStep:",
+      error,
+    );
+  }
+  if (modelCostCatalog.length === 0 && serializedModelCostCatalog.length > 0) {
+    modelCostCatalog = serializedModelCostCatalog;
+  }
 
   const abortController = new AbortController();
   const stopMonitor = startStopMonitor(
