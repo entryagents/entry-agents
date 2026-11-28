@@ -73,37 +73,23 @@ export type ChatErrorCategory =
   | "unknown";
 
 const CATEGORY_MESSAGES: Record<ChatErrorCategory, string> = {
-  aborted: "The request was stopped.",
-  rate_limit:
-    "The AI provider is receiving too many requests right now. Please wait a moment and try again.",
-  usage_window:
-    "This plan's usage window is full. Entry limits spend over rolling 7-day, 5-hour, and 30-day windows; each refills automatically as older usage ages out. Open Settings > Usage to see exactly when yours resets, or upgrade the plan to raise the ceiling.",
-  credit_exhausted:
-    "Your account has run out of credits. Please add credits or upgrade your plan in Settings > Billing to continue.",
-  quota:
-    "This model has hit its provider quota and can't respond right now. Try switching to a different model in the composer dropdown.",
-  auth: "There's a temporary problem connecting to the AI provider. Please try again shortly.",
-  timeout: "The request took too long and timed out. Please try again.",
-  network:
-    "Connection issue reaching the AI provider. Please check your connection and try again.",
-  provider_unavailable:
-    "The AI provider is temporarily unavailable. Please try again in a moment.",
-  tool_failure:
-    "A tool call encountered an execution error. Review the tool output above or send a follow-up to ask the agent to retry.",
-  blocked:
-    "The model provider refused this message under its content policy, so no reply was generated. That is a refusal at the provider, not a bug -- reword the message, or pick a different model and send it again.",
-  model_unavailable:
-    "Your selected model isn't available on the gateway right now, so the turn couldn't start. Open Settings > Models, pick a model that works, and resend.",
-  context_overflow:
-    "This conversation exceeded the model's context window even after compaction. Send a follow-up to continue in a fresh context or switch to a larger-context model.",
-  invalid_prompt:
-    "This chat's stored history had an incomplete tool call from an earlier turn. Send your next message to continue cleanly.",
-  no_output:
-    "The model connected but returned an empty response. Send the message again, or switch to a different model if it repeats.",
-  workspace:
-    "The sandbox workspace could not be initialized. Entry is switching to a writable workspace path and retrying the session. Resend this message in a moment.",
-  unknown:
-    "The model request was interrupted before finishing. Send your next message or switch models if the issue persists.",
+  aborted: "Stopped.",
+  rate_limit: "Too many requests. Try again in a moment.",
+  usage_window: "You've reached your usage limit.",
+  credit_exhausted: "You're out of credits. Add credits in Settings > Billing.",
+  quota: "Model quota reached. Switch models or try again later.",
+  auth: "Connection failed. Try again.",
+  timeout: "Request timed out. Try again.",
+  network: "Connection lost. Try again.",
+  provider_unavailable: "Model temporarily unavailable. Try again.",
+  tool_failure: "Tool failed. Send a follow-up to retry.",
+  blocked: "Message refused by model policy. Reword or switch models.",
+  model_unavailable: "Model unavailable. Pick another model and resend.",
+  context_overflow: "Context limit reached. Start a new chat or switch models.",
+  invalid_prompt: "Previous turn was interrupted. Send a message to continue.",
+  no_output: "Empty response. Try again or switch models.",
+  workspace: "Workspace failed to start. Resend in a moment.",
+  unknown: "Interrupted before finishing. Try again.",
 };
 
 /** Classifies a raw error (or a raw error-message string pulled back out
