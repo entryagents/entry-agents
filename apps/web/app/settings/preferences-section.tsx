@@ -2,8 +2,20 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Plus, Search, Terminal, X } from "lucide-react";
+import {
+  ArrowUpRight,
+  Check,
+  Copy,
+  Monitor,
+  Moon,
+  Plus,
+  Search,
+  Sun,
+  Terminal,
+  X,
+} from "lucide-react";
 import { type ThemePreference, useTheme } from "@/app/providers";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 import {
   DEFAULT_SANDBOX_TYPE,
   type SandboxType,
@@ -12,6 +24,7 @@ import { listUserSelectableSandboxProviders } from "@entry-agents/sandbox/regist
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -547,11 +560,20 @@ function usePreferencesSectionState() {
   };
 }
 
+const THEME_ICONS: Record<
+  ThemePreference,
+  React.ComponentType<{ className?: string; strokeWidth?: number }>
+> = {
+  system: Monitor,
+  light: Sun,
+  dark: Moon,
+};
+
 export function PreferencesSection() {
   const state = usePreferencesSectionState();
 
   if (state.loading) {
-    return <PreferencesSectionSkeleton />;
+    return <EntryLoadingScreen fullScreen={false} />;
   }
 
   const {
@@ -573,269 +595,416 @@ export function PreferencesSection() {
     handleCopyPublicProfileUrl,
   } = state;
 
+  const currentPermissionMode: PermissionMode =
+    (preferences?.defaultPermissionMode as PermissionMode | undefined) ?? "ask";
+  const currentDiffMode: DiffMode = preferences?.defaultDiffMode ?? "unified";
+  const autoCommitEnabled = preferences?.autoCommitPush ?? false;
+  const alertsEnabled = preferences?.alertsEnabled ?? true;
+  const publicUsageEnabled = preferences?.publicUsageEnabled ?? false;
+  const skillPackCount = (preferences?.globalSkillRefs ?? []).length;
+
   return (
     <div className="space-y-8">
-      {/* ── General: Theme, Notifications, Environment, Automation ── */}
-      <div className="space-y-4">
-        <SectionHeader>General</SectionHeader>
-        <div className="grid gap-6 sm:grid-cols-2">
-          {/* Left column: dropdowns */}
-          <div className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="appearance">Theme</Label>
-              <Select value={theme} onValueChange={handleThemeChange}>
-                <SelectTrigger id="appearance" className="w-full">
-                  <SelectValue placeholder="Select an appearance" />
-                </SelectTrigger>
-                <SelectContent>
-                  {THEME_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+      {/* ── Workspace & Appearance ── */}
+      <section className="space-y-2.5">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          Workspace &amp; appearance
+        </h2>
+        <div className="divide-y divide-border/60 rounded-xl border border-border bg-card">
+          {/* Theme */}
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium text-foreground">Theme</p>
               <p className="text-xs text-muted-foreground">
-                Saved in your current browser.
+                Saved locally in this browser
               </p>
             </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="sandbox">Default Sandbox</Label>
-              <Select
-                value={preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE}
-                onValueChange={(value) =>
-                  handleSandboxChange(value as SandboxType)
-                }
-                disabled={isSaving}
-              >
-                <SelectTrigger id="sandbox" className="w-full">
-                  <SelectValue placeholder="Select a sandbox type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SANDBOX_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="diff-mode">Default Diff Mode</Label>
-              <Select
-                value={preferences?.defaultDiffMode ?? "unified"}
-                onValueChange={(value) =>
-                  handleDiffModeChange(value as DiffMode)
-                }
-                disabled={isSaving}
-              >
-                <SelectTrigger id="diff-mode" className="w-full">
-                  <SelectValue placeholder="Select a diff mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DIFF_MODE_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div
+              role="radiogroup"
+              aria-label="Theme"
+              className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-muted/40 p-1 sm:w-auto"
+            >
+              {THEME_OPTIONS.map((option) => {
+                const Icon = THEME_ICONS[option.id];
+                const active = theme === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => handleThemeChange(option.id)}
+                    className={cn(
+                      "inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+                      active
+                        ? "bg-background text-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <Icon className="size-3.5" strokeWidth={1.5} />
+                    {option.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Right column: toggles */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="auto-commit-push">Auto commit &amp; push</Label>
-                <p className="text-xs text-muted-foreground">
-                  Commit and push when an agent turn finishes.
-                </p>
-              </div>
-              <Switch
-                id="auto-commit-push"
-                checked={preferences?.autoCommitPush ?? false}
-                onCheckedChange={handleAutoCommitPushChange}
-                disabled={isSaving}
-              />
+          {/* Default Diff View */}
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium text-foreground">
+                Default diff view
+              </p>
+              <p className="text-xs text-muted-foreground">
+                How file changes are displayed in the workspace
+              </p>
             </div>
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="auto-create-pr">Auto create PR</Label>
-                <p className="text-xs text-muted-foreground">
-                  Open a pull request after auto commit.
-                </p>
-              </div>
-              <Switch
-                id="auto-create-pr"
-                checked={preferences?.autoCreatePr ?? false}
-                onCheckedChange={handleAutoCreatePrChange}
-                disabled={isSaving || !(preferences?.autoCommitPush ?? false)}
-              />
+            <div
+              role="radiogroup"
+              aria-label="Default diff view"
+              className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1 sm:w-auto"
+            >
+              {DIFF_MODE_OPTIONS.map((option) => {
+                const active = currentDiffMode === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    disabled={isSaving}
+                    onClick={() => handleDiffModeChange(option.id)}
+                    className={cn(
+                      "cursor-pointer rounded-md px-3.5 py-1.5 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50",
+                      active
+                        ? "bg-background text-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {option.name}
+                  </button>
+                );
+              })}
             </div>
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="guided-frontend-workflow">
-                  Guided frontend workflow
+          </div>
+
+          {/* Default Sandbox */}
+          <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div className="space-y-0.5">
+              <Label
+                htmlFor="sandbox"
+                className="text-sm font-medium text-foreground"
+              >
+                Default sandbox
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Runtime environment used for new sessions
+              </p>
+            </div>
+            <Select
+              value={preferences?.defaultSandboxType ?? DEFAULT_SANDBOX_TYPE}
+              onValueChange={(value) =>
+                handleSandboxChange(value as SandboxType)
+              }
+              disabled={isSaving}
+            >
+              <SelectTrigger
+                id="sandbox"
+                className="h-9 w-full rounded-lg sm:w-48"
+              >
+                <SelectValue placeholder="Select sandbox" />
+              </SelectTrigger>
+              <SelectContent>
+                {SANDBOX_OPTIONS.map((option) => (
+                  <SelectItem key={option.id} value={option.id}>
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Safety & Permissions ── */}
+      <section className="space-y-2.5">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          Safety &amp; permissions
+        </h2>
+        <div className="rounded-xl border border-border bg-card p-4 sm:p-5">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium text-foreground">
+              Default permission mode
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Controls which tool approval prompts new sessions require; can be
+              changed per session
+            </p>
+          </div>
+
+          <div
+            role="radiogroup"
+            aria-label="Default permission mode"
+            className="mt-4 grid gap-2.5 sm:grid-cols-3"
+          >
+            {PERMISSION_MODE_OPTIONS.map((option) => {
+              const active = currentPermissionMode === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  disabled={isSaving}
+                  onClick={() => handlePermissionModeChange(option.id)}
+                  className={cn(
+                    "flex cursor-pointer flex-col items-start rounded-lg border p-3.5 text-left transition-colors disabled:pointer-events-none disabled:opacity-50",
+                    active
+                      ? "border-foreground/50 bg-muted/40"
+                      : "border-border/70 bg-background hover:border-border hover:bg-muted/20",
+                  )}
+                >
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-foreground">
+                      {option.name}
+                    </span>
+                    <span
+                      className={cn(
+                        "flex size-4 items-center justify-center rounded-full border",
+                        active
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-border",
+                      )}
+                    >
+                      {active ? (
+                        <Check className="size-2.5" strokeWidth={2.5} />
+                      ) : null}
+                    </span>
+                  </div>
+                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                    {option.description.replace(/\.$/, "")}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ── Automation ── */}
+      <section className="space-y-2.5">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          Automation
+        </h2>
+        <div className="divide-y divide-border/60 rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between gap-4 p-4 sm:p-5">
+            <div className="min-w-0 space-y-0.5">
+              <Label
+                htmlFor="auto-commit-push"
+                className="text-sm font-medium text-foreground"
+              >
+                Auto commit &amp; push
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Commit and push changes when an agent turn completes
+              </p>
+            </div>
+            <Switch
+              id="auto-commit-push"
+              checked={autoCommitEnabled}
+              onCheckedChange={handleAutoCommitPushChange}
+              disabled={isSaving}
+            />
+          </div>
+
+          <div
+            className={cn(
+              "flex items-center justify-between gap-4 p-4 sm:p-5",
+              !autoCommitEnabled && "opacity-60",
+            )}
+          >
+            <div className="min-w-0 space-y-0.5">
+              <Label
+                htmlFor="auto-create-pr"
+                className="text-sm font-medium text-foreground"
+              >
+                Auto create pull request
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Open a pull request automatically after auto commit
+              </p>
+            </div>
+            <Switch
+              id="auto-create-pr"
+              checked={preferences?.autoCreatePr ?? false}
+              onCheckedChange={handleAutoCreatePrChange}
+              disabled={isSaving || !autoCommitEnabled}
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 p-4 sm:p-5">
+            <div className="min-w-0 space-y-0.5">
+              <Label
+                htmlFor="guided-frontend-workflow"
+                className="text-sm font-medium text-foreground"
+              >
+                Guided frontend workflow
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Agree on a design spec first and run a browser audit loop on
+                frontend builds
+              </p>
+            </div>
+            <Switch
+              id="guided-frontend-workflow"
+              checked={preferences?.guidedFrontendWorkflowEnabled ?? false}
+              onCheckedChange={handleGuidedFrontendWorkflowEnabledChange}
+              disabled={isSaving}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ── Notifications & Sharing ── */}
+      <section className="space-y-2.5">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          Notifications &amp; sharing
+        </h2>
+        <div className="divide-y divide-border/60 rounded-xl border border-border bg-card">
+          <div className="flex items-center justify-between gap-4 p-4 sm:p-5">
+            <div className="min-w-0 space-y-0.5">
+              <Label
+                htmlFor="alerts-enabled"
+                className="text-sm font-medium text-foreground"
+              >
+                Background alerts
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Notify when a background agent finishes running
+              </p>
+            </div>
+            <Switch
+              id="alerts-enabled"
+              checked={alertsEnabled}
+              onCheckedChange={handleAlertsEnabledChange}
+              disabled={isSaving}
+            />
+          </div>
+
+          {alertsEnabled ? (
+            <div className="flex items-center justify-between gap-4 p-4 sm:p-5">
+              <div className="min-w-0 space-y-0.5">
+                <Label
+                  htmlFor="alert-sound-enabled"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Alert sound
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  For frontend requests: agree a design.md first, build one
-                  section at a time with a browser audit + fix loop, then run a
-                  states checklist (loading/empty/error/mobile/a11y/etc). Uses
-                  more turns than a plain build. You can also trigger it for a
-                  single message by asking for the &quot;guided frontend
-                  workflow&quot; even when this is off.
+                  Play a subtle chime alongside desktop alerts
                 </p>
               </div>
               <Switch
-                id="guided-frontend-workflow"
-                checked={preferences?.guidedFrontendWorkflowEnabled ?? false}
-                onCheckedChange={handleGuidedFrontendWorkflowEnabledChange}
+                id="alert-sound-enabled"
+                checked={preferences?.alertSoundEnabled ?? true}
+                onCheckedChange={handleAlertSoundEnabledChange}
                 disabled={isSaving}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="permission-mode">Default permission mode</Label>
-              <p className="text-xs text-muted-foreground">
-                Controls which tool approval prompts new sessions skip (bash,
-                .env access, web requests). Can be overridden per session.
-              </p>
-              <Select
-                value={preferences?.defaultPermissionMode ?? "ask"}
-                onValueChange={(value) =>
-                  handlePermissionModeChange(value as PermissionMode)
-                }
-                disabled={isSaving}
-              >
-                <SelectTrigger id="permission-mode" className="w-full">
-                  <SelectValue placeholder="Select a permission mode" />
-                </SelectTrigger>
-                <SelectContent>
-                  {PERMISSION_MODE_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.id}>
-                      {option.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          ) : null}
+
+          <div className="space-y-3 p-4 sm:p-5">
             <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="alerts-enabled">Alerts</Label>
-                <p className="text-xs text-muted-foreground">
-                  Notify when a background agent finishes.
-                </p>
-              </div>
-              <Switch
-                id="alerts-enabled"
-                checked={preferences?.alertsEnabled ?? true}
-                onCheckedChange={handleAlertsEnabledChange}
-                disabled={isSaving}
-              />
-            </div>
-            {(preferences?.alertsEnabled ?? true) && (
-              <div className="flex items-center justify-between gap-4 pl-4">
-                <div className="space-y-0.5">
-                  <Label htmlFor="alert-sound-enabled">Alert sound</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Play a sound with alerts.
-                  </p>
-                </div>
-                <Switch
-                  id="alert-sound-enabled"
-                  checked={preferences?.alertSoundEnabled ?? true}
-                  onCheckedChange={handleAlertSoundEnabledChange}
-                  disabled={isSaving}
-                />
-              </div>
-            )}
-            <div className="flex items-center justify-between gap-4">
-              <div className="space-y-0.5">
-                <Label htmlFor="public-usage-enabled">
+              <div className="min-w-0 space-y-0.5">
+                <Label
+                  htmlFor="public-usage-enabled"
+                  className="text-sm font-medium text-foreground"
+                >
                   Public usage profile
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Publish a shareable wrapped page at <code>/u/username</code>.
+                  Publish a shareable activity summary at{" "}
+                  <code className="font-mono text-[11px] text-foreground">
+                    {publicProfilePath ?? "/u/username"}
+                  </code>
                 </p>
               </div>
               <Switch
                 id="public-usage-enabled"
-                checked={preferences?.publicUsageEnabled ?? false}
+                checked={publicUsageEnabled}
                 onCheckedChange={handlePublicUsageEnabledChange}
                 disabled={isSaving}
               />
             </div>
-            {(preferences?.publicUsageEnabled ?? false) &&
-              publicProfilePath && (
-                <div className="grid gap-2 pl-4">
-                  <Label htmlFor="public-usage-url">Public profile URL</Label>
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Input
-                      id="public-usage-url"
-                      readOnly
-                      value={publicProfilePath}
-                      className="font-mono text-xs sm:text-sm"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleCopyPublicProfileUrl}
-                      disabled={isSaving}
-                    >
-                      {copiedPublicProfile ? "Copied" : "Copy URL"}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Share filtered snapshots with <code>?date=30d</code> or
-                    <code> ?date=2026-01-01..2026-01-31</code>.
-                  </p>
-                </div>
-              )}
+
+            {publicUsageEnabled && publicProfilePath ? (
+              <div className="flex flex-col gap-2 pt-1 sm:flex-row">
+                <Input
+                  id="public-usage-url"
+                  readOnly
+                  value={publicProfilePath}
+                  className="h-9 rounded-lg font-mono text-xs"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCopyPublicProfileUrl}
+                  disabled={isSaving}
+                  className="h-9 shrink-0 cursor-pointer rounded-lg px-3"
+                >
+                  {copiedPublicProfile ? (
+                    <Check className="mr-1.5 size-3.5" strokeWidth={1.5} />
+                  ) : (
+                    <Copy className="mr-1.5 size-3.5" strokeWidth={1.5} />
+                  )}
+                  {copiedPublicProfile ? "Copied" : "Copy URL"}
+                </Button>
+              </div>
+            ) : null}
           </div>
         </div>
-      </div>
+      </section>
 
-      <div className="border-t border-border/50" />
-
-      {/* ── Skills ── */}
-      <div className="space-y-3">
-        <SectionHeader>Agent skills</SectionHeader>
-        <div className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
+      {/* ── Agent Skills ── */}
+      <section className="space-y-2.5">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          Agent skills
+        </h2>
+        <div className="flex flex-col justify-between gap-4 rounded-xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:p-5">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
               <Terminal
-                className="h-4 w-4 text-muted-foreground"
+                className="size-4 text-muted-foreground"
                 strokeWidth={1.5}
               />
-              <span className="text-sm font-medium">
+              <span className="text-sm font-medium text-foreground">
                 Built-in skills &amp; GitHub skill packs
               </span>
-              {(preferences?.globalSkillRefs ?? []).length > 0 && (
-                <span className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums text-muted-foreground">
-                  {(preferences?.globalSkillRefs ?? []).length} GitHub{" "}
-                  {(preferences?.globalSkillRefs ?? []).length === 1
-                    ? "pack"
-                    : "packs"}
+              {skillPackCount > 0 ? (
+                <span className="rounded-md border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-muted-foreground">
+                  {skillPackCount} {skillPackCount === 1 ? "pack" : "packs"}
                 </span>
-              )}
+              ) : null}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Browse built-in skills (<code>/unslop</code>,{" "}
-              <code>/frontend-design</code>, <code>/code-review</code>,{" "}
-              <code>/team</code>), inspect <code>SKILL.md</code> instructions,
-              or install GitHub skill repositories.
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Browse built-in skills, inspect instructions, or attach GitHub
+              skill repositories
             </p>
           </div>
-          <Button asChild variant="outline" size="sm" className="shrink-0">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="w-full shrink-0 rounded-lg sm:w-auto"
+          >
             <Link href="/settings/skills">
               Manage skills
-              <ArrowUpRight className="ml-1.5 h-3.5 w-3.5" strokeWidth={1.5} />
+              <ArrowUpRight className="ml-1.5 size-3.5" strokeWidth={1.5} />
             </Link>
           </Button>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

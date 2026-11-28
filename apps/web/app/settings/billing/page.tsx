@@ -96,11 +96,28 @@ export default function SettingsBillingPage() {
   const priceCents = PLAN_MONTHLY_PRICE_CENTS[billing.plan] ?? 0;
   const grantCents = billing.creditGrantCents ?? 0;
   const topUpBalanceCents = billing.topUpBalanceCents ?? 0;
+  const giftedCreditCents = billing.giftedCreditCents ?? 0;
   const totalAvailableCents = Math.max(0, billing.creditBalanceCents);
-  const monthlyRemainingCents = Math.max(
-    0,
-    totalAvailableCents - topUpBalanceCents,
-  );
+  const planCreditCents =
+    billing.planCreditCents ??
+    (isPaidPlan
+      ? Math.min(
+          grantCents,
+          Math.max(
+            0,
+            totalAvailableCents - topUpBalanceCents - giftedCreditCents,
+          ),
+        )
+      : 0);
+  const freeCreditCents =
+    billing.freeCreditCents ??
+    Math.max(
+      0,
+      totalAvailableCents -
+        topUpBalanceCents -
+        giftedCreditCents -
+        planCreditCents,
+    );
   const renewalDays = getDaysUntil(billing.expiresAt);
   const hasFutureRenewal = renewalDays !== null && Boolean(billing.expiresAt);
   const username = session?.user?.username ?? "entry-user";
@@ -114,7 +131,7 @@ export default function SettingsBillingPage() {
       {/* Current Plan Section */}
       <section className="space-y-2.5">
         <h2 className="text-sm font-medium text-muted-foreground">
-          Current Plan
+          Current plan
         </h2>
         <div className="rounded-xl border border-border bg-card p-5 sm:p-6">
           <div className="flex flex-wrap items-baseline gap-2">
@@ -135,7 +152,7 @@ export default function SettingsBillingPage() {
           <div className="mt-6 flex flex-wrap items-center justify-end gap-2.5">
             <Button asChild size="sm" variant="outline" className="rounded-lg">
               <Link href="/pricing">
-                View Plans
+                View plans
                 <ExternalLink className="ml-1.5 size-3.5" strokeWidth={1.5} />
               </Link>
             </Button>
@@ -151,7 +168,7 @@ export default function SettingsBillingPage() {
                 {isOpeningPortal ? (
                   <Loader2 className="mr-1.5 size-3.5 animate-spin" />
                 ) : null}
-                {isOpeningPortal ? "Opening portal..." : "Manage Subscription"}
+                {isOpeningPortal ? "Opening portal..." : "Manage subscription"}
               </Button>
             ) : (
               <Button asChild size="sm" className="rounded-lg">
@@ -165,7 +182,7 @@ export default function SettingsBillingPage() {
       {/* Credit Balance Section */}
       <section className="rounded-xl border border-border bg-card p-5 sm:p-6">
         <h2 className="text-base font-semibold text-foreground">
-          Credit Balance
+          Credit balance
         </h2>
         <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted-foreground">
           {hasFutureRenewal ? (
@@ -192,7 +209,7 @@ export default function SettingsBillingPage() {
               className="cursor-pointer rounded-lg"
             >
               <Plus className="mr-1.5 size-3.5" strokeWidth={1.5} />
-              Add Credit
+              Add credit
             </Button>
           ) : (
             <Button asChild size="sm" variant="outline" className="rounded-lg">
@@ -226,14 +243,37 @@ export default function SettingsBillingPage() {
           </div>
         ) : null}
 
-        {/* Entry Obsidian Credit Card */}
+        {/* Entry Obsidian Cloud Credit Card */}
         <div className="mt-6">
-          <div className="relative flex aspect-[1.62/1] w-full max-w-[300px] flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 p-5 text-white shadow-sm">
+          <div className="relative flex aspect-[1.62/1] w-full max-w-[304px] flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-neutral-950 p-5 text-white shadow-sm">
             {/* Subtle diagonal card sheen */}
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 bg-[linear-gradient(125deg,rgba(255,255,255,0.08)_0%,rgba(255,255,255,0.02)_42%,transparent_43%,transparent_100%)]"
+              className="pointer-events-none absolute inset-0 bg-[linear-gradient(125deg,rgba(255,255,255,0.07)_0%,rgba(255,255,255,0.015)_42%,transparent_43%,transparent_100%)]"
             />
+            {/* Delicate layered cloud silhouettes */}
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 304 188"
+              fill="none"
+              className="pointer-events-none absolute inset-0 h-full w-full"
+            >
+              <path
+                d="M174 146h92c13.255 0 24-10.297 24-23 0-11.88-9.39-21.656-21.45-22.878C264.86 84.56 250.56 73 233.5 73c-15.49 0-28.69 9.52-33.86 22.92C196.45 94.68 192.86 94 189 94c-14.912 0-27 11.64-27 26 0 14.36 12.088 26 27 26h-15Z"
+                fill="white"
+                fillOpacity="0.045"
+              />
+              <path
+                d="M204 170h78c10.493 0 19-8.059 19-18s-8.507-18-19-18c-.94 0-1.86.065-2.76.19C275.34 123.59 264.93 116 252.6 116c-11.65 0-21.66 6.76-26.07 16.43-2.31-.92-4.85-1.43-7.53-1.43-11.046 0-20 8.507-20 19 0 10.493 8.954 20 20 20h-15Z"
+                fill="white"
+                fillOpacity="0.06"
+              />
+              <path
+                d="M-12 162h54c7.732 0 14-5.82 14-13 0-6.77-5.6-12.33-12.78-12.94C40.91 128.43 33.42 123 24.5 123c-8.28 0-15.39 4.7-18.54 11.42C4.29 133.82 2.45 133.5 0.5 133.5c-8.008 0-14.5 6.044-14.5 13.5 0 7.456 6.492 15 14.5 15H-12Z"
+                fill="white"
+                fillOpacity="0.035"
+              />
+            </svg>
 
             <div className="relative flex items-start justify-between gap-3">
               <span className="font-mono text-[11px] tracking-wide text-white/65">
@@ -256,21 +296,52 @@ export default function SettingsBillingPage() {
           </div>
         </div>
 
-        {/* Credit Breakdown Rows */}
+        {/* Separated Credit Breakdown Rows */}
         <div className="mt-6 space-y-1 text-sm">
-          <div className="flex items-center justify-between rounded-lg px-3 py-2.5">
-            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-              Monthly credit
-              <Info
-                className="size-3.5 text-muted-foreground/70"
-                strokeWidth={1.5}
-              />
-            </span>
-            <span className="font-mono text-sm tabular-nums text-foreground">
-              {formatUsdCents(monthlyRemainingCents)} /{" "}
-              {formatUsdCents(grantCents)}
-            </span>
-          </div>
+          {isPaidPlan ? (
+            <div className="flex items-center justify-between rounded-lg px-3 py-2.5">
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                Monthly plan credit
+                <Info
+                  className="size-3.5 text-muted-foreground/70"
+                  strokeWidth={1.5}
+                />
+              </span>
+              <span className="font-mono text-sm tabular-nums text-foreground">
+                {formatUsdCents(planCreditCents)} / {formatUsdCents(grantCents)}
+              </span>
+            </div>
+          ) : null}
+
+          {!isPaidPlan || freeCreditCents > 0 ? (
+            <div className="flex items-center justify-between rounded-lg bg-muted/25 px-3 py-2.5">
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                Free credit
+                <Info
+                  className="size-3.5 text-muted-foreground/70"
+                  strokeWidth={1.5}
+                />
+              </span>
+              <span className="font-mono text-sm tabular-nums text-foreground">
+                {formatUsdCents(freeCreditCents)}
+              </span>
+            </div>
+          ) : null}
+
+          {giftedCreditCents > 0 ? (
+            <div className="flex items-center justify-between rounded-lg bg-muted/25 px-3 py-2.5">
+              <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                Gifted credit
+                <Info
+                  className="size-3.5 text-muted-foreground/70"
+                  strokeWidth={1.5}
+                />
+              </span>
+              <span className="font-mono text-sm tabular-nums text-foreground">
+                {formatUsdCents(giftedCreditCents)}
+              </span>
+            </div>
+          ) : null}
 
           <div className="flex items-center justify-between rounded-lg bg-muted/40 px-3 py-2.5">
             <span className="inline-flex items-center gap-1.5 text-muted-foreground">
@@ -286,7 +357,7 @@ export default function SettingsBillingPage() {
           </div>
 
           <div className="flex items-center justify-between rounded-lg bg-muted/70 px-3 py-2.5 font-medium">
-            <span className="text-foreground">Total Available Credit</span>
+            <span className="text-foreground">Total available credit</span>
             <span className="font-mono text-sm font-semibold tabular-nums text-foreground">
               {formatUsdCents(totalAvailableCents)}
             </span>
@@ -297,7 +368,7 @@ export default function SettingsBillingPage() {
       {/* Credit Expiration Schedule Section */}
       <section className="rounded-xl border border-border bg-card p-5 sm:p-6">
         <h2 className="text-base font-semibold text-foreground">
-          Credit Expiration Schedule
+          Credit expiration schedule
         </h2>
 
         <div className="mt-4 overflow-x-auto">
@@ -305,23 +376,49 @@ export default function SettingsBillingPage() {
             <thead>
               <tr className="border-b border-border/60 text-xs text-muted-foreground">
                 <th className="pb-2.5 font-medium">Type</th>
-                <th className="pb-2.5 font-medium">Credit Balance</th>
+                <th className="pb-2.5 font-medium">Credit balance</th>
                 <th className="pb-2.5 text-right font-medium">Expiration</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/50">
-              <tr>
-                <td className="py-3 font-medium text-foreground">Included</td>
-                <td className="py-3 font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
-                  {formatUsdCents(monthlyRemainingCents)} /{" "}
-                  {formatUsdCents(grantCents)}
-                </td>
-                <td className="py-3 text-right font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
-                  {hasFutureRenewal && billing.expiresAt
-                    ? formatExpirationDate(billing.expiresAt)
-                    : "No expiration"}
-                </td>
-              </tr>
+              {isPaidPlan ? (
+                <tr>
+                  <td className="py-3 font-medium text-foreground">
+                    Monthly plan
+                  </td>
+                  <td className="py-3 font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
+                    {formatUsdCents(planCreditCents)} /{" "}
+                    {formatUsdCents(grantCents)}
+                  </td>
+                  <td className="py-3 text-right font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
+                    {hasFutureRenewal && billing.expiresAt
+                      ? formatExpirationDate(billing.expiresAt)
+                      : "No expiration"}
+                  </td>
+                </tr>
+              ) : null}
+              {!isPaidPlan || freeCreditCents > 0 ? (
+                <tr>
+                  <td className="py-3 font-medium text-foreground">Free</td>
+                  <td className="py-3 font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
+                    {formatUsdCents(freeCreditCents)}
+                  </td>
+                  <td className="py-3 text-right font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
+                    No expiration
+                  </td>
+                </tr>
+              ) : null}
+              {giftedCreditCents > 0 ? (
+                <tr>
+                  <td className="py-3 font-medium text-foreground">Gifted</td>
+                  <td className="py-3 font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
+                    {formatUsdCents(giftedCreditCents)}
+                  </td>
+                  <td className="py-3 text-right font-mono text-xs tabular-nums text-muted-foreground sm:text-sm">
+                    No expiration
+                  </td>
+                </tr>
+              ) : null}
               {topUpBalanceCents > 0 ? (
                 <tr>
                   <td className="py-3 font-medium text-foreground">

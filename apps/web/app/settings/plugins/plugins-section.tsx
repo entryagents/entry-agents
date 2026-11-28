@@ -8,14 +8,16 @@ import {
   KeyRound,
   Loader2,
   Plus,
+  Search,
   Shield,
   Terminal,
   Trash2,
   Users,
   Webhook,
+  X,
 } from "lucide-react";
-import { useState } from "react";
-import { Badge } from "@/components/ui/badge";
+import { useMemo, useState } from "react";
+import { EntryLoadingScreen } from "@/components/entry-loading-screen";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,16 +28,18 @@ import { useUserPlugins } from "@/hooks/use-user-plugins";
 import type { UserPluginSummary } from "@/lib/db/plugins";
 import { cn } from "@/lib/utils";
 
+type PluginFilter = "all" | "active" | "builtin" | "custom";
+
 const PLUGIN_PRESETS = [
   {
     id: "strict-ts",
-    label: "Strict TypeScript Guard",
+    label: "Strict TypeScript",
     manifest: {
       slug: "strict-typescript-guard",
       name: "Strict TypeScript Guard",
       version: "1.0.0",
       description:
-        "Enforces zero `any` types, explicit Zod narrowing, and exposes /ts-check.",
+        "Enforces zero `any` types, explicit Zod narrowing, and adds /ts-check.",
       category: "quality",
       hooks: ["session.context", "tool.execute.after"],
       slashCommands: [
@@ -55,20 +59,19 @@ const PLUGIN_PRESETS = [
   },
   {
     id: "conventional-commits",
-    label: "Conventional Commits",
+    label: "Conventional commits",
     manifest: {
       slug: "conventional-commits-guard",
       name: "Conventional Commits Enforcer",
       version: "1.0.0",
       description:
-        "Standardizes git commit messages and PR titles using conventional commit prefixes.",
+        "Standardizes git commit messages and PR titles using conventional prefixes.",
       category: "git",
       hooks: ["session.context"],
       slashCommands: [
         {
           name: "commit-msg",
-          description:
-            "Draft a conventional commit summary for current staged diff",
+          description: "Draft a conventional commit summary for staged changes",
           promptTemplate:
             "Inspect `git status` and `git diff --stat` and draft a concise Conventional Commit title and bullet body.",
         },
@@ -81,13 +84,13 @@ const PLUGIN_PRESETS = [
   },
   {
     id: "sensitive-file-guard",
-    label: "Sensitive Path Blocker",
+    label: "Secret guard",
     manifest: {
       slug: "sensitive-path-blocker",
       name: "Sensitive Path & Secret Guard",
       version: "1.0.0",
       description:
-        "Scrubs private key blocks from tool outputs and warns before modifying production env files.",
+        "Redacts private keys from tool outputs and warns before editing production env files.",
       category: "security",
       hooks: ["session.context", "tool.execute.after"],
       slashCommands: [],
@@ -106,20 +109,20 @@ const PLUGIN_PRESETS = [
   },
   {
     id: "test-first",
-    label: "Test-First Workflow",
+    label: "Test-first workflow",
     manifest: {
       slug: "test-first-workflow",
       name: "Test-First Workflow",
       version: "1.0.0",
       description:
-        "Guides Executor and Reviewer subagents to add or update unit tests alongside every code change.",
+        "Guides agents to add or update unit tests alongside every code change.",
       category: "quality",
       hooks: ["session.context", "session.compacting"],
       slashCommands: [
         {
           name: "tdd",
           description:
-            "Write a failing test first, implement the fix, and verify green",
+            "Write a failing test first, implement fix, verify green",
           promptTemplate:
             "Follow a strict TDD loop: reproduce or specify the behavior with a focused test first, implement the minimal fix, and run the test file to confirm it passes.",
           targetAgent: "executor",
@@ -143,7 +146,10 @@ const DEFAULT_MANIFEST_JSON = JSON.stringify(
 
 const CATEGORY_META: Record<
   string,
-  { label: string; icon: React.ComponentType<{ className?: string }> }
+  {
+    label: string;
+    icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  }
 > = {
   quality: { label: "Quality", icon: Check },
   agents: { label: "Team", icon: Users },
@@ -156,16 +162,16 @@ const CATEGORY_META: Record<
 export function PluginsSectionSkeleton() {
   return (
     <div className="space-y-6">
-      <div className="space-y-2">
-        <Skeleton className="h-6 w-44" />
-        <Skeleton className="h-4 w-96 max-w-full" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <Skeleton className="h-9 w-64 rounded-lg" />
+        <Skeleton className="h-9 w-36 rounded-lg" />
       </div>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2">
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="rounded-lg border border-border/70 p-4">
+          <div key={i} className="rounded-xl border border-border/70 p-5">
             <Skeleton className="h-5 w-40" />
             <Skeleton className="mt-2 h-4 w-full" />
-            <Skeleton className="mt-4 h-6 w-28" />
+            <Skeleton className="mt-4 h-7 w-28" />
           </div>
         ))}
       </div>
@@ -185,6 +191,8 @@ export function PluginsSection() {
     deletePlugin,
   } = useUserPlugins();
 
+  const [filter, setFilter] = useState<PluginFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [togglingSlug, setTogglingSlug] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -202,6 +210,39 @@ export function PluginsSection() {
   const [inlineValue, setInlineValue] = useState("");
   const [savingConfigSlug, setSavingConfigSlug] = useState<string | null>(null);
 
+  const allPlugins = useMemo(
+    () => [...builtins, ...custom],
+    [builtins, custom],
+  );
+
+  const counts = useMemo(
+    () => ({
+      all: allPlugins.length,
+      active: allPlugins.filter((p) => p.enabled).length,
+      builtin: builtins.length,
+      custom: custom.length,
+    }),
+    [allPlugins, builtins.length, custom.length],
+  );
+
+  const filteredPlugins = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return allPlugins.filter((plugin) => {
+      if (filter === "active" && !plugin.enabled) return false;
+      if (filter === "builtin" && plugin.source !== "builtin") return false;
+      if (filter === "custom" && plugin.source !== "custom") return false;
+      if (!q) return true;
+      return (
+        plugin.name.toLowerCase().includes(q) ||
+        plugin.description.toLowerCase().includes(q) ||
+        plugin.slug.toLowerCase().includes(q) ||
+        plugin.manifest.slashCommands.some((cmd) =>
+          cmd.name.toLowerCase().includes(q),
+        )
+      );
+    });
+  }, [allPlugins, filter, searchQuery]);
+
   const handleToggle = async (plugin: UserPluginSummary, enabled: boolean) => {
     setActionError(null);
     setTogglingSlug(plugin.slug);
@@ -209,7 +250,7 @@ export function PluginsSection() {
       await togglePlugin(plugin, enabled);
     } catch (err) {
       setActionError(
-        err instanceof Error ? err.message : "Failed to toggle plugin",
+        err instanceof Error ? err.message : "Failed to update plugin",
       );
     } finally {
       setTogglingSlug(null);
@@ -219,7 +260,7 @@ export function PluginsSection() {
   const handleSaveInlineConfig = async (plugin: UserPluginSummary) => {
     const trimmedKey = inlineKey.trim();
     if (!trimmedKey) {
-      setActionError("Config key is required.");
+      setActionError("Config key is required");
       return;
     }
     setActionError(null);
@@ -231,7 +272,7 @@ export function PluginsSection() {
       setInlineValue("");
     } catch (err) {
       setActionError(
-        err instanceof Error ? err.message : "Failed to save plugin config",
+        err instanceof Error ? err.message : "Failed to save plugin setting",
       );
     } finally {
       setSavingConfigSlug(null);
@@ -246,7 +287,7 @@ export function PluginsSection() {
     try {
       parsedJson = JSON.parse(manifestJson);
     } catch {
-      setActionError("Manifest must be valid JSON.");
+      setActionError("Manifest must be valid JSON");
       return;
     }
 
@@ -295,285 +336,124 @@ export function PluginsSection() {
     }
   };
 
-  const renderPluginCard = (plugin: UserPluginSummary) => {
-    const cat = CATEGORY_META[plugin.category] ?? CATEGORY_META.custom;
-    const CatIcon = cat.icon;
-    const busy = togglingSlug === plugin.slug || deletingId === plugin.id;
-    const isEditingConfig = editingConfigSlug === plugin.slug;
-
-    return (
-      <div
-        key={plugin.slug}
-        className={cn(
-          "flex flex-col justify-between rounded-lg border p-4 transition-colors",
-          plugin.enabled
-            ? "border-border bg-card"
-            : "border-border/60 bg-muted/20",
-        )}
-      >
-        <div className="space-y-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 space-y-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-sm font-semibold text-foreground">
-                  {plugin.name}
-                </h3>
-                <Badge
-                  variant="secondary"
-                  className="inline-flex items-center gap-1 px-1.5 py-0 text-[10px] font-medium"
-                >
-                  <CatIcon className="size-3" />
-                  {cat.label}
-                </Badge>
-                {plugin.source === "custom" && (
-                  <Badge
-                    variant="outline"
-                    className="px-1.5 py-0 font-mono text-[10px]"
-                  >
-                    custom
-                  </Badge>
-                )}
-              </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">
-                {plugin.description}
-              </p>
-            </div>
-            <div className="flex shrink-0 items-center gap-1.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={busy}
-                onClick={() => {
-                  if (isEditingConfig) {
-                    setEditingConfigSlug(null);
-                  } else {
-                    setEditingConfigSlug(plugin.slug);
-                    setInlineKey(
-                      plugin.manifest.configFields[0]?.key ??
-                        plugin.configuredKeys[0] ??
-                        "",
-                    );
-                    setInlineValue("");
-                  }
-                }}
-                className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                aria-label={`Configure ${plugin.name}`}
-              >
-                <KeyRound className="size-3.5" />
-              </Button>
-              {plugin.source === "custom" && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={busy}
-                  onClick={() => void handleDeleteCustom(plugin)}
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                  aria-label={`Remove ${plugin.name}`}
-                >
-                  {deletingId === plugin.id ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="size-3.5" />
-                  )}
-                </Button>
-              )}
-              <Switch
-                checked={plugin.enabled}
-                disabled={busy}
-                onCheckedChange={(checked) =>
-                  void handleToggle(plugin, checked)
-                }
-                aria-label={`Toggle ${plugin.name}`}
-              />
-            </div>
-          </div>
-
-          {/* Hook lifecycle pills */}
-          {plugin.manifest.hooks.length > 0 && (
-            <div className="flex flex-wrap items-center gap-1">
-              {plugin.manifest.hooks.map((hook) => (
-                <span
-                  key={hook}
-                  className="rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
-                >
-                  {hook}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Registered slash commands */}
-          {plugin.manifest.slashCommands.length > 0 && (
-            <div className="space-y-1 rounded-md border border-border/50 bg-muted/20 px-2.5 py-2">
-              {plugin.manifest.slashCommands.map((cmd) => (
-                <div
-                  key={cmd.name}
-                  className="flex items-center justify-between gap-2 text-xs"
-                >
-                  <span className="inline-flex items-center gap-1 font-mono font-medium text-foreground">
-                    <Terminal className="size-3 text-muted-foreground" />/
-                    {cmd.name}
-                  </span>
-                  <span className="truncate text-[11px] text-muted-foreground">
-                    {cmd.description}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {plugin.manifest.rules.blockedTools &&
-            plugin.manifest.rules.blockedTools.length > 0 && (
-              <div className="text-[11px] text-amber-600 dark:text-amber-400">
-                Blocks tools:{" "}
-                {plugin.manifest.rules.blockedTools
-                  .map((b) => (typeof b === "string" ? b : b.tool))
-                  .join(", ")}
-              </div>
-            )}
-
-          {plugin.configuredKeys.length > 0 && (
-            <div className="text-[11px] text-muted-foreground">
-              Configured keys: {plugin.configuredKeys.join(", ")}
-            </div>
-          )}
-
-          {isEditingConfig && (
-            <div className="space-y-2 rounded-md border border-border/70 bg-muted/30 p-2.5">
-              <div className="text-[11px] font-medium text-foreground">
-                Plugin settings
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <Input
-                  placeholder="CONFIG_KEY"
-                  value={inlineKey}
-                  onChange={(e) => setInlineKey(e.target.value)}
-                  className="h-8 font-mono text-xs"
-                />
-                <Input
-                  type="password"
-                  placeholder="Secret or value"
-                  value={inlineValue}
-                  onChange={(e) => setInlineValue(e.target.value)}
-                  className="h-8 font-mono text-xs"
-                />
-              </div>
-              <div className="flex justify-end gap-1.5">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 px-2 text-xs"
-                  onClick={() => setEditingConfigSlug(null)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  disabled={savingConfigSlug === plugin.slug}
-                  onClick={() => void handleSaveInlineConfig(plugin)}
-                >
-                  {savingConfigSlug === plugin.slug && (
-                    <Loader2 className="mr-1 size-3 animate-spin" />
-                  )}
-                  Save key
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-3 flex items-center justify-between border-t border-border/40 pt-2.5 text-[11px] text-muted-foreground">
-          <span className="font-mono">{plugin.slug}</span>
-          <div className="flex items-center gap-2.5 tabular-nums">
-            {plugin.triggerCount > 0 && (
-              <span>
-                {plugin.triggerCount}{" "}
-                {plugin.triggerCount === 1 ? "run" : "runs"}
-              </span>
-            )}
-            <span>v{plugin.manifest.version}</span>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   if (loading) {
-    return <PluginsSectionSkeleton />;
+    return <EntryLoadingScreen fullScreen={false} />;
   }
+
+  const filterTabs: Array<{ id: PluginFilter; label: string; count: number }> =
+    [
+      { id: "all", label: "All", count: counts.all },
+      { id: "active", label: "Active", count: counts.active },
+      { id: "builtin", label: "Built-in", count: counts.builtin },
+      { id: "custom", label: "Custom", count: counts.custom },
+    ];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/80 bg-card px-4 py-3">
-        <div className="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
-          <span>
-            {builtins.filter((b) => b.enabled).length}/{builtins.length}{" "}
-            built-in active
-          </span>
-          <span className="text-border">·</span>
-          <span>
-            {custom.length} custom {custom.length === 1 ? "plugin" : "plugins"}
-          </span>
+      {/* Toolbar: filters + search + install CTA */}
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div
+            role="tablist"
+            aria-label="Filter plugins"
+            className="grid grid-cols-4 gap-1 rounded-lg border border-border bg-muted/40 p-1 sm:inline-flex"
+          >
+            {filterTabs.map((tab) => {
+              const active = filter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setFilter(tab.id)}
+                  className={cn(
+                    "inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors sm:px-3",
+                    active
+                      ? "bg-background text-foreground shadow-xs"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <span>{tab.label}</span>
+                  <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <Button
+            type="button"
+            size="sm"
+            variant={showBuilder ? "outline" : "default"}
+            onClick={() => {
+              setActionError(null);
+              setShowBuilder((v) => !v);
+            }}
+            className="w-full cursor-pointer rounded-lg sm:w-auto"
+          >
+            {showBuilder ? (
+              <X className="mr-1.5 size-3.5" strokeWidth={1.5} />
+            ) : (
+              <Plus className="mr-1.5 size-3.5" strokeWidth={1.5} />
+            )}
+            {showBuilder ? "Close editor" : "Install custom plugin"}
+          </Button>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          variant={showBuilder ? "outline" : "default"}
-          onClick={() => {
-            setActionError(null);
-            setShowBuilder((v) => !v);
-          }}
-          className="cursor-pointer"
-        >
-          <Plus className="mr-1.5 size-3.5" strokeWidth={1.5} />
-          {showBuilder ? "Close manifest editor" : "Install custom plugin"}
-        </Button>
+
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+            strokeWidth={1.5}
+          />
+          <Input
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search plugins or /commands"
+            className="h-9 rounded-lg pl-9 text-sm"
+          />
+        </div>
       </div>
 
       {(error || actionError) && (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3.5 py-2.5 text-xs text-destructive">
           {actionError ?? error}
         </div>
       )}
 
-      {showBuilder && (
+      {/* Custom Plugin Installer */}
+      {showBuilder ? (
         <form
           onSubmit={(e) => void handleCreateCustom(e)}
-          className="space-y-4 rounded-lg border border-border bg-card p-4"
+          className="space-y-4 rounded-xl border border-border bg-card p-4 sm:p-5"
         >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-semibold">
-                Custom Plugin Manifest (JSON)
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-0.5">
+              <h2 className="text-sm font-semibold text-foreground">
+                Custom plugin manifest
               </h2>
               <p className="text-xs text-muted-foreground">
-                Pick a starter preset below or write your own manifest schema.
+                Pick a starter template or paste a JSON manifest
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
               {PLUGIN_PRESETS.map((preset) => (
-                <Button
+                <button
                   key={preset.id}
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2 text-xs"
                   onClick={() =>
                     setManifestJson(JSON.stringify(preset.manifest, null, 2))
                   }
+                  className="cursor-pointer rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
                 >
                   {preset.label}
-                </Button>
+                </button>
               ))}
             </div>
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="plugin-manifest-json" className="text-xs">
               Manifest JSON
             </Label>
@@ -581,94 +461,300 @@ export function PluginsSection() {
               id="plugin-manifest-json"
               value={manifestJson}
               onChange={(e) => setManifestJson(e.target.value)}
-              rows={12}
-              className="font-mono text-xs"
+              rows={11}
+              className="rounded-lg font-mono text-xs"
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="plugin-cfg-key" className="text-xs">
-                Optional encrypted config key
-              </Label>
+          <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 p-3.5">
+            <div className="space-y-0.5">
+              <p className="text-xs font-medium text-foreground">
+                Optional API key or webhook secret
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Only needed if this custom plugin authenticates with an external
+                service
+              </p>
+            </div>
+            <div className="grid gap-2.5 sm:grid-cols-2">
               <Input
                 id="plugin-cfg-key"
-                placeholder="WEBHOOK_SECRET"
+                placeholder="Key name (e.g. WEBHOOK_SECRET)"
                 value={configKey}
                 onChange={(e) => setConfigKey(e.target.value)}
-                className="font-mono text-xs"
+                className="h-9 rounded-lg font-mono text-xs"
               />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="plugin-cfg-val" className="text-xs">
-                Optional encrypted config value
-              </Label>
               <Input
                 id="plugin-cfg-val"
                 type="password"
-                placeholder="••••••••"
+                placeholder="Secret value"
                 value={configValue}
                 onChange={(e) => setConfigValue(e.target.value)}
-                className="font-mono text-xs"
+                className="h-9 rounded-lg font-mono text-xs"
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               size="sm"
               onClick={() => setShowBuilder(false)}
+              className="cursor-pointer rounded-lg"
             >
               Cancel
             </Button>
-            <Button type="submit" size="sm" disabled={submitting}>
-              {submitting && (
+            <Button
+              type="submit"
+              size="sm"
+              disabled={submitting}
+              className="cursor-pointer rounded-lg"
+            >
+              {submitting ? (
                 <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-              )}
-              Save &amp; Enable Plugin
+              ) : null}
+              Install &amp; enable
             </Button>
           </div>
         </form>
-      )}
+      ) : null}
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground tabular-nums">
-            First-party plugins ({builtins.filter((b) => b.enabled).length}/
-            {builtins.length} active)
-          </h2>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {builtins.map(renderPluginCard)}
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground tabular-nums">
-            Custom plugins ({custom.length})
-          </h2>
-        </div>
-        {custom.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border/70 px-4 py-8 text-center text-xs text-muted-foreground">
-            No custom manifest plugins installed yet. Click{" "}
-            <button
+      {/* Plugin Cards Grid */}
+      {filteredPlugins.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border bg-card/50 px-6 py-12 text-center">
+          <p className="text-sm font-medium text-foreground">
+            No plugins match this view
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {filter === "custom"
+              ? "Install a custom JSON manifest to add your own hooks and slash commands"
+              : "Try clearing your search or switching filters"}
+          </p>
+          {filter === "custom" ? (
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               onClick={() => setShowBuilder(true)}
-              className="font-medium text-foreground underline underline-offset-4"
+              className="mt-4 cursor-pointer rounded-lg"
             >
+              <Plus className="mr-1.5 size-3.5" strokeWidth={1.5} />
               Install custom plugin
-            </button>{" "}
-            to register your own hooks and slash commands.
-          </div>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2">
-            {custom.map(renderPluginCard)}
-          </div>
-        )}
-      </section>
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {filteredPlugins.map((plugin) => {
+            const cat = CATEGORY_META[plugin.category] ?? CATEGORY_META.custom;
+            const CatIcon = cat.icon;
+            const busy =
+              togglingSlug === plugin.slug || deletingId === plugin.id;
+            const isEditingConfig = editingConfigSlug === plugin.slug;
+            const supportsCredentials =
+              plugin.source === "custom" ||
+              plugin.manifest.configFields.length > 0 ||
+              plugin.configuredKeys.length > 0;
+
+            return (
+              <div
+                key={plugin.slug}
+                className={cn(
+                  "flex min-w-0 flex-col justify-between rounded-xl border p-4 transition-colors sm:p-5",
+                  plugin.enabled
+                    ? "border-border bg-card"
+                    : "border-border/60 bg-muted/20",
+                )}
+              >
+                <div className="space-y-3.5">
+                  {/* Card Header */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40 text-muted-foreground">
+                        <CatIcon className="size-4" strokeWidth={1.5} />
+                      </span>
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="truncate text-sm font-semibold text-foreground">
+                            {plugin.name}
+                          </h3>
+                          {plugin.source === "custom" ? (
+                            <span className="rounded-md border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                              Custom
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {cat.label}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      {supportsCredentials ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          disabled={busy}
+                          onClick={() => {
+                            if (isEditingConfig) {
+                              setEditingConfigSlug(null);
+                            } else {
+                              setEditingConfigSlug(plugin.slug);
+                              setInlineKey(
+                                plugin.manifest.configFields[0]?.key ??
+                                  plugin.configuredKeys[0] ??
+                                  "",
+                              );
+                              setInlineValue("");
+                            }
+                          }}
+                          className="size-7 cursor-pointer rounded-md text-muted-foreground hover:text-foreground"
+                          aria-label={`Configure ${plugin.name}`}
+                          title="Configure plugin secret"
+                        >
+                          <KeyRound className="size-3.5" strokeWidth={1.5} />
+                        </Button>
+                      ) : null}
+
+                      {plugin.source === "custom" ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          disabled={busy}
+                          onClick={() => void handleDeleteCustom(plugin)}
+                          className="size-7 cursor-pointer rounded-md text-muted-foreground hover:text-destructive"
+                          aria-label={`Remove ${plugin.name}`}
+                        >
+                          {deletingId === plugin.id ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-3.5" strokeWidth={1.5} />
+                          )}
+                        </Button>
+                      ) : null}
+
+                      <Switch
+                        checked={plugin.enabled}
+                        disabled={busy}
+                        onCheckedChange={(checked) =>
+                          void handleToggle(plugin, checked)
+                        }
+                        aria-label={`Toggle ${plugin.name}`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {plugin.description}
+                  </p>
+
+                  {/* Slash commands */}
+                  {plugin.manifest.slashCommands.length > 0 ? (
+                    <div className="space-y-1.5 rounded-lg border border-border/60 bg-muted/25 px-3 py-2.5">
+                      {plugin.manifest.slashCommands.map((cmd) => (
+                        <div
+                          key={cmd.name}
+                          className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3"
+                        >
+                          <span className="inline-flex shrink-0 items-center gap-1 font-mono text-xs font-medium text-foreground">
+                            <Terminal
+                              className="size-3 text-muted-foreground"
+                              strokeWidth={1.5}
+                            />
+                            /{cmd.name}
+                          </span>
+                          <span className="truncate text-xs text-muted-foreground">
+                            {cmd.description}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {/* Configured keys notice (only if present) */}
+                  {plugin.configuredKeys.length > 0 ? (
+                    <p className="font-mono text-[11px] text-muted-foreground">
+                      Keys: {plugin.configuredKeys.join(", ")}
+                    </p>
+                  ) : null}
+
+                  {/* Inline Credential Editor (only shown when toggled on a plugin that supports config) */}
+                  {isEditingConfig ? (
+                    <div className="space-y-2.5 rounded-lg border border-border/70 bg-muted/30 p-3">
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-medium text-foreground">
+                          Plugin secret
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          Used if this plugin connects to an external webhook or
+                          API
+                        </p>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Input
+                          placeholder="KEY_NAME"
+                          value={inlineKey}
+                          onChange={(e) => setInlineKey(e.target.value)}
+                          className="h-8 rounded-md font-mono text-xs"
+                        />
+                        <Input
+                          type="password"
+                          placeholder="Secret value"
+                          value={inlineValue}
+                          onChange={(e) => setInlineValue(e.target.value)}
+                          className="h-8 rounded-md font-mono text-xs"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-1.5">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 cursor-pointer rounded-md px-2.5 text-xs"
+                          onClick={() => setEditingConfigSlug(null)}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="h-7 cursor-pointer rounded-md px-2.5 text-xs"
+                          disabled={savingConfigSlug === plugin.slug}
+                          onClick={() => void handleSaveInlineConfig(plugin)}
+                        >
+                          {savingConfigSlug === plugin.slug ? (
+                            <Loader2 className="mr-1 size-3 animate-spin" />
+                          ) : null}
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Quiet card footer */}
+                <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3 text-[11px] text-muted-foreground">
+                  <span className="truncate font-mono">{plugin.slug}</span>
+                  <div className="flex shrink-0 items-center gap-2.5 font-mono tabular-nums">
+                    {plugin.triggerCount > 0 ? (
+                      <span>
+                        {plugin.triggerCount}{" "}
+                        {plugin.triggerCount === 1 ? "run" : "runs"}
+                      </span>
+                    ) : null}
+                    <span>v{plugin.manifest.version}</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

@@ -2,17 +2,14 @@ import { getServerSession } from "@/lib/session/get-server-session";
 import {
   enforcePlanExpiry,
   getUsageWindowTotals,
-  getUserTopUpBalance,
+  getUserCreditBreakdown,
 } from "@/lib/billing/credit-ledger";
 import { isUserAdmin } from "@/lib/db/users";
 import { addOneCalendarMonth, getPlanDefinition } from "@/lib/billing/plans";
 
 /**
  * Lightweight "what plan am I on / how much credit do I have left" read,
- * used by the sidebar balance widget. Separate from /api/billing/verify
- * (which is tied to a specific Paystack transaction reference right
- * after checkout) -- this one is just a plain GET for whenever the UI
- * needs the current numbers.
+ * used by the sidebar balance widget and /settings/billing.
  */
 export async function GET() {
   const session = await getServerSession();
@@ -30,12 +27,8 @@ export async function GET() {
   }
 
   const plan = getPlanDefinition(state.plan);
-  const topUp = await getUserTopUpBalance(session.user.id);
+  const breakdown = await getUserCreditBreakdown(session.user.id, { isAdmin });
 
-  // Entry Windows (2026-09-15): plans with rolling usage windows (only
-  // the Entry plan today) also get their live window usage returned so
-  // the billing page can render the window status card. Everything
-  // else gets null -- windows are exclusive to this plan.
   let usageWindows: {
     mode?: "rolling" | "fixed";
     fiveHour: {
@@ -87,8 +80,11 @@ export async function GET() {
       planName: plan.name,
       creditBalanceCents: state.creditBalanceCents,
       creditGrantCents: plan.creditGrantCents,
-      topUpBalanceCents: topUp.balanceCents,
-      topUpExpiresAt: topUp.expiresAt,
+      planCreditCents: breakdown.planCreditCents,
+      freeCreditCents: breakdown.freeCreditCents,
+      giftedCreditCents: breakdown.giftedCreditCents,
+      topUpBalanceCents: breakdown.purchasedCreditCents,
+      topUpExpiresAt: breakdown.purchasedExpiresAt,
       billingCycleAnchor: anchorDate?.toISOString() ?? null,
       expiresAt,
       usageWindows,

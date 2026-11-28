@@ -19,6 +19,9 @@ export interface BillingMeResponse {
   planName: string;
   creditBalanceCents: number;
   creditGrantCents: number;
+  planCreditCents?: number;
+  freeCreditCents?: number;
+  giftedCreditCents?: number;
   topUpBalanceCents?: number;
   topUpExpiresAt?: string | null;
   billingCycleAnchor?: string | null;
